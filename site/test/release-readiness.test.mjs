@@ -9,7 +9,9 @@ import vm from 'node:vm';
 import { safeDestination, contributionAmount, releaseDestination, checkoutDestination } from '../assets/config.mjs';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const defaults = JSON.parse(await readFile(join(root, 'config.json'), 'utf8'));
+const shipped = JSON.parse(await readFile(join(root, 'config.json'), 'utf8'));
+// The unreleased state, independent of the release the committed config ships.
+const defaults = { ...shipped, release: { ...shipped.release, ready: false, notarized: false, version: null, macURL: null, sha256: null, size: null } };
 const ready = { ...defaults, release: { ...defaults.release, ready: true, notarized: true, version: '0.3.0', sha256: 'a'.repeat(64), size: '150 MB', macURL: 'https://example.com/Arya.dmg', allowedHosts: ['example.com'] } };
 const publicConfig = { ...ready, siteURL: 'https://example.com/', contactURL: 'https://example.com/help', publicSourceURL: 'https://github.com/example/arya', externalHosts: ['example.com', 'github.com'] };
 

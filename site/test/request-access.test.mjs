@@ -9,7 +9,9 @@ import vm from 'node:vm';
 import { contributionAmount, checkoutDestination, releaseDestination, safeDestination } from '../assets/config.mjs';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const defaults = JSON.parse(await readFile(join(root, 'config.json'), 'utf8'));
+const shipped = JSON.parse(await readFile(join(root, 'config.json'), 'utf8'));
+// The unreleased state, independent of the release the committed config ships.
+const defaults = { ...shipped, release: { ...shipped.release, ready: false, notarized: false, version: null, macURL: null, sha256: null, size: null } };
 const source = (await readFile(join(root, 'assets/site.mjs'), 'utf8')).replace(/^import[^\n]+\n/, '');
 
 class Element {
@@ -54,9 +56,25 @@ async function build(config) {
   } finally { await rm(directory, { recursive: true, force: true }); }
 }
 
+// Builds the unreleased pages, since the committed pages may ship a release that replaces the access form.
+async function unreleasedPage(page) {
+  unreleasedPages ??= (async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'arya-site-unreleased-'));
+    try {
+      await cp(root, directory, { recursive: true });
+      await writeFile(join(directory, 'config.json'), JSON.stringify(defaults));
+      const result = spawnSync(process.execPath, [join(directory, 'scripts/build.mjs')], { encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      return Object.fromEntries(await Promise.all(['', 'download', 'install', 'support', 'privacy', 'project'].map(async route => [route, await readFile(join(directory, route, 'index.html'), 'utf8')])));
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  })();
+  return (await unreleasedPages)[page];
+}
+let unreleasedPages;
+
 test('the public default has no access destination and the download page shows an inert, labeled placeholder', async () => {
   assert.equal(defaults.requestAccessURL, null);
-  const html = await readFile(join(root, 'download/index.html'), 'utf8');
+  const html = await unreleasedPage('download');
   const form = html.slice(html.indexOf('<form class="access-card" id="access-form"'), html.indexOf('</form>') + 7);
   assert.ok(form.length > 100, 'the access form is present');
   assert.ok(!/\saction=/.test(form), 'the placeholder form has no submission destination');
@@ -65,15 +83,15 @@ test('the public default has no access destination and the download page shows a
   for (const control of ['<input disabled id="access-email"', '<select disabled id="access-tools"', '<textarea disabled id="access-project"', 'type="submit" disabled']) assert.ok(form.includes(control), control);
   assert.match(form, /<noscript><p>This form needs JavaScript and is not connected yet\.<\/p><\/noscript>/);
   for (const page of ['', 'download', 'install', 'support', 'privacy', 'project']) {
-    const pageHTML = await readFile(join(root, page, 'index.html'), 'utf8');
+    const pageHTML = await unreleasedPage(page);
     assert.ok(pageHTML.includes('href="/download/#access"'), `${page || 'home'} links its primary action to the access form`);
   }
-  const privacy = await readFile(join(root, 'privacy/index.html'), 'utf8');
+  const privacy = await unreleasedPage('privacy');
   assert.ok(privacy.includes('The beta access form on the download page is a placeholder. It does not send or store what you type.'));
 });
 
 test('with no connected form, Home invites no access requests and says when requests open', async () => {
-  const home = await readFile(join(root, 'index.html'), 'utf8');
+  const home = await unreleasedPage('');
   assert.ok(!home.includes('Request beta access'), 'nothing takes requests yet');
   assert.ok(!/request (beta )?access/i.test(home.replace(/<[^>]+>/g, ' ')), 'no copy asks visitors to request access');
   assert.equal([...home.matchAll(/<a class="button " href="\/download\/#access">Beta access<\/a>/g)].length, 3);

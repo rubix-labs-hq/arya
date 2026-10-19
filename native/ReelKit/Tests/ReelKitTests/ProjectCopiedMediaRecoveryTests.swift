@@ -233,10 +233,14 @@ final class ProjectCopiedMediaRecoveryTests: XCTestCase {
     private actor ProbePause {
         private var entered = false
         private var continuation: CheckedContinuation<Void, Never>?
-        func pause() async { entered = true; await withCheckedContinuation { continuation = $0 } }
+        private var arrival: CheckedContinuation<Void, Never>?
+        func pause() async {
+            entered = true; arrival?.resume(); arrival = nil
+            await withCheckedContinuation { continuation = $0 }
+        }
+        // Waits for the probe without a wall-clock deadline, which expired under full-suite load.
         func wait() async throws {
-            let deadline = Date().addingTimeInterval(5)
-            while !entered { guard Date() < deadline else { throw ReelBackend.APIError("Recovery probe did not start") }; await Task.yield() }
+            if !entered { await withCheckedContinuation { arrival = $0 } }
         }
         func release() { continuation?.resume(); continuation = nil }
     }

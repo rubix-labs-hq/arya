@@ -203,6 +203,14 @@ class RunnerTests(unittest.TestCase):
             with patch.object(runner.subprocess, 'run', side_effect=subprocess.CalledProcessError(1, ['ps'])):
                 with self.assertRaises(PermissionError): runner.signal_group(4242, signal.SIGKILL)
 
+    def test_group_signal_waits_for_a_member_that_is_still_exiting(self):
+        listings = iter(['  43  4242 S\n', '  43  4242 Z\n'])
+        run = lambda *a, **k: subprocess.CompletedProcess([], 0, stdout=next(listings), stderr='')
+        with patch.object(runner.os, 'killpg', side_effect=PermissionError(1, 'Operation not permitted')), \
+             patch.object(runner.subprocess, 'run', side_effect=run), patch.object(runner.time, 'sleep') as sleep:
+            runner.signal_group(4242, signal.SIGKILL)
+        self.assertEqual(sleep.call_count, 1)
+
     def test_persistence_test_writers_compile_the_hook_build_beside_the_shipped_helper(self):
         work, output = self.base / 'work', self.base / 'out'
         (work / 'editor/core').mkdir(parents=True); output.mkdir()

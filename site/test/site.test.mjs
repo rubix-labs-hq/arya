@@ -18,7 +18,8 @@ test('destinations require HTTPS, no credentials and an explicit host allowlist'
   assert.equal(safeDestination('https://example.com.evil.test',['example.com']),null);
 });
 test('a release cannot offer a URL without reviewed readiness, notarization and checksum fields',()=>{
-  assert.equal(releaseDestination(config),null);
+  const shipped=releaseDestination(config);
+  assert.ok(shipped===null||shipped.startsWith(`https://github.com/rubix-labs-hq/arya/releases/download/v${config.release.version}/`),shipped);
   const ready={release:{ready:true,notarized:true,version:'1.0',sha256:'a'.repeat(64),macURL:'https://example.com/Arya.dmg',allowedHosts:['example.com']}};
   assert.equal(releaseDestination(ready),'https://example.com/Arya.dmg');
   for(const key of ['ready','notarized','version','sha256','allowedHosts'])assert.equal(releaseDestination({release:{...ready.release,[key]:null}}),null,key);

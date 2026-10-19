@@ -300,9 +300,13 @@ def signal_group(group, sig):
     except PermissionError as refused:
         # macOS answers EPERM for a group whose remaining members are all zombies.
         # Only a live member that refused the signal is a cleanup failure.
-        try: members = live_group_members(group)
-        except (OSError, subprocess.CalledProcessError, ValueError): raise refused
-        if members: raise
+        # A member that is still exiting can refuse briefly, so recheck before failing.
+        for _ in range(20):
+            try: members = live_group_members(group)
+            except (OSError, subprocess.CalledProcessError, ValueError): raise refused
+            if not members: return
+            time.sleep(0.1)
+        raise
 
 def stop_owned_group(child):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
