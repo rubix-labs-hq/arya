@@ -1,0 +1,41 @@
+{
+  "brand": "Arya",
+  "siteURL": "https://arya-beta-delta.vercel.app",
+  "contributions": {
+    "policy": "optional-support",
+    "currency": "USD",
+    "minimum": 5,
+    "suggested": 15,
+    "checkoutURLs": {
+      "5": null,
+      "15": null,
+      "30": null,
+      "custom": null
+    },
+    "allowedHosts": [
+      "buy.stripe.com"
+    ]
+  },
+  "release": {
+    "ready": false,
+    "version": null,
+    "macURL": null,
+    "sha256": null,
+    "size": null,
+    "minimumOS": "macOS 14",
+    "architectures": "Apple silicon and Intel",
+    "notarized": false,
+    "allowedHosts": [
+      "github.com"
+    ]
+  },
+  "publicSourceURL": "https://github.com/rubix-labs-hq/arya",
+  "requestAccessURL": null,
+  "contactURL": "https://github.com/rubix-labs-hq/arya/issues",
+  "externalHosts": [
+    "arya-beta-delta.vercel.app",
+    "github.com"
+  ],
+  "indexing": true,
+  "browserEditor": true
+}

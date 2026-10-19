@@ -1,0 +1,133 @@
+name: Manual Arya verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - run: npm ci
+        working-directory: editor
+      - run: brew install ffmpeg
+      - name: Prepare reviewed macOS persistence writer
+        run: npm run prepare:persistence
+        working-directory: editor
+      - run: npm test
+        working-directory: editor
+      - run: npm run renderer:regressions
+        working-directory: editor
+      - run: node scripts/figma-text-smoke.mjs
+        working-directory: editor
+      - run: npm run golden
+        working-directory: editor
+      - run: npm run processing:smoke
+        working-directory: editor
+      - name: Verify website build and behavior contracts
+        run: |
+          npm run build --prefix site
+          npm test --prefix site
+      - name: Verify repository audit boundaries
+        run: |
+          node scripts/public-readiness.mjs --self-test
+          node --test scripts/test-public-readiness.mjs
+          /usr/bin/python3 -I -S -B scripts/test-public-readiness-read.py
+  native:
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+      SWIFT_BACKTRACE: enable=yes,interactive=no
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - run: npm ci
+        working-directory: editor
+      - name: Install media test dependency
+        run: brew install ffmpeg
+      - name: Run shared native backend tests
+        run: NODE="$(command -v node)" swift test --package-path native/ReelKit
+      - name: Verify native assistant change receipts
+        run: sh native/scripts/test-change-receipts.sh
+      - name: Verify native viewer coordinates and output sizing
+        run: |
+          sh native/scripts/test-ui-geometry.sh
+          python3 native/scripts/test-displayed-frame.py
+          python3 native/scripts/test-viewer-geometry.py
+          python3 native/scripts/test-vector-editing.py
+      - name: Verify native gesture targets and stale edits
+        run: python3 native/scripts/test-panel-gestures.py
+      - name: Verify native source marking and captured selection
+        run: |
+          sh native/scripts/test-source-selection.sh
+          python3 native/scripts/test-source-dispatch.py
+          python3 native/scripts/test-session-dispatch.py
+          python3 native/scripts/test-source-playback.py
+          sh native/scripts/test-library-selection.sh
+      - name: Verify native timeline plans and graph editing
+        run: |
+          sh native/scripts/test-timeline-planning.sh
+          python3 native/scripts/test-motion-graph.py
+          python3 native/scripts/test-motion-drafts.py
+          python3 native/scripts/test-color-node-graph.py
+      - name: Verify native processing and import controls
+        run: |
+          sh native/scripts/test-inspector-workflows.sh
+          python3 native/scripts/test-interchange-import.py
+          python3 native/scripts/test-tracking-request.py
+          python3 native/scripts/test-audio-workflows.py
+          python3 native/scripts/test-audio-effect-planning.py
+          python3 native/scripts/test-audio-meter.py
+          python3 native/scripts/test-audio-bus-clock.py
+          python3 native/scripts/test-audio-bus-playback.py
+          python3 native/scripts/test-color-workflows.py
+          python3 native/scripts/test-color-draft-preview.py
+          python3 native/scripts/test-color-sampling.py
+          python3 native/scripts/test-color-reference-look.py
+          python3 native/scripts/test-color-panel-typecheck.py
+          python3 native/scripts/test-color-window.py
+          python3 native/scripts/test-color-window-field.py
+          python3 native/scripts/test-color-window-contract.py
+          sh native/scripts/test-multicam-workflows.sh
+          python3 native/scripts/test-render-preview.py
+          python3 native/scripts/test-transcript-drafts.py
+          python3 native/scripts/test-transcript-preview.py
+          python3 native/scripts/test-native-responsive.py
+          python3 native/scripts/test-import-outcomes.py
+          python3 native/scripts/test-mobile-track-delete.py
+          node native/scripts/test-mobile-track-delete.mjs . .
+      - name: Build macOS app
+        run: xcodebuild -project native/Reel.xcodeproj -scheme Reel -configuration Debug -destination 'generic/platform=macOS' -derivedDataPath build/ci-mac CODE_SIGNING_ALLOWED=NO build
+      - name: Build iPhone and iPad app
+        run: xcodebuild -project native/Reel.xcodeproj -scheme 'Reel iOS' -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ci-ios CODE_SIGNING_ALLOWED=NO build
+      - name: Verify runtime and installer boundaries
+        run: |
+          python3 native/scripts/test-node-runtime.py
+          python3 native/scripts/test-arya-installer.py
+      - name: Validate local release archive
+        run: python3 native/scripts/test-release.py
+      - name: Build local release archive
+        run: python3 native/scripts/release.py archive --output build/ci-release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arya-local-archive
+          path: build/ci-release/Arya.zip
+          if-no-files-found: error

@@ -1,0 +1,236 @@
+{
+  "brand_source": "docs/design/arya-brand.md",
+  "design_source": "docs/design/arya-product-system.md",
+  "browser_assets_source": "site/assets/brand",
+  "browser_font_source": "site/assets/fonts",
+  "native_icon_source": "site/assets/brand/icon.png",
+  "native_wordmark_source": "site/assets/brand/wordmark.svg",
+  "native_mark_source": "site/assets/brand/mark.svg",
+  "native_font": "System font retained for platform controls",
+  "native_icon_names": {
+    "macOS": "AppIcon-macOS",
+    "iOS": "AppIcon-iOS"
+  },
+  "files": [
+    {
+      "path": "editor/web/assets/brand/icon.png",
+      "sha256": "ae344361efae79fd2674df795312d0c126cdfab9c211d0f64c8ba760facfe35a",
+      "bytes": 59036
+    },
+    {
+      "path": "editor/web/assets/brand/icon.svg",
+      "sha256": "fe345fdce2870480f14499b009b33e12acccd6d3e7beb6de2fbbfe8ef9b3efb5",
+      "bytes": 477
+    },
+    {
+      "path": "editor/web/assets/brand/mark-ink.svg",
+      "sha256": "b4969cc3060116315e63a8314ffbe4a44bf4843af56cbd72892d2077211e5ff3",
+      "bytes": 204
+    },
+    {
+      "path": "editor/web/assets/brand/mark-mono.svg",
+      "sha256": "ad403de18512b54f3fee1c23bc7663e6f817874f5dc273def88822422a97eca9",
+      "bytes": 204
+    },
+    {
+      "path": "editor/web/assets/brand/mark.svg",
+      "sha256": "ddbcca73de33ebc0ea2bb416e0b80d5be35f8669c2f9db5ca560d7fa93d72c7f",
+      "bytes": 204
+    },
+    {
+      "path": "editor/web/assets/brand/wordmark-ink.svg",
+      "sha256": "50fcd41c2fd52a4a366b55dc826f3c9da634943184ca60b9afeff31f407cf26a",
+      "bytes": 2005
+    },
+    {
+      "path": "editor/web/assets/brand/wordmark.svg",
+      "sha256": "bee33f570f542b2c3de92ed32f9c214f378958287f19f43b448f78726e9675a2",
+      "bytes": 2005
+    },
+    {
+      "path": "editor/web/fonts/manrope-OFL.txt",
+      "sha256": "58172e0c0fac2cda8a37b348164bb55e44b0e69051e557e92b1d3f6910141f7b",
+      "bytes": 4387
+    },
+    {
+      "path": "editor/web/fonts/manrope.ttf",
+      "sha256": "3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6",
+      "bytes": 164700
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/Contents.json",
+      "sha256": "e9deed36e0dc7b1d591e5f025cec1d607ccf17763523eb89029d5c47e4370308",
+      "bytes": 2300
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-ios-marketing-1024@1x.png",
+      "sha256": "f76585baa8c53a74b3b20aa44e186eaa75d755363cffab9a1927cca02ed90b91",
+      "bytes": 49244
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-ipad-20@1x.png",
+      "sha256": "82df7f965f3a3c272df3c9711a50acff37988bf8ff1f57903a304fe4f32d0313",
+      "bytes": 682
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-ipad-20@2x.png",
+      "sha256": "551cb7551031c1c500a136441e874318a0eb909c36893070acb994073e03659c",
+      "bytes": 1638
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-ipad-29@1x.png",
+      "sha256": "45ee7e1c5bdeb2bc80a6c919058640348882835cc23f62562d57488a37e4d93c",
+      "bytes": 1091
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-ipad-29@2x.png",
+      "sha256": "36bfcae7f1a1d5f483f29b9fdeb8fbd6b746ba09a6cdad582b659f5228803197",
+      "bytes": 2305
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-ipad-40@1x.png",
+      "sha256": "551cb7551031c1c500a136441e874318a0eb909c36893070acb994073e03659c",
+      "bytes": 1638
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-ipad-40@2x.png",
+      "sha256": "a99aaa52b53715312a6958edaa1026a85555a547eb18d16eb2546bbe1f8f23ff",
+      "bytes": 3390
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-ipad-76@1x.png",
+      "sha256": "ae4c9271f6fe00c803397063335c406b8ab984ed260a49e5e58b7c0ea6c923db",
+      "bytes": 3174
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-ipad-76@2x.png",
+      "sha256": "aa9f6dd13b2712ea982b617aa7cef0d9309eab05bbac63a561b48bfe442f39c4",
+      "bytes": 6795
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-ipad-83.5@2x.png",
+      "sha256": "a32e97d65b377ecab85732bc1e14c3f1ca31dfe60400ac09ca50fc0758271c34",
+      "bytes": 7642
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-iphone-20@2x.png",
+      "sha256": "551cb7551031c1c500a136441e874318a0eb909c36893070acb994073e03659c",
+      "bytes": 1638
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-iphone-20@3x.png",
+      "sha256": "c09fcf3db5329165cc773daf3a11a979f4f11cc514eb6f64ed84d3f1da34f47f",
+      "bytes": 2381
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-iphone-29@2x.png",
+      "sha256": "36bfcae7f1a1d5f483f29b9fdeb8fbd6b746ba09a6cdad582b659f5228803197",
+      "bytes": 2305
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-iphone-29@3x.png",
+      "sha256": "8a90689f241f190d25cd85ba0ad978c64a3376c7878d3fc1dc0869d83044393a",
+      "bytes": 3646
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-iphone-40@2x.png",
+      "sha256": "a99aaa52b53715312a6958edaa1026a85555a547eb18d16eb2546bbe1f8f23ff",
+      "bytes": 3390
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-iphone-40@3x.png",
+      "sha256": "5554b2546c0e8d2ce76043d3427d24c64eea54d78894cb040859a84efd4fcc97",
+      "bytes": 5220
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-iphone-60@2x.png",
+      "sha256": "5554b2546c0e8d2ce76043d3427d24c64eea54d78894cb040859a84efd4fcc97",
+      "bytes": 5220
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-iOS.appiconset/arya-iphone-60@3x.png",
+      "sha256": "6b2fd176bf1b2406eb04f1080fbfe4b8af39848b7c9c7fdc6efc967043762e2e",
+      "bytes": 8141
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/Contents.json",
+      "sha256": "92c1033896236cec80945b700cdef021f286801d9fff24d77805df4396aef7c5",
+      "bytes": 1276
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/arya-mac-128@1x.png",
+      "sha256": "c63d22057cbe2b97e2be1beee04a71bf66b8bfb436ba61f61a740b645860ea56",
+      "bytes": 6071
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/arya-mac-128@2x.png",
+      "sha256": "1e6cd07de260fe7e7d8b07f3ba3052145898f22b455a65c363da7ce71a321d7b",
+      "bytes": 13078
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/arya-mac-16@1x.png",
+      "sha256": "0a8ca8430c25cb21a2d6094763b5fdd311e768bcff8e8e813ac110c506b64482",
+      "bytes": 641
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/arya-mac-16@2x.png",
+      "sha256": "9d438f519297c875c3948631cc9e6d88707c2a5e96f88c75ea7043c0bb42eec0",
+      "bytes": 1363
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/arya-mac-256@1x.png",
+      "sha256": "1e6cd07de260fe7e7d8b07f3ba3052145898f22b455a65c363da7ce71a321d7b",
+      "bytes": 13078
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/arya-mac-256@2x.png",
+      "sha256": "bdc7acf67c578c9abaa70f5156283fdbc010c164965ae5a701426dbaac5c90e5",
+      "bytes": 33144
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/arya-mac-32@1x.png",
+      "sha256": "9d438f519297c875c3948631cc9e6d88707c2a5e96f88c75ea7043c0bb42eec0",
+      "bytes": 1363
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/arya-mac-32@2x.png",
+      "sha256": "3f73e79d89ebab2a5c2accdf28cd6ca35b7310f3eaffefe6c28c3bf735c5ef6c",
+      "bytes": 2804
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/arya-mac-512@1x.png",
+      "sha256": "bdc7acf67c578c9abaa70f5156283fdbc010c164965ae5a701426dbaac5c90e5",
+      "bytes": 33144
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AppIcon-macOS.appiconset/arya-mac-512@2x.png",
+      "sha256": "ae344361efae79fd2674df795312d0c126cdfab9c211d0f64c8ba760facfe35a",
+      "bytes": 59036
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AryaWordmark.imageset/Contents.json",
+      "sha256": "5c8dfe38f5501ebf807c9ce850bf15f20a85fc800d93bcf72a194d2bc718d02d",
+      "bytes": 387
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AryaWordmark.imageset/arya-wordmark@1x.png",
+      "sha256": "e82581d602114b1340e522c3675b708bb7626b347ac299ba686e706132e98646",
+      "bytes": 3037
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AryaWordmark.imageset/arya-wordmark@2x.png",
+      "sha256": "82a73e75f1a2a56fdbe50e90a71eb4367722fb77b918ea6a399504a034f23fef",
+      "bytes": 6146
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/AryaWordmark.imageset/arya-wordmark@3x.png",
+      "sha256": "7073ca1b45d62875bb8d4a89bb0802afeb326c1c4f18dd75a2d0a4356f1683f1",
+      "bytes": 10048
+    },
+    {
+      "path": "native/App/Shared/Assets.xcassets/Contents.json",
+      "sha256": "f5fb0e1f3a8142892ed092efb5955c1c2cc537003a89ad7bbdb9dade7fe8985f",
+      "bytes": 60
+    }
+  ]
+}

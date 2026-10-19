@@ -1,0 +1,140 @@
+# XcodeGen spec for the Reel apps. Regenerate the project after editing this file:
+#   cd native && xcodegen generate
+# Reel.xcodeproj is committed, so building needs only Xcode (and Node for the editor bundle).
+name: Reel
+options:
+  bundleIdPrefix: app.reel
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # The build phase reads editor/ outside the project folder.
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    DEAD_CODE_STRIPPING: YES
+    ENABLE_PREVIEWS: NO
+packages:
+  ReelKit:
+    path: ReelKit
+
+targets:
+  Reel:
+    type: application
+    platform: macOS
+    sources:
+      - App/Shared
+      - App/macOS
+    dependencies:
+      - package: ReelKit
+    postCompileScripts:
+      - name: Bundle the web editor
+        script: '"$SRCROOT/scripts/bundle-editor.sh"'
+        basedOnDependencyAnalysis: false
+    info:
+      path: App/macOS/Info.plist
+      properties:
+        CFBundleDisplayName: Arya
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.video
+        NSSpeechRecognitionUsageDescription: Arya transcribes your clips on this Mac so you can edit by text.
+        NSHumanReadableCopyright: "Copyright © 2026 Rubix Labs"
+        NSUserActivityTypes: [app.reel.project]
+        CFBundleURLTypes:
+          - CFBundleURLName: app.reel.figma.oauth
+            CFBundleURLSchemes: [reelfigma]
+          - CFBundleURLName: app.reel.agent.bridge
+            CFBundleURLSchemes: [reelagent]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Arya Project Folder
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.folder]
+    settings:
+      base:
+        PRODUCT_NAME: Arya
+        SWIFT_MODULE_NAME: Reel
+        PRODUCT_BUNDLE_IDENTIFIER: app.reel.Reel
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-macOS
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: App/macOS/Reel-Debug.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: App/macOS/Reel.entitlements
+
+  Reel iOS:
+    type: application
+    platform: iOS
+    sources:
+      - App/Shared
+      - App/iOS
+    dependencies:
+      - package: ReelKit
+    postCompileScripts:
+      - name: Bundle the web editor
+        script: '"$SRCROOT/scripts/bundle-editor.sh"'
+        basedOnDependencyAnalysis: false
+    info:
+      path: App/iOS/Info.plist
+      properties:
+        CFBundleDisplayName: Arya
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        NSHumanReadableCopyright: "Copyright © 2026 Rubix Labs"
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UIRequiresFullScreen: false
+        BGTaskSchedulerPermittedIdentifiers: ["$(PRODUCT_BUNDLE_IDENTIFIER).export", "$(PRODUCT_BUNDLE_IDENTIFIER).export.*"]
+        UIBackgroundModes: [processing]
+        NSUserActivityTypes: [app.reel.project]
+        NSSpeechRecognitionUsageDescription: Arya transcribes your clips on this device so you can edit by text.
+        CFBundleURLTypes:
+          - CFBundleURLName: app.reel.companion.offer
+            CFBundleURLSchemes: [reelcompanion]
+          - CFBundleURLName: app.reel.figma.oauth
+            CFBundleURLSchemes: [reelfigma]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+    settings:
+      base:
+        PRODUCT_NAME: Arya
+        SWIFT_MODULE_NAME: Reel
+        PRODUCT_BUNDLE_IDENTIFIER: app.reel.ios
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-iOS
+        CODE_SIGN_ENTITLEMENTS: App/iOS/Reel.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+
+schemes:
+  Reel:
+    build:
+      targets:
+        Reel: all
+    test:
+      config: Debug
+      targets:
+        - package: ReelKit/ReelKitTests
+    run:
+      config: Debug
+    archive:
+      config: Release
+  Reel iOS:
+    build:
+      targets:
+        Reel iOS: all
+    run:
+      config: Debug
+    archive:
+      config: Release

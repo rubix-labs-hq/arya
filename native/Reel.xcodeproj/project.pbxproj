@@ -1,0 +1,862 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		54C99B3A9C64FE1AF585FFFC /* NativeRetiredPageDrainRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D631F9DBB431DA3AA476E6B /* NativeRetiredPageDrainRequest.swift */; };
+		F10BAB5CC97E34CF53A692A8 /* NativeRetiredPageDrainRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D631F9DBB431DA3AA476E6B /* NativeRetiredPageDrainRequest.swift */; };
+		662A4F8A53FD5544EB924ACC /* NativeGettingStarted.swift in Sources */ = {isa = PBXBuildFile; fileRef = B007C6E3870A82101D53686E /* NativeGettingStarted.swift */; };
+		C062EC9C37CF128A66C5A83F /* NativeGettingStarted.swift in Sources */ = {isa = PBXBuildFile; fileRef = B007C6E3870A82101D53686E /* NativeGettingStarted.swift */; };
+		459A28F95BF608EB99D8C840 /* NativeVectorEditingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB39D1F403E233F99B2044B9 /* NativeVectorEditingOverlay.swift */; };
+		1BDD9ED7B0C96615B18414FA /* NativeVectorEditingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB39D1F403E233F99B2044B9 /* NativeVectorEditingOverlay.swift */; };
+		86D7DDEBAAC3FD16BAF9F4AD /* NativeAudioPanelWork.swift in Sources */ = {isa = PBXBuildFile; fileRef = C31E61DB0233401C907D8465 /* NativeAudioPanelWork.swift */; };
+		429BBE6356C6C6CC20F448E5 /* NativeAudioPanelWork.swift in Sources */ = {isa = PBXBuildFile; fileRef = C31E61DB0233401C907D8465 /* NativeAudioPanelWork.swift */; };
+		258FCB4755A0B4E02DD0BE0E /* NativeMixControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12580249A2EE3A7CB891AB4 /* NativeMixControls.swift */; };
+		449327E7D0EB0F5CD82C6217 /* NativeMixControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12580249A2EE3A7CB891AB4 /* NativeMixControls.swift */; };
+		24662B4D8F28B3C6CE10C38F /* NativeColorWindowGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8A35B6F2B6E9F895B4C03F /* NativeColorWindowGeometry.swift */; };
+		E3280E241248D5A515F314C4 /* NativeColorWindowGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8A35B6F2B6E9F895B4C03F /* NativeColorWindowGeometry.swift */; };
+		22D06094572E74BB53AEBAF9 /* NativeColorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A377846715409DD5D0191E52 /* NativeColorWindowController.swift */; };
+		C6A8BE345CE905B4964B22C0 /* NativeColorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A377846715409DD5D0191E52 /* NativeColorWindowController.swift */; };
+		2B564DD3FD401C90F1D00BBB /* NativeColorWindowControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640E04ABEA0EC2FC2877674F /* NativeColorWindowControls.swift */; };
+		DBA80933AE8BB685CB6F2312 /* NativeColorWindowControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640E04ABEA0EC2FC2877674F /* NativeColorWindowControls.swift */; };
+        10CE4CA4798FDFFE9C1F0EFB /* NativeMulticamPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5898771AD38A577465B23478 /* NativeMulticamPanel.swift */; };
+        AA3C22220820BAD9079B9EB9 /* NativeMulticamPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5898771AD38A577465B23478 /* NativeMulticamPanel.swift */; };
+		13BBA6E1F3655A468D839867 /* NativeLibraryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC33E6548C96585B9036DD80 /* NativeLibraryModel.swift */; };
+		F9F82C1210FA59DB9D42BC65 /* NativeLibraryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC33E6548C96585B9036DD80 /* NativeLibraryModel.swift */; };
+		37DBA719EA555C92B6A3E4D3 /* NativeLibraryPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07543EDDE6E5F8BAD14E7F9 /* NativeLibraryPanel.swift */; };
+		D4BC25BBE6EA544FAFFEC06B /* NativeLibraryPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07543EDDE6E5F8BAD14E7F9 /* NativeLibraryPanel.swift */; };
+		BE827CB5256556629B1321F3 /* NativeSelectionAIContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F13F1272DD50819440C210 /* NativeSelectionAIContext.swift */; };
+		FB613037AB8A5A9693E69A29 /* NativeSelectionAIContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F13F1272DD50819440C210 /* NativeSelectionAIContext.swift */; };
+		FC4282FFDE53525A9BB5E8A5 /* NativeSelectionAIAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0549655B0FF25AF2805A83D4 /* NativeSelectionAIAction.swift */; };
+		9736FE9F150B5E2E91E050C6 /* NativeSelectionAIAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0549655B0FF25AF2805A83D4 /* NativeSelectionAIAction.swift */; };
+		018A761F15419891D1B96F6D /* NativeAudioEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81B9F4D4A5D04008C2FFB30C /* NativeAudioEffects.swift */; };
+		01C4EBFFA4B6701060717863 /* HostScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 817D210FB5CF2EE5496F7526 /* HostScript.swift */; };
+		03285F8A2B615507C562B64A /* NativeMobileExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89D8E7C0A90492AE40E4EDB4 /* NativeMobileExport.swift */; };
+		049D0558B7D50E6D60712B5C /* ReelWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB3C4F3D26B076C3CCF2C140 /* ReelWebView.swift */; };
+		07C22FF060BB9C31BCBCAC83 /* NativeDeliverPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BF848D0474382FCDFAD344 /* NativeDeliverPanel.swift */; };
+		093A962B4C9D556185782F87 /* NativeViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8FC1D5326E20DC91B126943 /* NativeViewer.swift */; };
+		0A06E1773673757D4B000FBC /* NativeFigmaPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2924930E414E1CA4BA6313F /* NativeFigmaPanel.swift */; };
+		0A095353389F77E8742B3A28 /* NativeAudioPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E437BE635A200629A2F1D775 /* NativeAudioPanel.swift */; };
+		0A8D1069368E74D0908C3491 /* NativeTranscriptPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B6F4E2981A660FA1CB18F4 /* NativeTranscriptPanel.swift */; };
+		1275DE5F050FF3CED3B922F5 /* Automation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A96C4F011385406D0E4EC0 /* Automation.swift */; };
+		161A37FAC1C11316B56DC1B0 /* HostScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 817D210FB5CF2EE5496F7526 /* HostScript.swift */; };
+		163E0BA7A15E77C0DBC4D416 /* NativePlaybackAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCC6B3E6385AD76DBDA6D4AD /* NativePlaybackAudio.swift */; };
+		1A82F8E1647D19CDD9737EDE /* EditorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A1EECEF2E15297CBF0F6CE /* EditorSession.swift */; };
+		1AAA2101DEBD0F50E3C991EC /* NativeProjectDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06AA25AC43BB417787087C05 /* NativeProjectDocument.swift */; };
+		1E1FF899EAFCDCF5D443150B /* Automation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A96C4F011385406D0E4EC0 /* Automation.swift */; };
+		2064D59BFCA9624E62688B7C /* SchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DD35779BEFFF3B545AB3629 /* SchemeHandler.swift */; };
+		2558C25CF837EA20C790A6E7 /* NativeControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604DB5E2EB0036A00661F9D8 /* NativeControls.swift */; };
+		29C1617404D6DA28366E0287 /* NativeEditorSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA860DCFEF3B78CA11206583 /* NativeEditorSmoke.swift */; };
+		2AFA135C0D370B29FB3E728F /* NativeHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8722B19ADFD094DEB3766A45 /* NativeHandoff.swift */; };
+		30A39144B76B6C8E80F06007 /* NativeInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DA9AF46CC7BF96461AD3FEB /* NativeInspector.swift */; };
+		35542A5DEE8B3734432AB254 /* NativeTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17184F86021CFD97548FFB5 /* NativeTimeline.swift */; };
+		3771BAA47AD0F53A2134BCB4 /* NativeFigma.swift in Sources */ = {isa = PBXBuildFile; fileRef = C16DCB38BA6A3E309D797379 /* NativeFigma.swift */; };
+		3835AA21A8D3A4724040119A /* NativeTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17184F86021CFD97548FFB5 /* NativeTimeline.swift */; };
+		3877DAA5F9C3E94F20817B01 /* NativeMobileExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89D8E7C0A90492AE40E4EDB4 /* NativeMobileExport.swift */; };
+		390855FC7690FF9E81526203 /* ReelIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99306BDCBD307A4EB82A3149 /* ReelIOSApp.swift */; };
+		3D069BF602A5EB4C58AC9DA7 /* NativeAssistant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC0BCDDA920BDFF38180093 /* NativeAssistant.swift */; };
+		3F8934404C1A6AB153EBAB57 /* ProjectBookmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5CF06B533252F245B0BC11 /* ProjectBookmarks.swift */; };
+		44843478257502989FFAB4A3 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72A18C86D783F423F13F020 /* EditorView.swift */; };
+		4F966C82F453073F54927A20 /* NativeMetalViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2434176115FE4A3BAFEF54 /* NativeMetalViewer.swift */; };
+		504B5DFA37B1015957473E7B /* NativeMediaPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FE6290A3EB45AD819E20AB /* NativeMediaPanel.swift */; };
+		5AADC23BCAF5CFACD39FB487 /* NativeDrawingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52DA328E67B996590DF9D16E /* NativeDrawingOverlay.swift */; };
+		5D6BE5DF98F6885092539F8B /* MessageBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39BD8E33A9DCDB93C690D230 /* MessageBridge.swift */; };
+		5DC5D07FB426568004C17393 /* SchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DD35779BEFFF3B545AB3629 /* SchemeHandler.swift */; };
+		6154FA7B2AE0A9EF95A478D6 /* NativeTranscriptPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15B6F4E2981A660FA1CB18F4 /* NativeTranscriptPanel.swift */; };
+		654C6E272D17D03DB0FD0EE8 /* ReelMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC995B00801806B27A0029C /* ReelMacApp.swift */; };
+		671E6986CF198A9AE86A87D3 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72A18C86D783F423F13F020 /* EditorView.swift */; };
+		67CFD26225EB1F660DA603B0 /* NativeEditorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660E9B722A652821123EE80A /* NativeEditorModel.swift */; };
+		688199E73DB55EE1BB46D93F /* NativeDrawingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52DA328E67B996590DF9D16E /* NativeDrawingOverlay.swift */; };
+		69304A1104D1D5BE40696F6E /* MessageBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39BD8E33A9DCDB93C690D230 /* MessageBridge.swift */; };
+		6BA9D4A2CF7CAE46078A2C19 /* NativeMetalViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2434176115FE4A3BAFEF54 /* NativeMetalViewer.swift */; };
+		6FB2F62697352C0B5AD6FB12 /* NativeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE16720E82AA1493A274F51B /* NativeEditorView.swift */; };
+		717396DD54BB8E68095EC7AD /* NativeScopes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585859BD322317EC12FAAEFC /* NativeScopes.swift */; };
+		7971664BD6F0EF56145F4A9E /* NativeFigma.swift in Sources */ = {isa = PBXBuildFile; fileRef = C16DCB38BA6A3E309D797379 /* NativeFigma.swift */; };
+		7D28B60038E61E964E277B30 /* NativeInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DA9AF46CC7BF96461AD3FEB /* NativeInspector.swift */; };
+		843489893C6170A1E4443CCE /* ReelKit in Frameworks */ = {isa = PBXBuildFile; productRef = B06BAF057C2B9BCF61427A31 /* ReelKit */; };
+		859994F91E7118711638C041 /* NativeColorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07BAF7094E2AA87414854821 /* NativeColorPanel.swift */; };
+		8F0B3533A9803A41E0640CAF /* NativeViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8FC1D5326E20DC91B126943 /* NativeViewer.swift */; };
+		9A14A48498CE5ECD743E5298 /* NativeControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604DB5E2EB0036A00661F9D8 /* NativeControls.swift */; };
+		A680F3A23713DB98E437C6C2 /* NativeAssistant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC0BCDDA920BDFF38180093 /* NativeAssistant.swift */; };
+		A6984DE5158EDC3EAB6AC217 /* NativeColorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07BAF7094E2AA87414854821 /* NativeColorPanel.swift */; };
+		B0CAECCEDA555B4A2B5D4D44 /* NativeProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6AE8D8A8ABF15F404B22411 /* NativeProject.swift */; };
+		B0DDE199DDFCF410F3E0C024 /* NativeCurveEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A3892D4E7CE691E5286F40 /* NativeCurveEditor.swift */; };
+		B283E2126D7923F74AEBB508 /* NativeProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6AE8D8A8ABF15F404B22411 /* NativeProject.swift */; };
+		B2855A792FA434D4CE259422 /* NativeEditorSmoke.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA860DCFEF3B78CA11206583 /* NativeEditorSmoke.swift */; };
+		C0C44EC43874D1A7312552C5 /* NativePhotosImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC22C4467E4375810672B67 /* NativePhotosImport.swift */; };
+		C844CB7B32159C61A45EB503 /* NativeAudioEffects.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81B9F4D4A5D04008C2FFB30C /* NativeAudioEffects.swift */; };
+		D4D380BEC91AD20A6D542ECF /* NativeCurveEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A3892D4E7CE691E5286F40 /* NativeCurveEditor.swift */; };
+		D6084389BA158397BA431188 /* NativeAudioPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E437BE635A200629A2F1D775 /* NativeAudioPanel.swift */; };
+		D73AD3E098397798DFCC6EE0 /* NativeMotionPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7581D41809B47FF308ABB9 /* NativeMotionPanel.swift */; };
+		D7F29F52A51F5884DC21601B /* NativeProjectDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06AA25AC43BB417787087C05 /* NativeProjectDocument.swift */; };
+		D9291A8845F8E84D39F94D84 /* NativeMotionPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7581D41809B47FF308ABB9 /* NativeMotionPanel.swift */; };
+		DC3E407A1F72685A3D19C752 /* ProjectBookmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5CF06B533252F245B0BC11 /* ProjectBookmarks.swift */; };
+		E3EE402155B3930C45E6B834 /* NativePhotosImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC22C4467E4375810672B67 /* NativePhotosImport.swift */; };
+		E7D36AD317A88E041B6D3606 /* NativeDeliverPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BF848D0474382FCDFAD344 /* NativeDeliverPanel.swift */; };
+		E82ADC79BC0E36B1E2A25F59 /* NativeHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8722B19ADFD094DEB3766A45 /* NativeHandoff.swift */; };
+		EBE06A2A9564E60EE02075A9 /* NativePlaybackAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCC6B3E6385AD76DBDA6D4AD /* NativePlaybackAudio.swift */; };
+		EC6ECD6576A0AB4C190990B5 /* NativeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE16720E82AA1493A274F51B /* NativeEditorView.swift */; };
+		EDE34FE084823F98609E869E /* NativeAssistantPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334147B75A55C7B6042D7F81 /* NativeAssistantPanel.swift */; };
+		EFB802424A3716461563EC34 /* NativeFigmaPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2924930E414E1CA4BA6313F /* NativeFigmaPanel.swift */; };
+		EFD3580402017547946D3079 /* EditorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15A1EECEF2E15297CBF0F6CE /* EditorSession.swift */; };
+		F3FF619B734CF342A84BA669 /* NativeEditorModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660E9B722A652821123EE80A /* NativeEditorModel.swift */; };
+		F46382A43E77A1240B436D8B /* NativeMediaPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FE6290A3EB45AD819E20AB /* NativeMediaPanel.swift */; };
+		F92111709536B17648502E69 /* ReelKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1F973E19A6A3A21DA3594C88 /* ReelKit */; };
+		F9C9DC93984335E3E75F01FD /* NativeScopes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585859BD322317EC12FAAEFC /* NativeScopes.swift */; };
+		FCEDE293A8096FB661E8D8AD /* NativeAssistantPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334147B75A55C7B6042D7F81 /* NativeAssistantPanel.swift */; };
+		300E22A69B37EB06F9911A4E /* NativeBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C557FE5D0F9518AF2F3B799D /* NativeBrand.swift */; };
+		6142098A1D8EE99012FE6ED1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EEB2293AEC744DD34B53C686 /* Assets.xcassets */; };
+		0CB74269367E82B57C9B77BF /* NativeBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = C557FE5D0F9518AF2F3B799D /* NativeBrand.swift */; };
+		9E3155B7EF98373E5BDB2B74 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EEB2293AEC744DD34B53C686 /* Assets.xcassets */; };
+		668DE32E510CC564D019CE68 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EFA6F2CD53C9FAD69811D828 /* PrivacyInfo.xcprivacy */; };
+		E32F10B069858D5B6096380F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EFA6F2CD53C9FAD69811D828 /* PrivacyInfo.xcprivacy */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		3D631F9DBB431DA3AA476E6B /* NativeRetiredPageDrainRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRetiredPageDrainRequest.swift; sourceTree = "<group>"; };
+		B007C6E3870A82101D53686E /* NativeGettingStarted.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeGettingStarted.swift; sourceTree = "<group>"; };
+		DB39D1F403E233F99B2044B9 /* NativeVectorEditingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVectorEditingOverlay.swift; sourceTree = "<group>"; };
+		C31E61DB0233401C907D8465 /* NativeAudioPanelWork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAudioPanelWork.swift; sourceTree = "<group>"; };
+		F12580249A2EE3A7CB891AB4 /* NativeMixControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMixControls.swift; sourceTree = "<group>"; };
+		1C8A35B6F2B6E9F895B4C03F /* NativeColorWindowGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeColorWindowGeometry.swift; sourceTree = "<group>"; };
+		A377846715409DD5D0191E52 /* NativeColorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeColorWindowController.swift; sourceTree = "<group>"; };
+		640E04ABEA0EC2FC2877674F /* NativeColorWindowControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeColorWindowControls.swift; sourceTree = "<group>"; };
+        5898771AD38A577465B23478 /* NativeMulticamPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMulticamPanel.swift; sourceTree = "<group>"; };
+		EC33E6548C96585B9036DD80 /* NativeLibraryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLibraryModel.swift; sourceTree = "<group>"; };
+		F07543EDDE6E5F8BAD14E7F9 /* NativeLibraryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLibraryPanel.swift; sourceTree = "<group>"; };
+		A1F13F1272DD50819440C210 /* NativeSelectionAIContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionAIContext.swift; sourceTree = "<group>"; };
+		0549655B0FF25AF2805A83D4 /* NativeSelectionAIAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSelectionAIAction.swift; sourceTree = "<group>"; };
+		01A3892D4E7CE691E5286F40 /* NativeCurveEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCurveEditor.swift; sourceTree = "<group>"; };
+		02A96C4F011385406D0E4EC0 /* Automation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Automation.swift; sourceTree = "<group>"; };
+		06AA25AC43BB417787087C05 /* NativeProjectDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProjectDocument.swift; sourceTree = "<group>"; };
+		07BAF7094E2AA87414854821 /* NativeColorPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeColorPanel.swift; sourceTree = "<group>"; };
+		0A61C9855282FCC9FE2FF2EA /* Reel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Reel.entitlements; sourceTree = "<group>"; };
+		0B2434176115FE4A3BAFEF54 /* NativeMetalViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMetalViewer.swift; sourceTree = "<group>"; };
+		0FC995B00801806B27A0029C /* ReelMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReelMacApp.swift; sourceTree = "<group>"; };
+		12064E37E22B66D80383083C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		12B666E9C63EC189BCDD4F02 /* Reel iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Arya.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		15A1EECEF2E15297CBF0F6CE /* EditorSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorSession.swift; sourceTree = "<group>"; };
+		15B6F4E2981A660FA1CB18F4 /* NativeTranscriptPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranscriptPanel.swift; sourceTree = "<group>"; };
+		1DD35779BEFFF3B545AB3629 /* SchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemeHandler.swift; sourceTree = "<group>"; };
+		31ADE9CDA8D880C2CE565713 /* Reel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Reel.entitlements; sourceTree = "<group>"; };
+		334147B75A55C7B6042D7F81 /* NativeAssistantPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAssistantPanel.swift; sourceTree = "<group>"; };
+		33BF848D0474382FCDFAD344 /* NativeDeliverPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeliverPanel.swift; sourceTree = "<group>"; };
+		39BD8E33A9DCDB93C690D230 /* MessageBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBridge.swift; sourceTree = "<group>"; };
+		52DA328E67B996590DF9D16E /* NativeDrawingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDrawingOverlay.swift; sourceTree = "<group>"; };
+		585859BD322317EC12FAAEFC /* NativeScopes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeScopes.swift; sourceTree = "<group>"; };
+		5CC22C4467E4375810672B67 /* NativePhotosImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePhotosImport.swift; sourceTree = "<group>"; };
+		604DB5E2EB0036A00661F9D8 /* NativeControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeControls.swift; sourceTree = "<group>"; };
+		660E9B722A652821123EE80A /* NativeEditorModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeEditorModel.swift; sourceTree = "<group>"; };
+		6BC0BCDDA920BDFF38180093 /* NativeAssistant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAssistant.swift; sourceTree = "<group>"; };
+		6D7581D41809B47FF308ABB9 /* NativeMotionPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMotionPanel.swift; sourceTree = "<group>"; };
+		817D210FB5CF2EE5496F7526 /* HostScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostScript.swift; sourceTree = "<group>"; };
+		81B9F4D4A5D04008C2FFB30C /* NativeAudioEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAudioEffects.swift; sourceTree = "<group>"; };
+		8722B19ADFD094DEB3766A45 /* NativeHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHandoff.swift; sourceTree = "<group>"; };
+		89D8E7C0A90492AE40E4EDB4 /* NativeMobileExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMobileExport.swift; sourceTree = "<group>"; };
+		8A9694237B5BAB682A859893 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8BB10E6AF864FF4327EA04BD /* ReelKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ReelKit; path = ReelKit; sourceTree = SOURCE_ROOT; };
+		8C5CF06B533252F245B0BC11 /* ProjectBookmarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectBookmarks.swift; sourceTree = "<group>"; };
+		8DA9AF46CC7BF96461AD3FEB /* NativeInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInspector.swift; sourceTree = "<group>"; };
+		99306BDCBD307A4EB82A3149 /* ReelIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReelIOSApp.swift; sourceTree = "<group>"; };
+		A6AE8D8A8ABF15F404B22411 /* NativeProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProject.swift; sourceTree = "<group>"; };
+		AB3C4F3D26B076C3CCF2C140 /* ReelWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReelWebView.swift; sourceTree = "<group>"; };
+		AB7FC61C12FFE44D207F7FAC /* Reel-Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Reel-Debug.entitlements"; sourceTree = "<group>"; };
+		B72A18C86D783F423F13F020 /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorView.swift; sourceTree = "<group>"; };
+		BA860DCFEF3B78CA11206583 /* NativeEditorSmoke.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeEditorSmoke.swift; sourceTree = "<group>"; };
+		C0FE6290A3EB45AD819E20AB /* NativeMediaPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMediaPanel.swift; sourceTree = "<group>"; };
+		C16DCB38BA6A3E309D797379 /* NativeFigma.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeFigma.swift; sourceTree = "<group>"; };
+		C17184F86021CFD97548FFB5 /* NativeTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTimeline.swift; sourceTree = "<group>"; };
+		C7C4CAA7CFF687FF8B6724FD /* Reel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Arya.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CCC6B3E6385AD76DBDA6D4AD /* NativePlaybackAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePlaybackAudio.swift; sourceTree = "<group>"; };
+		D8FC1D5326E20DC91B126943 /* NativeViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeViewer.swift; sourceTree = "<group>"; };
+		E437BE635A200629A2F1D775 /* NativeAudioPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAudioPanel.swift; sourceTree = "<group>"; };
+		EE16720E82AA1493A274F51B /* NativeEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeEditorView.swift; sourceTree = "<group>"; };
+		F2924930E414E1CA4BA6313F /* NativeFigmaPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeFigmaPanel.swift; sourceTree = "<group>"; };
+		C557FE5D0F9518AF2F3B799D /* NativeBrand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBrand.swift; sourceTree = "<group>"; };
+		EEB2293AEC744DD34B53C686 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = App/Shared/Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		EFA6F2CD53C9FAD69811D828 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1CB67857B557A58B86E6EC7F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				843489893C6170A1E4443CCE /* ReelKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6DE69DAC2BDF453A746A53B3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F92111709536B17648502E69 /* ReelKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		037C1ECE33D5E991FA452A20 /* NativeEditor */ = {
+			isa = PBXGroup;
+			children = (
+				DB39D1F403E233F99B2044B9 /* NativeVectorEditingOverlay.swift */,
+				C31E61DB0233401C907D8465 /* NativeAudioPanelWork.swift */,
+				F12580249A2EE3A7CB891AB4 /* NativeMixControls.swift */,
+				1C8A35B6F2B6E9F895B4C03F /* NativeColorWindowGeometry.swift */,
+				A377846715409DD5D0191E52 /* NativeColorWindowController.swift */,
+				640E04ABEA0EC2FC2877674F /* NativeColorWindowControls.swift */,
+				334147B75A55C7B6042D7F81 /* NativeAssistantPanel.swift */,
+				81B9F4D4A5D04008C2FFB30C /* NativeAudioEffects.swift */,
+				E437BE635A200629A2F1D775 /* NativeAudioPanel.swift */,
+				07BAF7094E2AA87414854821 /* NativeColorPanel.swift */,
+				C557FE5D0F9518AF2F3B799D /* NativeBrand.swift */,
+				EEB2293AEC744DD34B53C686 /* Assets.xcassets */,
+				604DB5E2EB0036A00661F9D8 /* NativeControls.swift */,
+				01A3892D4E7CE691E5286F40 /* NativeCurveEditor.swift */,
+				33BF848D0474382FCDFAD344 /* NativeDeliverPanel.swift */,
+				52DA328E67B996590DF9D16E /* NativeDrawingOverlay.swift */,
+				660E9B722A652821123EE80A /* NativeEditorModel.swift */,
+				BA860DCFEF3B78CA11206583 /* NativeEditorSmoke.swift */,
+				EE16720E82AA1493A274F51B /* NativeEditorView.swift */,
+				F2924930E414E1CA4BA6313F /* NativeFigmaPanel.swift */,
+				EC33E6548C96585B9036DD80 /* NativeLibraryModel.swift */,
+				F07543EDDE6E5F8BAD14E7F9 /* NativeLibraryPanel.swift */,
+				A1F13F1272DD50819440C210 /* NativeSelectionAIContext.swift */,
+				0549655B0FF25AF2805A83D4 /* NativeSelectionAIAction.swift */,
+				8722B19ADFD094DEB3766A45 /* NativeHandoff.swift */,
+				8DA9AF46CC7BF96461AD3FEB /* NativeInspector.swift */,
+				C0FE6290A3EB45AD819E20AB /* NativeMediaPanel.swift */,
+				0B2434176115FE4A3BAFEF54 /* NativeMetalViewer.swift */,
+				89D8E7C0A90492AE40E4EDB4 /* NativeMobileExport.swift */,
+				6D7581D41809B47FF308ABB9 /* NativeMotionPanel.swift */,
+				5898771AD38A577465B23478 /* NativeMulticamPanel.swift */,
+				5CC22C4467E4375810672B67 /* NativePhotosImport.swift */,
+				CCC6B3E6385AD76DBDA6D4AD /* NativePlaybackAudio.swift */,
+				A6AE8D8A8ABF15F404B22411 /* NativeProject.swift */,
+				06AA25AC43BB417787087C05 /* NativeProjectDocument.swift */,
+				585859BD322317EC12FAAEFC /* NativeScopes.swift */,
+				C17184F86021CFD97548FFB5 /* NativeTimeline.swift */,
+				15B6F4E2981A660FA1CB18F4 /* NativeTranscriptPanel.swift */,
+				D8FC1D5326E20DC91B126943 /* NativeViewer.swift */,
+			);
+			path = NativeEditor;
+			sourceTree = "<group>";
+		};
+		04D1BF8BD41CDE1126AA4539 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				8BB10E6AF864FF4327EA04BD /* ReelKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		2AD8786EC6123AFB2030AB26 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				FCEE6C35DF21DF027D25578E /* iOS */,
+				546F5AE4DDAA591EF33BB96C /* macOS */,
+				B5D4583993BF3BBBC54AD01D /* Shared */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		546F5AE4DDAA591EF33BB96C /* macOS */ = {
+			isa = PBXGroup;
+			children = (
+				12064E37E22B66D80383083C /* Info.plist */,
+				AB7FC61C12FFE44D207F7FAC /* Reel-Debug.entitlements */,
+				0A61C9855282FCC9FE2FF2EA /* Reel.entitlements */,
+				0FC995B00801806B27A0029C /* ReelMacApp.swift */,
+				AB3C4F3D26B076C3CCF2C140 /* ReelWebView.swift */,
+			);
+			path = macOS;
+			sourceTree = "<group>";
+		};
+		597D16B9415AD7613251088A = {
+			isa = PBXGroup;
+			children = (
+				2AD8786EC6123AFB2030AB26 /* App */,
+				04D1BF8BD41CDE1126AA4539 /* Packages */,
+				9330200A569ED5477874D824 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9330200A569ED5477874D824 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				12B666E9C63EC189BCDD4F02 /* Reel iOS.app */,
+				C7C4CAA7CFF687FF8B6724FD /* Reel.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B5D4583993BF3BBBC54AD01D /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				02A96C4F011385406D0E4EC0 /* Automation.swift */,
+				15A1EECEF2E15297CBF0F6CE /* EditorSession.swift */,
+				B72A18C86D783F423F13F020 /* EditorView.swift */,
+				B007C6E3870A82101D53686E /* NativeGettingStarted.swift */,
+				3D631F9DBB431DA3AA476E6B /* NativeRetiredPageDrainRequest.swift */,
+				817D210FB5CF2EE5496F7526 /* HostScript.swift */,
+				39BD8E33A9DCDB93C690D230 /* MessageBridge.swift */,
+				6BC0BCDDA920BDFF38180093 /* NativeAssistant.swift */,
+				C16DCB38BA6A3E309D797379 /* NativeFigma.swift */,
+				EFA6F2CD53C9FAD69811D828 /* PrivacyInfo.xcprivacy */,
+				8C5CF06B533252F245B0BC11 /* ProjectBookmarks.swift */,
+				1DD35779BEFFF3B545AB3629 /* SchemeHandler.swift */,
+				037C1ECE33D5E991FA452A20 /* NativeEditor */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		FCEE6C35DF21DF027D25578E /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				8A9694237B5BAB682A859893 /* Info.plist */,
+				31ADE9CDA8D880C2CE565713 /* Reel.entitlements */,
+				99306BDCBD307A4EB82A3149 /* ReelIOSApp.swift */,
+			);
+			path = iOS;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AFB5673E269C151D7CEC1FE4 /* Reel */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 34EAC9EDAFD0C8000CD3C24D /* Build configuration list for PBXNativeTarget "Reel" */;
+			buildPhases = (
+				AA56224B0DA68CFAC14168A4 /* Sources */,
+				D2E16A8FB1CF0ACC0D52D17A /* Resources */,
+				CFD8CB3A70197738ED958B49 /* Bundle the web editor */,
+				1CB67857B557A58B86E6EC7F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Reel;
+			packageProductDependencies = (
+				B06BAF057C2B9BCF61427A31 /* ReelKit */,
+			);
+			productName = Reel;
+			productReference = C7C4CAA7CFF687FF8B6724FD /* Reel.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B9AE9587D6AEB09B670F67CB /* Reel iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 379573D19BA0D2F8C66A470B /* Build configuration list for PBXNativeTarget "Reel iOS" */;
+			buildPhases = (
+				6B38DF46063C52CD398F83E3 /* Sources */,
+				2DEE7C5D2D20B7EB87B08BED /* Resources */,
+				06B45611763B37C1031DEA92 /* Bundle the web editor */,
+				6DE69DAC2BDF453A746A53B3 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "Reel iOS";
+			packageProductDependencies = (
+				1F973E19A6A3A21DA3594C88 /* ReelKit */,
+			);
+			productName = "Reel iOS";
+			productReference = 12B666E9C63EC189BCDD4F02 /* Reel iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		84AF5AEA544872A41B60E0B2 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					AFB5673E269C151D7CEC1FE4 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					B9AE9587D6AEB09B670F67CB = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = EE787DA360354CF0E26195FE /* Build configuration list for PBXProject "Reel" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 597D16B9415AD7613251088A;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				495ACEC1948ABE18F2871799 /* XCLocalSwiftPackageReference "ReelKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 9330200A569ED5477874D824 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AFB5673E269C151D7CEC1FE4 /* Reel */,
+				B9AE9587D6AEB09B670F67CB /* Reel iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D2E16A8FB1CF0ACC0D52D17A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6142098A1D8EE99012FE6ED1 /* Assets.xcassets in Resources */,
+				668DE32E510CC564D019CE68 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2DEE7C5D2D20B7EB87B08BED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9E3155B7EF98373E5BDB2B74 /* Assets.xcassets in Resources */,
+				E32F10B069858D5B6096380F /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		06B45611763B37C1031DEA92 /* Bundle the web editor */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle the web editor";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/scripts/bundle-editor.sh\"";
+		};
+		CFD8CB3A70197738ED958B49 /* Bundle the web editor */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle the web editor";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/scripts/bundle-editor.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6B38DF46063C52CD398F83E3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				459A28F95BF608EB99D8C840 /* NativeVectorEditingOverlay.swift in Sources */,
+				86D7DDEBAAC3FD16BAF9F4AD /* NativeAudioPanelWork.swift in Sources */,
+				258FCB4755A0B4E02DD0BE0E /* NativeMixControls.swift in Sources */,
+				24662B4D8F28B3C6CE10C38F /* NativeColorWindowGeometry.swift in Sources */,
+				22D06094572E74BB53AEBAF9 /* NativeColorWindowController.swift in Sources */,
+				2B564DD3FD401C90F1D00BBB /* NativeColorWindowControls.swift in Sources */,
+				1E1FF899EAFCDCF5D443150B /* Automation.swift in Sources */,
+				1A82F8E1647D19CDD9737EDE /* EditorSession.swift in Sources */,
+				671E6986CF198A9AE86A87D3 /* EditorView.swift in Sources */,
+				C062EC9C37CF128A66C5A83F /* NativeGettingStarted.swift in Sources */,
+				F10BAB5CC97E34CF53A692A8 /* NativeRetiredPageDrainRequest.swift in Sources */,
+				161A37FAC1C11316B56DC1B0 /* HostScript.swift in Sources */,
+				5D6BE5DF98F6885092539F8B /* MessageBridge.swift in Sources */,
+				A680F3A23713DB98E437C6C2 /* NativeAssistant.swift in Sources */,
+				EDE34FE084823F98609E869E /* NativeAssistantPanel.swift in Sources */,
+				C844CB7B32159C61A45EB503 /* NativeAudioEffects.swift in Sources */,
+				0A095353389F77E8742B3A28 /* NativeAudioPanel.swift in Sources */,
+				859994F91E7118711638C041 /* NativeColorPanel.swift in Sources */,
+				0CB74269367E82B57C9B77BF /* NativeBrand.swift in Sources */,
+				2558C25CF837EA20C790A6E7 /* NativeControls.swift in Sources */,
+				B0DDE199DDFCF410F3E0C024 /* NativeCurveEditor.swift in Sources */,
+				E7D36AD317A88E041B6D3606 /* NativeDeliverPanel.swift in Sources */,
+				5AADC23BCAF5CFACD39FB487 /* NativeDrawingOverlay.swift in Sources */,
+				67CFD26225EB1F660DA603B0 /* NativeEditorModel.swift in Sources */,
+				29C1617404D6DA28366E0287 /* NativeEditorSmoke.swift in Sources */,
+				EC6ECD6576A0AB4C190990B5 /* NativeEditorView.swift in Sources */,
+				3771BAA47AD0F53A2134BCB4 /* NativeFigma.swift in Sources */,
+				EFB802424A3716461563EC34 /* NativeFigmaPanel.swift in Sources */,
+				F9F82C1210FA59DB9D42BC65 /* NativeLibraryModel.swift in Sources */,
+				D4BC25BBE6EA544FAFFEC06B /* NativeLibraryPanel.swift in Sources */,
+				FB613037AB8A5A9693E69A29 /* NativeSelectionAIContext.swift in Sources */,
+				9736FE9F150B5E2E91E050C6 /* NativeSelectionAIAction.swift in Sources */,
+				E82ADC79BC0E36B1E2A25F59 /* NativeHandoff.swift in Sources */,
+				7D28B60038E61E964E277B30 /* NativeInspector.swift in Sources */,
+				F46382A43E77A1240B436D8B /* NativeMediaPanel.swift in Sources */,
+				6BA9D4A2CF7CAE46078A2C19 /* NativeMetalViewer.swift in Sources */,
+				3877DAA5F9C3E94F20817B01 /* NativeMobileExport.swift in Sources */,
+				D9291A8845F8E84D39F94D84 /* NativeMotionPanel.swift in Sources */,
+				AA3C22220820BAD9079B9EB9 /* NativeMulticamPanel.swift in Sources */,
+				E3EE402155B3930C45E6B834 /* NativePhotosImport.swift in Sources */,
+				163E0BA7A15E77C0DBC4D416 /* NativePlaybackAudio.swift in Sources */,
+				B283E2126D7923F74AEBB508 /* NativeProject.swift in Sources */,
+				1AAA2101DEBD0F50E3C991EC /* NativeProjectDocument.swift in Sources */,
+				F9C9DC93984335E3E75F01FD /* NativeScopes.swift in Sources */,
+				35542A5DEE8B3734432AB254 /* NativeTimeline.swift in Sources */,
+				0A8D1069368E74D0908C3491 /* NativeTranscriptPanel.swift in Sources */,
+				093A962B4C9D556185782F87 /* NativeViewer.swift in Sources */,
+				DC3E407A1F72685A3D19C752 /* ProjectBookmarks.swift in Sources */,
+				390855FC7690FF9E81526203 /* ReelIOSApp.swift in Sources */,
+				2064D59BFCA9624E62688B7C /* SchemeHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA56224B0DA68CFAC14168A4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1BDD9ED7B0C96615B18414FA /* NativeVectorEditingOverlay.swift in Sources */,
+				429BBE6356C6C6CC20F448E5 /* NativeAudioPanelWork.swift in Sources */,
+				449327E7D0EB0F5CD82C6217 /* NativeMixControls.swift in Sources */,
+				E3280E241248D5A515F314C4 /* NativeColorWindowGeometry.swift in Sources */,
+				C6A8BE345CE905B4964B22C0 /* NativeColorWindowController.swift in Sources */,
+				DBA80933AE8BB685CB6F2312 /* NativeColorWindowControls.swift in Sources */,
+				1275DE5F050FF3CED3B922F5 /* Automation.swift in Sources */,
+				EFD3580402017547946D3079 /* EditorSession.swift in Sources */,
+				44843478257502989FFAB4A3 /* EditorView.swift in Sources */,
+				662A4F8A53FD5544EB924ACC /* NativeGettingStarted.swift in Sources */,
+				54C99B3A9C64FE1AF585FFFC /* NativeRetiredPageDrainRequest.swift in Sources */,
+				01C4EBFFA4B6701060717863 /* HostScript.swift in Sources */,
+				69304A1104D1D5BE40696F6E /* MessageBridge.swift in Sources */,
+				3D069BF602A5EB4C58AC9DA7 /* NativeAssistant.swift in Sources */,
+				FCEDE293A8096FB661E8D8AD /* NativeAssistantPanel.swift in Sources */,
+				018A761F15419891D1B96F6D /* NativeAudioEffects.swift in Sources */,
+				D6084389BA158397BA431188 /* NativeAudioPanel.swift in Sources */,
+				A6984DE5158EDC3EAB6AC217 /* NativeColorPanel.swift in Sources */,
+				300E22A69B37EB06F9911A4E /* NativeBrand.swift in Sources */,
+				9A14A48498CE5ECD743E5298 /* NativeControls.swift in Sources */,
+				D4D380BEC91AD20A6D542ECF /* NativeCurveEditor.swift in Sources */,
+				07C22FF060BB9C31BCBCAC83 /* NativeDeliverPanel.swift in Sources */,
+				688199E73DB55EE1BB46D93F /* NativeDrawingOverlay.swift in Sources */,
+				F3FF619B734CF342A84BA669 /* NativeEditorModel.swift in Sources */,
+				B2855A792FA434D4CE259422 /* NativeEditorSmoke.swift in Sources */,
+				6FB2F62697352C0B5AD6FB12 /* NativeEditorView.swift in Sources */,
+				7971664BD6F0EF56145F4A9E /* NativeFigma.swift in Sources */,
+				0A06E1773673757D4B000FBC /* NativeFigmaPanel.swift in Sources */,
+				13BBA6E1F3655A468D839867 /* NativeLibraryModel.swift in Sources */,
+				37DBA719EA555C92B6A3E4D3 /* NativeLibraryPanel.swift in Sources */,
+				BE827CB5256556629B1321F3 /* NativeSelectionAIContext.swift in Sources */,
+				FC4282FFDE53525A9BB5E8A5 /* NativeSelectionAIAction.swift in Sources */,
+				2AFA135C0D370B29FB3E728F /* NativeHandoff.swift in Sources */,
+				30A39144B76B6C8E80F06007 /* NativeInspector.swift in Sources */,
+				504B5DFA37B1015957473E7B /* NativeMediaPanel.swift in Sources */,
+				4F966C82F453073F54927A20 /* NativeMetalViewer.swift in Sources */,
+				03285F8A2B615507C562B64A /* NativeMobileExport.swift in Sources */,
+				D73AD3E098397798DFCC6EE0 /* NativeMotionPanel.swift in Sources */,
+				10CE4CA4798FDFFE9C1F0EFB /* NativeMulticamPanel.swift in Sources */,
+				C0C44EC43874D1A7312552C5 /* NativePhotosImport.swift in Sources */,
+				EBE06A2A9564E60EE02075A9 /* NativePlaybackAudio.swift in Sources */,
+				B0CAECCEDA555B4A2B5D4D44 /* NativeProject.swift in Sources */,
+				D7F29F52A51F5884DC21601B /* NativeProjectDocument.swift in Sources */,
+				717396DD54BB8E68095EC7AD /* NativeScopes.swift in Sources */,
+				3835AA21A8D3A4724040119A /* NativeTimeline.swift in Sources */,
+				6154FA7B2AE0A9EF95A478D6 /* NativeTranscriptPanel.swift in Sources */,
+				8F0B3533A9803A41E0640CAF /* NativeViewer.swift in Sources */,
+				3F8934404C1A6AB153EBAB57 /* ProjectBookmarks.swift in Sources */,
+				654C6E272D17D03DB0FD0EE8 /* ReelMacApp.swift in Sources */,
+				049D0558B7D50E6D60712B5C /* ReelWebView.swift in Sources */,
+				5DC5D07FB426568004C17393 /* SchemeHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		23CF6614F8E5E7FB2BF94512 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-iOS";
+				CODE_SIGN_ENTITLEMENTS = App/iOS/Reel.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = App/iOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.reel.ios;
+				PRODUCT_NAME = Arya;
+				SWIFT_MODULE_NAME = Reel;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		2F455ED56B9594285F793D65 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-macOS";
+				CODE_SIGN_ENTITLEMENTS = "App/macOS/Reel-Debug.entitlements";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = App/macOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.reel.Reel;
+				PRODUCT_NAME = Arya;
+				SWIFT_MODULE_NAME = Reel;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		4E5D6C843E7E91805AE25340 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_PREVIEWS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7A27580A54CF879B086871AC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-iOS";
+				CODE_SIGN_ENTITLEMENTS = App/iOS/Reel.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = App/iOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.reel.ios;
+				PRODUCT_NAME = Arya;
+				SWIFT_MODULE_NAME = Reel;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AEBFEE30C7DF06979B501D25 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_PREVIEWS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		FF00F86CDEA932638C0F7911 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon-macOS";
+				CODE_SIGN_ENTITLEMENTS = App/macOS/Reel.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = App/macOS/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.reel.Reel;
+				PRODUCT_NAME = Arya;
+				SWIFT_MODULE_NAME = Reel;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		34EAC9EDAFD0C8000CD3C24D /* Build configuration list for PBXNativeTarget "Reel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2F455ED56B9594285F793D65 /* Debug */,
+				FF00F86CDEA932638C0F7911 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		379573D19BA0D2F8C66A470B /* Build configuration list for PBXNativeTarget "Reel iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				23CF6614F8E5E7FB2BF94512 /* Debug */,
+				7A27580A54CF879B086871AC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EE787DA360354CF0E26195FE /* Build configuration list for PBXProject "Reel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4E5D6C843E7E91805AE25340 /* Debug */,
+				AEBFEE30C7DF06979B501D25 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		495ACEC1948ABE18F2871799 /* XCLocalSwiftPackageReference "ReelKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ReelKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1F973E19A6A3A21DA3594C88 /* ReelKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ReelKit;
+		};
+		B06BAF057C2B9BCF61427A31 /* ReelKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ReelKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 84AF5AEA544872A41B60E0B2 /* Project object */;
+}

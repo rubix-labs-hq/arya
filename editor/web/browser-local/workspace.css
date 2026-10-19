@@ -1,0 +1,24 @@
+.browser-workspace { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 5px 12px; border-bottom: 1px solid var(--line); background: var(--panel); min-width: 0; }
+.browser-workspace button, .browser-project-dialog button { min-height: 44px; }
+.browser-save-state { color: var(--muted); font-size: 12px; flex: 1; min-width: 140px; }
+.browser-project-dialog { width: min(760px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; }
+.browser-project-dialog p { line-height: 1.5; white-space: pre-line; }
+.browser-project-dialog h3 { margin-top: 22px; }
+.browser-new-project { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.browser-new-project label { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 140px; }
+.browser-project-list { display: grid; gap: 4px; max-height: 240px; overflow: auto; }
+.browser-project-list button { display: flex; justify-content: space-between; gap: 16px; text-align: left; }
+.browser-project-list span { overflow-wrap: anywhere; }
+.browser-project-list small { color: var(--muted); white-space: nowrap; }
+.browser-start-error { max-width: 640px; margin: 10dvh auto; padding: 24px; line-height: 1.6; }
+@media (max-width: 600px) { .browser-project-dialog { padding: 16px; } .browser-project-list button { flex-direction: column; gap: 4px; } }
+
+.browser-export-preview { width: min(900px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: hidden; padding: 20px; }
+.browser-export-preview > header { flex: 0 0 auto; min-width: 0; }
+.browser-export-preview > header h2 { min-width: 0; margin: 0; font-size: 18px; line-height: 1.25; overflow-wrap: anywhere; }
+.browser-export-preview > header button { flex: 0 0 auto; }
+.browser-export-preview-body { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; }
+.browser-export-preview video { display: block; width: 100%; max-height: 65dvh; background: #000; }
+.browser-export-preview audio { width: 100%; }
+.browser-export-preview button { min-height: 44px; }
+.browser-export-name { overflow-wrap: anywhere; }

@@ -1,0 +1,142 @@
+/* Color controls reflow with the workspace, including beside an open assistant. */
+.page.color {
+  container: color-workspace / inline-size;
+  overflow: auto;
+}
+/* Resolve-style arrangement: a large viewer with the clip strip under it, nodes and scopes
+   beside it, and the correction palettes below. */
+.main .page.color .color-top {
+  flex: 0 0 var(--upper-height, 52%);
+  min-height: 320px;
+  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr);
+}
+.page.color .color-monitor { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+.page.color .color-monitor > .viewer { flex: 1 1 auto; min-height: 0; }
+.page.color .color-side {
+  grid-template-rows: minmax(125px, 1.1fr) minmax(115px, 1fr);
+}
+.page.color .node-bar { min-width: 0; overflow-x: auto; overflow-y: hidden; }
+.page.color .node-bar > b, .page.color .node-bar > button { flex: none; white-space: nowrap; }
+.page.color .node-bar > .muted { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page.color .node-bar > .grow { min-width: 0; }
+/* Compact clip strip: a small thumbnail with the clip number and name beside it. */
+.page.color .clip-strip { flex: none; padding: 4px; gap: 4px; }
+.page.color .strip-clip { display: flex; align-items: center; gap: 7px; width: auto; max-width: 220px; min-height: 0; padding: 3px 9px 3px 3px; border: 1px solid transparent; border-radius: 5px; background: transparent; text-align: left; color: var(--text); }
+.page.color .strip-clip:hover:not(:disabled) { background: var(--panel-2); border-color: var(--line-2); }
+.page.color .strip-clip.on, .page.color .strip-clip.on:hover { background: var(--selection-fill); border-color: var(--accent); }
+.page.color .strip-thumb { flex: none; width: 64px; border-radius: 3px; }
+.page.color .strip-meta { display: flex; align-items: baseline; gap: 6px; min-width: 0; margin: 0; font-size: 11px; color: var(--muted); }
+.page.color .strip-meta > b { color: var(--text); font-variant-numeric: tabular-nums; }
+.page.color .strip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 12px; }
+.page.color .strip-flag { flex: none; }
+.page.color .color-bottom { flex: 1 1 0; min-height: 220px; padding: 8px 12px 12px; }
+.page.color .color-head {
+  position: sticky;
+  top: -8px;
+  z-index: 3;
+  padding: 4px 0 10px;
+  margin-bottom: 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.page.color .color-head > .muted { overflow-wrap: anywhere; }
+.page.color .palette-tabs { max-width: 100%; overflow-x: auto; flex-shrink: 0; }
+.page.color .palette-tabs button { min-height: 30px; flex: none; }
+.page.color .grade-controls {
+  display: grid;
+  grid-template-columns: minmax(430px, 4fr) minmax(220px, 1fr) minmax(230px, 1fr);
+  align-items: start;
+  gap: 0 16px;
+}
+.page.color .grade-group { min-width: 0; }
+.page.color .grade-group + .grade-group { padding-left: 16px; border-left: 1px solid var(--line); }
+.page.color .grade-group-title {
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+.page.color .grade-wheels { container: color-wheels / inline-size; }
+.page.color .wheels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(128px, 1fr));
+  gap: 12px;
+}
+.page.color .wheel { min-width: 128px; gap: 3px; }
+.page.color .wheel-disc { flex: none; }
+.page.color .wheel-vals { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.page.color .grade-fields { display: grid; gap: 4px; max-width: 300px; }
+.page.color .grade-fields .field { min-height: 30px; justify-content: space-between; }
+.page.color .grade-fields .field > label { width: auto; flex: 1; min-width: 88px; }
+.page.color .grade-fields .field > input { flex: 0 0 78px; max-width: 78px; }
+.page.color .grade-look { padding-top: 19px; }
+.page.color .grade-look .look-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
+.page.color .grade-look .look-grid button { min-height: 27px; padding-inline: 4px; }
+.page.color .grade-look .field { margin-top: 10px; }
+.page.color .grade-look .field:not(.num) > label { width: 34px; }
+.page.color .grade-look select { width: auto; flex: 1; min-width: 0; max-width: 100%; }
+.page.color .grade-curve .curves { align-items: center; }
+.page.color .grade-curve .curves canvas { flex: none; }
+.page.color .grade-action-group { padding-top: 20px; }
+.page.color .grade-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.page.color .grade-actions button { white-space: normal; min-height: 30px; }
+.page.color .palette, .page.color .range-row, .page.color .preset-cols { min-width: 0; }
+@container color-wheels (min-width: 430px) {
+  .page.color .wheels { grid-template-columns: repeat(3, minmax(128px, 1fr)); }
+}
+/* Wide palettes put all six wheels in one row, as Resolve lines up its primaries. */
+@container color-wheels (min-width: 800px) {
+  .page.color .wheels { grid-template-columns: repeat(6, minmax(128px, 1fr)); gap: 6px; }
+}
+@container color-wheels (max-width: 279px) {
+  .page.color .wheels { grid-template-columns: minmax(128px, 1fr); }
+}
+@container color-workspace (max-width: 1080px) {
+  .page.color .grade-controls { grid-template-columns: minmax(280px, 1.3fr) minmax(220px, 1fr); gap: 18px 16px; }
+  .page.color .grade-curve {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 0 24px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 16px 0 0;
+  }
+  .page.color .grade-curve > .grade-group-title { grid-column: 1; }
+  .page.color .grade-curve .curves { grid-column: 1; grid-row: 2; }
+  .page.color .grade-action-group { grid-column: 2; grid-row: 1 / span 2; padding-top: 0; max-width: 390px; }
+}
+@container color-workspace (max-width: 720px) {
+  .page.color .node-bar > .muted { display: none; }
+  .page.color .color-head { gap: 7px; }
+  .page.color .color-head > .grow { display: none; }
+  .page.color .palette-tabs { flex-basis: 100%; }
+  .page.color .palette-tabs button { min-height: 34px; }
+  .page.color .grade-controls { grid-template-columns: minmax(0, 1fr); }
+  .page.color .grade-group + .grade-group { border-left: 0; border-top: 1px solid var(--line); padding: 16px 0 0; }
+  .page.color .grade-balance { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 20px; }
+  .page.color .grade-balance > .grade-group-title { grid-column: 1; }
+  .page.color .grade-fields { grid-column: 1; grid-row: 2; }
+  .page.color .grade-look { grid-column: 2; grid-row: 1 / span 2; padding-top: 0; }
+  .page.color .grade-curve { grid-template-columns: 220px minmax(0, 1fr); }
+  .page.color .range-row { grid-template-columns: 44px minmax(110px, 1fr); }
+  .page.color .range-val { grid-column: 2; }
+}
+@container color-workspace (max-width: 520px) {
+  .page.color > .divider-upper { display: none; }
+  .main .page.color .color-top { flex: none; display: flex; flex-direction: column; gap: 6px; }
+  .main .page.color .color-monitor > .viewer { height: 260px; flex: none; min-height: 260px; }
+  .page.color .color-side { height: 310px; flex: none; grid-template-rows: minmax(145px, 1fr) minmax(145px, 1fr); }
+  .page.color .color-bottom { flex: none; max-height: 600px; }
+  .page.color .grade-balance, .page.color .grade-curve { display: flex; flex-direction: column; gap: 0; }
+  .page.color .grade-look, .page.color .grade-action-group { padding-top: 20px; width: 100%; }
+  .page.color .grade-fields, .page.color .grade-curve .curves { width: 100%; }
+  .page.color .preset-cols { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Short windows keep focused palette controls clear of the header. */
+@media (max-height: 520px) {
+  .page.color .color-head { position: static; }
+}

@@ -1,0 +1,18 @@
+<frame id="12:3" name="Lower Third / A" x="2400" y="-1200" width="1920" height="1080">
+  <ellipse id="12:4" name="Glow" x="40" y="780" width="760" height="220" />
+  <rounded-rectangle id="12:5" name="Card" x="96" y="820" width="880" height="180" />
+  <ellipse id="12:6" name="Avatar Ring" x="120" y="844" width="132" height="132" />
+  <rounded-rectangle id="12:7" name="Avatar" x="130" y="854" width="112" height="112" />
+  <text id="12:8" name="Name" x="276" y="848" width="420" height="68" />
+  <text id="12:9" name="Role" x="276" y="920" width="360" height="72" />
+  <vector id="12:10" name="Icon / Play" x="900" y="890" width="40" height="40" />
+  <group id="12:11" name="Badge" x="840" y="770.512" width="144.7668" height="63.0612">
+    <rounded-rectangle id="12:12" name="Badge BG" x="840" y="770.512" width="144.7668" height="63.0612" />
+    <text id="12:13" name="Badge Label" x="879.6643" y="783.3689" width="65.4354" height="37.3491" />
+  </group>
+  <frame id="12:14" name="Ticker" x="96" y="1010" width="880" height="44">
+    <text id="12:15" name="Ticker Text" x="16" y="10" width="916" height="24" />
+  </frame>
+  <rounded-rectangle id="12:16" name="Accent Bar" x="90" y="880" width="6" height="120" />
+  <rounded-rectangle id="12:17" name="Guides" x="0" y="0" width="1920" height="1080" hidden="true" />
+</frame>

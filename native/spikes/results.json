@@ -1,0 +1,282 @@
+{
+ "page": {
+  "eventSource": {
+   "data": "{\"n\":1}",
+   "ok": true
+  },
+  "fetchRange": {
+   "contentRange": "bytes 100-199/2499204",
+   "length": 100,
+   "status": 206
+  },
+  "mediabunnyDecode": {
+   "canDecode": true,
+   "codec": "avc1.64001f",
+   "ok": true,
+   "timestamp": 2,
+   "width": 1280
+  },
+  "origin": "reel://app",
+  "postBody": {
+   "arrayBuffer1MB": {
+    "bytes": 1048576,
+    "source": "httpBody"
+   },
+   "blob5MB": {
+    "bytes": -1,
+    "source": "none"
+   },
+   "jsonString": {
+    "bytes": 17,
+    "source": "httpBody"
+   }
+  },
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+  "videoCanvasReadback": {
+   "ok": true,
+   "pixel": [
+    255,
+    24,
+    0,
+    255
+   ]
+  },
+  "videoPlay": {
+   "error": "NotAllowedError: The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.",
+   "ok": false
+  },
+  "videoPlayNativeGesture": "ok",
+  "videoReplayAfterUnlock": "ok",
+  "videoSeek": {
+   "currentTime": 3.2,
+   "duration": 6,
+   "ok": true,
+   "readyState": 4,
+   "seekMs": 10
+  },
+  "videoWebGLUpload": {
+   "ok": true
+  },
+  "webcodecs": {
+   "AudioDecoder": "function",
+   "AudioEncoder": "function",
+   "VideoDecoder": "function",
+   "VideoEncoder": "function",
+   "VideoFrame": "function",
+   "aacEncodeRun": {
+    "bytes": 3029,
+    "chunks": 49,
+    "ok": true
+   },
+   "audioEncode_aac": true,
+   "audioEncode_flac": false,
+   "audioEncode_opus": true,
+   "audioEncode_pcm": true,
+   "decode_av1": false,
+   "decode_h264": true,
+   "decode_hevc": true,
+   "decode_vp9": true,
+   "encode_av1": false,
+   "encode_h264": true,
+   "encode_hevc": true,
+   "encode_vp9": true,
+   "h264EncodeRun": {
+    "offscreen2d": {
+     "chunks": 0,
+     "encErr": null,
+     "error": "Error: flush timed out",
+     "ok": false,
+     "queue": 6,
+     "state": "configured"
+    },
+    "rgbaBuffer": {
+     "chunks": 0,
+     "encErr": null,
+     "error": "Error: flush timed out",
+     "ok": false,
+     "queue": 6,
+     "state": "configured"
+    },
+    "webglAnnexB": {
+     "chunks": 0,
+     "encErr": null,
+     "error": "Error: flush timed out",
+     "ok": false,
+     "queue": 6,
+     "state": "configured"
+    },
+    "webglCanvas": {
+     "chunks": 0,
+     "encErr": null,
+     "error": "Error: flush timed out",
+     "ok": false,
+     "queue": 6,
+     "state": "configured"
+    },
+    "webglPreferHW": {
+     "chunks": 0,
+     "encErr": null,
+     "error": "Error: flush timed out",
+     "ok": false,
+     "queue": 6,
+     "state": "configured"
+    },
+    "webglRealtime": {
+     "bytes": 1087,
+     "chunks": 10,
+     "ok": true
+    }
+   },
+   "h264QualityLong": {
+    "chunks": 0,
+    "encErr": null,
+    "flushed": "Error: flush timed out",
+    "progress": [
+     [
+      15,
+      0,
+      11
+     ],
+     [
+      30,
+      0,
+      26
+     ],
+     [
+      45,
+      0,
+      41
+     ],
+     [
+      60,
+      0,
+      56
+     ],
+     [
+      75,
+      0,
+      71
+     ],
+     [
+      90,
+      0,
+      86
+     ]
+    ]
+   },
+   "h264Realtime1080": {
+    "chunks": 150,
+    "frames": 150,
+    "keys": 3,
+    "mb": 0.08,
+    "ms": 1056
+   },
+   "hevcEncodeRun": {
+    "quality": {
+     "bytes": 1593,
+     "chunks": 10,
+     "ok": true
+    },
+    "realtime": {
+     "bytes": 1593,
+     "chunks": 10,
+     "ok": true
+    }
+   }
+  }
+ },
+ "schemeRequestSummary": {
+  "answered206": 182,
+  "posts": [
+   {
+    "bodyBytes": 17,
+    "bodySource": "httpBody",
+    "method": "POST",
+    "path": "/post"
+   },
+   {
+    "bodyBytes": -1,
+    "bodySource": "none",
+    "method": "POST",
+    "path": "/post"
+   },
+   {
+    "bodyBytes": 1048576,
+    "bodySource": "httpBody",
+    "method": "POST",
+    "path": "/post"
+   }
+  ],
+  "total": 188,
+  "videoRangeRequests": 182
+ },
+ "schemeRequestsFirst10": [
+  {
+   "method": "GET",
+   "path": "/index.html"
+  },
+  {
+   "bytes": 100,
+   "method": "GET",
+   "path": "/clip.mp4",
+   "range": "bytes=100-199",
+   "status": 206
+  },
+  {
+   "bytes": 2,
+   "method": "GET",
+   "path": "/clip.mp4",
+   "range": "bytes=0-1",
+   "status": 206
+  },
+  {
+   "bytes": 8,
+   "method": "GET",
+   "path": "/clip.mp4",
+   "range": "bytes=0-7",
+   "status": 206
+  },
+  {
+   "bytes": 8,
+   "method": "GET",
+   "path": "/clip.mp4",
+   "range": "bytes=32-39",
+   "status": 206
+  },
+  {
+   "bytes": 8,
+   "method": "GET",
+   "path": "/clip.mp4",
+   "range": "bytes=40-47",
+   "status": 206
+  },
+  {
+   "bytes": 8,
+   "method": "GET",
+   "path": "/clip.mp4",
+   "range": "bytes=148-155",
+   "status": 206
+  },
+  {
+   "bytes": 8,
+   "method": "GET",
+   "path": "/clip.mp4",
+   "range": "bytes=3434-3441",
+   "status": 206
+  },
+  {
+   "bytes": 8,
+   "method": "GET",
+   "path": "/clip.mp4",
+   "range": "bytes=7719-7726",
+   "status": 206
+  },
+  {
+   "bytes": 8,
+   "method": "GET",
+   "path": "/clip.mp4",
+   "range": "bytes=0-7",
+   "status": 206
+  }
+ ]
+}

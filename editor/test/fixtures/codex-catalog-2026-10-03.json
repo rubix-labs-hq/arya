@@ -1,0 +1,279 @@
+{
+  "provider": "codex",
+  "checkedAt": 1791080014819,
+  "source": {
+    "kind": "provider-cli",
+    "label": "Codex App Server model/list"
+  },
+  "complete": true,
+  "models": [
+    {
+      "id": "gpt-6.1-sol",
+      "provider": "codex",
+      "name": "GPT-6.1-Sol",
+      "description": "Latest workhorse model for coding and everyday work.",
+      "fit": {
+        "tier": "balanced",
+        "usage": "unknown",
+        "source": "provider-description-estimate",
+        "evidence": "Latest workhorse model for coding and everyday work."
+      },
+      "isDefault": true,
+      "listed": true,
+      "hidden": false,
+      "available": true,
+      "reasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultEffort": "low",
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "modalitiesSource": "provider-catalog",
+      "additionalSpend": null,
+      "retirementAt": null,
+      "price": null,
+      "remainingAllowance": null
+    },
+    {
+      "id": "gpt-6-astra",
+      "provider": "codex",
+      "name": "GPT-6-Astra",
+      "description": "Frontier intelligence for the most demanding work.",
+      "fit": {
+        "tier": "deep",
+        "usage": "unknown",
+        "source": "provider-description-estimate",
+        "evidence": "Frontier intelligence for the most demanding work."
+      },
+      "isDefault": false,
+      "listed": true,
+      "hidden": false,
+      "available": true,
+      "reasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultEffort": "medium",
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "modalitiesSource": "provider-catalog",
+      "additionalSpend": null,
+      "retirementAt": null,
+      "price": null,
+      "remainingAllowance": null
+    },
+    {
+      "id": "gpt-6-sol",
+      "provider": "codex",
+      "name": "GPT-6-Sol",
+      "description": "Previous generation workhorse model.",
+      "fit": {
+        "tier": "balanced",
+        "usage": "unknown",
+        "source": "provider-description-estimate",
+        "evidence": "Previous generation workhorse model."
+      },
+      "isDefault": false,
+      "listed": true,
+      "hidden": false,
+      "available": true,
+      "reasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultEffort": "medium",
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "modalitiesSource": "provider-catalog",
+      "additionalSpend": null,
+      "retirementAt": null,
+      "price": null,
+      "remainingAllowance": null
+    },
+    {
+      "id": "gpt-6-luna",
+      "provider": "codex",
+      "name": "GPT-6-Luna",
+      "description": "Fast and affordable model for easier tasks.",
+      "fit": {
+        "tier": "quick",
+        "usage": "lighter",
+        "source": "provider-description-estimate",
+        "evidence": "Fast and affordable model for easier tasks."
+      },
+      "isDefault": false,
+      "listed": true,
+      "hidden": false,
+      "available": true,
+      "reasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "defaultEffort": "medium",
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "modalitiesSource": "provider-catalog",
+      "additionalSpend": null,
+      "retirementAt": null,
+      "price": null,
+      "remainingAllowance": null
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "provider": "codex",
+      "name": "GPT-5.6-Sol",
+      "description": "Older generation workhorse model.",
+      "fit": {
+        "tier": "balanced",
+        "usage": "unknown",
+        "source": "provider-description-estimate",
+        "evidence": "Older generation workhorse model."
+      },
+      "isDefault": false,
+      "listed": true,
+      "hidden": false,
+      "available": true,
+      "reasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultEffort": "low",
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "modalitiesSource": "provider-catalog",
+      "additionalSpend": null,
+      "retirementAt": null,
+      "price": null,
+      "remainingAllowance": null
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "provider": "codex",
+      "name": "GPT-5.6-Terra",
+      "description": "Older balanced model for straightforward work.",
+      "fit": {
+        "tier": "balanced",
+        "usage": "unknown",
+        "source": "provider-description-estimate",
+        "evidence": "Older balanced model for straightforward work."
+      },
+      "isDefault": false,
+      "listed": true,
+      "hidden": false,
+      "available": true,
+      "reasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "defaultEffort": "medium",
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "modalitiesSource": "provider-catalog",
+      "additionalSpend": null,
+      "retirementAt": null,
+      "price": null,
+      "remainingAllowance": null
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "provider": "codex",
+      "name": "GPT-5.6-Luna",
+      "description": "Older fast and efficient model.",
+      "fit": {
+        "tier": "quick",
+        "usage": "lighter",
+        "source": "provider-description-estimate",
+        "evidence": "Older fast and efficient model."
+      },
+      "isDefault": false,
+      "listed": true,
+      "hidden": false,
+      "available": true,
+      "reasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "defaultEffort": "medium",
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "modalitiesSource": "provider-catalog",
+      "additionalSpend": null,
+      "retirementAt": null,
+      "price": null,
+      "remainingAllowance": null
+    },
+    {
+      "id": "gpt-5.5",
+      "provider": "codex",
+      "name": "GPT-5.5",
+      "description": "Legacy coding model.",
+      "fit": {
+        "tier": "unknown",
+        "usage": "unknown",
+        "source": "provider-description-estimate",
+        "evidence": "Legacy coding model."
+      },
+      "isDefault": false,
+      "listed": true,
+      "hidden": false,
+      "available": true,
+      "reasoningEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "defaultEffort": "medium",
+      "inputModalities": [
+        "text",
+        "image"
+      ],
+      "modalitiesSource": "provider-catalog",
+      "additionalSpend": null,
+      "retirementAt": 1792004400000,
+      "price": null,
+      "remainingAllowance": null
+    }
+  ]
+}

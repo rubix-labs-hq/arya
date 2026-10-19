@@ -1,0 +1,71 @@
+/* Phone layout for the Edit page (ui/phone.js) and the top bar at phone widths.
+   Loaded after styles.css and icons.css. Uses only the existing root tokens. */
+
+.edit-pane, .edit-viewer { display: flex; min-height: 0; min-width: 0; }
+.edit-pane > .panel, .edit-viewer > .viewer { flex: 1; min-width: 0; }
+.phone-controls, .phone-preview-toggle { display: none; }
+.page.edit [hidden] { display: none; }
+.page.phone-edit { display: flex; flex-direction: column; gap: 6px; min-height: 0; height: 100%; overflow: hidden; }
+.page.phone-edit .upper { display: contents; }
+.page.phone-edit .phone-controls { display: contents; }
+.page.phone-edit .edit-viewer { order: 0; flex: none; height: clamp(180px, 42dvh, 440px); min-height: 0; }
+.page.phone-edit .viewer { overflow-y: auto; }
+.page.phone-edit .edit-pane, .page.phone-edit > .lower { order: 3; flex: 1; min-height: 0; min-width: 0; }
+.page.phone-edit .edit-pane > .panel { flex: 1; }
+.page.phone-edit .viewer.compact .transport .buttons.right { display: flex; }
+
+.phone-switch { order: 1; flex: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px; background: var(--input); border: 1px solid var(--line); border-radius: 8px; }
+.phone-switch button { min-height: 40px; border-color: transparent; background: transparent; color: var(--muted); font-weight: 500; }
+.phone-switch button.on { background: var(--selection-fill); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
+.phone-readout { order: 2; flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: 6px; background: var(--panel); font-size: 12px; }
+.phone-readout b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.phone-readout button { flex: none; min-height: 36px; }
+
+/* Leave room for panel controls below the 88px phone top bar in short portrait windows. */
+@media (max-height: 600px) and (orientation: portrait) {
+  .page.phone-edit .edit-viewer { height: 180px; }
+  .page.phone-edit.phone-inspector-focus:not(.phone-preview-open) .edit-viewer { display: none; }
+  .page.phone-edit.phone-inspector-focus.phone-preview-open .edit-viewer { flex: 1; height: auto; }
+  .page.phone-edit.phone-inspector-focus.phone-preview-open .edit-inspector-pane:not(:focus-within) { display: none; }
+  .page.phone-edit.phone-inspector-focus.phone-preview-open:has(.edit-inspector-pane:focus-within) .edit-viewer { display: none; }
+  .page.phone-edit.phone-inspector-focus .phone-preview-toggle { display: block; order: 2; flex: none; min-height: 44px; }
+}
+
+/* Landscape phone, including small ones under 720 px wide: the picture takes the left column
+   at full height and the panel the right, because stacking them leaves the panel no height. */
+@media (max-height: 500px) and (max-width: 1000px) and (orientation: landscape) {
+  .page.phone-edit { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); column-gap: 6px; }
+  .page.phone-edit .edit-viewer { grid-column: 1; grid-row: 1 / -1; height: auto; }
+  .phone-switch, .phone-readout, .phone-panel { grid-column: 2; }
+  .page.phone-edit .edit-pane, .page.phone-edit > .lower { grid-column: 2; grid-row: 3; }
+  .phone-switch button { min-height: 36px; }
+}
+
+@media (pointer: coarse) {
+  .phone-switch button, .phone-readout button, .phone-edit .transport button { min-height: 44px; min-width: 44px; }
+}
+
+/* Wrapper visibility also covers the existing compact tablet layout. */
+.page.edit.compact-edit .upper > :is(.edit-pane, .edit-viewer) { min-width: 0; }
+.page.edit.compact-edit .upper > .edit-viewer:not([hidden]) > .viewer { display: flex; }
+.page.phone-edit .compact-edit-access { display: none; }
+.page.phone-edit .upper, .page.phone-edit .viewer-stage { min-height: 0; }
+.page.phone-edit .transport { flex-wrap: wrap; gap: 4px; }
+.page.phone-edit .transport .buttons { flex-wrap: wrap; }
+.page.phone-edit .transport .tc-box { min-width: 0; }
+.page.edit.customizable .upper > .edit-pane > .panel { min-width: 0; }
+
+/* Workspaces that need side-by-side instruments explain the width they need. */
+.page.phone-wide-notice { display: grid; place-items: center; padding: 24px 18px; overflow: auto; }
+.phone-wide-card { max-width: 360px; display: grid; gap: 10px; }
+.phone-wide-card h2 { margin: 0; font-size: 20px; font-weight: 500; letter-spacing: -0.01em; }
+.phone-wide-card p { margin: 0; line-height: 1.5; }
+.phone-wide-card button { justify-self: start; min-height: 44px; margin-top: 6px; }
+
+@media (max-width: 480px) {
+  /* <picture> in the top bar switches to the cut-A mark here. */
+  .topbar .brand img { width: 24px; height: 24px; }
+  .topbar-actions .claude-btn { font-size: 0; gap: 0; min-width: 40px; justify-content: center; }
+  .topbar-actions .claude-btn .ico { width: 18px; height: 18px; }
+  .topbar-actions .claude-btn .count { font-size: 11px; margin-left: 4px; }
+}

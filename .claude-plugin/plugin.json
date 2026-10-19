@@ -1,0 +1,20 @@
+{
+  "name": "reel",
+  "version": "0.2.0",
+  "author": {
+    "name": "Rubix Labs",
+    "url": "https://github.com/rubix-labs-hq"
+  },
+  "description": "Reel: a full video editor you can direct. Timeline, color, audio and delivery in a GPU web editor, with Claude editing the same project live.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Reel editor",
+      "description": "Turn the Reel video editor on (tools, pane, prompt references) or off",
+      "default": true
+    }
+  },
+  "homepage": "https://github.com/rubix-labs-hq/arya",
+  "license": "MIT"
+}

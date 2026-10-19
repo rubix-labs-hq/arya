@@ -1,0 +1,678 @@
+[
+  {
+    "source": "core/assistant-routing.mjs",
+    "target": "core/assistant-routing.mjs"
+  },
+  {
+    "source": "core/assistant-sharing.mjs",
+    "target": "core/assistant-sharing.mjs"
+  },
+  {
+    "source": "core/assistant-suggestions.js",
+    "target": "core/assistant-suggestions.js"
+  },
+  {
+    "source": "core/audio-cleanup.js",
+    "target": "core/audio-cleanup.js"
+  },
+  {
+    "source": "core/audio-fx.js",
+    "target": "core/audio-fx.js"
+  },
+  {
+    "source": "core/audio-roles.js",
+    "target": "core/audio-roles.js"
+  },
+  {
+    "source": "core/caption-render.js",
+    "target": "core/caption-render.js"
+  },
+  {
+    "source": "core/clipboard.js",
+    "target": "core/clipboard.js"
+  },
+  {
+    "source": "core/cube-lut.js",
+    "target": "core/cube-lut.js"
+  },
+  {
+    "source": "core/describe.js",
+    "target": "core/describe.js"
+  },
+  {
+    "source": "core/expr.js",
+    "target": "core/expr.js"
+  },
+  {
+    "source": "core/figma.js",
+    "target": "core/figma.js"
+  },
+  {
+    "source": "core/interchange.js",
+    "target": "core/interchange.js"
+  },
+  {
+    "source": "core/library-resources.js",
+    "target": "core/library-resources.js"
+  },
+  {
+    "source": "core/library.js",
+    "target": "core/library.js"
+  },
+  {
+    "source": "core/music-score.js",
+    "target": "core/music-score.js"
+  },
+  {
+    "source": "core/processing-export.js",
+    "target": "core/processing-export.js"
+  },
+  {
+    "source": "core/project.js",
+    "target": "core/project.js"
+  },
+  {
+    "source": "core/render-grade.js",
+    "target": "core/render-grade.js"
+  },
+  {
+    "source": "core/render-plan.js",
+    "target": "core/render-plan.js"
+  },
+  {
+    "source": "core/render-queue.js",
+    "target": "core/render-queue.js"
+  },
+  {
+    "source": "core/selection-ai.js",
+    "target": "core/selection-ai.js"
+  },
+  {
+    "source": "core/shorts.js",
+    "target": "core/shorts.js"
+  },
+  {
+    "source": "core/transcript-edit.js",
+    "target": "core/transcript-edit.js"
+  },
+  {
+    "source": "web/assets/brand/icon.png",
+    "target": "editor/assets/brand/icon.png"
+  },
+  {
+    "source": "web/assets/brand/icon.svg",
+    "target": "editor/assets/brand/icon.svg"
+  },
+  {
+    "source": "web/assets/brand/mark-ink.svg",
+    "target": "editor/assets/brand/mark-ink.svg"
+  },
+  {
+    "source": "web/assets/brand/mark-mono.svg",
+    "target": "editor/assets/brand/mark-mono.svg"
+  },
+  {
+    "source": "web/assets/brand/mark.svg",
+    "target": "editor/assets/brand/mark.svg"
+  },
+  {
+    "source": "web/assets/brand/wordmark-ink.svg",
+    "target": "editor/assets/brand/wordmark-ink.svg"
+  },
+  {
+    "source": "web/assets/brand/wordmark.svg",
+    "target": "editor/assets/brand/wordmark.svg"
+  },
+  {
+    "source": "web/browser-local/backend.js",
+    "target": "editor/browser-local/backend.js"
+  },
+  {
+    "source": "web/browser-local/backup.js",
+    "target": "editor/browser-local/backup.js"
+  },
+  {
+    "source": "web/browser-local/bootstrap.js",
+    "target": "editor/browser-local/bootstrap.js"
+  },
+  {
+    "source": "web/browser-local/delivery-preview.js",
+    "target": "editor/browser-local/delivery-preview.js"
+  },
+  {
+    "source": "web/browser-local/import-result.js",
+    "target": "editor/browser-local/import-result.js"
+  },
+  {
+    "source": "web/browser-local/media.js",
+    "target": "editor/browser-local/media.js"
+  },
+  {
+    "source": "web/browser-local/project-admission.js",
+    "target": "editor/browser-local/project-admission.js"
+  },
+  {
+    "source": "web/browser-local/storage.js",
+    "target": "editor/browser-local/storage.js"
+  },
+  {
+    "source": "web/browser-local/workspace.css",
+    "target": "editor/browser-local/workspace.css"
+  },
+  {
+    "source": "web/browser-local/workspace.js",
+    "target": "editor/browser-local/workspace.js"
+  },
+  {
+    "source": "web/engine/audio-worklets/dsp.js",
+    "target": "editor/engine/audio-worklets/dsp.js"
+  },
+  {
+    "source": "web/engine/audio-worklets/fx.js",
+    "target": "editor/engine/audio-worklets/fx.js"
+  },
+  {
+    "source": "web/engine/audio-worklets/processors.js",
+    "target": "editor/engine/audio-worklets/processors.js"
+  },
+  {
+    "source": "web/engine/audio.js",
+    "target": "editor/engine/audio.js"
+  },
+  {
+    "source": "web/engine/compositor.js",
+    "target": "editor/engine/compositor.js"
+  },
+  {
+    "source": "web/engine/decoder.js",
+    "target": "editor/engine/decoder.js"
+  },
+  {
+    "source": "web/engine/export-webcodecs.js",
+    "target": "editor/engine/export-webcodecs.js"
+  },
+  {
+    "source": "web/engine/frame.js",
+    "target": "editor/engine/frame.js"
+  },
+  {
+    "source": "web/engine/grade.js",
+    "target": "editor/engine/grade.js"
+  },
+  {
+    "source": "web/engine/media.js",
+    "target": "editor/engine/media.js"
+  },
+  {
+    "source": "web/engine/native-export-admission.js",
+    "target": "editor/engine/native-export-admission.js"
+  },
+  {
+    "source": "web/engine/player.js",
+    "target": "editor/engine/player.js"
+  },
+  {
+    "source": "web/engine/render-resolution.js",
+    "target": "editor/engine/render-resolution.js"
+  },
+  {
+    "source": "web/engine/shapes.js",
+    "target": "editor/engine/shapes.js"
+  },
+  {
+    "source": "web/engine/tracker-worker.js",
+    "target": "editor/engine/tracker-worker.js"
+  },
+  {
+    "source": "web/engine/tracker.js",
+    "target": "editor/engine/tracker.js"
+  },
+  {
+    "source": "web/engine/worker.js",
+    "target": "editor/engine/worker.js"
+  },
+  {
+    "source": "web/fonts/InterVariable-Italic.ttf",
+    "target": "editor/fonts/InterVariable-Italic.ttf"
+  },
+  {
+    "source": "web/fonts/InterVariable-Italic.woff2",
+    "target": "editor/fonts/InterVariable-Italic.woff2"
+  },
+  {
+    "source": "web/fonts/InterVariable.ttf",
+    "target": "editor/fonts/InterVariable.ttf"
+  },
+  {
+    "source": "web/fonts/InterVariable.woff2",
+    "target": "editor/fonts/InterVariable.woff2"
+  },
+  {
+    "source": "web/fonts/LICENSE-Inter.txt",
+    "target": "editor/fonts/LICENSE-Inter.txt"
+  },
+  {
+    "source": "web/fonts/MrsSaintDelafield-OFL.txt",
+    "target": "editor/fonts/MrsSaintDelafield-OFL.txt"
+  },
+  {
+    "source": "web/fonts/MrsSaintDelafield-Regular.ttf",
+    "target": "editor/fonts/MrsSaintDelafield-Regular.ttf"
+  },
+  {
+    "source": "web/fonts/manrope-OFL.txt",
+    "target": "editor/fonts/manrope-OFL.txt"
+  },
+  {
+    "source": "web/fonts/manrope.ttf",
+    "target": "editor/fonts/manrope.ttf"
+  },
+  {
+    "source": "web/host.js",
+    "target": "editor/host.js"
+  },
+  {
+    "source": "web/browser-local.html",
+    "target": "editor/index.html"
+  },
+  {
+    "source": "web/main.js",
+    "target": "editor/main.js"
+  },
+  {
+    "source": "web/styles.css",
+    "target": "editor/styles.css"
+  },
+  {
+    "source": "web/ui/accessible-names.js",
+    "target": "editor/ui/accessible-names.js"
+  },
+  {
+    "source": "web/ui/app.js",
+    "target": "editor/ui/app.js"
+  },
+  {
+    "source": "web/ui/assistant-activity.js",
+    "target": "editor/ui/assistant-activity.js"
+  },
+  {
+    "source": "web/ui/assistant-panel.js",
+    "target": "editor/ui/assistant-panel.js"
+  },
+  {
+    "source": "web/ui/assistant-script.js",
+    "target": "editor/ui/assistant-script.js"
+  },
+  {
+    "source": "web/ui/assistant-sharing.js",
+    "target": "editor/ui/assistant-sharing.js"
+  },
+  {
+    "source": "web/ui/assistant-state.js",
+    "target": "editor/ui/assistant-state.js"
+  },
+  {
+    "source": "web/ui/assistant-status.js",
+    "target": "editor/ui/assistant-status.js"
+  },
+  {
+    "source": "web/ui/assistant-suggestions.js",
+    "target": "editor/ui/assistant-suggestions.js"
+  },
+  {
+    "source": "web/ui/browser.js",
+    "target": "editor/ui/browser.js"
+  },
+  {
+    "source": "web/ui/caption-word-edit.js",
+    "target": "editor/ui/caption-word-edit.js"
+  },
+  {
+    "source": "web/ui/change-receipt.js",
+    "target": "editor/ui/change-receipt.js"
+  },
+  {
+    "source": "web/ui/chat.js",
+    "target": "editor/ui/chat.js"
+  },
+  {
+    "source": "web/ui/color.js",
+    "target": "editor/ui/color.js"
+  },
+  {
+    "source": "web/ui/color/graph.js",
+    "target": "editor/ui/color/graph.js"
+  },
+  {
+    "source": "web/ui/color/node-editor.js",
+    "target": "editor/ui/color/node-editor.js"
+  },
+  {
+    "source": "web/ui/color/nodes.css",
+    "target": "editor/ui/color/nodes.css"
+  },
+  {
+    "source": "web/ui/color/overlay.js",
+    "target": "editor/ui/color/overlay.js"
+  },
+  {
+    "source": "web/ui/color/panels.js",
+    "target": "editor/ui/color/panels.js"
+  },
+  {
+    "source": "web/ui/color/presets.js",
+    "target": "editor/ui/color/presets.js"
+  },
+  {
+    "source": "web/ui/color/state.js",
+    "target": "editor/ui/color/state.js"
+  },
+  {
+    "source": "web/ui/color/workflow-panel.js",
+    "target": "editor/ui/color/workflow-panel.js"
+  },
+  {
+    "source": "web/ui/color/workflows.js",
+    "target": "editor/ui/color/workflows.js"
+  },
+  {
+    "source": "web/ui/color/workspace.css",
+    "target": "editor/ui/color/workspace.css"
+  },
+  {
+    "source": "web/ui/deliver-request.js",
+    "target": "editor/ui/deliver-request.js"
+  },
+  {
+    "source": "web/ui/deliver.js",
+    "target": "editor/ui/deliver.js"
+  },
+  {
+    "source": "web/ui/delivery-preview.js",
+    "target": "editor/ui/delivery-preview.js"
+  },
+  {
+    "source": "web/ui/engine-host.js",
+    "target": "editor/ui/engine-host.js"
+  },
+  {
+    "source": "web/ui/generated-music-model.js",
+    "target": "editor/ui/generated-music-model.js"
+  },
+  {
+    "source": "web/ui/generated-music.js",
+    "target": "editor/ui/generated-music.js"
+  },
+  {
+    "source": "web/ui/icons.js",
+    "target": "editor/ui/icons.js"
+  },
+  {
+    "source": "web/ui/inspector.js",
+    "target": "editor/ui/inspector.js"
+  },
+  {
+    "source": "web/ui/keys.js",
+    "target": "editor/ui/keys.js"
+  },
+  {
+    "source": "web/ui/layout.js",
+    "target": "editor/ui/layout.js"
+  },
+  {
+    "source": "web/ui/library/library.css",
+    "target": "editor/ui/library/library.css"
+  },
+  {
+    "source": "web/ui/library/model.js",
+    "target": "editor/ui/library/model.js"
+  },
+  {
+    "source": "web/ui/media-import.js",
+    "target": "editor/ui/media-import.js"
+  },
+  {
+    "source": "web/ui/media-label.js",
+    "target": "editor/ui/media-label.js"
+  },
+  {
+    "source": "web/ui/media-page.js",
+    "target": "editor/ui/media-page.js"
+  },
+  {
+    "source": "web/ui/menu.js",
+    "target": "editor/ui/menu.js"
+  },
+  {
+    "source": "web/ui/mixer.js",
+    "target": "editor/ui/mixer.js"
+  },
+  {
+    "source": "web/ui/motion/anchor.js",
+    "target": "editor/ui/motion/anchor.js"
+  },
+  {
+    "source": "web/ui/motion/comps.js",
+    "target": "editor/ui/motion/comps.js"
+  },
+  {
+    "source": "web/ui/motion/draw.js",
+    "target": "editor/ui/motion/draw.js"
+  },
+  {
+    "source": "web/ui/motion/ease.js",
+    "target": "editor/ui/motion/ease.js"
+  },
+  {
+    "source": "web/ui/motion/expr.js",
+    "target": "editor/ui/motion/expr.js"
+  },
+  {
+    "source": "web/ui/motion/geometry.js",
+    "target": "editor/ui/motion/geometry.js"
+  },
+  {
+    "source": "web/ui/motion/graph.js",
+    "target": "editor/ui/motion/graph.js"
+  },
+  {
+    "source": "web/ui/motion/keyframes.js",
+    "target": "editor/ui/motion/keyframes.js"
+  },
+  {
+    "source": "web/ui/motion/layer-box.js",
+    "target": "editor/ui/motion/layer-box.js"
+  },
+  {
+    "source": "web/ui/motion/layers.js",
+    "target": "editor/ui/motion/layers.js"
+  },
+  {
+    "source": "web/ui/motion/live.js",
+    "target": "editor/ui/motion/live.js"
+  },
+  {
+    "source": "web/ui/motion/motion.css",
+    "target": "editor/ui/motion/motion.css"
+  },
+  {
+    "source": "web/ui/motion/ops.js",
+    "target": "editor/ui/motion/ops.js"
+  },
+  {
+    "source": "web/ui/motion/overlay.js",
+    "target": "editor/ui/motion/overlay.js"
+  },
+  {
+    "source": "web/ui/motion/page.js",
+    "target": "editor/ui/motion/page.js"
+  },
+  {
+    "source": "web/ui/motion/pen.js",
+    "target": "editor/ui/motion/pen.js"
+  },
+  {
+    "source": "web/ui/motion/presets-ui.js",
+    "target": "editor/ui/motion/presets-ui.js"
+  },
+  {
+    "source": "web/ui/motion/presets.js",
+    "target": "editor/ui/motion/presets.js"
+  },
+  {
+    "source": "web/ui/motion/props.js",
+    "target": "editor/ui/motion/props.js"
+  },
+  {
+    "source": "web/ui/motion/shortcuts.js",
+    "target": "editor/ui/motion/shortcuts.js"
+  },
+  {
+    "source": "web/ui/motion/state.js",
+    "target": "editor/ui/motion/state.js"
+  },
+  {
+    "source": "web/ui/phone.js",
+    "target": "editor/ui/phone.js"
+  },
+  {
+    "source": "web/ui/plugins-index.js",
+    "target": "editor/ui/plugins-index.js"
+  },
+  {
+    "source": "web/ui/plugins/audio-fx.js",
+    "target": "editor/ui/plugins/audio-fx.js"
+  },
+  {
+    "source": "web/ui/plugins/captions.js",
+    "target": "editor/ui/plugins/captions.js"
+  },
+  {
+    "source": "web/ui/plugins/figma.js",
+    "target": "editor/ui/plugins/figma.js"
+  },
+  {
+    "source": "web/ui/plugins/library.js",
+    "target": "editor/ui/plugins/library.js"
+  },
+  {
+    "source": "web/ui/plugins/motion.js",
+    "target": "editor/ui/plugins/motion.js"
+  },
+  {
+    "source": "web/ui/plugins/multicam.js",
+    "target": "editor/ui/plugins/multicam.js"
+  },
+  {
+    "source": "web/ui/plugins/nodes.js",
+    "target": "editor/ui/plugins/nodes.js"
+  },
+  {
+    "source": "web/ui/plugins/shorts.js",
+    "target": "editor/ui/plugins/shorts.js"
+  },
+  {
+    "source": "web/ui/plugins/tracking.js",
+    "target": "editor/ui/plugins/tracking.js"
+  },
+  {
+    "source": "web/ui/plugins/video-processing.js",
+    "target": "editor/ui/plugins/video-processing.js"
+  },
+  {
+    "source": "web/ui/processing-workflows.js",
+    "target": "editor/ui/processing-workflows.js"
+  },
+  {
+    "source": "web/ui/project-recovery.js",
+    "target": "editor/ui/project-recovery.js"
+  },
+  {
+    "source": "web/ui/provider-controls.js",
+    "target": "editor/ui/provider-controls.js"
+  },
+  {
+    "source": "web/ui/registry.js",
+    "target": "editor/ui/registry.js"
+  },
+  {
+    "source": "web/ui/scroll-tabs.js",
+    "target": "editor/ui/scroll-tabs.js"
+  },
+  {
+    "source": "web/ui/settings.js",
+    "target": "editor/ui/settings.js"
+  },
+  {
+    "source": "web/ui/shape-appearance.js",
+    "target": "editor/ui/shape-appearance.js"
+  },
+  {
+    "source": "web/ui/shorts-workflow.js",
+    "target": "editor/ui/shorts-workflow.js"
+  },
+  {
+    "source": "web/ui/source-media.js",
+    "target": "editor/ui/source-media.js"
+  },
+  {
+    "source": "web/ui/store.js",
+    "target": "editor/ui/store.js"
+  },
+  {
+    "source": "web/ui/timeline-toolbar.js",
+    "target": "editor/ui/timeline-toolbar.js"
+  },
+  {
+    "source": "web/ui/timeline.js",
+    "target": "editor/ui/timeline.js"
+  },
+  {
+    "source": "web/ui/title-presets.js",
+    "target": "editor/ui/title-presets.js"
+  },
+  {
+    "source": "web/ui/transcript-drafts.js",
+    "target": "editor/ui/transcript-drafts.js"
+  },
+  {
+    "source": "web/ui/transcript-jobs.js",
+    "target": "editor/ui/transcript-jobs.js"
+  },
+  {
+    "source": "web/ui/transcript.js",
+    "target": "editor/ui/transcript.js"
+  },
+  {
+    "source": "web/ui/viewer.js",
+    "target": "editor/ui/viewer.js"
+  },
+  {
+    "source": "node_modules/htm/LICENSE",
+    "target": "vendor/htm/LICENSE"
+  },
+  {
+    "source": "node_modules/htm/dist/htm.module.js",
+    "target": "vendor/htm/dist/htm.module.js"
+  },
+  {
+    "source": "node_modules/mediabunny/LICENSE",
+    "target": "vendor/mediabunny/LICENSE"
+  },
+  {
+    "source": "node_modules/mediabunny/dist/bundles/mediabunny.min.mjs",
+    "target": "vendor/mediabunny/dist/bundles/mediabunny.min.mjs"
+  },
+  {
+    "source": "node_modules/preact/LICENSE",
+    "target": "vendor/preact/LICENSE"
+  },
+  {
+    "source": "node_modules/preact/dist/preact.module.js",
+    "target": "vendor/preact/dist/preact.module.js"
+  },
+  {
+    "source": "node_modules/preact/hooks/dist/hooks.module.js",
+    "target": "vendor/preact/hooks/dist/hooks.module.js"
+  }
+]

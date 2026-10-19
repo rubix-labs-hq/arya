@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "reel-editor",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["editor/server.mjs", "--root", ".."],
+      "port": 4870,
+      "autoPort": true
+    }
+  ]
+}

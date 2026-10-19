@@ -1,0 +1,46 @@
+/* Icon buttons and small chrome fixes for the drawn icon set in ui/icons.js.
+   Loaded after styles.css. Uses only the existing root tokens. */
+
+.ico { display: block; flex: none; }
+
+/* Center an icon inside the button types that hold one. :where() keeps this at zero
+   specificity, so existing rules that hide a button at a breakpoint still win. */
+:where(.topbar-actions .topbar-undo, .topbar-actions button.topbar-utility, .transport .buttons button, .tl-toolbar .tools button, .tl-toolbar > button.ghost):where(:has(> .ico)) { display: inline-grid; place-items: center; padding-inline: 6px; line-height: 0; }
+
+/* Text buttons that lead with an icon. Settings already has its own flex rule in styles.css. */
+.claude-btn, .job-pill { display: inline-flex; align-items: center; gap: 6px; }
+.settings-entry svg, .claude-btn .ico { opacity: 0.9; }
+
+/* Top bar: undo, redo and shortcuts share one size and sit as one group. */
+.topbar-actions .topbar-undo, .topbar-actions button.topbar-utility { min-width: 32px; min-height: 32px; color: var(--muted); }
+.topbar-actions .topbar-undo:hover:not(:disabled), .topbar-actions button.topbar-utility:hover:not(:disabled) { color: var(--text); }
+
+/* Transport: equal button heights and a wider play button. Icon buttons sit in secondary
+   text until hover; text actions (I, O, Append, Insert, Overwrite, Connect) keep full text. */
+.transport .buttons button { min-width: 30px; min-height: 28px; }
+.transport .buttons button:has(> .ico) { color: var(--muted); }
+.transport .buttons button:has(> .ico):hover:not(:disabled) { color: var(--text); }
+.transport .buttons button.play, .transport .buttons button.play:hover:not(:disabled) { min-width: 44px; color: var(--text); }
+.transport .buttons button.on, .transport .buttons button.on:hover:not(:disabled) { color: var(--accent); }
+
+/* Timeline tools: one segmented group, active tool in the selection colour. */
+.tl-toolbar .tools button { min-width: 30px; min-height: 28px; color: var(--muted); }
+.tl-toolbar .tools button:hover:not(:disabled) { color: var(--text); }
+.tl-toolbar .tools button.on { color: var(--accent); }
+.tl-toolbar > button.ghost { min-width: 30px; min-height: 28px; color: var(--muted); }
+.tl-toolbar > button.ghost.on { color: var(--accent); }
+
+/* Scrolling tab strips fade at the edge that has more tabs, instead of cutting a label in half. */
+.tab-scroll:has(> .tab-overflow.next) > .tabs { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+.tab-scroll:has(> .tab-overflow.previous) > .tabs { -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent); }
+.tab-scroll:has(> .tab-overflow.previous):has(> .tab-overflow.next) > .tabs { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
+
+@media (pointer: coarse) {
+  .topbar-actions .topbar-undo, .topbar-actions button.topbar-utility,
+  .transport .buttons button, .tl-toolbar .tools button, .tl-toolbar > button.ghost { min-width: 44px; min-height: 44px; }
+}
+
+/* Assistant close and reference controls use the same drawn set. */
+:where(.chat-head button, .chat .chip button):where(:has(> .ico)) { display: inline-grid; place-items: center; }
+.chat-head button:has(> .ico), .chat .chip button:has(> .ico) { color: var(--muted); }
+.chat-head button:has(> .ico):hover, .chat .chip button:has(> .ico):hover { color: var(--text); }

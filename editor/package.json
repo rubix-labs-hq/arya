@@ -1,0 +1,23 @@
+{
+  "name": "reel-editor",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "version": "0.2.0",
+  "description": "Reel: the browser editor and local media server for the Reel Claude Code mod",
+  "dependencies": {
+    "htm": "^3.1.1",
+    "mediabunny": "^1.61.0",
+    "preact": "^10.29.8"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "golden": "node scripts/golden.mjs",
+    "golden:update": "node scripts/golden.mjs --update",
+    "renderer:regressions": "node scripts/renderer-regressions.mjs",
+    "processing:smoke": "node scripts/processing-smoke.mjs",
+    "start": "node server.mjs",
+    "prepare:persistence": "node scripts/prepare-project-writer.mjs prepare core",
+    "check:persistence": "node scripts/prepare-project-writer.mjs validate core"
+  }
+}

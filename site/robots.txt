@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /editor/
+Sitemap: https://arya-beta-delta.vercel.app/sitemap.xml

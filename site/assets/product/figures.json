@@ -1,0 +1,37 @@
+{
+  "color": {
+    "src": "/assets/product/color-nodes.webp",
+    "width": 1464,
+    "height": 696,
+    "alt": "Close view of the Color page: a node graph from Input through Primary, a corrector marked Q for qualifier and a corrector marked W for window to Output, above an RGB parade of the graded close-up.",
+    "caption": "The grade from the gallery above, up close. Q marks the qualifier node and W the window node."
+  },
+  "motion": {
+    "src": "/assets/product/motion-card.webp",
+    "width": 1600,
+    "height": 637,
+    "alt": "Close view of the Motion page: the location card reading Amsterdam, forty years later, selected over a close-up of Thom, with its transform values and keyframe controls in the inspector.",
+    "caption": "The selected location card in the viewer, with its transform values and keyframe controls in the inspector."
+  },
+  "audio": {
+    "src": "/assets/product/audio-mix.webp",
+    "width": 1584,
+    "height": 984,
+    "alt": "Close view of the Audio page: the picture monitor beside the loudness panel, which reports an offline measurement of minus 19.8 LUFS integrated, 4.5 LU loudness range and minus 2.6 dBTP true peak, with buttons to normalize clips to minus 14, minus 16 or minus 23 LUFS.",
+    "caption": "Measure mix on this cut returned -19.8 LUFS integrated, 4.5 LU loudness range and -2.6 dBTP true peak."
+  },
+  "shorts": {
+    "src": "/assets/product/short-output.webp",
+    "width": 540,
+    "height": 960,
+    "alt": "A vertical frame rendered by Arya: Celia on the canal bridge, reframed from the wide shot, with the caption just admit that.",
+    "caption": "A frame rendered by Arya from the 9:16 composition. These captions are timed from the film's published English subtitles. This example does not use transcription. Tears of Steel, (CC) Blender Foundation, CC BY 3.0."
+  },
+  "assistant": {
+    "src": "/assets/product/assistant-panel.webp",
+    "width": 712,
+    "height": 1024,
+    "alt": "Arya assistant panel. The editing context lists one selected clip, Celia close, with the playhead at 12.60 seconds. Prompt suggestions offer Refine, Review, Tighten, Grade and Mix selection. A typed request asks to grade the close-up to match the over-the-shoulder shot.",
+    "caption": "The assistant with one selected clip as context and a typed request. Nothing has been sent. What happens next depends on your connected assistant."
+  }
+}

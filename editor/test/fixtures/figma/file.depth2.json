@@ -1,0 +1,206 @@
+{
+  "document": {
+    "id": "0:0",
+    "name": "Document",
+    "type": "DOCUMENT",
+    "scrollBehavior": "SCROLLS",
+    "children": [
+      {
+        "id": "0:1",
+        "name": "Lower thirds",
+        "type": "CANVAS",
+        "scrollBehavior": "SCROLLS",
+        "children": [
+          {
+            "id": "12:3",
+            "name": "Lower Third / A",
+            "type": "FRAME",
+            "scrollBehavior": "SCROLLS",
+            "blendMode": "PASS_THROUGH",
+            "exportSettings": [],
+            "interactions": [],
+            "effects": [],
+            "absoluteBoundingBox": {
+              "x": 2400,
+              "y": -1200,
+              "width": 1920,
+              "height": 1080
+            },
+            "absoluteRenderBounds": {
+              "x": 2400,
+              "y": -1200,
+              "width": 1920,
+              "height": 1080
+            },
+            "relativeTransform": [
+              [
+                1,
+                0,
+                2400
+              ],
+              [
+                0,
+                1,
+                -1200
+              ]
+            ],
+            "size": {
+              "x": 1920,
+              "y": 1080
+            },
+            "clipsContent": true,
+            "fills": [],
+            "strokes": [],
+            "strokeWeight": 1,
+            "strokeAlign": "INSIDE",
+            "background": [],
+            "backgroundColor": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0
+            },
+            "constraints": {
+              "vertical": "TOP",
+              "horizontal": "LEFT"
+            },
+            "layoutGrids": []
+          },
+          {
+            "id": "12:40",
+            "name": "Lower Third / B",
+            "type": "FRAME",
+            "scrollBehavior": "SCROLLS",
+            "blendMode": "PASS_THROUGH",
+            "exportSettings": [],
+            "interactions": [],
+            "effects": [],
+            "absoluteBoundingBox": {
+              "x": 4400,
+              "y": -1200,
+              "width": 1920,
+              "height": 1080
+            },
+            "absoluteRenderBounds": {
+              "x": 4400,
+              "y": -1200,
+              "width": 1920,
+              "height": 1080
+            },
+            "relativeTransform": [
+              [
+                1,
+                0,
+                4400
+              ],
+              [
+                0,
+                1,
+                -1200
+              ]
+            ],
+            "size": {
+              "x": 1920,
+              "y": 1080
+            },
+            "clipsContent": true,
+            "fills": [],
+            "strokes": [],
+            "strokeWeight": 1,
+            "strokeAlign": "INSIDE",
+            "background": [],
+            "backgroundColor": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0
+            },
+            "constraints": {
+              "vertical": "TOP",
+              "horizontal": "LEFT"
+            },
+            "layoutGrids": []
+          },
+          {
+            "id": "30:1",
+            "name": "Archive",
+            "type": "SECTION",
+            "sectionContentsHidden": false,
+            "fills": [
+              {
+                "blendMode": "NORMAL",
+                "type": "SOLID",
+                "color": {
+                  "r": 0.960784,
+                  "g": 0.960784,
+                  "b": 0.960784,
+                  "a": 1
+                }
+              }
+            ],
+            "strokes": [],
+            "strokeWeight": 1,
+            "strokeAlign": "INSIDE",
+            "absoluteBoundingBox": {
+              "x": 2400,
+              "y": 200,
+              "width": 2200,
+              "height": 1300
+            },
+            "absoluteRenderBounds": {
+              "x": 2400,
+              "y": 200,
+              "width": 2200,
+              "height": 1300
+            },
+            "devStatus": null
+          }
+        ],
+        "backgroundColor": {
+          "r": 0.9607843160629272,
+          "g": 0.9607843160629272,
+          "b": 0.9607843160629272,
+          "a": 1
+        },
+        "prototypeStartNodeID": null,
+        "flowStartingPoints": [],
+        "prototypeDevice": {
+          "type": "NONE",
+          "rotation": "NONE"
+        },
+        "exportSettings": []
+      },
+      {
+        "id": "0:2",
+        "name": "Scratch",
+        "type": "CANVAS",
+        "scrollBehavior": "SCROLLS",
+        "children": [],
+        "backgroundColor": {
+          "r": 0.9607843160629272,
+          "g": 0.9607843160629272,
+          "b": 0.9607843160629272,
+          "a": 1
+        },
+        "prototypeStartNodeID": null,
+        "flowStartingPoints": [],
+        "prototypeDevice": {
+          "type": "NONE",
+          "rotation": "NONE"
+        },
+        "exportSettings": []
+      }
+    ]
+  },
+  "components": {},
+  "componentSets": {},
+  "schemaVersion": 0,
+  "styles": {},
+  "name": "Reel Lower Thirds",
+  "lastModified": "2026-09-28T14:03:11Z",
+  "thumbnailUrl": "https://s3-alpha.figma.com/thumbnails/7f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b",
+  "version": "2087342190",
+  "role": "owner",
+  "editorType": "figma",
+  "linkAccess": "view"
+}

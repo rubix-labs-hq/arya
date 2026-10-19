@@ -1,0 +1,64 @@
+name: Bug report
+description: Something in Arya does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Search existing issues first. Report security problems privately through the security policy, not here. Do not include private media, tokens or API keys.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Where does it happen?
+      options:
+        - Mac app
+        - iPad or iPhone app
+        - Browser editor (hosted)
+        - Browser editor (local server)
+        - Claude Code plugin
+        - Website
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Arya version or commit
+      placeholder: e.g. 1.0.0 or a commit hash
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and browser
+      placeholder: e.g. macOS 15.4 on Apple silicon, Chrome 140
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem. Include error messages.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a project with ...
+        2. Select ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots, logs or a sample project
+      description: Optional. Remove private media and personal data first.

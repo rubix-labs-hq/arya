@@ -1,0 +1,66 @@
+/* Assistant panel: context, suggestions and the text box first; input kind, model and tips in
+   one disclosure; a preview card before an assistant change applies; one-step undo after. */
+
+.chat .assistant-composer-card { min-height: 0; max-height: none; flex: 0 0 auto; }
+.chat .assistant-composer-content { flex: 0 1 auto; max-height: 40vh; min-height: 0; }
+.chat .assistant-composer-footer { min-height: 0; max-height: none; align-items: center; padding: 2px 8px 8px; overflow: visible; }
+
+.chat .assistant-suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 10px 6px; }
+.chat .assistant-suggestion { min-height: 32px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 16px; background: transparent; color: var(--text); font-size: 12px; white-space: normal; text-align: left; }
+.chat .assistant-suggestion:hover:not(:disabled) { background: #ffffff0d; border-color: var(--muted); }
+.chat .assistant-suggestion:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.chat .assistant-preview-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px; color: var(--text); font-size: 12px; cursor: pointer; }
+.chat .assistant-preview-toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.chat .assistant-preview-toggle:has(input:disabled) { opacity: .5; cursor: default; }
+
+.chat .assistant-options { min-width: 0; margin: 0 8px 8px; border-top: 1px solid var(--line); }
+.chat .assistant-options > summary { display: flex; align-items: center; min-height: 40px; padding: 0 2px; color: var(--muted); font-size: 11.5px; cursor: pointer; list-style: none; }
+.chat .assistant-options > summary::-webkit-details-marker { display: none; }
+.chat .assistant-options > summary::before { content: '›'; width: 12px; margin-right: 4px; }
+.chat .assistant-options[open] > summary::before { content: '⌄'; }
+.chat .assistant-options > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.chat .assistant-options .assistant-input-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 2px 8px; }
+.chat .assistant-options .assistant-controls { padding: 0 0 8px; border: 0; }
+.chat .assistant-options .assistant-input-help { padding: 0 2px 6px; }
+.chat .assistant-import-status { display: flex; align-items: center; gap: 8px; padding: 0 10px 8px; font-size: 11.5px; color: var(--muted); }
+.chat .assistant-input-kind-note { margin: 0 10px 8px; font-size: 11.5px; color: var(--muted); }
+
+/* The proposed change: what it touches, then Apply or Discard. Nothing has changed yet. */
+.chat > .assistant-preview { flex: 0 1 auto; min-height: 0; max-height: 45%; overflow: auto; margin: 8px 8px 0; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); }
+.assistant-preview header { display: grid; gap: 2px; }
+.assistant-preview header b { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.assistant-preview-note { margin: 6px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.assistant-preview-note[role=alert] { color: var(--danger); }
+.assistant-preview-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.assistant-preview-list li { padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--input); min-width: 0; }
+.assistant-preview-list li > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; min-width: 0; }
+.assistant-preview-list li > div b { font-weight: 500; font-size: 12px; overflow-wrap: anywhere; }
+.assistant-preview-list small { color: var(--muted); font-size: 10.5px; }
+.assistant-preview-status { font-size: 10.5px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line-2); color: var(--muted); }
+.assistant-preview-status.added { color: var(--good); border-color: #b8c9ac66; }
+.assistant-preview-status.deleted { color: var(--danger); border-color: #f28b7a66; }
+.assistant-preview-list dl { display: grid; grid-template-columns: minmax(70px, auto) 1fr; gap: 2px 8px; margin: 5px 0 0; font-size: 11px; }
+.assistant-preview-list dt { color: var(--muted); overflow-wrap: anywhere; }
+.assistant-preview-list dd { margin: 0; font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 10.5px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.assistant-preview-actions { display: flex; gap: 8px; margin-top: 10px; }
+.assistant-preview-actions button { min-height: 40px; padding: 6px 14px; }
+.assistant-preview-actions .assistant-apply { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.assistant-preview-actions .assistant-apply:hover:not(:disabled) { background: #f6ce8d; border-color: #f6ce8d; }
+
+/* One-step undo of the latest assistant change. */
+.chat > .assistant-change { flex: none; display: flex; align-items: center; gap: 8px; margin: 8px 8px 0; padding: 4px 4px 4px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+.chat > .assistant-change span { flex: 1; min-width: 0; }
+.chat > .assistant-change button { min-height: 40px; }
+
+/* Processing steps in a preview, and a preview being applied. */
+.assistant-preview-steps { margin: 8px 0 0; padding: 0 0 0 18px; display: grid; gap: 6px; font-size: 12px; }
+.assistant-preview-steps li { padding-left: 2px; }
+.assistant-preview-steps b { font-weight: 500; }
+.assistant-preview-steps p { margin: 2px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.assistant-preview-step-label { display: inline-block; min-width: 58px; color: var(--text); font-size: 11px; }
+.chat > .assistant-applying { flex: none; margin: 8px 8px 0; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); font-size: 12px; }
+.assistant-applying header { display: grid; gap: 2px; }
+.assistant-applying header b { font-weight: 600; overflow-wrap: anywhere; }
+.assistant-applying p { margin: 6px 0 0; overflow-wrap: anywhere; }
+.assistant-applying.failed [role=alert] { color: var(--danger); }

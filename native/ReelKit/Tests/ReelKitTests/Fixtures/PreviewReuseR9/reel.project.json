@@ -1,0 +1,493 @@
+{
+  "version": 3,
+  "name": "Arya five-variant QA scene",
+  "width": 640,
+  "height": 360,
+  "fps": 30,
+  "sampleRate": 48000,
+  "background": "#000000",
+  "tracks": [
+    {
+      "id": "V1",
+      "kind": "video",
+      "name": "Video 1",
+      "clips": [
+        {
+          "id": "c1",
+          "kind": "video",
+          "src": "media/qa-footage.mp4",
+          "start": 0,
+          "dur": 4,
+          "in": 0,
+          "link": "Lc1",
+          "audioDetached": true
+        },
+        {
+          "id": "c2",
+          "kind": "video",
+          "src": "media/qa-footage.mp4",
+          "start": 4,
+          "dur": 4,
+          "in": 4,
+          "link": "Lc2",
+          "audioDetached": true
+        },
+        {
+          "id": "c3",
+          "kind": "video",
+          "src": "media/qa-footage.mp4",
+          "start": 8,
+          "dur": 4,
+          "in": 8,
+          "link": "Lc3",
+          "audioDetached": true
+        }
+      ]
+    },
+    {
+      "id": "V2",
+      "kind": "video",
+      "name": "Video 2",
+      "clips": [
+        {
+          "id": "c9",
+          "kind": "comp",
+          "comp": "k1",
+          "start": 4,
+          "dur": 4,
+          "in": 0,
+          "label": "Editable QA artwork"
+        }
+      ]
+    },
+    {
+      "id": "V3",
+      "kind": "video",
+      "name": "Titles",
+      "clips": [
+        {
+          "id": "c4",
+          "kind": "title",
+          "start": 0,
+          "dur": 3,
+          "title": {
+            "text": "Current subscription verified",
+            "font": "Avenir Next",
+            "weight": 800,
+            "size": 48,
+            "color": "#ffffff",
+            "align": "center",
+            "shadow": {
+              "color": "#00000099",
+              "blur": 18,
+              "x": 0,
+              "y": 6
+            },
+            "anim": "none"
+          },
+          "x": 320,
+          "y": 90
+        },
+        {
+          "id": "c5",
+          "kind": "title",
+          "start": 8,
+          "dur": 4,
+          "title": {
+            "text": "Ready to deliver",
+            "font": "Avenir Next",
+            "weight": 800,
+            "size": 38,
+            "color": "#ffffff",
+            "align": "center",
+            "shadow": {
+              "color": "#00000099",
+              "blur": 18,
+              "x": 0,
+              "y": 6
+            },
+            "anim": "none"
+          },
+          "x": 320,
+          "y": 90
+        }
+      ]
+    },
+    {
+      "id": "A1",
+      "kind": "audio",
+      "name": "Audio 1",
+      "volume": -3,
+      "pan": 0,
+      "clips": [
+        {
+          "id": "c1a",
+          "kind": "audio",
+          "src": "media/qa-footage.mp4",
+          "start": 0,
+          "dur": 4,
+          "in": 0,
+          "link": "Lc1"
+        },
+        {
+          "id": "c2a",
+          "kind": "audio",
+          "src": "media/qa-footage.mp4",
+          "start": 4,
+          "dur": 4,
+          "in": 4,
+          "link": "Lc2"
+        },
+        {
+          "id": "c3a",
+          "kind": "audio",
+          "src": "media/qa-footage.mp4",
+          "start": 8,
+          "dur": 4,
+          "in": 8,
+          "link": "Lc3"
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "kind": "audio",
+      "name": "Audio 2",
+      "volume": 0,
+      "pan": 0,
+      "clips": []
+    },
+    {
+      "id": "A3",
+      "kind": "audio",
+      "name": "Music",
+      "volume": -21,
+      "pan": 0,
+      "clips": [
+        {
+          "id": "c10",
+          "kind": "audio",
+          "src": "media/qa-bed.wav",
+          "start": 0,
+          "dur": 12,
+          "in": 0
+        }
+      ]
+    },
+    {
+      "id": "C1",
+      "kind": "caption",
+      "name": "Captions",
+      "burnIn": true,
+      "style": {
+        "font": "Avenir Next",
+        "size": 24,
+        "color": "#ffffff",
+        "plate": "#000000bb",
+        "y": 0.86,
+        "weight": 700,
+        "preset": "boxed"
+      },
+      "clips": [
+        {
+          "id": "c11",
+          "kind": "caption",
+          "text": "Look closely",
+          "start": 0.5,
+          "dur": 0.76667,
+          "source": {
+            "src": "media/qa-footage.mp4",
+            "clip": "c1"
+          }
+        },
+        {
+          "id": "c12",
+          "kind": "caption",
+          "text": "closer.",
+          "start": 2,
+          "dur": 0.76667,
+          "words": [
+            {
+              "t": 0,
+              "end": 0.75,
+              "text": "closer.",
+              "sourceT": 2,
+              "sourceEnd": 2.75
+            }
+          ],
+          "source": {
+            "src": "media/qa-footage.mp4",
+            "clip": "c1"
+          }
+        },
+        {
+          "id": "c13",
+          "kind": "caption",
+          "text": "Keep",
+          "start": 4.5,
+          "dur": 0.76667,
+          "words": [
+            {
+              "t": 0,
+              "end": 0.75,
+              "text": "Keep",
+              "sourceT": 4.5,
+              "sourceEnd": 5.25
+            }
+          ],
+          "source": {
+            "src": "media/qa-footage.mp4",
+            "clip": "c2"
+          }
+        },
+        {
+          "id": "c14",
+          "kind": "caption",
+          "text": "it editable.",
+          "start": 6,
+          "dur": 0.76667,
+          "words": [
+            {
+              "t": 0,
+              "end": 0.75,
+              "text": "it editable.",
+              "sourceT": 6,
+              "sourceEnd": 6.75
+            }
+          ],
+          "source": {
+            "src": "media/qa-footage.mp4",
+            "clip": "c2"
+          }
+        },
+        {
+          "id": "c15",
+          "kind": "caption",
+          "text": "Ready",
+          "start": 8.5,
+          "dur": 0.76667,
+          "words": [
+            {
+              "t": 0,
+              "end": 0.75,
+              "text": "Ready",
+              "sourceT": 8.5,
+              "sourceEnd": 9.25
+            }
+          ],
+          "source": {
+            "src": "media/qa-footage.mp4",
+            "clip": "c3"
+          }
+        },
+        {
+          "id": "c16",
+          "kind": "caption",
+          "text": "to deliver.",
+          "start": 10,
+          "dur": 0.76667,
+          "words": [
+            {
+              "t": 0,
+              "end": 0.75,
+              "text": "to deliver.",
+              "sourceT": 10,
+              "sourceEnd": 10.75
+            }
+          ],
+          "source": {
+            "src": "media/qa-footage.mp4",
+            "clip": "c3"
+          }
+        }
+      ]
+    }
+  ],
+  "markers": [
+    {
+      "id": "m1",
+      "t": 0,
+      "label": "Scene 1",
+      "color": "#f5b942",
+      "kind": "marker"
+    },
+    {
+      "id": "m2",
+      "t": 4,
+      "label": "Scene 2",
+      "color": "#f5b942",
+      "kind": "marker"
+    },
+    {
+      "id": "m3",
+      "t": 8,
+      "label": "Scene 3",
+      "color": "#f5b942",
+      "kind": "marker"
+    }
+  ],
+  "assets": {
+    "media/qa-footage.mp4": {
+      "hasVideo": true,
+      "hasAudio": true,
+      "width": 640,
+      "height": 360,
+      "duration": 12,
+      "fps": 30,
+      "sampleRate": 48000,
+      "channels": 2,
+      "codec": "h264",
+      "pixFmt": "yuv420p",
+      "size": 1581021
+    },
+    "media/qa-bed.wav": {
+      "hasVideo": false,
+      "hasAudio": true,
+      "duration": 12,
+      "sampleRate": 48000,
+      "channels": 2,
+      "fps": 0,
+      "codec": "pcm_s16le",
+      "size": 2304044
+    }
+  },
+  "library": {
+    "version": 1,
+    "items": []
+  },
+  "range": null,
+  "comps": {
+    "k1": {
+      "id": "k1",
+      "name": "Editable QA artwork",
+      "width": 640,
+      "height": 360,
+      "fps": 30,
+      "duration": 4,
+      "background": "transparent",
+      "tracks": [
+        {
+          "id": "V1",
+          "kind": "video",
+          "name": "Editable blue plate",
+          "clips": [
+            {
+              "id": "c6",
+              "kind": "shape",
+              "start": 0,
+              "dur": 4,
+              "shape": {
+                "type": "rect",
+                "width": 320,
+                "height": 70,
+                "radius": 12,
+                "fill": {
+                  "color": "#d95d18"
+                }
+              },
+              "label": "Editable blue plate",
+              "x": 192,
+              "y": 209,
+              "note": "figma qa:plate",
+              "anim": {
+                "x": [
+                  [
+                    0,
+                    176
+                  ],
+                  [
+                    1,
+                    192
+                  ]
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "V2",
+          "kind": "video",
+          "name": "Editable yellow circle",
+          "clips": [
+            {
+              "id": "c7",
+              "kind": "shape",
+              "start": 0,
+              "dur": 4,
+              "shape": {
+                "type": "ellipse",
+                "width": 38,
+                "height": 38,
+                "radius": 24,
+                "fill": {
+                  "color": "#ffcc1a"
+                }
+              },
+              "label": "Editable yellow circle",
+              "x": 63,
+              "y": 209,
+              "note": "figma qa:circle"
+            }
+          ]
+        },
+        {
+          "id": "V3",
+          "kind": "video",
+          "name": "Editable QA label",
+          "clips": [
+            {
+              "id": "c8",
+              "kind": "title",
+              "start": 0,
+              "dur": 4,
+              "title": {
+                "text": "Still editable",
+                "font": "Avenir Next",
+                "weight": 700,
+                "size": 78,
+                "color": "#ffffff",
+                "align": "left",
+                "shadow": null,
+                "anim": "none",
+                "lineHeight": 1.2,
+                "tracking": 0,
+                "italic": false,
+                "box": {
+                  "width": 720,
+                  "height": 108,
+                  "wrap": true,
+                  "alignY": "top"
+                }
+              },
+              "x": 216,
+              "y": 209,
+              "note": "figma qa:text",
+              "label": "Editable QA label",
+              "anim": {
+                "opacity": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0.5,
+                    1
+                  ]
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "A1",
+          "kind": "audio",
+          "name": "Audio",
+          "volume": 0,
+          "pan": 0,
+          "clips": []
+        }
+      ]
+    }
+  },
+  "colorSpace": "rec709"
+}

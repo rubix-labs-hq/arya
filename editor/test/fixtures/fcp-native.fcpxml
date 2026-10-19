@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+
+<!-- Written by hand in the shape Final Cut Pro 10.6+ exports: 23.976 fps, the timeline
+     starting at 01:00:00:00, camera media with a timecode start, a cross dissolve that
+     overlaps both clips, a connected storyline, a compound clip, a 50% retime and an
+     FCPXML 1.0-style clip with separate video and audio. Root: /arya-test/Film -->
+<fcpxml version="1.11">
+    <resources>
+        <format id="r1" name="FFVideoFormat1080p2398" frameDuration="1001/24000s" width="1920" height="1080" colorSpace="1-1-1 (Rec. 709)"/>
+        <asset id="r2" name="Interview" uid="0E9A2F1C" start="3600s" duration="1201200/24000s" hasVideo="1" format="r1" hasAudio="1" videoSources="1" audioSources="1" audioChannels="2" audioRate="48000">
+            <media-rep kind="original-media" sig="0E9A2F1C" src="file:///Volumes/Media/Shoot%20Day%201/Interview.mov">
+                <bookmark>Ym9va21hcms=</bookmark>
+            </media-rep>
+            <metadata>
+                <md key="com.apple.proapps.studio.rawToLogConversion" value="0"/>
+            </metadata>
+        </asset>
+        <asset id="r3" name="broll" uid="7C11D2E0" start="0s" duration="480480/24000s" hasVideo="1" format="r1" hasAudio="1" videoSources="1" audioSources="1" audioChannels="2" audioRate="48000">
+            <media-rep kind="original-media" sig="7C11D2E0" src="file:///arya-test/Film/media/broll.mp4"/>
+        </asset>
+        <asset id="r4" name="music" uid="91AA03B5" start="0s" duration="2880000/48000s" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000">
+            <media-rep kind="original-media" sig="91AA03B5" src="file:///arya-test/Film/media/music.m4a"/>
+        </asset>
+        <effect id="r5" name="Basic Title" uid=".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti"/>
+        <effect id="r6" name="Cross Dissolve" uid="FxPlug:4731E73A-8DAC-4113-9A30-AE85B1761265"/>
+        <media id="r7" name="Compound Clip 1" uid="C0MP0UND" modDate="2026-09-30 10:00:00 -0700">
+            <sequence format="r1" duration="96096/24000s" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
+                <spine>
+                    <asset-clip ref="r3" offset="0s" name="broll" start="240240/24000s" duration="96096/24000s" tcFormat="NDF"/>
+                </spine>
+            </sequence>
+        </media>
+    </resources>
+    <library location="file:///arya-test/Movies/Film.fcpbundle/">
+        <event name="Day 1" uid="E7D3">
+            <project name="Cut 1" uid="P4A1" modDate="2026-09-30 10:00:00 -0700">
+                <sequence format="r1" duration="456456/24000s" tcStart="3600s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
+                    <spine>
+                        <asset-clip ref="r2" offset="3600s" name="Interview" start="86640240/24000s" duration="132132/24000s" format="r1" tcFormat="NDF" audioRole="dialogue">
+                            <title ref="r5" lane="1" offset="86664264/24000s" name="Jane Doe - Basic Title" start="3600s" duration="48048/24000s">
+                                <param name="Position" key="9999/999166631/999166633/1/100/101" value="0 -450"/>
+                                <text>
+                                    <text-style ref="ts1">Jane Doe</text-style>
+                                </text>
+                                <text-style-def id="ts1">
+                                    <text-style font="Helvetica" fontSize="63" fontFace="Bold" fontColor="1 0.8 0 1" bold="1" alignment="left"/>
+                                </text-style-def>
+                            </title>
+                            <asset-clip ref="r4" lane="-1" offset="86640240/24000s" name="music" duration="360360/24000s" audioRole="music">
+                                <adjust-volume amount="-12dB"/>
+                            </asset-clip>
+                            <caption lane="2" offset="86640240/24000s" name="Hello there" start="3600s" duration="48048/24000s" role="iTT?captionFormat=ITT.en">
+                                <text placement="bottom">
+                                    <text-style ref="ts2">Hello there</text-style>
+                                </text>
+                                <text-style-def id="ts2">
+                                    <text-style font=".AppleSystemUIFont" fontSize="13" fontFace="Regular" fontColor="1 1 1 1" backgroundColor="0 0 0 1"/>
+                                </text-style-def>
+                            </caption>
+                            <marker start="86652252/24000s" duration="1001/24000s" value="Beat"/>
+                            <keyword start="86640240/24000s" duration="132132/24000s" value="interview"/>
+                        </asset-clip>
+                        <transition name="Cross Dissolve" offset="86508108/24000s" duration="24024/24000s">
+                            <filter-video ref="r6" name="Cross Dissolve"/>
+                        </transition>
+                        <asset-clip ref="r3" offset="86508108/24000s" name="broll" start="36036/24000s" duration="108108/24000s" format="r1" tcFormat="NDF"/>
+                        <gap name="Gap" offset="86616216/24000s" start="3600s" duration="48048/24000s">
+                            <spine lane="1" offset="86412012/24000s" format="r1">
+                                <asset-clip ref="r3" offset="0s" name="broll" start="0s" duration="24024/24000s" tcFormat="NDF"/>
+                                <asset-clip ref="r3" offset="24024/24000s" name="broll" start="120120/24000s" duration="24024/24000s" tcFormat="NDF"/>
+                            </spine>
+                            <chapter-marker start="86424024/24000s" duration="1001/24000s" value="Act Two" posterOffset="11/24s"/>
+                        </gap>
+                        <ref-clip ref="r7" offset="86664264/24000s" name="Compound Clip 1" duration="96096/24000s"/>
+                        <asset-clip ref="r2" offset="86760360/24000s" name="Slow" start="87360960/24000s" duration="48048/24000s" format="r1" tcFormat="NDF">
+                            <timeMap>
+                                <timept time="3600s" value="3600s" interp="smooth2"/>
+                                <timept time="88802400/24000s" value="87601200/24000s" interp="smooth2"/>
+                            </timeMap>
+                        </asset-clip>
+                        <clip name="Old Style" offset="86808408/24000s" duration="48048/24000s" format="r1" tcFormat="NDF">
+                            <video ref="r3" offset="0s" start="0s" duration="48048/24000s"/>
+                            <audio ref="r3" lane="-1" offset="0s" start="0s" duration="48048/24000s" role="dialogue"/>
+                        </clip>
+                    </spine>
+                </sequence>
+            </project>
+        </event>
+    </library>
+</fcpxml>

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "edit",
+    "label": "Edit",
+    "src": "/assets/product/edit-workspace.webp",
+    "width": 2000,
+    "height": 1250,
+    "alt": "Arya Edit page with a scene from Tears of Steel. The viewer shows two characters on a canal bridge with a selected TEARS OF STEEL title and a burned-in subtitle. Below, seven picture clips, linked dialogue with waveforms, a location card, an accent bar and two markers.",
+    "caption": "Edit. Seven shots cut from two source files, a selected native title over the picture, linked dialogue on A1 and markers on the ruler."
+  },
+  {
+    "id": "color",
+    "label": "Color",
+    "src": "/assets/product/color-workspace.webp",
+    "width": 2000,
+    "height": 1250,
+    "alt": "Arya Color page grading a close-up of Celia. A serial node graph runs Input, Primary, a qualifier corrector, a window corrector and Output. An RGB parade sits above lift, gamma, gain, offset, shadows and highlights wheels, balance values and a curve.",
+    "caption": "Color. A three-node grade on the close-up: primary balance, a skin qualifier and an inverted circle window, read on the RGB parade."
+  },
+  {
+    "id": "motion",
+    "label": "Motion",
+    "src": "/assets/product/motion-workspace.webp",
+    "width": 2000,
+    "height": 1250,
+    "alt": "Arya Motion page with the selected location card over a close-up of Thom. The layer list shows the card's transform properties with Position X and Opacity keyframes, and the inspector shows its transform values.",
+    "caption": "Motion. The location card's Position X and Opacity keyframes in the layer timeline, beside its transform inspector."
+  },
+  {
+    "id": "shorts",
+    "label": "Shorts",
+    "src": "/assets/product/shorts-workspace.webp",
+    "width": 2000,
+    "height": 1250,
+    "alt": "Arya Edit page with a 1080 by 1920 composition open. The vertical frame shows Celia on the bridge with a burned-in caption. The Shorts panel offers source, length, clip count, a 9:16 format and the word highlight caption style. Position keyframes mark the reframe on the clip.",
+    "caption": "Shorts. The bridge exchange as a 9:16 composition, reframed between the two speakers with Position X keyframes."
+  }
+]

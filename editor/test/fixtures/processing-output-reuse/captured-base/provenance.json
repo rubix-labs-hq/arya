@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "purpose": "Authentic historical route bytes for the output reuse regression. These files intentionally retain the pre-admission behavior.",
+  "capturedGitHead": "a2f003da9eb4ff499018a32124dc63f953068228",
+  "headMeaning": "The older packet recorded this dirty checkout HEAD. It does not claim the route bytes equal the Git commit.",
+  "runtimeImports": "The test rewrites relative imports to the tested checkout. Historical worker/filesystem boundaries retain the original controlled substitutions.",
+  "files": {
+    "analysis.mjs": {
+      "sha256": "006124e84c1f00ebe7d3f5ee8885bf4b50de45c4a8198c9c55b51b95eebbfe28",
+      "bytes": 18740,
+      "capturedSource": "build/arya-completion-processing-output-reuse-20261004/base/editor/routes/analysis.mjs",
+      "baseOrigin": "editor/routes/analysis.mjs",
+      "baseProvenanceSHA256": "c00d79cfbd4be3c14510e55b3a3c39ce468e154523608ebb13790ce10c833c80",
+      "sourceManifestSHA256": "9ee8bdaf676d7a291ae6fba15b6a7f43fa072525580b25789aee40c177a8081a"
+    },
+    "video-processing.mjs": {
+      "sha256": "f94952c9cc7edf621a8d6f218e4a75d58c359e3ef42b8386bc397249688f8c6d",
+      "bytes": 11232,
+      "capturedSource": "build/arya-completion-processing-output-reuse-20261004/base/editor/routes/video-processing.mjs",
+      "baseOrigin": "build/arya-completion-processing-video-20261004/candidate/editor/routes/video-processing.mjs",
+      "baseProvenanceSHA256": "c00d79cfbd4be3c14510e55b3a3c39ce468e154523608ebb13790ce10c833c80",
+      "sourceManifestSHA256": "9ee8bdaf676d7a291ae6fba15b6a7f43fa072525580b25789aee40c177a8081a"
+    }
+  }
+}
