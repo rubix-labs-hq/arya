@@ -66,7 +66,7 @@ export function createAssistantCatalog(options = {}) {
             // Do not advertise effort that the configured executable never receives.
             if (!(options.custom.args ?? []).some(arg => arg.includes('{effort}'))) records = records.map(record => ({ ...record, supportedReasoningEfforts: [], reasoningEfforts: [], defaultReasoningEffort: null, defaultEffort: null }))
             catalogs.push(normalizeCatalog({ provider: 'custom', records, checkedAt: now(), source: { kind: 'verified-custom-adapter', label: 'Host-configured adapter discovery' } }))
-          } else reasons.set(row.id, row.id === 'claude-code' ? 'Use Claude Code manually or through your own MCP connection. This CLI exposes no verified standalone account model list for Auto.' : 'This adapter has not supplied a verified model catalog.')
+          } else reasons.set(row.id, row.id === 'claude-code' ? 'Claude Code uses your account’s default model. Its CLI does not report a model list, so Auto cannot choose Claude Code models.' : 'This adapter has not supplied a verified model catalog.')
         } catch (error) { reasons.set(row.id, row.id === 'custom' ? 'The custom adapter could not provide a complete verified catalog. Check its local diagnostics.' : safeReason(error.message)) }
       }
       if (closed || revision !== currentRevision) return

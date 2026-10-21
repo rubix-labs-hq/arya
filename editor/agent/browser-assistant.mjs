@@ -20,6 +20,15 @@ const loginArgs = { 'claude-code': ['auth', 'login', '--claudeai'], codex: ['log
 const apiOverrides = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'OPENAI_FEDERATION_RULE_ID', 'OPENAI_IDENTITY_TOKEN_FILE', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'AGY_GATEWAY_API_KEY', 'AGY_GATEWAY_URL', 'AGY_ADC_AUTH', 'GOOGLE_GENAI_USE_VERTEXAI', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT']
 const shellQuote = value => `'${value.replaceAll("'", "'\\''")}'`
 const failure = (message, status = 400) => Object.assign(new Error(message), { status })
+// What the last request's preview became. The pending text matches the outcome drive()
+// publishes for a preview run, and stays until the user decides.
+const PREVIEW_OUTCOMES = {
+  pending: 'Preview mode was on. Proposed edits are applied only when you choose Apply.',
+  applied: 'You applied the preview. Use Undo this change to remove it.',
+  failed: 'The preview stopped before every step finished. Edits made before the failure stay in the project.',
+  discarded: 'You discarded the preview. No edits were applied.',
+  undone: 'You undid the applied preview.',
+}
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 const object = value => value && typeof value === 'object' && !Array.isArray(value)
 const bounded = (value, bytes, message) => { if (Buffer.byteLength(JSON.stringify(value)) > bytes) throw failure(message); return value }
@@ -521,11 +530,17 @@ export function createBrowserAssistant(options) {
       await cancelRemote(run)
       if (active === run) {
         if (!run.admissionUnconfirmed) active = null
-        if (!closed) publish({ state: run.stopUnconfirmed ? 'error' : 'cancelled', text: run.admissionUnconfirmed ? 'Agent shutdown could not be confirmed. Restart the assistant before sending another request.' : run.stopUnconfirmed ? 'Some processing could not confirm cancellation. Review the jobs before continuing.' : 'The assistant request was stopped.', phase: '', stopUnconfirmed: !!run.stopUnconfirmed })
+        if (!closed) publish({ state: run.stopUnconfirmed ? 'error' : 'cancelled', text: run.admissionUnconfirmed ? 'Agent shutdown could not be confirmed. Restart the assistant before sending another request.' : run.stopUnconfirmed ? 'Some processing could not confirm cancellation. Review the jobs before continuing.' : state.text ? `${state.text}\n\nStopped before the reply finished.` : 'The assistant request was stopped.', phase: '', stopUnconfirmed: !!run.stopUnconfirmed })
       }
       return { cancelled: !run.stopUnconfirmed, runId: run.id, state: run.stopUnconfirmed ? 'error' : 'cancelled', stopUnconfirmed: !!run.stopUnconfirmed }
     })()
     return run.cancellation
+  }
+  // The finished request's outcome still describes its preview after the user applies,
+  // discards or undoes it, so the chat would claim nothing was applied. Update it then.
+  const settlePreview = kind => {
+    if (closed || active || state.state !== 'done' || !Object.values(PREVIEW_OUTCOMES).includes(state.outcome) || !PREVIEW_OUTCOMES[kind]) return
+    publish({ outcome: PREVIEW_OUTCOMES[kind] })
   }
   const close = async () => {
     if (closed) return
@@ -537,5 +552,5 @@ export function createBrowserAssistant(options) {
     if (owner) await closeOwner(owner)
     active = null
   }
-  return { status, configure, login, sharing, grantSharing, revokeSharing, send, cancel, close, snapshot: () => ({ sharingConsentVersion: SHARING_VERSION, ...publicStatus, ...state, ...settings, providerName: settings.mode === 'auto' ? 'Auto' : names[settings.provider], bridgeConnected: !!bridge, sharing: { approved: !!grantRecord }, usage: null }) }
+  return { status, configure, login, sharing, grantSharing, revokeSharing, send, cancel, settlePreview, close, snapshot: () => ({ sharingConsentVersion: SHARING_VERSION, ...publicStatus, ...state, ...settings, providerName: settings.mode === 'auto' ? 'Auto' : names[settings.provider], bridgeConnected: !!bridge, sharing: { approved: !!grantRecord }, usage: null }) }
 }

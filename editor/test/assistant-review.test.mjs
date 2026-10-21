@@ -123,12 +123,13 @@ test('a preview carries processing steps, and a failed step keeps its notice unt
 
 function routeFixture({ call } = {}) {
   let project = newProject('Routes'), version = 3
-  const commits = [], calls = [], steps = []
+  const commits = [], calls = [], steps = [], settled = []
   const review = createAssistantReview({ getVersion: () => version, getEpoch: () => 1, getProject: () => project })
   const ctx = {
     getProject: () => project, getVersion: () => version, getProjectGeneration: () => 1, getAssistantReview: () => review,
     assertCurrent: () => typeof call === 'function' ? call() : call, probe: async src => ({ duration: 2, hasAudio: false, hasVideo: true, width: 160, height: 90 }),
     pushActivity: () => {},
+    assistant: { settlePreview: kind => settled.push(kind) },
     editOps: async (ops, who, summary, options) => {
       if (options.expectedVersion !== version) throw new Error('The project changed.')
       project = applyOps(project, ops).project; version++; commits.push({ who, summary }); return { version }
@@ -142,7 +143,7 @@ function routeFixture({ call } = {}) {
       return step?.result ?? { state: 'done', applied: true }
     },
   }
-  return { routes: assistantRoutes(ctx).routes, review, commits, calls, steps, get project() { return project }, get version() { return version }, set version(value) { version = value } }
+  return { routes: assistantRoutes(ctx).routes, review, commits, calls, steps, settled, get project() { return project }, get version() { return version }, set version(value) { version = value } }
 }
 
 test('propose checks ops against the project without saving and returns the outline it would have', async () => {
@@ -171,8 +172,10 @@ test('apply commits the whole preview once at its base version, and undo restore
   assert.deepEqual(f.commits[0], { who: 'agent', summary: 'Applied preview: One; Fade' })
   assert.equal(f.project.tracks.find(track => track.id === 'V3').clips[0].opacity, 0.5)
   assert.equal(applied.change.undoable, true)
+  assert.deepEqual(f.settled, ['applied'])
   const undone = f.routes['POST /api/assistant/change/undo']({ id: applied.change.id })
   assert.equal(undone.undone, true); assert.equal(f.project, before)
+  assert.deepEqual(f.settled, ['applied', 'undone'])
   assert.deepEqual(f.commits[1], { who: 'you', lines: ['Undo applied assistant preview'] })
   assert.throws(() => f.routes['POST /api/assistant/change/undo']({ id: applied.change.id }), /no longer the latest/)
 })
@@ -184,6 +187,7 @@ test('a stale preview cannot be applied and discard removes it', async () => {
   f.version = 9
   await assert.rejects(f.routes['POST /api/assistant/proposal/apply']({ id }), /changed after this preview/)
   assert.equal(f.routes['POST /api/assistant/proposal/discard']({ id }).discarded, true)
+  assert.deepEqual(f.settled, ['discarded'], 'the request outcome learns the preview was discarded')
   assert.equal(f.review.snapshot().proposal, null)
 })
 
@@ -297,8 +301,10 @@ test('actual server preview mode refuses direct edits, shows the proposal and ap
   const title = edited.project.tracks.find(track => track.id === 'V3').clips[0]
   assert.equal(title.title.text, 'Previewed title'); assert.equal(title.opacity, 0.5)
   assert.equal(edited.activity.at(-1).who, 'agent')
+  assert.equal((await server.api('GET', '/api/state')).body.assistant.outcome, 'You applied the preview. Use Undo this change to remove it.', 'the request outcome no longer says nothing was applied')
   const undone = await server.api('POST', '/api/assistant/change/undo', { id: applied.body.change.id })
   assert.equal(undone.status, 200, JSON.stringify(undone))
+  assert.equal((await server.api('GET', '/api/state')).body.assistant.outcome, 'You undid the applied preview.')
   assert.deepEqual((await server.api('GET', '/api/project')).body.project, before.project)
   const redone = (await server.api('POST', '/api/undo', {})).body
   assert.equal(redone.project.tracks.find(track => track.id === 'V3').clips[0].title.text, 'Previewed title', 'the one-step undo is itself undoable')
@@ -387,6 +393,9 @@ test('a failing step stops the rest, keeps earlier edits undoable together and e
   const state = f.review.snapshot()
   assert.match(state.applying.error, /Stabilize \(deshake render\) did not finish: ffmpeg is missing\. The remaining 1 step was not run\./)
   assert.equal(state.change.undoable, true); assert.equal(state.change.edits, 1)
+  assert.deepEqual(f.settled, ['failed'], 'a failed step does not report the preview as applied')
+  f.routes['POST /api/assistant/proposal/discard']({ id: state.applying.id })
+  assert.deepEqual(f.settled, ['failed'], 'dismissing the failed apply card is not a discarded preview')
 })
 
 test('a later proposal in the same request fills earlier steps from the project it would make', async () => {

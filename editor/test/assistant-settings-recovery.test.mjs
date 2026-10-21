@@ -342,3 +342,74 @@ test('an older composer response cannot replace a newer Settings refresh', async
   assert.equal(fixture.provider().props.value, 'codex')
   assert.deepEqual(fixture.state.assistantStatus.enabledModels, newest.enabledModels)
 })
+
+test('closing with ✕ or Escape keeps an unsaved model draft until the user saves or discards it', async () => {
+  const initial = savedStatus({ mode: 'manual' })
+  let written
+  const fixture = settingsFixture(initial, async (route, body) => {
+    if (route === '/api/assistant/config') { written = body; return { ...initial, ...body } }
+    return written ? { ...initial, ...written } : initial
+  })
+  await fixture.flush()
+  fixture.button('✕').props.onClick()
+  assert.equal(fixture.state.settingsOpen, false, 'Without a draft, ✕ closes at once.')
+  fixture.state.settingsOpen = true
+  nodes(fixture.tree).find(node => node.type === 'input' && node.props.maxLength === '128').props.onInput({ target: { value: 'draft-model' } })
+  await fixture.flush()
+  fixture.button('✕').props.onClick()
+  await fixture.flush()
+  assert.equal(fixture.state.settingsOpen, true, 'A draft is not dropped silently.')
+  assert.match(text(nodes(fixture.tree).find(node => node.type === 'footer')), /You have unsaved changes\. Save them, or discard them to close\./)
+  assert.ok(fixture.button('Discard changes')); assert.equal(fixture.button('Cancel'), undefined)
+  nodes(fixture.tree).find(node => node.type === 'section').props.onKeyDown({ key: 'Escape', stopPropagation() {}, preventDefault() {} })
+  await fixture.flush()
+  assert.equal(fixture.state.settingsOpen, true, 'Escape follows the same rule as ✕.')
+  assert.equal(fixture.requests.some(request => request.route === '/api/assistant/config'), false)
+  await fixture.button('Save and close').props.onClick()
+  await fixture.flush()
+  assert.equal(written.model, 'draft-model')
+  assert.equal(fixture.state.settingsOpen, false)
+})
+
+test('Discard changes closes and sends nothing', async () => {
+  const initial = savedStatus({ mode: 'manual' })
+  const fixture = settingsFixture(initial, async () => initial)
+  await fixture.flush()
+  nodes(fixture.tree).find(node => node.type === 'input' && node.props.maxLength === '128').props.onInput({ target: { value: 'draft-model' } })
+  await fixture.flush()
+  fixture.button('✕').props.onClick()
+  await fixture.flush()
+  fixture.button('Discard changes').props.onClick()
+  assert.equal(fixture.state.settingsOpen, false)
+  assert.equal(fixture.requests.some(request => request.route === '/api/assistant/config'), false)
+})
+
+test('one click switches to a provider that is signed in and ready', async () => {
+  const initial = savedStatus({ mode: 'manual' })
+  let written
+  const fixture = settingsFixture(initial, async (route, body) => {
+    if (route === '/api/assistant/config') { written = body; return { ...initial, ...body } }
+    return written ? { ...initial, ...written } : initial
+  })
+  await fixture.flush()
+  await fixture.button('Claude Code · Suggested').props.onClick()
+  await fixture.flush()
+  assert.equal(written.provider, 'claude-code'); assert.equal(written.mode, 'manual'); assert.equal(written.model, '')
+  assert.equal(fixture.state.assistantStatus.provider, 'claude-code')
+  assert.equal(fixture.button('Claude Code · Suggested').props['aria-pressed'], true)
+  assert.ok(fixture.button('Assistant is on'))
+  assert.equal(fixture.button('Save and close'), undefined, 'The switch is saved, so no draft remains.')
+})
+
+test('choosing a provider that is not signed in only previews it and explains the next step', async () => {
+  const initial = savedStatus({ mode: 'manual', providers: [{ id: 'codex', installed: true, authenticated: true, available: true, canLogin: true, modelSelectionSupported: true }, { id: 'claude-code', installed: true, authenticated: false, available: false, canLogin: true }] })
+  const fixture = settingsFixture(initial, async () => initial)
+  await fixture.flush()
+  await fixture.button('Claude Code · Suggested').props.onClick()
+  await fixture.flush()
+  assert.equal(fixture.requests.some(request => request.route === '/api/assistant/config'), false)
+  assert.equal(fixture.provider().props.value, 'claude-code')
+  assert.match(text(fixture.tree), /Sign-in needed/)
+  assert.equal(fixture.button('Use Claude Code').props.disabled, true)
+  assert.ok(fixture.button('Sign in to Claude Code'))
+})

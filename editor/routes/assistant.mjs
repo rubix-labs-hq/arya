@@ -33,6 +33,7 @@ export default ctx => {
       }
     }
     r.finishApply(ctx.getProject(), error)
+    ctx.assistant?.settlePreview?.(error ? 'failed' : 'applied')
   }
   return { routes: {
     'GET /api/assistant/status': (_, query) => ctx.assistant.status({ refresh: query?.get('refresh') === '1' }),
@@ -129,7 +130,11 @@ export default ctx => {
         r.finishApply(ctx.getProject(), error.message)
         throw error
       }
-      if (!proposal.steps.length) return { applied: true, version: ctx.getVersion(), change: r.finishApply(ctx.getProject()) }
+      if (!proposal.steps.length) {
+        const change = r.finishApply(ctx.getProject())
+        ctx.assistant?.settlePreview?.('applied')
+        return { applied: true, version: ctx.getVersion(), change }
+      }
       // Processing can take minutes. It runs in order after this answer; progress arrives as review events.
       owned(() => runSteps(r, proposal.steps)).catch(() => {})
       return { applied: true, running: true, steps: proposal.steps.length, version: ctx.getVersion() }
@@ -137,7 +142,10 @@ export default ctx => {
 
     'POST /api/assistant/proposal/discard': body => {
       userOnly()
-      return { discarded: review().discard(body?.id) }
+      // Discard also dismisses a finished apply card; only a pending preview was discarded.
+      const pending = review().proposal()?.id === body?.id, discarded = review().discard(body?.id)
+      if (discarded && pending) ctx.assistant?.settlePreview?.('discarded')
+      return { discarded }
     },
 
     // Restores the project from before the latest assistant change in one undoable step.
@@ -149,6 +157,7 @@ export default ctx => {
       if (!target.change) throw refused(target.reason)
       ctx.commit(target.change.before, 'you', [`Undo ${target.change.label.toLowerCase()}`])
       r.undone(target.change.id)
+      if (target.change.kind === 'preview') ctx.assistant?.settlePreview?.('undone')
       return { undone: true, version: ctx.getVersion() }
     },
   } }

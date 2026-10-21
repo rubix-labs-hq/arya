@@ -62,10 +62,23 @@ test('a preview lists each changed layer with readable before and after values',
   assert.deepEqual(changes.settings, [], 'track reordering from an added clip is not listed as a setting')
   const calls = []
   const tree = assistantPanel.PreviewCard({ proposal, project: p, version: 3, running: false, busy: '', onApply: () => calls.push('apply'), onDiscard: () => calls.push('discard') })
-  assert.match(text(tree), /Apply changes 2 layers ?\. Nothing has changed yet ?\./)
+  assert.match(text(tree), /Apply changes to 2 layers ?\. Nothing has changed yet ?\./)
   assert.equal(button(tree, 'Apply').props.disabled, false)
   button(tree, 'Apply').props.onClick(); button(tree, 'Discard').props.onClick()
   assert.deepEqual(calls, ['apply', 'discard'])
+})
+
+test('a preview names the track kind, so a clip and its linked audio read apart', () => {
+  const p = interview()
+  const proposal = { id: 'p3', baseVersion: 3, at: 1, summary: 'Quieter and dimmer', stale: false, ops: [
+    { op: 'update', id: 'c1', set: { opacity: 0.5 } },
+    { op: 'update', id: 'c1a', set: { gain: -6 } },
+  ] }
+  const changes = assistantPanel.previewChanges(p, proposal)
+  assert.deepEqual(changes.layers.map(layer => [layer.name, layer.track]), [['a.mp4', 'Video'], ['a.mp4', 'Audio']])
+  const tree = assistantPanel.PreviewCard({ proposal, project: p, version: 3, running: false, busy: '' })
+  const rows = nodes(tree).filter(node => node.type === 'small').map(text)
+  assert.deepEqual(rows, ['Main timeline · Video', 'Main timeline · Audio'])
 })
 
 test('stale, failing, running and new-media previews are explained and cannot apply when unsafe', () => {
@@ -97,7 +110,7 @@ test('a preview with processing steps lists what each renders and where it lands
     { path: '/api/stabilize/render', body: { src: 'media/a.mp4', clip: 'c1' }, preview: { title: 'Stabilize (deshake render)', produces: 'A steadied 20 s copy of a.mp4 in media/stabilized.', lands: 'Replaces the picture of a.mp4 (c1) on V1 at 00:00:00:00. Timing stays the same.' } },
   ] }
   const tree = assistantPanel.PreviewCard({ proposal, project: p, version: 3, running: false, busy: '', onApply: () => {}, onDiscard: () => {} })
-  assert.match(text(tree), /Apply runs 1 processing step ?\. Nothing has changed yet and nothing renders until you apply ?\./)
+  assert.match(text(tree), /Apply to run 1 processing step ?\. Nothing has changed yet and nothing renders until you apply ?\./)
   const steps = nodes(tree).find(node => node.props?.class === 'assistant-preview-steps')
   assert.match(text(steps), /Stabilize \(deshake render\) Produces A steadied 20 s copy of a\.mp4 in media\/stabilized\. Lands Replaces the picture of a\.mp4 \(c1\)/)
   assert.equal(button(tree, 'Apply').props.disabled, false)

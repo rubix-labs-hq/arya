@@ -272,7 +272,7 @@ test('host refresh coalesces account and metadata work; missing Claude discovery
   const values = await Promise.all([first, second])
   assert.equal(accounts, 1); assert.equal(probes, 1)
   assert.equal(values[0].catalogs[0].models.length, 3)
-  assert.match(values[0].providers.find(row => row.id === 'claude-code').catalogReason, /no verified standalone/)
+  assert.match(values[0].providers.find(row => row.id === 'claude-code').catalogReason, /uses your account’s default model\. Its CLI does not report a model list/)
   assert.equal(values[0].providers.find(row => row.id === 'antigravity').adapterSupported, false)
   assert.equal(values[0].providers.find(row => row.id === 'claude-code').productLoginApproval, 'unverified')
   assert.equal((await host.resolve(prefs, { text: 'Rename this title', selectionCount: 1 })).model, 'swift')

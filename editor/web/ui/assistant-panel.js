@@ -34,9 +34,10 @@ function previewChanges(project, proposal) {
     const receipt = changeReceipt(project, next, { version: proposal.baseVersion + 1, who: 'agent', at: proposal.at })
     if (!receipt) return { error: 'These edits would not change the project.' }
     // Name layers as the timeline does, and list new nested values one property at a time.
-    const names = new Map()
-    for (const p of [project, next]) for (const scope of [p, ...Object.values(p.comps ?? {})]) for (const track of scope.tracks ?? []) for (const clip of track.clips ?? []) names.set(clip.id, clipName(next, clip))
-    const layers = receipt.clips.map(layer => ({ ...layer, name: names.get(layer.id) ?? layer.name, changes: layer.changes.flatMap(expand) }))
+    // A linked video clip and its audio share a name, so each row also says which kind of track it is on.
+    const names = new Map(), kinds = new Map()
+    for (const p of [project, next]) for (const scope of [p, ...Object.values(p.comps ?? {})]) for (const track of scope.tracks ?? []) for (const clip of track.clips ?? []) { names.set(clip.id, clipName(next, clip)); kinds.set(clip.id, track.kind === 'audio' ? 'Audio' : 'Video') }
+    const layers = receipt.clips.map(layer => ({ ...layer, name: names.get(layer.id) ?? layer.name, track: kinds.get(layer.id) ?? '', changes: layer.changes.flatMap(expand) }))
     // A clip added to or removed from a track also reorders it; the layer row already says so.
     const settings = receipt.scopes.filter(scope => scope.changes.some(change => change.property !== 'Object order')).map(scope => scope.changes.filter(change => change.property !== 'Object order').every(change => change.property === 'duration') ? { ...scope, name: 'Timeline length' } : scope)
     return { receipt, layers, settings }
@@ -61,16 +62,18 @@ function PreviewCard({ proposal, project, version, running, newRequest, busy, on
   const stale = proposal.stale || proposal.baseVersion !== version
   const { receipt, error, layers = [], settings = [] } = stale ? {} : previewChanges(project, proposal)
   const steps = proposal.steps ?? []
-  const headline = [receipt?.total ? `changes ${plural(receipt.total, 'layer')}` : '', settings.length ? `changes ${plural(settings.length, 'setting group')}` : '', steps.length ? `runs ${plural(steps.length, 'processing step')}` : ''].filter(Boolean).join(', ')
+  const changed = [receipt?.total ? plural(receipt.total, 'layer') : '', settings.length ? plural(settings.length, 'setting group') : ''].filter(Boolean).join(' and ')
+  const run = steps.length ? `run ${plural(steps.length, 'processing step')}` : ''
+  const headline = changed ? `Apply changes to ${changed}${run ? ` and ${run}` : ''}` : run ? `Apply to ${run}` : 'Apply these edits'
   return html`<section class="assistant-preview" aria-label="Preview of proposed changes">
     <header><span class="assistant-card-label">Preview</span><b>${proposal.summary || plural(proposal.ops.length, 'edit')}</b></header>
     ${proposal.replaced ? html`<p class="assistant-preview-note">Replaces the earlier preview: ${proposal.replaced}.</p>` : null}
     ${newRequest && !stale ? html`<p class="assistant-preview-note" role="status">The assistant is working on a new request. This preview stays until that request makes its own.</p>` : null}
     ${stale ? html`<p class="assistant-preview-note" role="status">The project changed after this preview. Ask again for a current one.</p>`
       : error ? html`<p class="assistant-preview-note" role="alert">This preview cannot be applied: ${error}</p>`
-      : html`<p class="assistant-preview-note">Apply ${headline}. Nothing has changed yet${steps.length ? ' and nothing renders until you apply' : ''}.</p>`}
+      : html`<p class="assistant-preview-note">${headline}. Nothing has changed yet${steps.length ? ' and nothing renders until you apply' : ''}.</p>`}
     ${layers.length ? html`<ul class="assistant-preview-list">${layers.slice(0, MAX_LAYERS).map(layer => html`<li key=${`${layer.comp}:${layer.id}`}>
-      <div><b>${layer.name}</b><span class=${`assistant-preview-status ${layer.status}`}>${STATUS[layer.status] ?? layer.status}</span><small>${layer.compositionName} · ${layer.id}</small></div>
+      <div><b>${layer.name}</b><span class=${`assistant-preview-status ${layer.status}`}>${STATUS[layer.status] ?? layer.status}</span><small>${layer.compositionName} · ${layer.track || layer.id}</small></div>
       ${layer.status === 'changed' ? html`<dl>${layer.changes.slice(0, MAX_PROPERTIES).map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span aria-label="changes to"> → </span><span>${change.after}</span></dd>`)}</dl>` : null}
       ${layer.status === 'changed' && layer.changes.length > MAX_PROPERTIES ? html`<small>${plural(layer.changes.length - MAX_PROPERTIES, 'more property', 'more properties')}</small>` : null}
     </li>`)}</ul>` : null}

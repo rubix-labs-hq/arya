@@ -581,3 +581,28 @@ test('actual browser HTTP withdrawal invalidates previous envelopes and stale re
   const allowed = await server.api('POST', '/api/assistant/sharing/grant', { reviewID: fresh.reviewID, sharing: fixtureSharing(fresh.scope.companion, fresh.scope.models) })
   assert.equal(allowed.status, 200); assert.equal(allowed.body.approved, true)
 })
+
+test('stopping keeps the streamed part of the reply and adds a short stopped note', async t => {
+  const root = temporary(t)
+  let streamed = true
+  const fixture = http.createServer(async (req, res) => {
+    const reply = value => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(value)) }
+    if (req.url === '/v1/runs') { let text = ''; for await (const part of req) text += part; return reply({ id: JSON.parse(text).id }) }
+    if (req.url.endsWith('/cancel')) return reply({ id: req.url.split('/')[3], cancelled: true })
+    return reply({ events: streamed && req.url.endsWith('after=0') ? [{ seq: 1, type: 'text', text: 'The first two cuts are' }] : [] })
+  })
+  await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve))
+  const service = createBrowserAssistant(options(root, { startBridge: async () => ({ endpoint: 'http://127.0.0.1:' + fixture.address().port + '/', token: 'fixture-token', close: async () => {} }) }))
+  t.after(async () => { await service.close(); fixture.closeAllConnections(); await new Promise(resolve => fixture.close(resolve)) })
+  await approveFixture(service)
+  await service.send({ text: 'Explain the cuts.' })
+  await waitFor(() => service.snapshot().text === 'The first two cuts are')
+  await service.cancel()
+  assert.equal(service.snapshot().state, 'cancelled')
+  assert.equal(service.snapshot().text, 'The first two cuts are\n\nStopped before the reply finished.')
+  streamed = false
+  await service.send({ text: 'Try again.' })
+  await sleep(150)
+  await service.cancel()
+  assert.equal(service.snapshot().text, 'The assistant request was stopped.', 'with nothing streamed, the stop message stands alone')
+})
