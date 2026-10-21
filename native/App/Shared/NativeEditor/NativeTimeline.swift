@@ -412,8 +412,12 @@ enum NativeTimelinePlanning {
                 let comps = fields["comps"] as? [String: Any] ?? [:]
                 guard let comp = comps[clip.fields["comp"] as? String ?? ""] as? [String: Any] else { throw Failure("A source composition was removed.") }
                 if let duration = (comp["duration"] as? NSNumber)?.doubleValue, duration.isFinite, duration > 0 { return duration }
-                let end = (comp["tracks"] as? [[String: Any]] ?? []).flatMap { $0["clips"] as? [[String: Any]] ?? [] }.map {
-                    (($0["start"] as? NSNumber)?.doubleValue ?? 0) + (($0["dur"] as? NSNumber)?.doubleValue ?? 0)
+                let tracks = comp["tracks"] as? [[String: Any]] ?? []
+                let nested: [[String: Any]] = tracks.flatMap { (track: [String: Any]) -> [[String: Any]] in track["clips"] as? [[String: Any]] ?? [] }
+                let end: Double = nested.map { (item: [String: Any]) -> Double in
+                    let start = (item["start"] as? NSNumber)?.doubleValue ?? 0
+                    let duration = (item["dur"] as? NSNumber)?.doubleValue ?? 0
+                    return start + duration
                 }.max() ?? 0
                 guard end.isFinite, end >= 0 else { throw Failure("A source composition has invalid timing.") }
                 return end > 0 ? end : 5
@@ -834,7 +838,12 @@ struct NativeTimeline: View {
         let extending: Bool
     }
 
+    // Split into three parts so the iOS build type-checks in reasonable time.
     var body: some View {
+        lifecycleResets(interactionTracking(timelineSurface))
+    }
+
+    private var timelineSurface: some View {
         VStack(spacing: 0) {
             NativeTimelineToolbar(model: model, mode: $mode, snapping: $snapping, extending: $extendingSelection,
                                   detail: feedback.isEmpty ? preview?.detail ?? "\(model.selectedIDs.count) selected" : feedback,
@@ -980,6 +989,10 @@ struct NativeTimeline: View {
             #endif
             }
         }.background(NativeEditorStyle.background)
+    }
+
+    private func interactionTracking(_ content: some View) -> some View {
+        content
         #if os(iOS)
         .background {
             GeometryReader { geometry in
@@ -1007,6 +1020,10 @@ struct NativeTimeline: View {
         .onChange(of: model.showingSource) { _, visible in invalidateArmedFeedback(visible) }
         .onChange(of: model.projectReadOnlyReason) { _, reason in invalidateArmedFeedback(reason != nil) }
         #endif
+    }
+
+    private func lifecycleResets(_ content: some View) -> some View {
+        content
         .onChange(of: model.composition) { _, _ in
             #if os(iOS)
             cancelLayoutInteraction()
