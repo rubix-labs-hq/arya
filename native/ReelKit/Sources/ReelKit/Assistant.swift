@@ -107,10 +107,10 @@ public actor Assistant {
         public var errorDescription: String? {
             switch self {
             case .sharingRequired: return "Review and allow AI sharing for the current recipients before sending. Your draft is still here."
-            case .unconfigured: return "Add your Anthropic API key in Reel's Assistant settings."
-            case .busy: return "Claude is already working. Cancel that request or wait for it to finish."
+            case .unconfigured: return "Add your Anthropic API key in Arya's Assistant settings."
+            case .busy: return "The assistant is already working. Cancel that request or wait for it to finish."
             case .invalidPrompt: return "Enter a message of at most 32,000 characters."
-            case .invalidModel: return "Enter a valid Anthropic model ID in Assistant settings."
+            case .invalidModel: return "Enter a valid model ID in Assistant settings."
             case .invalidResponse: return "Anthropic returned an unreadable response. Try again."
             case .network: return "Could not reach Anthropic. Check your connection and try again."
             case .provider(401), .provider(403): return "Anthropic did not accept this API key. Replace it in Assistant settings."
@@ -118,7 +118,7 @@ public actor Assistant {
             case .provider(let code): return "Anthropic could not complete this request, HTTP \(code). Check your model and API account."
             case .truncated: return "Claude reached the response limit. Ask for a smaller edit."
             case .iterationLimit: return "Claude reached this request's turn limit. Review the edits and send a follow-up."
-            case .toolLimit: return "Claude reached this request's tool limit. Review the edits and send a follow-up."
+            case .toolLimit: return "The assistant reached this request's tool limit. Review the edits and send a follow-up."
             }
         }
     }

@@ -168,7 +168,7 @@ test('actual Settings withdrawal button calls the revocation endpoint and report
   for (const stopUnconfirmed of [false, true]) {
     const calls = [], notices = []
     const prefs = { provider: 'codex', mode: 'manual', model: '', agent: '', effort: '', enabledModels: [] }
-    const state = { caps: {}, assistantStatus: { ...prefs, configured: true, providers: [{ id: 'codex', available: true, authenticated: true }] } }
+    const state = { caps: {}, assistantStatus: { ...prefs, sharing: { approved: true }, configured: true, providers: [{ id: 'codex', available: true, authenticated: true }] } }
     const render = new Function('h', 'htm', 'useEffect', 'useRef', 'useState', 'useStore', 'api', 'set', 'store', 'toast', 'ASSISTANT_PROVIDERS', 'assistantState', 'providerName', 'safeInstallURL', 'LayoutMenu', 'ModelPool', 'manualModelChoices', 'routingPreferencesForHost', 'routingCapabilities', 'routingPriorityOptions', 'registry', 'withdrawAssistantSharing', 'autoModelPool', 'routingPreferences', 'assistantActivity', 'refreshAssistantStatus', `const host = { kind: "http" };\n${source}\nreturn Settings()`)
     const request = async path => { calls.push(path); return path.endsWith('/revoke') ? { version: 1, revoked: true, approved: false, stopUnconfirmed } : state.assistantStatus }
     const refreshStatus = new Function('api', 'set', `${statusSource}\nreturn refreshAssistantStatus`)(request, () => {})

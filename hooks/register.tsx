@@ -1,6 +1,6 @@
 // Reel: a video editor you can direct. This mod runs the Reel editor (a local web app
 // with a GPU compositor, timeline, color, audio and delivery pages), gives Claude tools
-// that edit the same project live, and relays the editor's chat and references to Claude.
+// that edit the same project live. Editor chat starts a separate CLI run.
 
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
@@ -163,7 +163,7 @@ async function ensureServer($: $): Promise<ReelServer> {
   const editor = `${$.plugin.root}/editor/server.mjs`
   await $.process.run(['/bin/mkdir', '-p', `${root}/.reel`])
   const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
-  await $.process.run(['/bin/sh', '-c', `PATH=${PATH_ENV}:$PATH nohup node ${q(editor)} --root ${q(root)} --port ${free} >> ${q(`${root}/.reel/server.log`)} 2>&1 &`])
+  await $.process.run(['/bin/sh', '-c', `PATH=${PATH_ENV}:$PATH nohup node ${q(editor)} --root ${q(root)} --port ${free} --plugin true >> ${q(`${root}/.reel/server.log`)} 2>&1 &`])
   for (let i = 0; i < 50; i++) {
     const st = await stateAt($, free)
     if (st?.root === root) {
@@ -197,6 +197,7 @@ async function note($: $, who: ReelLogEntry['who'], text: string) {
 
 async function openEditor($: $) {
   const server = await ensureServer($)
+  await claudeStatus($, 'idle')
   await $.process.run(['/usr/bin/open', server.url])
 
   return server
@@ -285,9 +286,9 @@ async function describeRefs($: $, refs: readonly ReelRef[]): Promise<string[]> {
   return lines
 }
 
-async function claudeStatus($: $, state: string, text = '', reply?: string) {
+async function claudeStatus($: $, state: string, text = '') {
   try {
-    await call($, '/api/bridge/claude', { state, text, ...(reply ? { reply } : {}) })
+    await call($, '/api/bridge/claude', { state, text })
   } catch {}
 }
 
@@ -420,7 +421,7 @@ export const register: Register = (on, options) => {
       if (verb === 'off') {
         await setOn($, false)
 
-        return { text: 'Reel is off: the editor server stopped, Claude has no Reel tools to use, and nothing is relayed. /reel on brings it back.' }
+        return { text: 'Reel is off: the editor server stopped, Claude has no Reel tools to use, and editor chat is unavailable. /reel on brings it back.' }
       }
       if (verb === 'status') {
         await refreshServer($)

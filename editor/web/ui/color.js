@@ -345,7 +345,7 @@ function Scopes() {
 
   return html`
     <div class="scopes">
-      <div class="seg">${['waveform', 'parade', 'vectorscope', 'histogram'].map(k => html`<button class=${s.scopes.kind === k ? 'on' : ''} onClick=${() => set({ scopes: { kind: k } })}>${k}</button>`)}</div>
+      <div class="seg" role="group" aria-label="Scope">${[['waveform', 'Waveform'], ['parade', 'Parade'], ['vectorscope', 'Vectorscope'], ['histogram', 'Histogram']].map(([k, label]) => html`<button class=${s.scopes.kind === k ? 'on' : ''} aria-pressed=${s.scopes.kind === k} onClick=${() => set({ scopes: { kind: k } })}>${label}</button>`)}</div>
       <canvas ref=${cv} width="512" height="256" class="scope-canvas" onClick=${e => e.altKey && addRef({ kind: 'scope', id: `${s.scopes.kind}@${time.t.toFixed(2)}`, label: `${s.scopes.kind} at ${timecode(time.t, s.project.fps)}` })}></canvas>
     </div>
   `

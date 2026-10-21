@@ -47,6 +47,13 @@ public actor AgentBridge {
 
     public func status(refresh: Bool = false) async throws -> JSON { JSON(any: try await request("GET", refresh ? "/v1/status?refresh=1" : "/v1/status")) }
 
+    /// Stops only the authenticated loopback helper, never a remote companion or arbitrary PID.
+    public func shutdownLocalHelper() async throws {
+        guard !running, configuration.endpoint.scheme == "http",
+              ["127.0.0.1", "localhost", "::1", "[::1]"].contains(configuration.endpoint.host?.lowercased() ?? "") else { throw Failure.invalidConfiguration }
+        _ = try await request("POST", "/v1/shutdown", body: .object([]))
+    }
+
     public func run(_ text: String, provider: String = "claude-code", model: String? = nil, agent: String? = nil,
                     routing: JSON? = nil, sharing: AssistantSharingScope? = nil, authorize: Assistant.SharingAuthorization = { throw Assistant.Failure.sharingRequired }, routed: @escaping @Sendable (JSON) async -> Void = { _ in },
                     context: JSON = .object([]), tool: @escaping Assistant.ToolHandler,
@@ -207,7 +214,7 @@ public actor AgentBridge {
               url.port == configuration.endpoint.port else { throw Failure.invalidConfiguration }
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = path.hasSuffix("/cancel") ? 5 : 30
+        request.timeoutInterval = (path.hasSuffix("/cancel") || path == "/v1/shutdown") ? 5 : 30
         request.setValue("Bearer " + configuration.token, forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let body {

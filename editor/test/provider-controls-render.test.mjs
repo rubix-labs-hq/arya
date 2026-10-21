@@ -124,7 +124,7 @@ test('Settings renders real account setup steps and Auto pool without malformed 
   const tree = render(h, htm, () => {}, value => ({ current: value }), value => [value, () => {}], () => state, () => {}, () => {}, state, () => {}, ASSISTANT_PROVIDERS, assistantState, providerName, safeInstallURL, () => null, { settings: [] }, components.ModelPool, components.autoModelPool, assistantActivity, components.routingPreferences, components.routingCapabilities, components.routingPreferencesForHost, components.routingPriorityOptions, components.manualModelChoices)
   const all = nodes(tree)
   for (const node of all) assert.ok(typeof node.type === 'string' || typeof node.type === 'function')
-  assert.equal(all.filter(node => node.type === 'li').length, 3)
+  assert.deepEqual(all.filter(node => node.type === 'h3' && /^[123]\./.test(text(node))).map(text), ['1. Choose Claude Code or Codex', '2. Sign in', '3. Turn on the assistant'])
   assert.ok(all.some(node => node.type === 'select' && node.props.value === mode))
   assert.equal(all.some(node => node.type === components.ModelPool), mode === 'auto')
   if (mode === 'manual') assert.ok(all.some(node => node.type === 'select' && node.props.value === 'swift'))

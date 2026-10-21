@@ -20,8 +20,11 @@ final class NativeAudioPreviewReuseTests: XCTestCase {
     }
     private func entry(store: Reuse.Store, identity: Reuse.Identity, frames: Int = 57600) throws -> Reuse.Entry {
         let binFrames = 2400, count = (frames - 1) / binFrames + 1
-        let bins = (0..<count).map { ReelAudioMeterBin(frameCount: min(binFrames, frames - $0 * binFrames), leftPeak: Double($0) / 100,
-            rightPeak: Double($0) / 200, leftSumSquares: Double($0), rightSumSquares: Double($0) / 2) }
+        let bins: [ReelAudioMeterBin] = (0..<count).map { (index: Int) -> ReelAudioMeterBin in
+            let value = Double(index)
+            return ReelAudioMeterBin(frameCount: min(binFrames, frames - index * binFrames), leftPeak: value / 100,
+                rightPeak: value / 200, leftSumSquares: value, rightSumSquares: value / 2)
+        }
         return .init(identity: identity, sources: [], profile: try profile(graph()), samples: 0..<frames,
             pcm: .init(channels: [[Float](repeating: 0, count: frames), [Float](repeating: 0, count: frames)], rate: 48000),
             meters: .init(rate: 48000, frameCount: frames, binFrames: binFrames, buses: ["A1": bins], available: true),

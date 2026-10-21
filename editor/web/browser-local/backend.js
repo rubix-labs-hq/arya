@@ -1,5 +1,5 @@
 const copy = value => structuredClone(value)
-const unsupported = 'This service needs the native Arya app or your own local Arya server. Hosted browser projects stay on your device; no agent or cloud service is connected.'
+const unsupported = 'This feature needs the Arya Mac app or the local editor. Hosted browser projects stay on your device; no agent or cloud service is connected.'
 const safeName = value => String(value ?? 'Untitled').replace(/[\u0000-\u001f/\\]/g, '_').slice(0, 180) || 'Untitled'
 const active = job => ['queued', 'running', 'cancelling', 'committing'].includes(job.state)
 

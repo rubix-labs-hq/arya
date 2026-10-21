@@ -38,7 +38,7 @@ function previewChanges(project, proposal) {
     for (const p of [project, next]) for (const scope of [p, ...Object.values(p.comps ?? {})]) for (const track of scope.tracks ?? []) for (const clip of track.clips ?? []) names.set(clip.id, clipName(next, clip))
     const layers = receipt.clips.map(layer => ({ ...layer, name: names.get(layer.id) ?? layer.name, changes: layer.changes.flatMap(expand) }))
     // A clip added to or removed from a track also reorders it; the layer row already says so.
-    const settings = receipt.scopes.filter(scope => scope.changes.some(change => change.property !== 'Object order'))
+    const settings = receipt.scopes.filter(scope => scope.changes.some(change => change.property !== 'Object order')).map(scope => scope.changes.filter(change => change.property !== 'Object order').every(change => change.property === 'duration') ? { ...scope, name: 'Timeline length' } : scope)
     return { receipt, layers, settings }
   } catch (error) {
     return { error: String(error?.message ?? error) }

@@ -132,6 +132,7 @@ final class NativeAssistant: ObservableObject {
     private var jobOutcomes: [String: [String: Any]] = [:]
     private var toolOutcomes = AssistantToolOutcomes()
     @Published private(set) var progress = ""
+    @Published private(set) var partialReply = ""
     @Published private(set) var startedAt: Date?
     @Published private(set) var updatedAt: Date?
     @Published private(set) var finishedAt: Date?
@@ -480,7 +481,23 @@ final class NativeAssistant: ObservableObject {
         guard NSWorkspace.shared.open(try folder.output(launcher.path)) else { throw ReelBackend.APIError("Terminal could not open the sign-in launcher.") }
     }
 
+    func restartBridge() async throws {
+        guard task == nil, stoppingTask == nil else { throw Assistant.Failure.busy }
+        if let url = URL(string: endpoint), url.scheme == "http",
+           ["127.0.0.1", "localhost", "::1", "[::1]"].contains(url.host?.lowercased() ?? ""),
+           let configuration = try? bridgeConfiguration(access: .userInitiated) {
+            // A stale or older helper may be unreachable or lack this route. Never kill a PID.
+            do { try await AgentBridge(configuration: configuration).shutdownLocalHelper() }
+            catch AgentBridge.Failure.unavailable { /* The old helper has already stopped. */ }
+            catch AgentBridge.Failure.unauthorized { /* Its token rotated; pair a new helper securely. */ }
+            catch AgentBridge.Failure.remote(let message) where message == "Route not found" { /* Older helper. */ }
+        }
+        try Task.checkCancellation()
+        try launchBridge()
+    }
+
     func launchBridge() throws {
+        guard task == nil, stoppingTask == nil else { throw Assistant.Failure.busy }
         let runtime = try validatedBundledNode()
         let (folder, directory) = try installAgentHelper(runtime: runtime)
         var bytes = [UInt8](repeating: 0, count: 32)
@@ -490,6 +507,7 @@ final class NativeAssistant: ObservableObject {
         try Data(nonce.utf8).write(to: nonceFile, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: try folder.output(nonceFile.path).path)
         connectionGeneration = UUID(); pendingPair = (nonce, Date().addingTimeInterval(120))
+        accountStatusVerified = false; configured = false; reason = "Connecting the helper. Keep its Terminal window open."
         let command = try folder.output(directory.appendingPathComponent("Reel Agent Bridge.command").path)
         guard NSWorkspace.shared.open(command) else { pendingPair = nil; throw ReelBackend.APIError("Terminal could not open the agent bridge launcher.") }
     }
@@ -581,7 +599,7 @@ final class NativeAssistant: ObservableObject {
         } else if provider == "anthropic" { refreshConfiguration() }
         else {
             configured = selected?.flag("installed") == true && (selected?.flag("authenticated") == true || provider == "custom" && selected?.flag("adapterManaged") == true) && selected?["available"] as? Bool == true && selected?["adapterSupported"] as? Bool == true
-            reason = configured ? "\(providerName) uses your signed-in agent account through the paired bridge. Edits remain native Arya objects with undo." : selected?.string("reason", "Check your \(providerName) account on the Mac running your bridge.") ?? "The paired bridge does not offer \(providerName)."
+            reason = configured ? "\(providerName) uses your signed-in agent account through the paired bridge. Undo the whole run in one step before making further edits." : selected?.string("reason", "Check your \(providerName) account on the Mac running your bridge.") ?? "The paired bridge does not offer \(providerName)."
             if let issue = manualReadinessReason { configured = false; reason = issue }
         }
         publish()
@@ -610,7 +628,7 @@ final class NativeAssistant: ObservableObject {
         task = nil; activeID = nil; client = nil; clientID = nil
         localDiagnostic = nil
         guard wasWorking || !jobs.isEmpty else {
-            state = "idle"; progress = ""; startedAt = nil; finishedAt = nil
+            state = "idle"; progress = ""; partialReply = ""; startedAt = nil; finishedAt = nil
             publish(); return
         }
         state = "cancelling"; progress = "Waiting for the agent and its processing to stop"
@@ -971,7 +989,7 @@ final class NativeAssistant: ObservableObject {
         guard let session, let backend = session.backend else { throw ReelBackend.APIError("Open a project before sending the assistant a message.") }
         guard historyBackend === backend else { throw ReelBackend.APIError("Wait for this project’s chat history to load before sending.") }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, text.count <= inputCharacterLimit else { throw Assistant.Failure.invalidPrompt }
+        guard !text.isEmpty, text.count <= inputCharacterLimit else { throw ReelBackend.APIError("Enter a message of at most \(inputCharacterLimit) characters.") }
         let referenceText: String?
         if let refs {
             guard JSONSerialization.isValidJSONObject(refs) else { throw ReelBackend.APIError("Source references must be JSON objects or arrays.") }
@@ -1010,7 +1028,7 @@ final class NativeAssistant: ObservableObject {
         jobOutcomes = [:]
         toolOutcomes = AssistantToolOutcomes()
         let userMessage = append(role: "you", text: text, refs: refs, providerID: routingMode == "auto" ? nil : provider)
-        state = "working"
+        state = "working"; partialReply = ""
         startedAt = Date(); updatedAt = startedAt; finishedAt = nil
         localDiagnostic = nil
         progress = "Thinking about the edit"
@@ -1071,7 +1089,7 @@ final class NativeAssistant: ObservableObject {
                 }
                 try Task.checkCancellation()
                 guard self.activeID == id, session.backend === backend else { throw CancellationError() }
-                let replyMessage = self.append(role: "claude", text: reply.text, providerID: self.route["provider"] as? String ?? (selectedMode == "manual" ? selectedProvider : nil))
+                let replyMessage = self.append(role: "assistant", text: reply.text, providerID: self.route["provider"] as? String ?? (selectedMode == "manual" ? selectedProvider : nil))
                 try await self.retain(replyMessage, backend: backend, run: id)
                 let failedJobs = self.jobOutcomes.values.filter { ["failed", "cancelled"].contains($0.string("state")) || $0["applied"] as? Bool == false }
                 let finalVersion = await backend.currentVersion()
@@ -1090,7 +1108,7 @@ final class NativeAssistant: ObservableObject {
                     self.state = "error"
                     self.finishedAt = Date()
                     self.progress = error.localizedDescription
-                    let errorMessage = self.append(role: "claude", text: error.localizedDescription, providerID: self.route["provider"] as? String ?? (selectedMode == "manual" ? selectedProvider : nil), error: true)
+                    let errorMessage = self.append(role: "assistant", text: error.localizedDescription, providerID: self.route["provider"] as? String ?? (selectedMode == "manual" ? selectedProvider : nil), error: true)
                     try? await self.retain(errorMessage, backend: backend, run: id)
                 }
             }
@@ -1114,7 +1132,7 @@ final class NativeAssistant: ObservableObject {
         #if os(macOS)
         guard hasRequestedCredentialAccess else {
             configured = false
-            reason = provider == "anthropic" ? "Check your saved API key or add one in Assistant settings." : "Connect your companion or retry the saved account check in Assistant settings."
+            reason = provider == "anthropic" ? "Check your saved API key or add one in Assistant settings." : "Choose Claude Code or Codex in Assistant settings, then turn on the assistant."
             return
         }
         cachedAPIConfigured = AssistantCredential.exists()
@@ -1127,7 +1145,11 @@ final class NativeAssistant: ObservableObject {
             reason = configured ? "Claude uses your Anthropic API account. Requests include the project outline and frames you ask Claude to inspect." : "Check your saved Anthropic API key or add one in Assistant settings to direct edits with Claude."
         } else if (try? bridgeConfiguration()) == nil {
             configured = false
-            reason = "Start the Arya agent bridge on your Mac and pair it to use your \(providerName) account."
+            #if os(iOS)
+            reason = "Pair with Arya running on your Mac, or add an Anthropic API key (billed separately) in Assistant settings."
+            #else
+            reason = "Open Assistant settings to turn on the assistant with your \(providerName) account."
+            #endif
         } else {
             let selected = providers.first { $0.string("id") == provider }
             configured = accountStatusVerified && selected?.flag("installed") == true && (selected?.flag("authenticated") == true || provider == "custom" && selected?.flag("adapterManaged") == true)
@@ -1136,6 +1158,12 @@ final class NativeAssistant: ObservableObject {
                 configured = false; reason = issue
             } else if !configured { reason = "Retry the account check before using your \(providerName) editing connection." }
         }
+    }
+
+    func recordSendFailure(_ error: Error) {
+        guard sharingReview == nil else { return }
+        _ = append(role: "assistant", text: error.localizedDescription, providerID: provider, error: true)
+        publish()
     }
 
     @discardableResult private func append(role: String, text: String, refs: Any? = nil, providerID: String? = nil, error: Bool? = nil) -> JSON {
@@ -1167,8 +1195,10 @@ final class NativeAssistant: ObservableObject {
     private func receive(_ event: Assistant.Event, clientID: UUID) {
         guard activeID != nil, self.clientID == clientID else { return }
         switch event {
-        case .text: progress = "Generating a response"
-        case .tool(let name): progress = name == "reel_frame" ? "Inspecting a rendered frame" : "Reading or editing the project"
+        case .text(let text):
+            partialReply = String((partialReply + text).prefix(128_000))
+            progress = "Generating a response"
+        case .tool(let name): progress = name == "reel_frame" ? "Inspecting a rendered frame" : "Using \(name) to read or edit the project"
         }
         publish()
     }
@@ -1441,8 +1471,8 @@ struct NativeAssistantSettings: View {
         case companion, accounts, models, sharing, advanced
         var title: String {
             switch self {
-            case .companion: return "Connect companion"
-            case .accounts: return "Check accounts"
+            case .companion: return "Turn on the assistant"
+            case .accounts: return "Choose an account"
             case .models: return "Choose model"
             case .sharing: return "Review sharing"
             case .advanced: return "Advanced options"
@@ -1471,7 +1501,7 @@ struct NativeAssistantSettings: View {
     }
     private static func setupSummary(_ facts: SetupFacts) -> SetupSummary {
         if facts.working { return .init(title: facts.state == "cancelling" ? "Stopping the assistant" : "Assistant request in progress", detail: "Wait for the active request before changing setup. You can withdraw sharing permission below.", section: nil) }
-        if facts.connecting { return .init(title: "Checking the companion connection", detail: "The saved connection stays in use until this check and secure save succeed.", section: nil) }
+        if facts.connecting { return .init(title: "Connecting the assistant", detail: "The saved connection stays in use until this check and secure save succeed.", section: nil) }
         if facts.checkingKey { return .init(title: "Checking the saved API key", detail: "Wait for the local key check. It does not verify model access or sharing permission.", section: nil) }
         if facts.checking { return .init(title: "Checking accounts and models", detail: "Wait for the current result. Starting a check does not confirm access.", section: nil) }
         if facts.provider == "anthropic" && facts.mode == "manual" {
@@ -1479,8 +1509,8 @@ struct NativeAssistantSettings: View {
             return .init(title: "Review API sharing before Send", detail: "The Anthropic API route is selected. API requests are billed separately from subscriptions; Send checks the exact sharing scope.", section: .sharing)
         }
         if facts.mode == "manual" && ["custom", "antigravity"].contains(facts.provider) { return .init(title: "Choose a supported editing connection", detail: "This connection cannot send project data here. Use Claude Code or Codex, or continue manual editing.", section: .accounts) }
-        if facts.endpointEmpty { return .init(title: "Connect your companion", detail: "Connect the Mac companion before checking subscription accounts and models.", section: .companion) }
-        if !facts.verified { return .init(title: "Check your subscription accounts", detail: "The address is saved. Current account access and models still need a check.", section: .accounts) }
+        if facts.endpointEmpty { return .init(title: "Turn on the assistant", detail: "Choose your account and sign in below, then turn on the helper to check its status.", section: .companion) }
+        if !facts.verified { return .init(title: "Reconnect the assistant", detail: "Restart the helper and reconnect below to check your saved account.", section: .companion) }
         if !facts.configured {
             if facts.mode == "auto" { return .init(title: "Review the available Auto pool", detail: facts.reason, section: .models) }
             if !facts.selectedAccountReady { return .init(title: "Check the selected account", detail: facts.reason, section: .accounts) }
@@ -1705,8 +1735,8 @@ struct NativeAssistantSettings: View {
                         if let section = setupSummary.section { nextButton(to: section, proxy: proxy) }
                     }.fixedSize(horizontal: false, vertical: true)
                 }
-                companionSettings(proxy: proxy).id(SetupSection.companion)
                 accountSettings(proxy: proxy).id(SetupSection.accounts)
+                companionSettings(proxy: proxy).id(SetupSection.companion)
                 requestSettings(proxy: proxy).id(SetupSection.models)
                 sharingSettings(proxy: proxy).id(SetupSection.sharing)
                 Section("Other connections") {
@@ -1745,22 +1775,57 @@ struct NativeAssistantSettings: View {
     }
 
     private func accountSettings(proxy: ScrollViewProxy) -> some View {
-        Section("2. Check accounts") {
-            ForEach(["claude-code", "codex"], id: \.self) { id in accountRow(id, proxy: proxy) }
-            Button(assistant.checking ? "Checking accounts…" : "Retry account and model check") { checkAccounts() }
-                .frame(minHeight: 44).disabled(busy || assistant.checking || assistant.endpoint.isEmpty)
-            if assistant.endpoint.isEmpty {
-                Text("Connect the companion above to check installation, sign-in and models.").font(.caption).foregroundStyle(.secondary)
-            } else {
-                Text(assistant.reason).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        let selected = assistant.providers.first { $0.string("id") == assistant.provider }
+        let known = assistant.accountStatusVerified
+        let installed = known ? selected?["installed"] as? Bool : nil
+        let signedIn = known ? selected?["authenticated"] as? Bool : nil
+        return Group {
+            Section("1. Choose Claude Code or Codex") {
+                ForEach(["claude-code", "codex"], id: \.self) { id in
+                    Button {
+                        do { try assistant.selectProvider(id); try assistant.setRouting(mode: "manual", effort: ""); loadFields() }
+                        catch { message = error.localizedDescription }
+                    } label: {
+                        Label(id == "claude-code" ? "Claude Code · Suggested" : "Codex · ChatGPT account", systemImage: assistant.provider == id ? "checkmark.circle.fill" : "circle")
+                    }.frame(minHeight: 44).disabled(busy)
+                }
+                Text(installed == true ? "\(assistant.providerName) is installed." : installed == false ? "Install \(assistant.providerName), then refresh status." : "Installation status will be checked when you turn on the assistant.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if ["claude-code", "codex"].contains(assistant.provider) {
+                Link("Install \(assistant.providerName)", destination: URL(string: assistant.provider == "codex" ? "https://developers.openai.com/codex/cli/" : "https://code.claude.com/docs/en/setup")!)
+                    .buttonStyle(.bordered).frame(minHeight: 44)
+                } else {
+                    Text("For the Anthropic API, add your API key in Advanced. API requests are billed separately.").font(.caption).foregroundStyle(.secondary)
+                }
             }
-            if assistant.checking { ProgressView("Checking the companion") }
-            inlineResult(.accounts, next: assistant.accountStatusVerified ? .models : nil, proxy: proxy)
+            Section("2. Sign in") {
+                Text(signedIn == true ? "Signed in. Confirmed by the provider’s CLI." : "Sign in through the provider’s own account flow. Your credentials stay with the provider.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                #if os(macOS)
+                Button("Sign in to \(assistant.providerName)") {
+                    do { try assistant.launchSignIn(); message = "Complete sign-in in the provider’s window, then turn on the assistant or refresh status." }
+                    catch { message = error.localizedDescription }
+                    accountSignInResults[assistant.provider] = message
+                    resultReceipts["sign-in.\(assistant.provider)"] = currentSetupReceipt
+                }.frame(minHeight: 44).disabled(busy || installed == false || !["claude-code", "codex"].contains(assistant.provider))
+                if let result = visibleSetupResult(accountSignInResults[assistant.provider], key: "sign-in.\(assistant.provider)") {
+                    Text(result).font(.caption).fixedSize(horizontal: false, vertical: true)
+                }
+                #else
+                Text("CLI accounts run on your Mac. Pair below, or add an Anthropic API key in Advanced (billed separately).")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                #endif
+                DisclosureGroup("Account and model details") {
+                    ForEach(["claude-code", "codex"], id: \.self) { id in accountRow(id, proxy: proxy) }
+                }
+                if !message.isEmpty { Text(message).font(.caption).fixedSize(horizontal: false, vertical: true) }
+                inlineResult(.accounts, next: assistant.accountStatusVerified ? .models : nil, proxy: proxy)
+            }
         }
     }
 
     private func sharingSettings(proxy: ScrollViewProxy) -> some View {
-        Section("4. Review sharing before Send") {
+        Section("Sharing before Send") {
             Text("Review the exact AI recipients, companion destination and project data before sending. Permission is separate from account connection and applies to the disclosed scope.")
                 .font(.caption).foregroundStyle(.secondary)
             Button("Review sharing permission") {
@@ -1812,7 +1877,7 @@ struct NativeAssistantSettings: View {
                     Text(reason).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 if id == "claude-code" {
-                    Text("Suggested: use your own installed Claude Code with Arya's MCP tools. Embedded consumer sign-in requires provider approval; Arya does not claim that approval.")
+                    Text("Suggested: use your own Claude Code account with Arya’s editing tools.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Text("Claude Code's provider default remains a manual choice when no verified account model list is available.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -1892,7 +1957,7 @@ struct NativeAssistantSettings: View {
     }
 
     private func requestSettings(proxy: ScrollViewProxy) -> some View {
-        Section("3. Choose model and routing") {
+        Section("Model preferences") {
             Picker("Selection", selection: Binding(get: { assistant.routingMode }, set: { value in
                 do { try assistant.setRouting(mode: value, effort: value == "auto" ? "" : nil); setResult("Selected \(assistant.routingLabel). Review sharing for this route.", for: .models) }
                 catch { setResult(error.localizedDescription, for: .models) }
@@ -2136,7 +2201,7 @@ struct NativeAssistantSettings: View {
     }
 
     private func companionSettings(proxy: ScrollViewProxy) -> some View {
-        Section("1. Connect companion") {
+        Section("3. Turn on the assistant") {
             #if os(iOS)
             if let offer = assistant.mobileCompanionOffer {
                 VStack(alignment: .leading, spacing: 8) {
@@ -2155,25 +2220,44 @@ struct NativeAssistantSettings: View {
             }
             #endif
             #if os(macOS)
-            Text(assistant.bridgeRuntimeDescription).font(.caption).foregroundStyle(.secondary)
-            Button("Start companion on this Mac") {
-                do { try assistant.launchBridge(); message = "The companion launcher opened in Terminal. Wait for pairing; this does not confirm a connected account." }
-                catch { message = error.localizedDescription }
-                companionLauncherResult = message
-                resultReceipts["launcher"] = currentSetupReceipt
+            Text("A small Terminal helper window runs the provider’s official CLI outside Arya’s sandbox and must stay open.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Button(assistant.endpoint.isEmpty ? "Turn on the assistant" : "Restart helper and reconnect") {
+                connecting = true
+                connectionTask = Task {
+                    defer { connecting = false; connectionTask = nil }
+                    do { try await assistant.restartBridge(); message = "Helper opened. Keep its Terminal window open and wait for the secure connection." }
+                    catch { message = error.localizedDescription }
+                    companionLauncherResult = message
+                    resultReceipts["launcher"] = currentSetupReceipt
+                }
             }.frame(minHeight: 44).disabled(busy)
-            if let result = visibleSetupResult(companionLauncherResult, key: "launcher") { Text(result).font(.caption).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
-            Text("The companion uses the official agent CLI outside Arya's sandbox and returns native editing operations. Sign-in stays with your agent.")
+            if let result = visibleSetupResult(companionLauncherResult, key: "launcher") { Text(result).font(.caption).fixedSize(horizontal: false, vertical: true) }
+            Text(assistant.configured ? "Assistant is on. \(assistant.providerName) is ready." : assistant.checking ? "Checking account status…" : "\(assistant.providerName): setup needed.")
                 .font(.caption).foregroundStyle(.secondary)
+            Button(assistant.checking ? "Checking…" : "Refresh status") { checkAccounts() }
+                .frame(minHeight: 44).disabled(busy || assistant.checking || assistant.endpoint.isEmpty)
+            DisclosureGroup("Advanced") {
+            Text(assistant.bridgeRuntimeDescription).font(.caption).foregroundStyle(.secondary)
             #if DEBUG
-            Link("Node.js installation", destination: URL(string: "https://nodejs.org/en/download")!).frame(minHeight: 44)
+            Link("Node.js installation for source builds", destination: URL(string: "https://nodejs.org/en/download")!)
             #endif
+            manualCompanionSettings(proxy: proxy)
+            mobilePairingGuide
+            }
             #else
             Text("Confirm the full HTTPS address with the trusted Mac owner. Enter their current pairing token privately. An address link does not connect this device or include a token.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Text("A localhost address points to this device. AI sharing is reviewed separately before Send.")
                 .font(.caption).foregroundStyle(.secondary)
             #endif
+            #if os(iOS)
+            manualCompanionSettings(proxy: proxy)
+            #endif
+        }
+    }
+
+    @ViewBuilder private func manualCompanionSettings(proxy: ScrollViewProxy) -> some View {
             if !assistant.endpoint.isEmpty {
                 Text("Saved companion: \(assistant.endpoint)").font(.caption).textSelection(.enabled)
             }
@@ -2214,10 +2298,6 @@ struct NativeAssistantSettings: View {
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             #endif
-            #if os(macOS)
-            mobilePairingGuide
-            #endif
-        }
     }
 
     #if os(macOS)
@@ -2627,7 +2707,11 @@ extension NativeAssistant {
     }
 
     func undoLastChange() async {
-        guard let change = lastChange, let session, let backend = session.backend, canUndoLastChange(version: await backend.currentVersion()) else { return }
+        guard let change = lastChange, let session, let backend = session.backend else { return }
+        guard canUndoLastChange(version: await backend.currentVersion()) else {
+            session.nativeEditor.status = "Can't undo this run: the project changed after it. Use Undo in the editor."
+            return
+        }
         do {
             _ = try await backend.restoreAssistantChange(change.before, expected: change.after, line: "Undo assistant change")
             lastChange = nil

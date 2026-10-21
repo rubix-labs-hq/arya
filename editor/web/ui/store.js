@@ -37,7 +37,7 @@ export const store = {
   connected: false,
   inspectorTab: 'video',
   browserTab: 'media',
-  chatOpen: innerWidth >= 1200,
+  chatOpen: host.kind !== 'browser-local' && innerWidth >= 1200,
   viewerScale: 'fit',
   previewQuality: 'half',
   overlays: { safe: false, grid: false },

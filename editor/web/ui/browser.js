@@ -182,6 +182,8 @@ function MediaCard({ p, src, asset }) {
 
   return html`
     <div class=${`media-card ${sel ? 'sel' : ''}`} draggable="true" title=${display.tooltip}
+      tabIndex="0" role="button" aria-pressed=${sel} aria-label=${display.name}
+      onKeyDown=${e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); set({ source: { src }, viewerMode: store.viewerMode }) } }}
       onDragStart=${e => e.dataTransfer.setData('application/x-reel', JSON.stringify({ type: 'media', src }))}
       onDblClick=${() => openSource(src)}
       onClick=${e => (e.altKey ? addRef({ kind: 'media', id: src, label: display.name }) : set({ source: { src }, viewerMode: store.viewerMode }))}

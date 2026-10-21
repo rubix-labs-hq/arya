@@ -50,7 +50,7 @@ Arya runs as a native SwiftUI and Metal app for Mac, iPad and iPhone, and as a b
 - Blade, ripple, roll, slip and slide on a multitrack timeline.
 - Snapping, markers, automatic proxies and nested compositions.
 - Multicam with audio sync for up to nine angles.
-- Import and export FCPXML, OpenTimelineIO, SRT and WebVTT.
+- Import and export FCPXML, OpenTimelineIO, SRT and WebVTT. Export CMX 3600 EDL from the browser editor.
 - Export H.264, HEVC, ProRes 422, 422 HQ and 4444, GIF, PNG sequences, WAV and AAC from a render queue.
 
 **Color**
@@ -74,12 +74,12 @@ Arya runs as a native SwiftUI and Metal app for Mac, iPad and iPhone, and as a b
 - Transcribe speech, correct any word and select passages by length or topic.
 - Suggestions quote the transcript lines they come from. Their scores rank structure only and do not predict views.
 - Each short is its own editable 9:16, 1:1 or 16:9 composition with linked audio and captions.
-- Caption styles: plain, boxed, karaoke and one word at a time.
+- Caption styles: plain, boxed, word highlight and one word at a time.
 - Reframe with editable position keyframes.
 - Transcription uses whisper.cpp in the browser editor and Apple speech recognition in the native app.
 
 **Figma import**
-- Import a frame with your own Figma access token or through the Figma MCP server.
+- Import a frame with your own Figma access token in the Mac app or local editor. The Claude Code plugin can also import frame data supplied by the Figma MCP server; the Mac app accepts pasted MCP data.
 - Text, rectangles, ellipses and nested frames arrive as editable layers. Other layers arrive as rendered images.
 - Smart Animate turns two frames into an animated transition.
 - Public Figma sign-in is not available yet. See [Figma account connection](docs/figma-account-setup.md).
@@ -90,12 +90,29 @@ Arya runs as a native SwiftUI and Metal app for Mac, iPad and iPhone, and as a b
 - Connect your own Claude Code or Codex account through the provider's official sign-in. Arya includes no AI credits.
 - Optional. Editing and export never need an assistant.
 
+### Where each feature runs
+
+The Mac app and the local browser editor share the same project format and editing operations. The hosted browser editor runs entirely in your browser, with no server, so it leaves out anything that needs ffmpeg, a speech model or an agent CLI.
+
+| | Mac app | Browser editor, run locally | Hosted browser editor |
+| --- | --- | --- | --- |
+| Timeline editing, color, motion, audio mixing | Yes | Yes | Yes |
+| Track matte controls, render queue | Not yet (mattes render) | Yes | Yes |
+| Export formats | H.264, HEVC, ProRes, GIF, PNG, WAV, AAC | H.264, HEVC, ProRes, GIF, PNG, WAV, AAC | H.264, HEVC, WAV, AAC, up to 5 minutes |
+| Transcription and shorts | Yes (Apple speech) | Yes (whisper.cpp) | No |
+| Denoise, voice cleanup, loudness, multicam sync | Yes | Yes | No |
+| FCPXML, OpenTimelineIO, SRT, WebVTT | Yes | Yes | No |
+| CMX 3600 EDL export | No | Yes | No |
+| Figma import | Yes | Yes | No |
+| AI assistant | Yes | Yes | No |
+| Where projects live | A folder you choose | A folder you choose | This browser's storage. Use backups. |
+
 ## Get Arya
 
 | Option | Status |
 | --- | --- |
 | **Mac app** | Download the notarized DMG from [GitHub Releases](https://github.com/rubix-labs-hq/arya/releases/latest). Requires macOS 14 or newer, Apple silicon or Intel. Free. |
-| **Browser editor** | Open the hosted editor at [arya-beta-delta.vercel.app/editor](https://arya-beta-delta.vercel.app/editor/), or run it locally (see below). |
+| **Browser editor** | Try the hosted editor at [arya-beta-delta.vercel.app/editor](https://arya-beta-delta.vercel.app/editor/) in current Chrome or Edge. It has no assistant, transcription, Figma or interchange (see [Where each feature runs](#where-each-feature-runs)). For everything, run it locally (see below). |
 | **iPhone, iPad and Mac App Store** | Coming later. |
 | **Build from source** | See [Quick start for developers](#quick-start-for-developers). |
 
@@ -133,7 +150,7 @@ The preparation step builds the project file writer for arm64 and x86_64, signs 
 node editor/server.mjs --root /path/to/your/project --port 4870
 ```
 
-Then open `http://127.0.0.1:4870/`.
+Then open `http://127.0.0.1:4870/`. Any empty folder works as a project root. Arya creates `reel.project.json` in it on first save.
 
 ### Use the Claude Code plugin
 

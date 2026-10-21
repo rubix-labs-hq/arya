@@ -168,7 +168,10 @@ function projectRoot(t) {
 
 test('actual server restart restores display chat with idle state and an empty plugin queue', async t => {
   const root = projectRoot(t)
-  createChatHistory({ root }).append({ role: 'user', text: 'Create music.', refs: [{ kind: 'track', id: 'A3', label: 'Music' }], at: Date.now() })
+  const history = createChatHistory({ root })
+  history.append({ role: 'assistant', provider: 'codex', text: 'An earlier Codex reply.', at: Date.now() })
+  history.append({ role: 'claude', text: 'An older Claude reply.', at: Date.now() })
+  history.append({ role: 'user', text: 'Create music.', refs: [{ kind: 'track', id: 'A3', label: 'Music' }], at: Date.now() })
   const first = await startServer(t, root)
   assert.equal((await first.api('POST', '/api/bridge/send', { mode: 'plugin', text: 'Create music.', refs: [{ kind: 'track', id: 'A3', label: 'Music' }] })).status, 403)
   assert.equal((await first.api('POST', '/api/bridge/claude', { state: 'done', reply: 'A native score exists.' })).status, 200)
@@ -176,6 +179,7 @@ test('actual server restart restores display chat with idle state and an empty p
   assert.equal((await first.api('POST', '/api/bridge/claude', { state: 'working', text: 'Working before restart.', reply: 'Interrupted request.' })).status, 200)
   const before = (await first.api('GET', '/api/project')).body
   assert.equal(before.chat.length, 3); assert.equal(before.claude.state, 'working')
+  assert.equal(before.chat.some(message => message.text === 'A native score exists.' || message.text === 'Interrupted request.'), false)
   await first.stop()
   const second = await startServer(t, root), after = (await second.api('GET', '/api/project')).body
   assert.deepEqual(after.chat, before.chat)
@@ -188,7 +192,7 @@ test('actual server restart restores display chat with idle state and an empty p
   await second.stop()
 })
 
-test('actual server discloses unreadable history and leaves it intact through a new display message', async t => {
+test('actual server discloses unreadable history and unverified plugin replies cannot overwrite it', async t => {
   const root = projectRoot(t), file = historyFile(root)
   fs.mkdirSync(path.dirname(file)); fs.writeFileSync(file, 'not valid history')
   const server = await startServer(t, root)
@@ -197,7 +201,7 @@ test('actual server discloses unreadable history and leaves it intact through a 
   assert.equal((await server.api('POST', '/api/bridge/send', { mode: 'plugin', text: 'Still editable.' })).status, 403)
   assert.deepEqual((await server.api('GET', '/api/project')).body.chat, [])
   assert.equal((await server.api('POST', '/api/bridge/claude', { reply: 'Display recovery still works.' })).status, 200)
-  assert.equal((await server.api('GET', '/api/project')).body.chat[0].text, 'Display recovery still works.')
+  assert.deepEqual((await server.api('GET', '/api/project')).body.chat, [])
   assert.equal(fs.readFileSync(file, 'utf8'), 'not valid history')
   assert.match(server.output(), /Assistant chat history read failed/)
   await server.stop()

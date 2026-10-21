@@ -2,7 +2,7 @@ import Foundation
 @testable import ReelKit
 import XCTest
 
-// These actual endpoint fixtures remain queued for Root's native runtime lane.
+// Endpoint fixtures for timed transcript intake against the real native backend.
 extension TranscriptTests {
     private func timedIntakeFixture() async throws -> (ReelBackend, ProjectFolder, [String: Any]) {
         let (backend, folder) = try await makeBackend()

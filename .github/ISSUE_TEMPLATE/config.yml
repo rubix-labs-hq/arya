@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Ask a question
+    url: https://github.com/rubix-labs-hq/arya/discussions
+    about: Questions about using or building Arya. Keep Issues for bugs and feature requests.
   - name: Report a security vulnerability
     url: https://github.com/rubix-labs-hq/arya/security/advisories/new
     about: Report security problems privately. Do not open a public issue.

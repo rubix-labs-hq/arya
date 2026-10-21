@@ -160,6 +160,8 @@ public actor ReelBackend {
             do {
                 let store = try recoveryStorage()
                 try store.snapshot(Data(lastText.utf8), source: Data(lastText.utf8), validate: core.validateRecoveryProject)
+            } catch is NativeProjectRecovery.ForeignFolder {
+                pushActivity("reel", "Project opened. Recovery copies from the original folder were preserved; new recovery snapshots are unavailable in this copy.")
             } catch { pushActivity("reel", "The project opened, but its recovery snapshot failed: \(error.localizedDescription)") }
         }
         if restorationRootIdentity == nil {

@@ -309,6 +309,12 @@ struct NativeAssistantPanel: View {
             }
             // On a phone the cards sit above the draft, where a pending preview is seen first.
             if !phoneComposer { changeCards }
+            if assistant.isWorking && !assistant.partialReply.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Response in progress").font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                    Text(assistant.partialReply).font(.system(size: 12)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                }.id("stream")
+            }
             if assistant.isWorking {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
@@ -326,6 +332,7 @@ struct NativeAssistantPanel: View {
                 conversationContent
             }.frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
             .onChange(of: assistant.state) { _, state in if state == "working" { proxy.scrollTo("progress", anchor: .bottom) } }
+            .onChange(of: assistant.partialReply) { _, _ in if assistant.isWorking { proxy.scrollTo("progress", anchor: .bottom) } }
             .onChange(of: assistant.chat.count) { _, count in if assistant.isWorking { proxy.scrollTo("progress", anchor: .bottom) } else if count > 0 { proxy.scrollTo(count - 1, anchor: .bottom) } }
             .onChange(of: model.changeReceipts.count) { _, count in if count > 0 { proxy.scrollTo("receipts", anchor: .top) } }
         }
@@ -357,7 +364,11 @@ struct NativeAssistantPanel: View {
         .accessibilityLabel("Assistant prompt or script")
         .accessibilityIdentifier("editor.assistant.draft")
         .onKeyPress(.return, phases: .down) { press in
-            guard press.modifiers.isEmpty, canSendDraft else { return .ignored }
+            guard press.modifiers.isEmpty else { return .ignored }
+            if !assistant.configured && !model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                settings = true; return .handled
+            }
+            guard canSendDraft else { return .ignored }
             sendDraft()
             return .handled
         }
@@ -381,6 +392,10 @@ struct NativeAssistantPanel: View {
             if let applying = assistant.applyingProposal {
                 NativeAssistantApplyingCard(applying: applying, dismiss: { assistant.dismissApplyFailure() })
             }
+            if assistant.lastChange != nil && !assistant.isWorking && (assistant.applyingProposal.map { $0.finished } ?? true) && !assistant.canUndoLastChange(version: model.version) {
+                Text("Can't undo this run: the project changed after it. Use Undo in the editor.")
+                    .font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+            }
             if let change = assistant.lastChange, assistant.canUndoLastChange(version: model.version) {
                 HStack(spacing: 8) {
                     Text(change.kind == "preview" ? "Applied the assistant preview." : "The last request made \(change.edits) edit\(change.edits == 1 ? "" : "s").")
@@ -401,10 +416,13 @@ struct NativeAssistantPanel: View {
                     HStack(spacing: 6) {
                         ForEach(assistant.suggestions) { item in
                             Button(item.label) { model.assistantDraft = item.prompt }
-                                .buttonStyle(.bordered).controlSize(.small).tint(NativeEditorStyle.text).disabled(assistant.isWorking)
+                                .buttonStyle(.bordered).controlSize(.small).tint(NativeEditorStyle.text).fixedSize(horizontal: true, vertical: false).disabled(assistant.isWorking)
                                 .help(item.prompt + " It goes into the draft for you to review before sending.")
                         }
                     }
+                }.overlay(alignment: .trailing) {
+                    LinearGradient(colors: [.clear, NativeEditorStyle.background], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 14).allowsHitTesting(false)
                 }.accessibilityElement(children: .contain).accessibilityLabel("Suggested requests")
             }
             Toggle("Preview changes", isOn: $assistant.previewChanges)
@@ -882,7 +900,7 @@ struct NativeAssistantPanel: View {
             refs["inputKind"] = model.assistantInputKind
             if let reference = model.lookReference { refs["reference"] = reference }
             try assistant.send(model.assistantDraft, refs: refs); model.assistantDraft = ""
-        } catch { model.status = error.localizedDescription; if assistant.sharingReview != nil { reviewingSharing = true } }
+        } catch { model.status = error.localizedDescription; assistant.recordSendFailure(error); if assistant.sharingReview != nil { reviewingSharing = true } }
     }
 
     private var sendButton: some View {
@@ -911,6 +929,11 @@ struct NativeAssistantPanel: View {
     }
 
     @ViewBuilder private var draftLimitNotice: some View {
+        if !assistant.configured {
+            Text("Set up an assistant to send. Your draft is kept.").font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Set up assistant") { settings = true }.controlSize(.small).frame(minHeight: 44)
+        }
         if model.assistantDraft.count > assistant.inputCharacterLimit {
             Text(draftLimitExplanation)
                 .font(.caption).foregroundStyle(NativeEditorStyle.error)

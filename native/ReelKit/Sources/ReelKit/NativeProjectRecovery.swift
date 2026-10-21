@@ -14,6 +14,9 @@ public struct NativeProjectRecoveryOffer: Sendable {
 
 /// Recovery files belong to one folder identity. Only verified published pairs can be pruned.
 enum NativeProjectRecovery {
+    struct ForeignFolder: Error, LocalizedError {
+        var errorDescription: String? { "Recovery belongs to another project folder. Its files were preserved." }
+    }
     static let maximumBytes = 64 * 1024 * 1024
     static let maximumRetainedBytes: Int64 = 128 * 1024 * 1024
     static let maximumPublished = 12
@@ -255,7 +258,8 @@ enum NativeProjectRecovery {
             }
             guard let recorded else { throw NativeProjectRecovery.error("Recovery identity is unavailable.") }
             let family = try decoder.decode(Family.self, from: recorded.data)
-            guard family.protocolVersion == 1, UUID(uuidString: family.familyID) != nil, family.rootIdentity == identity else { throw NativeProjectRecovery.error("Recovery belongs to another project folder. Its files were preserved.") }
+            guard family.protocolVersion == 1, UUID(uuidString: family.familyID) != nil else { throw NativeProjectRecovery.error("Recovery identity is invalid. Its files were preserved.") }
+            guard family.rootIdentity == identity else { throw NativeProjectRecovery.ForeignFolder() }
             self.rootFD = root; self.directoryFD = directory; self.identity = identity; self.family = family
             keepRoot = true; keepDirectory = true
         }

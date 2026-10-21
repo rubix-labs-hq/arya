@@ -3,6 +3,7 @@
 // a Compositions tab in the media browser and a clip menu entry. The code lives in
 // web/ui/motion/.
 
+import { h } from 'preact'
 import { onTime, set, store } from '../store.js'
 import { registerBrowserTab, registerClipMenu, registerInspector, registerPage, registerTool, registerViewerOverlay } from '../registry.js'
 import { CompList } from '../motion/comps.js'
@@ -35,7 +36,9 @@ registerInspector({
   component: PresetsSection,
 })
 
-registerBrowserTab({ id: 'comps', label: 'Comps', order: 60, component: CompList })
+// Other browser tabs bring their own padded .tab-body; the Motion page wraps CompList in one too.
+function CompsTab() { return h('div', { class: 'tab-body' }, h(CompList)) }
+registerBrowserTab({ id: 'comps', label: 'Comps', order: 60, component: CompsTab })
 
 registerClipMenu((p, hit) => {
   const c = hit.clip

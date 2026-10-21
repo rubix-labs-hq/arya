@@ -84,6 +84,7 @@ function panelFixture(t, run) {
     calls.push({ url, body })
     if (url === '/api/assistant/sharing') { reviewCalls++; return reviewCalls === 1 ? review : secondReview.promise }
     if (url === '/api/bridge/send') return submission.promise
+    if (url === '/api/assistant/cancel') return { cancelled: true }
     assert.fail(`Unexpected fixture API call: ${url}`)
   }
   const render = () => {
@@ -133,4 +134,25 @@ for (const stored of [
   f.submission.resolve({ queued: 'offline-run' }); await resend
   assert.equal(f.draft(), '')
   assert.deepEqual(f.state.refs, []); assert.equal(f.state.receipts, f.originalReceipts)
+})
+
+
+test('Stop cancels a submitted request before the first run status event arrives', async t => {
+  const f = panelFixture(t, { state: 'idle' })
+  const first = nodes(f.render()).find(node => node.props?.['aria-label'] === 'Send message').props.onClick()
+  await tick()
+  nodes(f.modal()).find(node => node.type === 'button' && text(node) === 'Keep draft').props.onClick()
+  await first
+  const resend = nodes(f.render()).find(node => node.props?.['aria-label'] === 'Send message').props.onClick()
+  await tick()
+  f.secondReview.resolve({ ...review, approved: true, sharing: { version: 1, approved: true, scope } })
+  await tick()
+  assert.equal(f.calls.at(-1).url, '/api/bridge/send')
+  assert.equal(f.state.claude.state, 'idle', 'the stream has not confirmed admission yet')
+  const stop = nodes(f.render()).find(node => node.type === 'button' && text(node) === 'Stop request')
+  assert.equal(stop.props.disabled, false)
+  await stop.props.onClick()
+  assert.equal(f.calls.at(-1).url, '/api/assistant/cancel')
+  f.submission.resolve({ queued: 'offline-run' })
+  await resend
 })

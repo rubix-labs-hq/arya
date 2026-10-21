@@ -4,6 +4,18 @@ The public sign-in service, its domain, hosting and Figma app registration are n
 
 Public-facing product and registration copy use Arya. Existing `reelfigma` callbacks, `ReelFigmaBrokerURL`, bundle identifiers and Keychain names remain compatibility identifiers. Per-user import methods work today without the public service.
 
+## Connect today
+
+In the Mac app, open Settings → Figma. In the local browser editor, open Settings → Figma or More → Figma. Create a personal access token with File content (read), `file_content:read`, and Current user (read), `current_user:read`, then connect. Public Figma sign-in is offered only when a working sign-in service is configured. The hosted browser beta cannot connect to Figma; use the Mac app or run the editor locally.
+
+The Mac app stores its token in this device's Keychain. The local browser editor stores its token on the computer running the editor, in `~/.reel/figma-token.json` (or `REEL_CONFIG_DIR`), with owner-only file permissions. The token never goes in the project. These are separate connections: connecting one does not connect the other.
+
+## Figma MCP import
+
+In Claude Code with the Figma MCP server connected, run `/reel` and ask Claude to import a frame. Claude obtains the frame data from Figma MCP and passes it to `reel_figma` with `action: "import-mcp"`. This uses the Figma connection in that Claude session. Editor chat starts a separate restricted CLI run and cannot access that session's Figma MCP server.
+
+In the Mac app, Figma → Import editable layers accepts pasted XML or node JSON supplied by Figma MCP. The local browser Figma panel uses an access token; it does not connect directly to Figma MCP. Imported layers are copies, with the supported-layer and rendered-fallback limits described below.
+
 ## Implemented flow
 
 The native app starts an `ASWebAuthenticationSession` with a fresh state and device proof. The broker requests only `current_user:read` and `file_content:read`. Its HTTPS callback exchanges the authorization code immediately with Figma using the app secret and S256 PKCE. The callback returns a short-lived transfer ticket to `reelfigma://oauth/callback`. The app must prove it owns the original verifier before it receives an access token.

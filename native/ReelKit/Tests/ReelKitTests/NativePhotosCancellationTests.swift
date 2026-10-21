@@ -1,7 +1,7 @@
 import Foundation
 import XCTest
 
-/// Compile beside the exact PhotosBatchController.swift capture in Root's disposable test target.
+/// Cancellation tests for the Photos import batch controller.
 final class NativePhotosCancellationTests: XCTestCase {
     @MainActor private final class DelayedTransfer {
         var entered = false

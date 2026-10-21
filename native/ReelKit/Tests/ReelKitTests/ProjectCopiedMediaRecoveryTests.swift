@@ -239,9 +239,14 @@ final class ProjectCopiedMediaRecoveryTests: XCTestCase {
             await withCheckedContinuation { continuation = $0 }
         }
         // Waits for the probe without a wall-clock deadline, which expired under full-suite load.
-        func wait() async throws {
-            if !entered { await withCheckedContinuation { arrival = $0 } }
+        // Returns false when registration finished without ever probing, so the test fails
+        // with that outcome instead of waiting forever.
+        func wait() async -> Bool {
+            if !entered && !finished { await withCheckedContinuation { arrival = $0 } }
+            return entered
         }
+        private var finished = false
+        func registrationFinished() { finished = true; arrival?.resume(); arrival = nil }
         func release() { continuation?.resume(); continuation = nil }
     }
     func testRecoveryDirectoryGateIsCheckedAfterAwaitedProbe() async throws {
@@ -260,9 +265,16 @@ final class ProjectCopiedMediaRecoveryTests: XCTestCase {
         try FileManager.default.linkItem(at: url, to: replacement.appendingPathComponent(url.lastPathComponent))
         let version = await b.currentVersion(), saved = try Data(contentsOf: root.appendingPathComponent("reel.project.json"))
         let (paths, identities, _, recoveryID) = try copies(try await b.recoveryMediaCandidates(expectedVersion: version))
-        let registration = Task { try await b.registerRecoveryMedia(paths, recoveryID: recoveryID, expectedVersion: version, retainedCopyIdentities: identities) }
+        let registration = Task {
+            defer { Task { await pause.registrationFinished() } }
+            return try await b.registerRecoveryMedia(paths, recoveryID: recoveryID, expectedVersion: version, retainedCopyIdentities: identities)
+        }
+        guard await pause.wait() else {
+            do { _ = try await registration.value; XCTFail("Registration committed without probing the copied media") }
+            catch { XCTFail("Registration ended before the probe: \(error.localizedDescription)") }
+            await b.stop(); return
+        }
         do {
-            try await pause.wait()
             try FileManager.default.moveItem(at: media, to: kept)
             try FileManager.default.moveItem(at: replacement, to: media)
         } catch { registration.cancel(); await pause.release(); _ = try? await registration.value; throw error }

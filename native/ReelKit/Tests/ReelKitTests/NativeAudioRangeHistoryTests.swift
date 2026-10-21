@@ -129,7 +129,11 @@ final class NativeAudioRangeHistoryTests: XCTestCase {
             assertSamples(selected, match: whole, at: rate * 3)
             XCTAssertGreaterThan(rms(selected.channels[0]), 0.00001)
             let unwarmed = try await NativeAudioMixer.render(plan: .raw(overview), folder: folder)
-            let difference = zip(unwarmed.channels[0][(rate * 3)..<(rate * 3 + selected.count)], whole.channels[0][(rate * 3)..<(rate * 3 + selected.count)]).reduce(0.0) { $0 + abs(Double($1.0) - Double($1.1)) }
+            let window: Range<Int> = (rate * 3)..<(rate * 3 + selected.count)
+            let unwarmedWindow: ArraySlice<Float> = unwarmed.channels[0][window]
+            let wholeWindow: ArraySlice<Float> = whole.channels[0][window]
+            var difference = 0.0
+            for (a, b) in zip(unwarmedWindow, wholeWindow) { difference += abs(Double(a) - Double(b)) }
             XCTAssertGreaterThan(difference, 0.0001, "The fixture must exercise the missing right kernel control")
         }
     }

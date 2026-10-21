@@ -98,7 +98,7 @@ test('actual browser Place handler sends the selected canvas explicitly to the p
   const project = fixture(), state = { project, root: '/fixture', version: 7, openComp: 'k1' }
   const calls = []
   const source = fs.readFileSync(new URL('../web/ui/plugins/figma.js', import.meta.url), 'utf8').replace(/^import .*$/gm, '')
-  const components = new Function('h', 'htm', 'useEffect', 'useRef', 'useState', 'placeCompOps', 'attachMotionIntent', 'registerBrowserTab', 'api', 'edit', 'set', 'store', 'time', 'toast', 'useStore', 'openComposition', `${source}\nreturn {Compositions};`)(h, htm, () => {}, v => ({ current: v }), v => [v, () => {}], placeCompOps, () => {}, () => {}, () => {}, async ops => { calls.push(ops); return applyOps(project, ops) }, () => {}, state, { t: 3 }, () => {}, () => state, () => {})
+  const components = new Function('h', 'htm', 'useEffect', 'useRef', 'useState', 'placeCompOps', 'attachMotionIntent', 'registerBrowserTab', 'registerSettings', 'api', 'edit', 'set', 'store', 'time', 'toast', 'useStore', 'openComposition', `${source}\nreturn {Compositions};`)(h, htm, () => {}, v => ({ current: v }), v => [v, () => {}], placeCompOps, () => {}, () => {}, () => {}, () => {}, async ops => { calls.push(ops); return applyOps(project, ops) }, () => {}, state, { t: 3 }, () => {}, () => state, () => {})
   const tree = components.Compositions({ project }), rows = nodes(tree).filter(v => v.props?.class === 'comp')
   await nodes(rows.find(row => label(row).includes('Imported frame'))).find(v => v.type === 'button' && label(v) === 'Place').props.onClick()
   assert.equal(calls.length, 1)
@@ -114,7 +114,7 @@ test('actual browser import handler includes the selected composition or explici
     const calls = [], overrides = new Map([[1, { fileKey: 'FrameFile', target: { name: 'Page', type: 'CANVAS' }, frames: [{ id: '1:1', name: 'Editable frame', type: 'FRAME' }] }], [2, ['1:1']]])
     let hook = 0
     const source = fs.readFileSync(new URL('../web/ui/plugins/figma.js', import.meta.url), 'utf8').replace(/^import .*$/gm, '')
-    const components = new Function('h', 'htm', 'useEffect', 'useRef', 'useState', 'placeCompOps', 'attachMotionIntent', 'registerBrowserTab', 'api', 'edit', 'set', 'store', 'time', 'toast', 'useStore', 'openComposition', `${source}\nreturn {Frames};`)(h, htm, () => {}, v => ({ current: v }), v => [overrides.has(hook) ? overrides.get(hook++) : (hook++, v), () => {}], placeCompOps, () => {}, () => {}, async (route, body) => { calls.push({ route, body }); return { name: 'Editable frame', warnings: [] } }, () => {}, () => {}, state, { t: 3 }, () => {}, () => state, () => {})
+    const components = new Function('h', 'htm', 'useEffect', 'useRef', 'useState', 'placeCompOps', 'attachMotionIntent', 'registerBrowserTab', 'registerSettings', 'api', 'edit', 'set', 'store', 'time', 'toast', 'useStore', 'openComposition', `${source}\nreturn {Frames};`)(h, htm, () => {}, v => ({ current: v }), v => [overrides.has(hook) ? overrides.get(hook++) : (hook++, v), () => {}], placeCompOps, () => {}, () => {}, () => {}, async (route, body) => { calls.push({ route, body }); return { name: 'Editable frame', warnings: [] } }, () => {}, () => {}, state, { t: 3 }, () => {}, () => state, () => {})
     const button = nodes(components.Frames()).find(v => v.type === 'button' && label(v) === 'Import as composition')
     await button.props.onClick()
     assert.equal(calls.length, 1)

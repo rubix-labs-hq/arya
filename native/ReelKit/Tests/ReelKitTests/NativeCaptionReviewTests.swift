@@ -2,7 +2,7 @@ import Foundation
 @testable import ReelKit
 import XCTest
 
-// Root's runtime lane executes these against copied synthetic media and the actual backend.
+// These run against copied synthetic media and the real native backend.
 extension TranscriptTests {
     private func reviewedCaptionFixture() async throws -> (ReelBackend, ProjectFolder, [String: Any]) {
         let (backend, folder) = try await makeBackend()

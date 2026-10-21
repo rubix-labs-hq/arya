@@ -15,6 +15,17 @@ final class NativeAssistantChatHistoryTests: XCTestCase {
     private func fields(_ value: JSON) throws -> [String: Any] { try XCTUnwrap(JSON.parse(value.text) as? [String: Any]) }
     private func file(_ folder: ProjectFolder) -> URL { folder.dotDir.appendingPathComponent("assistant-chat.json") }
 
+    func testAssistantRoleAndLegacyClaudeRoleRoundTripWithProviderIdentity() throws {
+        for role in ["assistant", "claude"] {
+            let message = JSON.object([("role", .string(role)), ("text", "Provider reply"), ("at", 1), ("provider", "codex")])
+            let displayed = try NativeAssistantChatHistory.displayMessage(message)
+            let encoded = Data((JSON.object([("version", 1), ("messages", .array([displayed]))]).text + "\n").utf8)
+            let restored = try NativeAssistantChatHistory.parse(encoded)
+            XCTAssertEqual(restored.count, 1)
+            XCTAssertEqual(restored[0].text, displayed.text)
+        }
+    }
+
     func testExactBrowserCorpusRestoresOnlyDisplayRows() throws {
         let folder = try folder(), fixture = try XCTUnwrap(Bundle.module.url(forResource: "AssistantHistoryContract", withExtension: "json", subdirectory: "Fixtures"))
         let bytes = try Data(contentsOf: fixture)

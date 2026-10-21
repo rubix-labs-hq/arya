@@ -358,11 +358,9 @@ struct StartView: View {
                 }
                 .frame(maxWidth: visibleRecents.isEmpty ? 560 : 640)
                 .padding(24)
-#if os(iOS)
-                .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .top)
-#else
+                // Centered on every platform: top alignment left most of an iPad or iPhone
+                // screen empty below the actions. Taller content still scrolls from the top.
                 .frame(maxWidth: .infinity, minHeight: geometry.size.height)
-#endif
             }
         }
         .background(NativeEditorStyle.background)

@@ -278,7 +278,7 @@ test('actual server preview mode refuses direct edits, shows the proposal and ap
   assert.equal(sent.status, 200, JSON.stringify(sent))
   const agent = await server.finish()
   const completion = (await server.api('GET', '/api/state')).body.assistant
-  assert.equal(completion.outcome, 'No project edits were applied during this request.', 'A staged preview is not a failed processing result')
+  assert.equal(completion.outcome, 'Preview mode was on. Proposed edits are applied only when you choose Apply.', 'A staged preview is not a failed processing result')
   assert.ok(agent.prompt.includes(REVIEW_GUIDE)); assert.ok(agent.prompt.includes(FOCUS_GUIDE))
   assert.match(agent.prompt, /"review":true/)
   assert.match(agent.prompt, /c1 color \\"Color #203040\\" on V1 Video 1/, 'the run context describes the selected clip')

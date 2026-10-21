@@ -1,6 +1,10 @@
 # Getting help
 
-## Bugs and questions
+## Questions
+
+Ask in [GitHub Discussions](https://github.com/rubix-labs-hq/arya/discussions).
+
+## Bugs and feature requests
 
 Use [GitHub Issues](https://github.com/rubix-labs-hq/arya/issues).
 

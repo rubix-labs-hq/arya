@@ -15,7 +15,7 @@ const encode = messages => Buffer.from(JSON.stringify({ version: 1, messages }) 
 const copy = value => structuredClone(value)
 
 function message(value, strict = false) {
-  if (!object(value) || !['user', 'claude'].includes(value.role) || typeof value.text !== 'string' || !Number.isSafeInteger(value.at) || value.at < 0) throw fail('CHAT_HISTORY_INVALID')
+  if (!object(value) || !['user', 'claude', 'assistant'].includes(value.role) || typeof value.text !== 'string' || !Number.isSafeInteger(value.at) || value.at < 0) throw fail('CHAT_HISTORY_INVALID')
   if (strict && Object.keys(value).some(key => !messageKeys.has(key))) throw fail('CHAT_HISTORY_INVALID')
   if (value.error !== undefined && typeof value.error !== 'boolean' || value.provider !== undefined && !providers.has(value.provider)) throw fail('CHAT_HISTORY_INVALID')
   const result = { role: value.role, text: redact(value.text), at: value.at }

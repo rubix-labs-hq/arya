@@ -49,7 +49,7 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Arya transcribes your clips on this device so you can edit by text.</string>
+	<string>Arya uses Apple speech recognition to transcribe your clips so you can edit by text. It runs on this device when supported, otherwise Apple processes the audio.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>app.reel.project</string>

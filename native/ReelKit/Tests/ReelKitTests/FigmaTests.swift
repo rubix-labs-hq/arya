@@ -21,7 +21,12 @@ final class FigmaTests: XCTestCase {
         let original = Figma.Credential(accessToken: "existing_secret", handle: "Existing")
         let store = FigmaStore(original), provider = FigmaProvider([.init(data: Data("new_secret existing_secret".utf8), status: 401)])
         do { _ = try await make(store, provider).connect(token: "new_secret"); XCTFail("must reject authentication") }
-        catch { XCTAssertFalse(error.localizedDescription.contains("secret")) }
+        catch {
+            XCTAssertFalse(error.localizedDescription.contains("secret"))
+            XCTAssertTrue(error.localizedDescription.contains("Figma did not accept this token"))
+            XCTAssertTrue(error.localizedDescription.contains("file_content:read"))
+            XCTAssertFalse(error.localizedDescription.contains("sharing"))
+        }
         XCTAssertEqual(store.read()?.accessToken, original.accessToken)
     }
 

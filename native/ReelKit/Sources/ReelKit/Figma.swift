@@ -299,6 +299,9 @@ public actor Figma {
             if attempt == 0, supplied == nil, [401, 403].contains(response.status), credential.method == "oauth", credential.refreshToken != nil {
                 credential = try await refresh(credential); continue
             }
+            if path == "/v1/me", [401, 403].contains(response.status) {
+                throw Failure("Figma did not accept this token. Check it is current and has File content (read), file_content:read, and Current user (read), current_user:read, access.")
+            }
             return try Self.read(response)
         }
         throw Failure("Reconnect Figma to continue.")

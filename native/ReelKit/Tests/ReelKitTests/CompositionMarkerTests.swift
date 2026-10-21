@@ -2,7 +2,7 @@ import Foundation
 @testable import ReelKit
 import XCTest
 
-/// Prepared JavaScriptCore tests. The creative lane does not compile or execute Swift.
+/// Marker scope tests that run the shared JavaScript core through JavaScriptCore.
 final class CompositionMarkerTests: XCTestCase {
     private func fixture(_ core: ReelCore) throws -> String {
         let project = try core.newProject(name: "Marker scopes")

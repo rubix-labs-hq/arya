@@ -148,7 +148,7 @@ final class Model { var assistantDraft = "Make a title" }
 struct Press { var modifiers: EventModifiers }
 final class Composer {
     let assistant = Assistant(), model = Model()
-    var sent = 0
+    var sent = 0, settings = false
     func sendDraft() { sent += 1 }
 ''' + block(panel, '    private var canSendDraft: Bool') + '\nfunc press(_ press: Press) -> KeyPress.Result {\n' + body + '\n}\n}\n' + checks + '''
 let composer = Composer()
@@ -166,7 +166,7 @@ for blocked in 0..<6 {
     case 4: composer.model.assistantDraft = String(repeating: "a", count: 21)
     default: composer.model.assistantDraft = ""
     }
-    check(composer.press(Press(modifiers: [])) == .ignored && composer.sent == 0, "Unavailable, busy, blank and oversized drafts must not send")
+    check(composer.press(Press(modifiers: [])) == (blocked == 0 ? .handled : .ignored) && composer.sent == 0, "Unavailable, busy, blank and oversized drafts must not send")
 }
 composer.assistant.applyingProposal = Proposal(finished: true)
 check(composer.press(Press(modifiers: [])) == .handled && composer.sent == 2, "A finished preview permits another request")

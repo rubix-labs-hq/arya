@@ -9,7 +9,7 @@ struct FigmaOAuthBroker: Sendable {
     init(endpoint: URL, transport: @escaping Figma.Transport) throws {
         guard let url = URLComponents(url: endpoint, resolvingAgainstBaseURL: false), url.scheme == "https", url.host != nil,
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil, url.path.isEmpty || url.path == "/",
-              url.port == nil || url.port == 443 else { throw Figma.Failure("Reel's Figma sign-in service must use HTTPS.") }
+              url.port == nil || url.port == 443 else { throw Figma.Failure("Arya's Figma sign-in service must use HTTPS.") }
         self.endpoint = endpoint; self.transport = transport
     }
     func start(state: String, verifier: String) async throws -> URL {
@@ -37,7 +37,7 @@ struct FigmaOAuthBroker: Sendable {
         let response: Figma.Response
         do { response = try await transport(request, 16384) }
         catch is CancellationError { throw CancellationError() }
-        catch { throw Figma.Failure("Reel's Figma sign-in service could not be reached.") }
+        catch { throw Figma.Failure("Arya's Figma sign-in service could not be reached.") }
         guard response.data.count <= 16384, (200..<300).contains(response.status), let data = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any] else { throw Figma.Failure("Figma sign-in expired or failed. Reconnect your account.") }
         return data
     }

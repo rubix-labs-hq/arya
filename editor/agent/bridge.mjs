@@ -146,6 +146,13 @@ export async function startBridge(options = {}) {
       const master = secretEqual((request.headers.authorization ?? '').replace(/^Bearer /, ''), token)
       const ownRun = run && secretEqual((request.headers.authorization ?? '').replace(/^Bearer /, ''), run.token)
       if (!master && !(ownRun && match[2] === 'calls')) throw failure('Unauthorized', 401)
+      if (request.method === 'POST' && url.pathname === '/v1/shutdown') {
+        await readBody(request, 1024)
+        if ([...runs.values()].some(run => !run.terminal || run.child && run.child.exitCode === null && run.child.signalCode === null)) throw failure('Wait for the active request to stop before restarting the helper.', 409)
+        closed = true // Refuse any pipelined request before the response finishes.
+        response.once('finish', () => { void close() })
+        return reply(200, { stopped: true })
+      }
       if (request.method === 'GET' && url.pathname === '/v1/status') {
         const metadata = await catalog.status({ wait: true, refresh: url.searchParams.get('refresh') === '1' })
         if (closed) throw failure('Bridge has stopped', 410)

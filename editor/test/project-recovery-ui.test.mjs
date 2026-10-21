@@ -241,7 +241,7 @@ test('actual merged route context registers queued Creative jobs with their canc
 test('actual pending assistant send blocks both recovery entries and their stale click closures before consent renders', async () => {
   const f = shell('valid'), pending = deferred(), opened = []
   Object.assign(f.context, { openProjectRecovery: () => opened.push(true), player: { pause() {} },
-    time: { t: 0 }, sending: { current: false }, activity: { active: false },
+    time: { t: 0 }, sending: { current: false }, dispatching: { current: false }, activity: { active: false },
     sharingGate: { current: { request: () => pending.promise } }, setPending() {}, setText() {}, setNow() {},
     assistantDraftIsCurrent, assistantPrompt, draftContext: assistantDraftContext(f.store), draft: assistantDraft(f.store), native: false, connection: null })
   f.store.connected = true

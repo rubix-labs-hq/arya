@@ -42,7 +42,7 @@ function ChangeReceipt({ receipt }) {
     set({ openComp: current.comp, selection: current.ids, page: 'edit', viewerMode: 'timeline' })
     player.seek(current.start)
   }
-  return html`<details class="change-receipt"><summary>Edit ${receipt.version} · ${headline}</summary>
+  return html`<details class="change-receipt"><summary>${receipt.undone ? 'Undone · Edit' : 'Edit'} ${receipt.version} · ${headline}</summary>
     ${receipt.projectChanges.length ? html`<p class="receipt-meta">${receipt.projectChanges.join(', ')}</p>` : null}
     ${(receipt.scopes ?? []).map(scope => html`<div class="receipt-layer"><b>${scope.name}</b><span class="receipt-meta">${scopeLabel(scope)} · ${scope.status}</span>${scope.asset != null ? html`<p class="receipt-meta">${scope.asset}</p>` : null}<dl>${scope.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
     ${receipt.clips.map(clip => html`<div class="receipt-layer"><b>${clip.name}</b><span class="receipt-meta">${clip.compositionName} · ${clip.id} · ${clip.status}</span><dl>${clip.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
@@ -64,6 +64,7 @@ function AssistantHistoryNotice({ status }) {
 
 export function ChatPanel() {
   const s = useStore()
+  const hosted = s.caps.host === 'browser-local'
   const playhead = useTime()
   const draftRoot = s.root
   const draft = assistantDraft(s), text = draft.text
@@ -83,7 +84,7 @@ export function ChatPanel() {
   const [refreshing, setRefreshing] = useState(false)
   const [sharingReview, setSharingReview] = useState(null)
   const [now, setNow] = useState(Date.now())
-  const sending = useRef(false)
+  const sending = useRef(false), dispatching = useRef(false)
   const sharingGate = useRef(null), stopAction = useRef(null)
   if (!sharingGate.current) sharingGate.current = createAssistantSharingGate({ api,
     present: review => {
@@ -121,6 +122,7 @@ export function ChatPanel() {
       const permit = await sharingGate.current.request()
       if (!permit?.valid() || !assistantDraftIsCurrent(captured, store)) return
       setPending(true)
+      dispatching.current = true
       await api('/api/bridge/send', { ...request, sharing: permit.sharing, ...(store.caps?.host !== 'native' && store.assistantPreview !== false ? { review: true } : {}) })
       if (captured.draft && assistantDrafts.get(captured.root) === captured.draft) {
         assistantDrafts.set(captured.root, { ...captured.draft, text: '' })
@@ -132,7 +134,7 @@ export function ChatPanel() {
     } catch (error) {
       toast(error.message, 'error')
     } finally {
-      sending.current = false
+      sending.current = false; dispatching.current = false
       set({ assistantSharingReviewOpen: false })
       setPending(false)
       setNow(Date.now())
@@ -140,7 +142,7 @@ export function ChatPanel() {
   }
   const stop = async () => {
     sharingGate.current.cancel()
-    if (!activity.canStop) return
+    if (!dispatching.current && !activity.canStop) return
     setStopping(true)
     try { await api('/api/assistant/cancel', {}) }
     catch (error) { toast(error.message, 'error') }
@@ -183,8 +185,12 @@ export function ChatPanel() {
   const [reviewBusy, setReviewBusy] = useState('')
   const decide = async (kind, route, body) => {
     if (reviewBusy) return
+    const undoneChange = kind === 'undo' ? store.assistantReview?.change : null, root = store.root
     setReviewBusy(kind)
-    try { await api(route, body) }
+    try {
+      await api(route, body)
+      if (undoneChange?.id === body?.id && store.root === root) set({ receipts: store.receipts.map(receipt => receipt.version > undoneChange.beforeVersion && receipt.version <= undoneChange.afterVersion ? { ...receipt, undone: true } : receipt) })
+    }
     catch (error) { toast(error.message, 'error') }
     finally { setReviewBusy('') }
   }
@@ -199,6 +205,8 @@ export function ChatPanel() {
     ...s.receipts.map(receipt => ({ type: 'receipt', receipt, at: receipt.at })),
   ].sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
 
+  if (hosted) return html`<div class="panel chat"><div class="chat-head"><b>Assistant</b><span class="grow"></span><button class="ghost tiny" aria-label="Close assistant" onClick=${() => set({ chatOpen: false })}><${Icon} name="close" /></button></div><div class="assistant-setup"><b>Not available in the browser beta</b><p>The assistant can edit clips, titles and audio using your own Claude Code or Codex account. Use the Arya Mac app or run the editor locally to connect.</p><a class="button primary" href="https://arya-beta-delta.vercel.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a><a class="settings-link" href="https://arya-beta-delta.vercel.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run locally</a></div></div>`
+
   return html`
     <div class="panel chat">
       <${AssistantHistoryNotice} status=${s.chatHistory} />
@@ -210,12 +218,13 @@ export function ChatPanel() {
         <button class="ghost tiny" aria-label="Assistant settings" title="Assistant settings" disabled=${pending || Boolean(sharingReview)} onClick=${() => { if (!store.assistantSharingReviewOpen) set({ settingsOpen: true }) }}>Settings</button>
         <button class="ghost tiny" aria-label="Close assistant" onClick=${() => { scriptImport.current.cancel(); set({ chatOpen: false }) }}><${Icon} name="close" /></button>
       </div>
-      ${!status.ready ? html`<div class="assistant-setup"><b>${status.refreshRequired ? status.label : 'Connect your editing assistant'}</b><p>${status.refreshRequired ? status.reason : connection?.reason ?? (s.assistantStatusError || 'Choose your subscription agent and check its account in Settings.')}</p>${status.refreshRequired ? html`<button disabled=${refreshing || connection?.loading || working || !s.connected} onClick=${refreshAvailability}>${refreshing || connection?.loading ? 'Refreshing…' : 'Refresh availability'}</button>` : null}<button onClick=${() => set({ settingsOpen: true })}>${status.refreshRequired ? 'Assistant settings' : 'Set up assistant'}</button></div>` : null}
+      ${s.caps.assistant?.pluginSession ? html`<p class="assistant-plugin-note">Typing here starts a separate ${name} run. To use this Claude session, ask in the terminal.</p>` : null}
+      ${!status.ready ? html`<div class="assistant-setup"><b>${status.refreshRequired ? status.label : 'Connect your editing assistant'}</b><p>${status.refreshRequired ? status.reason : connection?.reason ?? (s.assistantStatusError || 'Connect Claude Code (Claude Pro/Max) or Codex (ChatGPT plan) in Settings.')}</p>${!status.refreshRequired ? html`<p>Connect Claude Code (Claude Pro/Max) or Codex (ChatGPT plan).</p>` : null}${status.refreshRequired ? html`<button disabled=${refreshing || connection?.loading || working || !s.connected} onClick=${refreshAvailability}>${refreshing || connection?.loading ? 'Refreshing…' : 'Refresh availability'}</button>` : null}<button onClick=${() => set({ settingsOpen: true })}>${status.refreshRequired ? 'Assistant settings' : 'Set up assistant'}</button></div>` : null}
       <div class="chat-list" ref=${list}>
         ${feed.length === 0 ? html`<div class="chat-empty">
           <p>${native ? 'Describe the edit you want. Your assistant works with native clips, titles, audio and motion, with undo.' : 'Ask for an edit or a question about this project. With Preview changes on, you see what will change and apply it yourself.'}</p>
         </div>` : null}
-        ${feed.map(m => m.type === 'receipt' ? html`<section class="assistant-result-card" aria-label="Committed edit result"><span class="assistant-card-label">Committed edit</span><${ChangeReceipt} receipt=${m.receipt} /></section>` : m.type === 'act'
+        ${feed.map(m => m.type === 'receipt' ? html`<section class="assistant-result-card" aria-label="Committed edit result"><span class="assistant-card-label">${m.receipt.undone ? 'Undone' : 'Committed edit'}</span><${ChangeReceipt} receipt=${m.receipt} /></section>` : m.type === 'act'
           ? html`<article class="assistant-tool-card" aria-label="Assistant update"><span class="assistant-card-label">Assistant update</span><p>${m.text}</p></article>`
           : html`<div class=${`msg ${m.role}`}>
               ${m.refs?.length ? html`<div class="msg-refs">${m.refs.map(r => html`<span class="chip small"><${Icon} name="attach" size=${14} /> ${r.label}</span>`)}</div>` : null}
@@ -252,14 +261,16 @@ export function ChatPanel() {
             if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
               e.preventDefault()
               if (canSend) send()
+              else if (text.trim() && !working) { toast('Connect an assistant to send. Your draft is kept.'); list.current?.parentElement.querySelector('.assistant-setup button:last-child')?.focus() }
             }
           }}></textarea>
       </div>
+      ${!canSend && !working ? html`<div class="assistant-send-reason"><span>${!s.connected ? 'Reconnect to send. Your draft is kept.' : status.refreshRequired ? 'Refresh model availability to send. Your draft is kept.' : 'Set up an assistant to send. Your draft is kept.'}</span><button class="ghost tiny" onClick=${status.refreshRequired ? refreshAvailability : () => set({ settingsOpen: true })}>${status.refreshRequired ? 'Refresh availability' : 'Set up assistant'}</button></div>` : null}
       <div class="assistant-composer-footer">
         ${native ? null : html`<label class="assistant-preview-toggle" title="Show the clips and settings a request will change, and apply them only when you choose"><input type="checkbox" checked=${preview} disabled=${working || Boolean(sharingReview)} onChange=${e => setPreview(e.target.checked)} /><span>Preview changes</span></label>`}
         <span class="grow"></span>
         <div class="assistant-primary-action">${working
-          ? html`<button class="assistant-stop" disabled=${!activity.canStop} onClick=${stop}>${activity.state === 'cancelling' ? 'Stopping…' : 'Stop request'}</button>`
+          ? html`<button class="assistant-stop" disabled=${!pending && !activity.canStop} onClick=${stop}>${activity.state === 'cancelling' ? 'Stopping…' : 'Stop request'}</button>`
           : html`<button class="send" aria-label="Send message" disabled=${Boolean(sharingReview) || !canSend || text.length > inputLimit || !text.trim() && !s.refs.length} onClick=${() => send()}>↑</button>`}</div>
       </div>
       <details class="assistant-options"><summary>Input, model and tips</summary>

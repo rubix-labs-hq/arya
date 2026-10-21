@@ -16,16 +16,18 @@ def section(source, start, end):
     return source[source.index(start):source.index(end, source.index(start))]
 
 # The release gate runs this without --base-root in a copy that has no .git. These SHA-256
-# values pin each section as it stood in the reviewed lane base
-# (build/arya-native-music-outcomes-followup/base, gitignored).
+# values pin each section as it stood in the reviewed baseline, so an unreviewed edit to
+# these sections fails the check.
 BASE_SECTIONS = {
-    ("    func cancel()", "    private func cancelOwnedJobs"): "ac69f502cc11bf9eea2d059ddc2fe483d4888444d924c8ca77d69ab42a5b2af3",
+    # Re-pinned 2026-10-21: an idle cancel() also clears partialReply, the streamed reply text
+    # added in 1.0.1. Job cancellation itself is unchanged.
+    ("    func cancel()", "    private func cancelOwnedJobs"): "fad43b38ef781dee8b69760574fe4b7530e4ead03a9a6da15f4efa83769b4500",
     ("    private func cancelOwnedJobs", "    /// Call when a project closes"): "c3bc69e669205d991ad30ce26866c847e4bca15c2ab50bec784863e8c31e54b8",
     ('        if method == "POST", ["/api/export"', "        let result: JSON"): "e43c3c4b7560758dfa8aa07c682f41c46aae0c4046d4b1fda432a02d69c1d61d",
     ("    private func retireFinishedJobs", "    private func capture"): "6f49e1dc0cb88c9052d5393f98fdb462279716196e6c8d4e40f9a0511490f5b5",
 }
 
-# The one line added to cancel() after the lane base. It records whether the stop was confirmed
+# The one line added to cancel() after the baseline. It records whether the stop was confirmed
 # so /api/assistant/sharing/revoke can report stopUnconfirmed; it does not change cancellation.
 STOP_RESULT = "            self.lastStopResult = (id, !failed && !self.stopHadFailure)\n"
 

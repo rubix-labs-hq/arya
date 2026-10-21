@@ -54,9 +54,9 @@ test('configured release, contact, source and social metadata survive static gen
   // A ready release sends every primary action to the download, not to the beta access form.
   for (const [name, html] of Object.entries(pages)) {
     assert.ok(!html.includes('href="/download/#access"'), `${name} still links to beta access`);
-    assert.ok(html.includes('<a class="button small" href="/download/#mac">Download</a>'), `${name} header action`);
+    assert.ok(html.includes('<a class="button small" href="/download/#mac">Download for Mac</a>'), `${name} header action`);
   }
-  assert.equal([...pages.home.matchAll(/<a class="button " href="\/download\/#mac">Download Arya<\/a>/g)].length, 3);
+  assert.equal([...pages.home.matchAll(/<a class="button " href="\/download\/#mac">Download for Mac<\/a>/g)].length, 2);
   assert.ok(!pages.download.includes('id="access-form"'));
 });
 
@@ -81,7 +81,7 @@ test('static installation guides explain manual update and rollback with release
     assert.ok(html.includes('href="#updates"'));
     assert.ok(html.includes('id="updates">Updates and rollback'));
     assert.ok(html.includes('press Control-C in that companion\'s window'));
-    assert.ok(html.includes('previous approved installer and its published checksum'));
+    assert.ok(html.includes('previous installer and its published checksum'));
     assert.ok(html.includes('backup made before the update'));
     assert.ok(html.includes('Replacing the app does not undo project edits'));
     assert.ok(html.includes('Get Info'));

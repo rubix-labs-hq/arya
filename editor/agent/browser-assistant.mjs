@@ -204,7 +204,7 @@ export function createBrowserAssistant(options) {
     const manualPreview = settings.mode === 'manual' && (settings.catalogBound || settings.effort) ? selectRoute({ preferences: settings, catalogs: catalogCache, providers: raw, now: options.now?.() ?? Date.now() }) : null
     const currentRoute = autoPreview ?? manualPreview
     publicStatus = { available: currentRoute ? currentRoute.ok : selected.available, configured: currentRoute ? currentRoute.ok : selected.available, ...settings, providerName: settings.mode === 'auto' ? 'Auto' : names[settings.provider], reason: currentRoute ? currentRoute.ok ? settings.mode === 'auto' ? 'Auto is ready to choose from your enabled verified models.' : 'Your verified Manual model is ready.' : currentRoute.reason : selected.reason,
-      routingSupported: true, sharingConsentVersion: SHARING_VERSION, catalogs: catalogCache, autoPreview, manualPreview, bridgeConnected: !!bridge, providers, usage: null, loading: !!statusPromise || !!explicitStatusPromise, checkedAt: providerCheckedAt, ...state }
+      routingSupported: true, sharingConsentVersion: SHARING_VERSION, catalogs: catalogCache, autoPreview, manualPreview, bridgeConnected: !!bridge, providers, sharing: { approved: !!grantRecord }, usage: null, loading: !!statusPromise || !!explicitStatusPromise, checkedAt: providerCheckedAt, ...state }
     return publicStatus
   }
   const configure = async body => {
@@ -441,7 +441,7 @@ export function createBrowserAssistant(options) {
             for (const job of run.jobs.values()) recordCompletedJobOutcome(run.outcomes, options.jobOutcome?.(job))
             const failedJobs = [...run.jobs.values()].filter(job => ['failed', 'cancelled'].includes(options.jobState?.(job)))
             const currentVersion = options.getOutline().version
-            const outcome = unresolvedToolOutcome(run.outcomes) ?? (failedJobs.length ? `${failedJobs.length} processing job${failedJobs.length === 1 ? '' : 's'} did not finish. Review any committed edits.` : currentVersion !== run.initialVersion ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were applied during this request.')
+            const outcome = unresolvedToolOutcome(run.outcomes) ?? (failedJobs.length ? `${failedJobs.length} processing job${failedJobs.length === 1 ? '' : 's'} did not finish. Review any committed edits.` : run.review ? 'Preview mode was on. Proposed edits are applied only when you choose Apply.' : currentVersion !== run.initialVersion ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were applied during this request.')
             publish({ state: event.type === 'done' && !unfinished ? 'done' : 'error', text: redact(final, [owner.token]).slice(0, 512 * 1024), outcome })
             options.onReply?.(state.text, event.type === 'error' || unfinished)
             if (event.type === 'error' || unfinished) await cancelJobs(run)
@@ -537,5 +537,5 @@ export function createBrowserAssistant(options) {
     if (owner) await closeOwner(owner)
     active = null
   }
-  return { status, configure, login, sharing, grantSharing, revokeSharing, send, cancel, close, snapshot: () => ({ sharingConsentVersion: SHARING_VERSION, ...publicStatus, ...state, ...settings, providerName: settings.mode === 'auto' ? 'Auto' : names[settings.provider], bridgeConnected: !!bridge, usage: null }) }
+  return { status, configure, login, sharing, grantSharing, revokeSharing, send, cancel, close, snapshot: () => ({ sharingConsentVersion: SHARING_VERSION, ...publicStatus, ...state, ...settings, providerName: settings.mode === 'auto' ? 'Auto' : names[settings.provider], bridgeConnected: !!bridge, sharing: { approved: !!grantRecord }, usage: null }) }
 }

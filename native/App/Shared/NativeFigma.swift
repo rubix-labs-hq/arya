@@ -86,16 +86,18 @@ final class NativeFigma: NSObject, ObservableObject, ASWebAuthenticationPresenta
             self.hasRequestedCredentialAccess = true
             #endif
             let client = try self.service(), url = try await client.beginOAuth()
+            defer { self.authentication = nil }
             let callback: URL = try await withCheckedThrowingContinuation { continuation in
                 let authentication = ASWebAuthenticationSession(url: url, callbackURLScheme: "reelfigma") { callback, error in
                     if let callback { continuation.resume(returning: callback) }
-                    else { continuation.resume(throwing: error ?? Figma.Failure("Figma sign-in was canceled.")) }
+                    else if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
+                        continuation.resume(throwing: Figma.Failure("Figma sign-in was canceled."))
+                    } else { continuation.resume(throwing: error ?? Figma.Failure("Figma sign-in could not finish. Try again.")) }
                 }
                 authentication.presentationContextProvider = self
                 self.authentication = authentication
                 if !authentication.start() { self.authentication = nil; continuation.resume(throwing: Figma.Failure("The system browser could not start Figma sign-in.")) }
             }
-            self.authentication = nil
             self.accept(try await client.completeOAuth(callback: callback))
             self.message = "Figma connected."
         }
@@ -260,6 +262,7 @@ struct NativeFigmaSettings: View {
     @State private var secret = ""
     @State private var redirect = ""
     @State private var brokerURL = ""
+    @State private var developerOptions = false
     @State private var error: String?
     var body: some View {
         Form {
@@ -272,7 +275,7 @@ struct NativeFigmaSettings: View {
                     Button("Connect with Figma") { signIn() }.disabled(figma.working)
                 } else {
                     Text("Public Figma sign-in is not configured for this build.")
-                    Text("The sign-in service and public app registration are deferred. Advanced connections are available below.").font(.caption).foregroundStyle(.secondary)
+                    Text("Connect with a personal access token below to import your frames.").font(.caption).foregroundStyle(.secondary)
                 }
                 #if os(macOS)
                 Button("Check saved Figma connection") {
@@ -282,13 +285,17 @@ struct NativeFigmaSettings: View {
                 #endif
                 if figma.working { ProgressView("Connecting to Figma") }
             }
-            Section("Advanced connections") {
-                DisclosureGroup("Personal access token") {
+            Section("Personal access token") {
+                Group {
                     SecureField("Personal access token", text: $token).textContentType(.password)
                     Button("Connect token") { Task { defer { token = "" }; do { try await figma.connect(token: token); error = nil } catch { self.error = error.localizedDescription } } }.disabled(token.isEmpty || figma.working)
                     Link("Create a personal access token", destination: URL(string: "https://www.figma.com/settings")!)
-                    Text("Use current_user:read and file_content:read scopes. Credentials stay in this device's Keychain.").font(.caption).foregroundStyle(.secondary)
+                    Text("Allow File content (read), file_content:read, and Current user (read), current_user:read. Credentials stay in this device's Keychain.").font(.caption).foregroundStyle(.secondary)
                 }
+            }
+            Section {
+                Toggle("Developer options", isOn: $developerOptions)
+                if developerOptions {
                 DisclosureGroup("Developer OAuth app") {
                     TextField("Client ID", text: $clientID)
                     SecureField("Client secret", text: $secret).textContentType(.password)
@@ -298,15 +305,16 @@ struct NativeFigmaSettings: View {
                         do { try figma.configureOAuth(clientID: clientID, clientSecret: secret.isEmpty ? nil : secret, redirectURI: redirect); error = nil }
                         catch { self.error = error.localizedDescription }
                     }.disabled(figma.working)
-                    Button("Sign in with Figma") { signIn() }.disabled(!figma.oauthConfigured || figma.working)
+                    Button("Sign in with your OAuth app") { signIn() }.disabled(!figma.oauthConfigured || figma.working)
                     Link("Register your OAuth app", destination: URL(string: "https://www.figma.com/developers/apps")!)
                     Text("Register reelfigma://oauth/callback. Its client secret stays in Keychain. A configured public sign-in service takes precedence.").font(.caption).foregroundStyle(.secondary)
                 }
-                DisclosureGroup("Build sign-in service") {
+                DisclosureGroup("Developer sign-in service") {
                     TextField("HTTPS service origin", text: $brokerURL)
                     Button("Save service origin") { do { try figma.configureBroker(brokerURL); error = nil } catch { self.error = error.localizedDescription } }.disabled(figma.working)
                     Text("Set this only for a trusted Arya sign-in service. Leave it empty to use this build's configured origin, if any.").font(.caption).foregroundStyle(.secondary)
                 }
+            }
             }
             if let message = error ?? figma.message { Text(message).foregroundStyle(.secondary) }
         }

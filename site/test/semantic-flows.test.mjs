@@ -138,7 +138,7 @@ test('page copy, metadata and guide artwork follow release and public-source con
       assert.equal(pages.project.includes('Public source to follow'), !sourcePublic);
       assert.equal(pages.project.includes('Public source available'), sourcePublic);
       assert.equal(pages.home.includes('Not yet. Arya is in a private beta by invitation.'), !releaseReady);
-      assert.equal(pages.home.includes('Yes. The approved Mac release is on the download page'), releaseReady);
+      assert.equal(pages.home.includes('Yes. Arya 0.3.0 for Mac is on the download page'), releaseReady);
       // The owner has not set pricing (2026-10-09). With no checkout configured, no page may state a price or promise a free download.
       for (const [name, html] of Object.entries(pages)) {
         const text = html.replace(/<[^>]+>/g, ' ');

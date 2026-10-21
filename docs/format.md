@@ -1,6 +1,8 @@
-# Reel project format and backend API (v3)
+# Arya project format and backend API (v3)
 
-This is the contract between the parts of Reel: the editor (`editor/web`), the shared core (`editor/core`), the Node server (`editor/server.mjs`), the native app's Swift engine (ReelKit), and Claude's tools. A future fully native editor implements this document; nothing here depends on JavaScript, WebGL or Node.
+Arya was called Reel during development, so the file is still `reel.project.json` and the native engine is ReelKit.
+
+This is the contract between the parts of Arya: the editor (`editor/web`), the shared core (`editor/core`), the Node server (`editor/server.mjs`), the native app's Swift engine (ReelKit), and Claude's tools. A future fully native editor implements this document; nothing here depends on JavaScript, WebGL or Node.
 
 ## 1. The project file
 

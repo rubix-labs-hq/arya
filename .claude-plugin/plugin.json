@@ -1,17 +1,17 @@
 {
   "name": "reel",
-  "version": "0.2.0",
+  "version": "1.0.1",
   "author": {
     "name": "Rubix Labs",
     "url": "https://github.com/rubix-labs-hq"
   },
-  "description": "Reel: a full video editor you can direct. Timeline, color, audio and delivery in a GPU web editor, with Claude editing the same project live.",
+  "description": "Arya: an open-source video and motion editor you can direct. Timeline, color, motion, audio and shorts, with Claude editing the same project live.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "enabled": {
       "type": "boolean",
-      "title": "Reel editor",
-      "description": "Turn the Reel video editor on (tools, pane, prompt references) or off",
+      "title": "Arya editor",
+      "description": "Turn the Arya video editor on (tools, pane, prompt references) or off",
       "default": true
     }
   },

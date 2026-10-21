@@ -18,7 +18,7 @@ The official [DaVinci Resolve page](https://www.blackmagicdesign.com/products/da
 
 Where to be bold: Give actual Arya development captures most of the first page. Show one sample project across editing tasks. Pair a large cinematic frame with the working timeline and concrete controls. Use original media with clear provenance. Keep the cut-A sculpture as secondary identity artwork.
 
-Never: Invented testimonials, customer counts, benchmark claims, fake payment success, dead download buttons, urgency tactics, decorative AI sparkles, private client footage, claims that the source is already public, or claims that notarization has passed.
+Never: Invented testimonials, customer counts, benchmark claims, fake payment success, dead download buttons, urgency tactics, decorative AI sparkles, private client footage, or claims about a release, platform or feature before it ships.
 
 The remembered detail: The last ferry is a specific sample project, with a traveler on a wet quay and an approaching ferry at blue hour. Visitors see the scene and the real editor that holds its image, titles and project edits. The secondary Afterlight illustration remains available to explain independent layers.
 
@@ -85,7 +85,7 @@ Agent subscriptions and usage remain separate. A contribution to Arya does not i
 
 ## Release honesty
 
-The public download is not ready. The beta is by invitation. The request-access form is a labelled placeholder that sends nothing until the owner connects a form service, and pages must not invite requests before then. Current native work needs interface acceptance, fresh signed packaging and notarization. iPad and iPhone need device acceptance. Public Figma sign-in hosting remains deferred. The source is currently private; the plan is to publish it after a repository hygiene and license review.
+Arya 1.0 for Mac is public: a free, signed and notarized DMG on GitHub Releases, and the source is public under the MIT license. iPad and iPhone builds are not on the App Store yet. Public Figma sign-in hosting remains deferred. The hosted browser editor leaves out the assistant, transcription, Figma and interchange, and pages that link to it must say so.
 
 The site should be visually complete while displaying these limits. Unconfigured release, payment, contact and repository destinations must produce an explicit explanation instead of a broken link. A website build does not establish product release readiness.
 

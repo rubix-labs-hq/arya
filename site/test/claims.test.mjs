@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Claims the 2026-10-09 review checked against the editor. Update these together with the code they describe.
+// Claims the 2026-10-09 review checked against the editor, updated 2026-10-20 after the local editor gained
+// alpha export (editor/test/export-alpha.test.mjs). Update these together with the code they describe.
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const page = async route => (await readFile(join(root, route, 'index.html'), 'utf8')).replace(/<[^>]+>/g, ' ').replace(/&#39;/g, "'").replace(/\s+/g, ' ');
 
@@ -14,7 +15,8 @@ test('home makes no feature claim the review found untrue', async () => {
     [/polygon window/i, 'color windows are circle, rectangle and linear'],
     [/4:5/, 'the shorts format picker offers 9:16, 1:1 and 16:9'],
     [/lists each one|import lists|reported rendering fallbacks/i, 'the Figma import does not list the layers it turns into images'],
-    [/4444 with alpha|keeps? (its )?alpha in the browser/i, 'the browser editor exports ProRes 4444 and PNG sequences opaque'],
+    [/without transparency|EDL and AAF are not supported/i, 'the local editor keeps alpha and exports EDL'],
+    [/hosted[^.]*exports? (ProRes|PNG)/i, 'the hosted editor exports only H.264, HEVC, WAV and AAC'],
   ];
   for (const [pattern, reason] of untrue) assert.ok(!pattern.test(home), reason);
 });
@@ -33,9 +35,9 @@ test('home states the limits next to the claims they qualify', async () => {
     'automatic proxies',
     'circle, rectangle or linear window',
     '9:16, 1:1 or 16:9 composition',
-    'The browser editor exports ProRes 4444 and PNG sequences without transparency; the Mac app keeps it.',
+    'exports H.264, HEVC, WAV and AAC up to five minutes.',
     'They do not predict views.',
-    'Premiere XML, EDL and AAF are not supported.',
+    'Premiere XML and AAF are not supported, and EDL is export only',
     'Footage: Tears of Steel , (CC) Blender Foundation',
   ]) assert.ok(home.includes(required), required);
 });

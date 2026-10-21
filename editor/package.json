@@ -3,7 +3,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "version": "0.2.0",
+  "version": "1.0.1",
   "description": "Reel: the browser editor and local media server for the Reel Claude Code mod",
   "dependencies": {
     "htm": "^3.1.1",
@@ -11,7 +11,7 @@
     "preact": "^10.29.8"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-concurrency=2 test/*.test.mjs",
     "golden": "node scripts/golden.mjs",
     "golden:update": "node scripts/golden.mjs --update",
     "renderer:regressions": "node scripts/renderer-regressions.mjs",

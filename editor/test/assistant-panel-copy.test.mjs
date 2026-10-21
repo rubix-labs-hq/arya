@@ -142,3 +142,27 @@ test('assistant update cards retain their labels and reference chips use drawn i
     close.props.onClick(); assert.equal(globalThis.__assistantPanelState.chatOpen, false)
   } finally { delete globalThis.__assistantPanelState }
 })
+
+
+test('hosted assistant explains the limit with working destinations and no composer', () => {
+  const tree = render(setupStatus, { caps: { host: 'browser-local' } })
+  assert.match(text(tree), /Not available in the browser beta/)
+  assert.equal(walk(tree).some(node => node.type === 'textarea'), false)
+  assert.equal(find(tree, 'assistant-composer-card'), undefined)
+  assert.deepEqual(walk(tree).filter(node => node.type === 'a').map(node => node.props.href), [
+    'https://arya-beta-delta.vercel.app/download/#mac', 'https://arya-beta-delta.vercel.app/install/#accounts',
+  ])
+})
+
+test('disconnected composer keeps Send disabled and explains how to keep the draft', () => {
+  const tree = render()
+  assert.equal(walk(tree).find(node => node.props['aria-label'] === 'Send message').props.disabled, true)
+  const reason = find(tree, 'assistant-send-reason')
+  assert.match(text([reason]), /Your draft is kept/)
+  assert.ok(walk([reason]).some(node => node.type === 'button' && text([node]) === 'Set up assistant'))
+})
+
+test('plugin chat discloses a separate provider run', () => {
+  const tree = render(readyStatus, { caps: { assistant: { pluginSession: true } } })
+  assert.match(text(tree), /Typing here starts a separate Codex run. To use this Claude session, ask in the terminal./)
+})

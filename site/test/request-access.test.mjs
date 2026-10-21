@@ -87,14 +87,15 @@ test('the public default has no access destination and the download page shows a
     assert.ok(pageHTML.includes('href="/download/#access"'), `${page || 'home'} links its primary action to the access form`);
   }
   const privacy = await unreleasedPage('privacy');
-  assert.ok(privacy.includes('The beta access form on the download page is a placeholder. It does not send or store what you type.'));
+  assert.ok(privacy.includes('Effective date: 2026-10-20.'));
+  assert.ok(!privacy.includes('beta access form on the download page is a placeholder'));
 });
 
 test('with no connected form, Home invites no access requests and says when requests open', async () => {
   const home = await unreleasedPage('');
   assert.ok(!home.includes('Request beta access'), 'nothing takes requests yet');
   assert.ok(!/request (beta )?access/i.test(home.replace(/<[^>]+>/g, ' ')), 'no copy asks visitors to request access');
-  assert.equal([...home.matchAll(/<a class="button " href="\/download\/#access">Beta access<\/a>/g)].length, 3);
+  assert.equal([...home.matchAll(/<a class="button " href="\/download\/#access">Beta access<\/a>/g)].length, 2);
   assert.ok(home.includes('Beta requests open when the form on the download page is connected.'));
 });
 

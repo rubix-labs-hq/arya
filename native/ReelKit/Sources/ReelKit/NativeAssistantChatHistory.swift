@@ -107,7 +107,7 @@ public final class NativeAssistantChatHistory {
         text.replacingOccurrences(of: #"(?<![A-Za-z0-9_])(?:[sS][kK]-(?:[aA][nN][tT]-)?[A-Za-z0-9_-]{12,}|[bB][eE][aA][rR][eE][rR][\u0009-\u000D\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+[A-Za-z0-9._~-]{16,})"#, with: "[redacted]", options: .regularExpression)
     }
     private static func normalize(_ fields: [String: Any], strict: Bool) throws -> JSON {
-        guard let role = fields["role"] as? String, ["user", "claude"].contains(role), let text = fields["text"] as? String,
+        guard let role = fields["role"] as? String, ["user", "claude", "assistant"].contains(role), let text = fields["text"] as? String,
               let at = integer(fields["at"]), !strict || Set(fields.keys).isSubset(of: messageKeys) else { throw Failure() }
         var result: [(String, JSON)] = [("role", .string(role)), ("text", .string(redact(text))), ("at", .number(at))]
         if let raw = fields["error"] {

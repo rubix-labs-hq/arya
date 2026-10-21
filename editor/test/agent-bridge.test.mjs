@@ -86,6 +86,8 @@ test('bridge enforces bearer auth, loopback Origin and owned cancellation', asyn
     assert.equal((await request(bridge, 'GET', '/v1/status', undefined, { origin: 'null' })).status, 403)
     const ids = [randomUUID(), randomUUID()]
     for (const id of ids) assert.equal((await request(bridge, 'POST', '/v1/runs', { id, provider: 'claude-code', text: 'Wait' })).status, 201)
+    assert.equal((await request(bridge, 'POST', '/v1/shutdown', {})).status, 409)
+    assert.equal(bridge.server.listening, true)
     assert.equal((await request(bridge, 'POST', `/v1/runs/${ids[0]}/cancel`, {})).status, 200)
     assert.equal((await request(bridge, 'GET', `/v1/runs/${ids[0]}/events`)).body.events.at(-1).type, 'error')
     assert.equal((await request(bridge, 'GET', `/v1/runs/${ids[1]}/events`)).body.events.some(event => ['done', 'error'].includes(event.type)), false)
@@ -226,4 +228,17 @@ test('owned bridge shutdown closes admission before an already reading HTTP body
   await closing; await finished
   assert.equal(preparations, 0)
   await assert.rejects(fetch(new URL('/v1/runs', bridge.endpoint), { method: 'POST', headers: { authorization: `Bearer ${bridge.token}`, 'content-type': 'application/json' }, body }), /fetch failed/)
+})
+
+
+test('helper restart requires master authentication and closes only an idle owned bridge', async () => {
+  const bridge = await startBridge({})
+  try {
+    assert.equal((await request(bridge, 'POST', '/v1/shutdown', {}, { authorization: 'Bearer wrong' })).status, 401)
+    assert.equal(bridge.server.listening, true)
+    const closed = new Promise(resolve => bridge.server.once('close', resolve))
+    assert.deepEqual(await request(bridge, 'POST', '/v1/shutdown', {}), { status: 200, body: { stopped: true } })
+    await closed
+    assert.equal(bridge.server.listening, false)
+  } finally { await bridge.close() }
 })

@@ -1648,10 +1648,10 @@ private struct NativeTimelineToolbar: View {
                     Button("Set range end") { markRange("end") }
                     Button("Clear range") { markRange("clear") }
                 } label: { Image(systemName: "ellipsis") }
-                Text(detail).font(.caption2).foregroundStyle(.secondary).lineLimit(1).frame(minWidth: 70, maxWidth: 250, alignment: .leading)
+                Text(detail).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: true, vertical: false)
                 Button { model.zoom = max(10, model.zoom / 1.4) } label: { Image(systemName: "minus.magnifyingglass") }.help("Zoom out")
                 Button { model.zoom = min(800, model.zoom * 1.4) } label: { Image(systemName: "plus.magnifyingglass") }.help("Zoom in")
-            }.font(.caption).buttonStyle(NativeToolbarButtonStyle()).padding(.horizontal, 8)
+            }.fixedSize(horizontal: true, vertical: false).font(.caption).buttonStyle(NativeToolbarButtonStyle()).padding(.horizontal, 8)
         }
         #endif
         }

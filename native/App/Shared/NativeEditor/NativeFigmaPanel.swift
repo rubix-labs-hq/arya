@@ -24,7 +24,7 @@ struct NativeFigmaPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                NativeFigmaConnection(figma: figma)
+                NativeFigmaConnection(figma: figma, settings: $settings)
                 NativeImportedFigmaLayers(model: model, assistant: session.assistant)
                 TextField("Figma file or frame URL", text: $url).textFieldStyle(.roundedBorder)
                 Button("List frames") {
@@ -36,6 +36,13 @@ struct NativeFigmaPanel: View {
                         selected = frames.first?.string("id") ?? ""
                     }
                 }.disabled(url.isEmpty || loading || !figma.connected)
+                if !figma.connected {
+                    Text("Connect Figma with a personal access token in Settings → Figma to list frames.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Button("Open Figma settings") { settings = true }
+                } else if url.isEmpty {
+                    Text("Paste a Figma file or frame link to list its frames.").font(.caption).foregroundStyle(.secondary)
+                }
                 if loading { ProgressView("Reading Figma frames") }
                 if !frames.isEmpty {
                     Picker("Frame", selection: $selected) { ForEach(Array(frames.enumerated()), id: \.offset) { _, frame in Text(frame.string("name")).tag(frame.string("id")) } }
@@ -195,7 +202,7 @@ private struct NativeImportedFigmaLayers: View {
 
 private struct NativeFigmaConnection: View {
     @ObservedObject var figma: NativeFigma
-    @State private var settings = false
+    @Binding var settings: Bool
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {

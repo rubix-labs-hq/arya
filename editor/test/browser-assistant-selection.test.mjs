@@ -203,13 +203,15 @@ test('first-use steps distinguish signed-in accounts, explicit selection, Auto a
   const form = settings({ ...status, provider: 'claude-code', configured: false, usage: { summary: 'Claude-specific allowance fixture' } })
   const provider = nodes(form.render()).find(node => node.type === 'select' && option(node, 'claude-code'))
   provider.props.onChange({ target: { value: 'codex' } })
-  const tree = form.render(), third = nodes(tree).filter(node => node.type === 'li')[2]
-  assert.equal(third.props.class, 'current'); assert.match(text(third), /Use Codex/)
-  assert.ok(button(tree, 'Use Codex')); assert.equal(text(tree).includes('Claude-specific allowance fixture'), false)
+  const tree = form.render()
+  assert.ok(button(tree, 'Use Codex')); assert.equal(button(tree, 'Use Codex').props.disabled, false)
+  assert.equal(text(tree).includes('Claude-specific allowance fixture'), false)
   const auto = settings({ ...status, mode: 'auto' }).render()
-  assert.match(text(auto), /Auto is selected/); assert.equal(nodes(auto).filter(node => node.type === 'li')[2].props.class, 'current')
+  assert.equal(button(auto, 'Use Codex').props.disabled, false, 'turning on Manual remains explicit while Auto is selected')
   const custom = settings({ ...status, provider: 'custom', catalogs: [customCatalog], providers: [customProvider] }).render()
-  assert.match(text(custom), /Authentication is unknown/); assert.equal(nodes(custom).filter(node => node.type === 'li')[1].props.class, 'current'); assert.equal(text(custom).includes('Account sign-in confirmed by the CLI'), false)
+  assert.match(text(custom), /Authentication is unknown/)
+  assert.equal(button(custom, 'Use Custom agent').props.disabled, true)
+  assert.equal(text(custom).includes('Signed in. Confirmed by the provider'), false)
 })
 
 test('pending Settings saves disable advanced and spending controls and exclude disabled inputs from the focus trap', async () => {

@@ -12,7 +12,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.0.0"
+    MARKETING_VERSION: "1.0.1"
     CURRENT_PROJECT_VERSION: "1"
     # The build phase reads editor/ outside the project folder.
     ENABLE_USER_SCRIPT_SANDBOXING: NO
@@ -42,7 +42,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.video
-        NSSpeechRecognitionUsageDescription: Arya transcribes your clips on this Mac so you can edit by text.
+        NSSpeechRecognitionUsageDescription: Arya uses Apple speech recognition to transcribe your clips so you can edit by text. It runs on this device when supported, otherwise Apple processes the audio.
         NSHumanReadableCopyright: "Copyright © 2026 Rubix Labs"
         NSUserActivityTypes: [app.reel.project]
         CFBundleURLTypes:
@@ -98,7 +98,7 @@ targets:
         BGTaskSchedulerPermittedIdentifiers: ["$(PRODUCT_BUNDLE_IDENTIFIER).export", "$(PRODUCT_BUNDLE_IDENTIFIER).export.*"]
         UIBackgroundModes: [processing]
         NSUserActivityTypes: [app.reel.project]
-        NSSpeechRecognitionUsageDescription: Arya transcribes your clips on this device so you can edit by text.
+        NSSpeechRecognitionUsageDescription: Arya uses Apple speech recognition to transcribe your clips so you can edit by text. It runs on this device when supported, otherwise Apple processes the audio.
         CFBundleURLTypes:
           - CFBundleURLName: app.reel.companion.offer
             CFBundleURLSchemes: [reelcompanion]

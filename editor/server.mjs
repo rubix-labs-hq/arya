@@ -1,5 +1,5 @@
 // Reel media server: serves the editor, owns the project file, generates media
-// derivatives with ffmpeg, runs render jobs, and relays between the editor and Claude.
+// derivatives with ffmpeg, runs render jobs, and hosts separate assistant CLI runs.
 //
 // node server.mjs --root <project folder> [--port 4870]
 
@@ -42,6 +42,7 @@ const PORT = Number(args.port ?? process.env.PORT ?? 4870)
 const FILE = path.join(ROOT, 'reel.project.json')
 const DOT = path.join(ROOT, '.reel')
 const CACHE = path.join(DOT, 'cache')
+let pluginSession = args.plugin === 'true'
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 
 fs.mkdirSync(guardedOutput(ROOT, CACHE), { recursive: true })
@@ -1154,7 +1155,7 @@ const routes = {
       color: colorCapabilities({ renderer: chrome }),
       processing: { audioClean: true, multicamSync: true, deshake: true },
       music: routes['GET /api/audio/compose/capabilities']?.() ?? { available: false },
-      figma: { available: true }, assistant: { available: true }, interchange: { available: true },
+      figma: { available: true }, assistant: { available: true, pluginSession }, interchange: { available: true },
     }
   },
 
@@ -1184,11 +1185,8 @@ const routes = {
   },
 
   'POST /api/bridge/claude': body => {
+    pluginSession = true
     claude = { state: body.state ?? claude.state, text: body.text ?? '' }
-    if (body.reply) {
-      appendChat({ role: 'claude', text: body.reply, at: Date.now() })
-      broadcast('chat', chat.slice(-100))
-    }
     broadcast('claude', claude)
 
     return { ok: true }

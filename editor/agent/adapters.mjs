@@ -27,7 +27,7 @@ export async function executable(name) {
 export async function providerStatus(custom) {
   const values = await Promise.all(PROVIDERS.map(async id => {
     const command = await executable(id === 'claude-code' ? 'claude' : id === 'antigravity' ? 'agy' : id === 'custom' ? custom?.executable ?? '' : 'codex')
-    if (!command) return { id, installed: false, authenticated: false, reason: id === 'custom' ? 'Custom editing is unavailable on this host. Choose Claude Code or Codex.' : `Install and sign in to ${id === 'claude-code' ? 'Claude Code' : id === 'codex' ? 'Codex' : 'Google Antigravity'} on this Mac.` }
+    if (!command) return { id, installed: false, authenticated: false, reason: id === 'custom' ? 'Custom editing is unavailable on this host. Choose Claude Code or Codex.' : `Install and sign in to ${id === 'claude-code' ? 'Claude Code' : id === 'codex' ? 'Codex' : 'Google Antigravity'} on the computer running Arya.` }
     if (id === 'custom') return { id, installed: true, authenticated: null, available: false, adapterSupported: false, authentication: 'unverified-custom', reason: 'Custom editing is unavailable on this host. A configured executable does not verify account login or subscription access. Choose Claude Code or Codex.' }
     if (id === 'antigravity') return { id, installed: true, authenticated: null, available: false, authentication: 'existing-cli-sign-in', reason: 'Google Antigravity CLI is installed. Arya has not verified its account login or an isolated editing adapter. Check account setup in the official CLI; built-in editing remains unavailable.' }
     try {

@@ -71,6 +71,17 @@ test('focus, reduced motion and readable color tokens exist',async()=>{
   const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
   for(const [a,b] of [['f2f0e9','151615'],['b5b8ae','151615'],['b5b8ae','20211f'],['151615','efbc68'],['586050','f2f0e9'],['6b4a16','f2f0e9']])assert.ok(contrast(a,b)>=4.5,`${a}/${b}`);
 });
+test('375px phone layout prevents horizontal overflow and keeps tap targets at least 44px',async()=>{
+  const css=await readFile(join(root,'assets/site.css'),'utf8');
+  const download=await readFile(join(root,'download/index.html'),'utf8');
+  assert.ok(css.includes('.article-layout{grid-template-columns:minmax(0,1fr)}'),'.article-layout must use minmax(0,1fr) to prevent mobile overflow');
+  assert.ok(css.includes('.hash,#release-description{overflow-wrap:anywhere;word-break:break-word}'),'SHA-256 hash and release description must wrap on narrow screens');
+  assert.ok(download.includes('<code class="hash">'),'download page SHA-256 must use .hash class');
+  assert.ok(css.includes('.button.small{min-height:44px;padding:0 16px;font-size:14.5px;border-radius:7px}'),'.button.small must be at least 44px tall');
+  assert.ok(css.includes('.footer-nav a{display:inline-flex;align-items:center;min-height:44px;min-width:44px'),'.footer-nav links must meet 44x44 tap target');
+  assert.ok(css.includes('.article-aside a{display:flex;align-items:center;min-height:44px;min-width:44px'),'.article-aside links must meet 44x44 tap target');
+  assert.ok(download.includes('<a class="button small" href="/download/#mac">Download for Mac</a>'),'navigation CTA must state Download for Mac');
+});
 test('font distributions include their actual licenses',async()=>{
   for(const family of ['manrope','newsreader']){
     const text=await readFile(join(root,'assets/fonts',`${family}-OFL.txt`),'utf8');assert.ok(text.includes('SIL OPEN FONT LICENSE'));

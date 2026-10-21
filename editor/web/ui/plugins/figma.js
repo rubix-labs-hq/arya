@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
 import { placeCompOps } from '/core/figma.js'
 import { attachMotionIntent } from './library.js'
-import { registerBrowserTab } from '../registry.js'
+import { registerBrowserTab, registerSettings } from '../registry.js'
 import { api, edit, set, store, time, toast, useStore } from '../store.js'
 import { openComposition } from '../timeline.js'
 
@@ -150,7 +150,7 @@ function Account({ status, onStatus }) {
   }
 
   return html`
-    <div class="hint">Connect your own Figma account to bring frames in. Arya keeps the key on this Mac, never in the project.</div>
+    <div class="hint">Connect your own Figma account to bring frames in. Your access token stays on the computer running the editor, never in the project.</div>
     ${status.oauth ? html`
       <button class="primary" disabled=${busy || pendingUrl !== null} onClick=${signIn}>Sign in with Figma</button>
       ${pendingUrl !== null ? html`
@@ -164,7 +164,9 @@ function Account({ status, onStatus }) {
       <input type="password" autocomplete="off" spellcheck="false" placeholder="figd_…" aria-label="Figma personal access token" value=${token} onInput=${e => setToken(e.target.value)} />
       <button type="submit" class=${status.oauth ? '' : 'primary'} disabled=${busy || !token.trim()}>${busy ? 'Checking…' : 'Connect'}</button>
     </form>
-    <div class="hint">In Figma: Settings → Security → Personal access tokens. Allow <b>File content</b> (read) and <b>Current user</b> (read). <a class="link" href=${TOKEN_HELP} target="_blank" rel="noopener">How</a></div>
+    <div class="hint">In Figma: Settings → Security → Personal access tokens. Give it read access to <b>File content</b> and <b>Current user</b>. <a class="link" href=${TOKEN_HELP} target="_blank" rel="noopener">How</a></div>
+    <div class="hint">Your token is saved in ~/.reel on the computer running the editor (or its configured settings folder), never in the project.</div>
+    <div class="hint">Or, in Claude Code with the Figma MCP server, run <code>/reel</code> and ask Claude to import a frame. Editor chat cannot access that session’s Figma connection.</div>
     ${error ? html`<div class="err" role="alert">${error}</div>` : null}`
 }
 
@@ -324,3 +326,11 @@ function FigmaTab({ project }) {
 }
 
 registerBrowserTab({ id: 'figma', label: 'Figma', order: 60, component: FigmaTab })
+
+function FigmaSettings() {
+  const s = useStore(), hosted = s.caps.host === 'browser-local'
+  const [status, setStatus] = useState(null)
+  useEffect(() => { installStyle(); if (!hosted) api('/api/figma/status').then(setStatus).catch(() => setStatus({ connected: false, oauth: false })) }, [hosted])
+  return html`<div class="fig"><h3 class="settings-heading">Figma</h3>${hosted ? html`<p>Figma import needs the Arya Mac app or the local editor.</p><div class="settings-actions"><a class="button primary" href="https://arya-beta-delta.vercel.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a><a class="settings-link" href="https://arya-beta-delta.vercel.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run locally</a></div>` : html`<${Account} status=${status} onStatus=${setStatus} /><button class="ghost" onClick=${() => set({ settingsOpen: false, page: 'edit', browserTab: 'figma' })}>Browse Figma frames</button>`}</div>`
+}
+registerSettings({ id: 'figma', label: 'Figma', component: FigmaSettings })

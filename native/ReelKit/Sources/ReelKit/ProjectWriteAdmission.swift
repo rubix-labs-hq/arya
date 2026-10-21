@@ -156,7 +156,7 @@ public final class ProjectFileAccess: @unchecked Sendable {
         lock.withLock { presenter = nil; item = nil; generation = UUID() }
     }
     func coordinate<T>(for file: URL, _ body: (Coordination) throws -> T) throws -> T {
-        let (owner, bound, generation) = lock.withLock { (presenter, item, self.generation) }
+        let (owner, bound, capturedGeneration) = lock.withLock { (self.presenter, self.item, self.generation) }
         guard let bound else {
             return try body(Coordination(coordinator: NSFileCoordinator(filePresenter: nil), requireCurrent: {}, preparePublication: { _, _ in {} }))
         }
@@ -178,7 +178,7 @@ public final class ProjectFileAccess: @unchecked Sendable {
             return {
                 owner.projectFileDidPublish(data)
                 self.lock.withLock {
-                    if self.generation == generation { self.item = .success(next) }
+                    if self.generation == capturedGeneration { self.item = .success(next) }
                 }
             }
         }))

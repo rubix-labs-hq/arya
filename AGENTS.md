@@ -1,28 +1,24 @@
-# Repository rules
+# Notes for coding agents
 
-Instructions for coding agents working in this repository. Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup and test commands.
+Instructions for coding agents (Claude Code, Codex and similar) working in this repository. Read [CONTRIBUTING.md](CONTRIBUTING.md) first for setup and test commands. These rules also apply to people.
 
-## Build and test storage
+## Build output
 
-The user requires cleanup at the end of every task. Remove the temporary artifacts you created after their processes stop. Keep compact logs, source hashes and result manifests. Preserve source tests, project files, media, backups and release installers.
+Video builds and test runs produce large files. Reuse the standard locations and clean up what you create.
 
-- Use `build/DerivedData` for the checkout's development app and `native/ReelKit/.build` for package tests. Reuse them across retries.
-- Use the default `build/local-verification` directory for the serial verifier. It automatically prunes bulky artifacts from finished runs older than seven days, while keeping the two newest runs and their logs.
-- Run `python3 native/scripts/verify-arya-local.py --cleanup` to preview retention cleanup. Run it again with `--apply` at task completion. The command only handles verifier-owned runs.
-- For temporary outputs outside that managed directory, use an owned temporary directory with `finally` or a shell trap. Delete it after reviewing the result. Do not leave dated build trees behind.
-- A `.keep-artifacts` file in a verification run prevents pruning. Write the reason and an expiry date in that file, and remove it when the investigation ends.
-- Never copy generated builds, package caches, dependencies or browser profiles into source snapshots. Keep only the source files and a manifest of their hashes.
-- Remove disposable worktrees through their owning tool or `git worktree remove` after checking for uncommitted work. Keep the branch or commit when it contains useful changes.
-- Before the final reply, check the size of the artifacts you created and Git status. Explain any large artifacts that remain.
+- Use `build/DerivedData` for the development app and `native/ReelKit/.build` for package tests. Reuse them across retries. Do not create dated or per-retry DerivedData folders.
+- The release verifier (`native/scripts/verify-arya-local.py`) writes runs to `build/local-verification`. It prunes bulky artifacts from finished runs older than seven days and keeps the two newest runs. Preview with `--cleanup`, then apply with `--cleanup --apply`.
+- A `.keep-artifacts` file in a verification run stops pruning. Write the reason and an expiry date in it, and delete it when you are done.
+- Put one-off output in a temporary directory that a `finally` block or shell trap removes after its processes stop.
+- Never copy builds, package caches, `node_modules` or browser profiles into source snapshots.
 
-## Required cleanup before handing work back
+## Before you finish
 
-Cleanup is part of the task, not optional follow-up work. Do not finish a task with disposable output left behind.
+- Stop any servers, browsers and helper processes you started.
+- Remove disposable builds, copied dependencies, temporary browser profiles and experiments you created. Keep source, project files, media, backups, release installers and short logs.
+- Remove disposable Git worktrees with `git worktree remove` after checking for uncommitted work. Keep the branch if it has useful commits.
+- Check `git status` and the size of anything you leave behind, and say why it remains.
 
-- Before building or testing, inspect existing output and reuse the canonical directories above. Do not create dated or per-retry DerivedData directories, dependency copies, browser profiles or source snapshots containing generated files.
-- Put one-off output in a task-owned temporary directory. Arrange cleanup with `finally` or a shell trap, after its processes stop. A failed or interrupted command does not make its output permanent.
-- At task completion, remove idle disposable builds, caches, copied dependencies, temporary browser profiles and experiments created by the task. Check earlier interrupted attempts too. Preserve source, project data, media, backups, release installers and compact evidence.
-- For any temporary artifact that must remain, record its exact path, owner, reason and expiry in a compact task receipt. Revisit expired entries at the next task. Keep reusable canonical build caches only when they support ongoing work.
-- Run the managed verifier cleanup preview and apply commands at task completion. Do not bypass its ownership, lock, pin or retention checks. If unmanaged obsolete output remains, establish its ownership and confirm no process uses it before removing only the disposable files.
-- Never remove active checkouts or unique work to meet a storage target. Check for uncommitted changes and preserve useful commits before removing an owned disposable worktree with its owning tool or `git worktree remove`.
-- Before the final reply, check disk usage and Git status. Report the space reclaimed, the paths of large retained artifacts and why they remain. If cleanup is blocked, state the exact blocker instead of silently leaving the output.
+## Test media
+
+Use generated clips (for example `ffmpeg -f lavfi -i testsrc2`) or the public-domain and Creative Commons media already in the repository. Never commit personal or client footage.

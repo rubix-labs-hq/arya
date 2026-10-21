@@ -260,7 +260,9 @@ final class ProjectRecoveryTests: XCTestCase {
         let (root, backend) = try await fixture(); await backend.stop()
         let copy = root.deletingLastPathComponent().appendingPathComponent("copied-project")
         try FileManager.default.copyItem(at: root, to: copy)
-        XCTAssertThrowsError(try NativeProjectRecovery.Store(folder: ProjectFolder(root: copy), create: false))
+        XCTAssertThrowsError(try NativeProjectRecovery.Store(folder: ProjectFolder(root: copy), create: false)) { error in
+            XCTAssertTrue(error is NativeProjectRecovery.ForeignFolder)
+        }
         XCTAssertEqual(try Data(contentsOf: ProjectFolder(root: copy).projectFile), Data(raw.utf8))
         await cleanup(root, backend)
     }
