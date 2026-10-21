@@ -1022,17 +1022,54 @@ struct NativeTimeline: View {
     }
 
     private func armedFeedbackResets(_ content: some View) -> some View {
+        armedStateResets(armedCaptureResets(content))
+    }
+
+    // Each comparison lives in a typed method so the onChange closures stay trivial to type-check.
+    private func armedCaptureResets(_ content: some View) -> some View {
         content
         #if os(iOS)
-        .onChange(of: model.version) { old, _ in invalidateArmedFeedback(gesture?.capture.version == old) }
-        .onChange(of: model.selectedIDs) { old, _ in invalidateArmedFeedback(gesture?.capture.selected == old) }
-        .onChange(of: model.selectedID) { old, _ in invalidateArmedFeedback(gesture?.capture.primary == old) }
-        .onChange(of: model.zoom) { old, _ in invalidateArmedFeedback(gesture?.capture.zoom == old) }
-        .onChange(of: model.busy) { _, busy in invalidateArmedFeedback(busy) }
-        .onChange(of: model.showingSource) { _, visible in invalidateArmedFeedback(visible) }
-        .onChange(of: model.projectReadOnlyReason) { _, reason in invalidateArmedFeedback(reason != nil) }
+        .onChange(of: model.version) { old, _ in armedVersionChanged(from: old) }
+        .onChange(of: model.selectedIDs) { old, _ in armedSelectionChanged(from: old) }
+        .onChange(of: model.selectedID) { old, _ in armedPrimaryChanged(from: old) }
+        .onChange(of: model.zoom) { old, _ in armedZoomChanged(from: old) }
         #endif
     }
+
+    private func armedStateResets(_ content: some View) -> some View {
+        content
+        #if os(iOS)
+        .onChange(of: model.busy) { _, busy in invalidateArmedFeedback(busy) }
+        .onChange(of: model.showingSource) { _, visible in invalidateArmedFeedback(visible) }
+        .onChange(of: model.projectReadOnlyReason) { _, reason in armedReadOnlyChanged(to: reason) }
+        #endif
+    }
+
+    #if os(iOS)
+    private func armedVersionChanged(from old: Int) {
+        let captured: Int? = gesture?.capture.version
+        invalidateArmedFeedback(captured == old)
+    }
+
+    private func armedSelectionChanged(from old: Set<String>) {
+        let captured: Set<String>? = gesture?.capture.selected
+        invalidateArmedFeedback(captured == old)
+    }
+
+    private func armedPrimaryChanged(from old: String?) {
+        let captured: String?? = gesture?.capture.primary
+        invalidateArmedFeedback(captured == old)
+    }
+
+    private func armedZoomChanged(from old: Double) {
+        let captured: Double? = gesture?.capture.zoom
+        invalidateArmedFeedback(captured == old)
+    }
+
+    private func armedReadOnlyChanged(to reason: String?) {
+        invalidateArmedFeedback(reason != nil)
+    }
+    #endif
 
     private func lifecycleResets(_ content: some View) -> some View {
         content
