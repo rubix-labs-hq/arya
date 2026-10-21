@@ -26,7 +26,7 @@ The frontend uses Preact, htm and the existing plain CSS system. The server rout
 
 The account window supports Claude Code, Codex with ChatGPT, unavailable Antigravity and a server-configured custom adapter. Provider availability, authentication and limits come from status responses. An authenticated inactive provider says "Signed in, not selected" and has an explicit activation action. Save and close stays in the footer and closes only after successful configuration and a fresh status response. A failed save retains the form. Registered plugin account sections remain accessible through the existing settings registry.
 
-The exact old-server status 404 says "The Reel server needs a restart to load account settings." Account actions remain disabled. Prompt drafts and attached references survive this error. Model and agent fields use the backend's 128-character limit. Only Claude Code exposes its supported agent override.
+The exact old-server status 404 says "The Arya server needs a restart to load account settings." Account actions remain disabled. Prompt drafts and attached references survive this error. Model and agent fields use the backend's 128-character limit. Only Claude Code exposes its supported agent override.
 
 Tabs have named scroll buttons, a visible scrollbar and Arrow, Home and End navigation. Long inspector controls scroll within the resized panel. Undo, Redo, Settings and Assistant remain directly accessible at 375px. The active viewer name truncates before its dimensions and frame rate.
 

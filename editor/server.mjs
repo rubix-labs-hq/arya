@@ -972,7 +972,7 @@ const assistantService = createBrowserAssistant({
     assertCurrent()
     const url = new URL(call.path, 'http://127.0.0.1')
     const route = routes[`${call.method} ${url.pathname}`]
-    if (!route) throw new Error('This browser editor does not support that Reel tool route.')
+    if (!route) throw new Error('This browser editor does not support that Arya tool route.')
     const guard = { assertCurrent, acceptIdentity, registerJob, version, runId: run.runId ?? null, ...(run.review === true ? { review: true } : {}) }
     return assistantCalls.run(guard, async () => {
       assertCurrent()
@@ -1550,5 +1550,5 @@ await loadRouteModules()
 server.listen(PORT, '127.0.0.1', () => {
   refreshAssets().catch(e => log('refresh', e.message))
   fs.writeFileSync(path.join(DOT, 'server.json'), JSON.stringify({ port: PORT, pid: process.pid, root: ROOT, started: Date.now() }))
-  log(`Reel editor at http://127.0.0.1:${PORT}/ for ${ROOT}`)
+  log(`Arya editor at http://127.0.0.1:${PORT}/ for ${ROOT}`)
 })

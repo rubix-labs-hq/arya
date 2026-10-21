@@ -77,3 +77,15 @@ test('the current repository packages with complete module and asset mappings', 
   const result = await preparePublicOutput({ outputRoot: join(root, 'output') })
   assert.ok(result.fileCount > 169); assert.equal(result.files.some(row => row.target === 'editor/index.html'), true)
 })
+
+test('the hosted editor loads every stylesheet the local editor loads', async () => {
+  const repo = join(import.meta.dirname, '../..')
+  const sheets = html => [...html.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*href="\.?\/([^"]+)"/g)].map(match => match[1])
+  const local = sheets(await readFile(join(repo, 'editor/web/index.html'), 'utf8'))
+  const hosted = sheets(await readFile(join(repo, 'editor/web/browser-local.html'), 'utf8'))
+  const mapped = new Set(JSON.parse(await readFile(join(repo, 'editor/browser-public-files.json'), 'utf8')).map(row => row.target))
+  for (const sheet of local) {
+    assert.ok(hosted.includes(sheet), `hosted editor does not link ${sheet}`)
+    assert.ok(mapped.has(`editor/${sheet}`), `hosted editor does not package ${sheet}`)
+  }
+})

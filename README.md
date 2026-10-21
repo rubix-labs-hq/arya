@@ -23,7 +23,7 @@
 
 Arya is an open-source video and motion editor. Cut, grade, animate, mix and make shorts in one project. Edit by hand on a timeline, or tell an AI assistant what should change. The assistant edits the same project you do, so every change is an ordinary edit you can see, adjust and undo.
 
-Arya runs as a native SwiftUI and Metal app for Mac, iPad and iPhone, and as a browser editor with a local media server and a Claude Code plugin. Both use the same project format and editing operations.
+Arya runs as a native SwiftUI and Metal app for Mac, and as a browser editor. You can run the browser editor from source with a local media server and a Claude Code plugin, or try a hosted version with fewer features. All of them use the same project format and editing operations. iPad and iPhone versions are coming later.
 
 <p align="center">
   <img src="site/assets/product/edit-workspace.webp" alt="Arya Edit page with a scene from Tears of Steel: a viewer with a selected title, and a timeline with seven picture clips, linked dialogue, a location card and markers." width="900">
@@ -99,8 +99,9 @@ The Mac app and the local browser editor share the same project format and editi
 | Timeline editing, color, motion, audio mixing | Yes | Yes | Yes |
 | Track matte controls, render queue | Not yet (mattes render) | Yes | Yes |
 | Export formats | H.264, HEVC, ProRes, GIF, PNG, WAV, AAC | H.264, HEVC, ProRes, GIF, PNG, WAV, AAC | H.264, HEVC, WAV, AAC, up to 5 minutes |
-| Transcription and shorts | Yes (Apple speech) | Yes (whisper.cpp) | No |
-| Denoise, voice cleanup, loudness, multicam sync | Yes | Yes | No |
+| Transcription, captions and shorts | Yes (Apple speech) | Yes (whisper.cpp) | No |
+| Loudness metering and normalization | Yes | Yes | Yes |
+| Denoise, voice cleanup, multicam sync | Yes | Yes | No |
 | FCPXML, OpenTimelineIO, SRT, WebVTT | Yes | Yes | No |
 | CMX 3600 EDL export | No | Yes | No |
 | Figma import | Yes | Yes | No |
@@ -112,7 +113,7 @@ The Mac app and the local browser editor share the same project format and editi
 | Option | Status |
 | --- | --- |
 | **Mac app** | Download the notarized DMG from [GitHub Releases](https://github.com/rubix-labs-hq/arya/releases/latest). Requires macOS 14 or newer, Apple silicon or Intel. Free. |
-| **Browser editor** | Try the hosted editor at [arya-beta-delta.vercel.app/editor](https://arya-beta-delta.vercel.app/editor/) in current Chrome or Edge. It has no assistant, transcription, Figma or interchange (see [Where each feature runs](#where-each-feature-runs)). For everything, run it locally (see below). |
+| **Browser editor** | Try the hosted editor at [arya-beta-delta.vercel.app/editor](https://arya-beta-delta.vercel.app/editor/) in current Chrome or Edge. It has no assistant, transcription, captions, Figma or interchange (see [Where each feature runs](#where-each-feature-runs)). For everything, run it locally (see below). |
 | **iPhone, iPad and Mac App Store** | Coming later. |
 | **Build from source** | See [Quick start for developers](#quick-start-for-developers). |
 
@@ -162,13 +163,21 @@ In Claude Code, `/reel` opens the editor for the project in the current folder. 
 
 ### Build the native app
 
+Run the install step above first. The native build copies the web editor and its packages from `editor/node_modules`.
+
 Open `native/Reel.xcodeproj` in Xcode, or build and launch the Mac app from the command line:
 
 ```bash
 ./script/build_and_run.sh --verify
 ```
 
-The Xcode project includes Mac, iPad and iPhone targets. Its build phase bundles the shared JavaScript core, the web editor, fonts and third-party notices. `native/project.yml` is the XcodeGen source if the project needs regenerating. See [Native builds and distribution](docs/native-release.md).
+The Xcode project includes Mac, iPad and iPhone targets. The `Reel` scheme builds the Mac app and the `Reel iOS` scheme builds the iPhone and iPad app. To build for the iOS Simulator from the command line:
+
+```bash
+xcodebuild -project native/Reel.xcodeproj -scheme "Reel iOS" -destination 'generic/platform=iOS Simulator' -derivedDataPath build/DerivedData build
+```
+
+Install the result from `build/DerivedData/Build/Products/Debug-iphonesimulator/Arya.app` with `xcrun simctl install`. A physical iPhone or iPad needs your own signing team in Xcode. Its build phase bundles the shared JavaScript core, the web editor, fonts and third-party notices. `native/project.yml` is the XcodeGen source if the project needs regenerating. See [Native builds and distribution](docs/native-release.md).
 
 ### Run the tests
 

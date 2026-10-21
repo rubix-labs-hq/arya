@@ -98,7 +98,7 @@ async function startServer(t, { controlledEncoder = false, hardStopEncoder = fal
       fs.rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
     }
   })
-  await logged('Reel editor at')
+  await logged('Arya editor at')
   const api = async (route, body, raw = false) => {
     const response = await fetch(base + route, body === undefined ? undefined : {
       method: 'POST', headers: { 'content-type': raw ? 'application/octet-stream' : 'application/json' },

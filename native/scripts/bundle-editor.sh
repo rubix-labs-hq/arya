@@ -42,7 +42,7 @@ fi
 MODULES="$EDITOR/node_modules"
 for f in preact/dist/preact.module.js preact/hooks/dist/hooks.module.js htm/dist/htm.module.js mediabunny/dist/bundles/mediabunny.min.mjs; do
   if [ ! -f "$MODULES/$f" ]; then
-    echo "error: $MODULES/$f is missing: run 'npm install' in editor/" >&2
+    echo "error: $MODULES/$f is missing: run 'npm ci --prefix editor' from the repository root" >&2
     exit 1
   fi
 done

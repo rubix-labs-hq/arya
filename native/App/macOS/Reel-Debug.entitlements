@@ -4,5 +4,8 @@
 <dict>
 	<!-- Debug builds run outside the sandbox so tests can open a project folder with
 	     --open <path>. Release builds use Reel.entitlements (sandboxed). -->
+	<!-- Same Terminal Apple Events access as release builds, for the assistant helper. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 </dict>
 </plist>

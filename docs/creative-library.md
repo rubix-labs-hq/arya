@@ -1,6 +1,6 @@
 # Reusable creative components
 
-Reel stores saved titles, compositions, effects, transitions and motion in `project.library`. Every item contains declarative native project data. Applying an item creates editable clips, layers, node graphs and keyframes. Saving or removing an item leaves its original objects and previously placed copies intact.
+Arya stores saved titles, compositions, effects, transitions and motion in `project.library`. Every item contains declarative native project data. Applying an item creates editable clips, layers, node graphs and keyframes. Saving or removing an item leaves its original objects and previously placed copies intact.
 
 The browser's Titles, Transitions and Effects sections list saved items beside their built-in presets. The Library tab also lists compositions and motion. The native editor's Library button opens the same project library with a category picker. Entries show their native type and contents. They do not claim a rendered preview.
 

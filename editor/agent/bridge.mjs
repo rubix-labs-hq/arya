@@ -261,6 +261,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (args.includes('--open') && !options.pairNonce) throw new Error('--open requires the app-issued --pair-nonce')
   const bridge = await startBridge(options)
   process.stdout.write(`${JSON.stringify(bridge.pairing)}\n`)
-  if (args.includes('--open')) { spawn('/usr/bin/open', [bridge.pairing.pairURL], { stdio: 'ignore' }).on('error', () => process.stderr.write('Open Reel and pair the printed localhost address manually.\n')) }
+  if (args.includes('--open')) { spawn('/usr/bin/open', [bridge.pairing.pairURL], { stdio: 'ignore' }).on('error', () => process.stderr.write('Open Arya and pair the printed localhost address manually.\n')) }
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { void bridge.close().then(() => process.exit(0)) })
 }

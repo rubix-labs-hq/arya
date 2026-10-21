@@ -1211,7 +1211,7 @@ public actor ReelBackend {
                 ("worker", false), ("processing", .object([("active", .int(processingAdmission.snapshot().active)), ("queued", .int(processingAdmission.snapshot().queued))])), ("root", .string(folder.root.path)), ("pid", .int(Int(ProcessInfo.processInfo.processIdentifier))),
             ])
         case ("POST", "/api/bridge/send"), ("GET", "/api/bridge/poll"), ("POST", "/api/bridge/claude"):
-            throw APIError("Claude is not connected to the Reel app yet. To direct edits with Claude, open this project with the Reel Claude Code plugin (/reel), which runs the browser editor.")
+            throw APIError("Claude is not connected to the Arya app yet. To direct edits with Claude, open this project with the Arya Claude Code plugin (/reel), which runs the browser editor.")
         case ("POST", "/api/export"): return b["renderer"] as? String == "webcodecs" ? try startExport(b) : try startNativeExport(b)
         case ("POST", "/api/video/denoise"): return try await startProcessing(b, kind: "denoise")
         case ("POST", "/api/export/progress"): return exportProgress(b)
@@ -2872,7 +2872,7 @@ public actor ReelBackend {
         var file = try folder.resolve(rel)
         var format = file.pathExtension.lowercased()
         if format == "fcpxmld" { file = try folder.resolve(folder.relative(file.appendingPathComponent("Info.fcpxml"))); format = "fcpxml" }
-        guard ["fcpxml", "otio", "srt", "vtt", "xml"].contains(format) else { throw APIError("Reel reads .fcpxml, .fcpxmld, .otio, .srt and .vtt") }
+        guard ["fcpxml", "otio", "srt", "vtt", "xml"].contains(format) else { throw APIError("Arya reads .fcpxml, .fcpxmld, .otio, .srt and .vtt") }
         let size = ((try FileManager.default.attributesOfItem(atPath: file.path))[.size] as? NSNumber)?.int64Value ?? 0
         guard size <= 64 * 1024 * 1024 else { throw APIError("\(rel) is larger than 64 MB") }
         let text = try String(contentsOf: file, encoding: .utf8)
@@ -3852,7 +3852,7 @@ public actor ReelBackend {
         guard let project else { throw APIError("no project") }
         let preset = b["preset"] as? String ?? "h264-high"
         guard let ext = Self.presetExtensions[preset] else {
-            throw APIError("The \(preset) preset is not available in the Reel app yet: ProRes, GIF and PNG sequences need the native renderer. Use H.264, HEVC or an audio preset, or render from the browser editor.")
+            throw APIError("The \(preset) preset is not available in the Arya app yet: ProRes, GIF and PNG sequences need the native renderer. Use H.264, HEVC or an audio preset, or render from the browser editor.")
         }
         let raw = (b["name"] as? String) ?? folder.root.lastPathComponent
         let base = raw.replacingOccurrences(of: "[^\\w.-]+", with: "-", options: .regularExpression).isEmpty ? "reel" : raw.replacingOccurrences(of: "[^\\w.-]+", with: "-", options: .regularExpression)

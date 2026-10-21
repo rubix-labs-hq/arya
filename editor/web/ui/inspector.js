@@ -531,7 +531,7 @@ export function Inspector() {
   return html`
     <div class="panel inspector">
       <div class="inspector-head">
-        <b>${clip.label ?? (clip.kind === 'title' ? clip.title?.text?.split('\n')[0] : String(clip.src ?? clip.kind).split('/').pop())}</b>
+        <b>${clip.label ?? (clip.kind === 'title' ? clip.title?.text?.split('\n')[0] : (store.project?.assets?.[clip.src]?.name?.trim() || String(clip.src ?? clip.kind).split('/').pop()))}</b>
         <span class="muted">${clip.id}${s.selection.length > 1 ? ` +${s.selection.length - 1}` : ''}</span>
         <span class="grow"></span>
         <button class="ghost tiny inspector-ref" title="Reference this clip to the Assistant (⌥-click works anywhere)" aria-label="Reference this clip to the Assistant" onClick=${() => addRef({ kind: 'clip', id: clip.id, label: `${clip.id} ${clip.label ?? clip.title?.text ?? String(clip.src ?? clip.kind).split('/').pop()}` })}><${Icon} name="attach" /></button>

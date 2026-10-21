@@ -29,11 +29,11 @@ export function productHome({ button, link, faq, stage, shots, figures, releaseR
     ['Figma', 'Mac · Local', 'Import a frame and get its text, rectangles, ellipses and nested frames as editable layers. Smart Animate turns two frames into an animated transition.'],
   ].map(([name, badge, text]) => `<li><div class="suite-card-head"><h3>${name}</h3><span class="edition-tag">${badge}</span></div><p>${text}</p></li>`).join('');
   const whatWorksWhere = [
-    ['Editing', 'Full multitrack timeline, local project folders, automatic proxies, FCPXML and OTIO, ProRes 4444 and PNG alpha export.', 'Full timeline, proxies and render queue via local server. ProRes 4444 and PNG alpha export, plus CMX 3600 EDL.', 'Full timeline in browser storage (IndexedDB). Exports H.264, HEVC, WAV and AAC up to 5 minutes.'],
+    ['Editing', 'Full multitrack timeline, local project folders, automatic proxies, FCPXML and OTIO, ProRes 4444 and PNG alpha export.', 'Full timeline, proxies and render queue via local server. ProRes 4444 and PNG alpha export, plus CMX 3600 EDL.', 'Full timeline in browser storage (IndexedDB). Exports H.264, HEVC, WAV and AAC up to 5 minutes. No FCPXML or OTIO.'],
     ['Color', 'Serial, parallel and layer-mixer nodes, wheels, curves, HSL qualifiers, windows, .cube LUTs, four scopes and reference matching.', 'Included (renders Rec. 709).', 'Included (renders Rec. 709).'],
     ['Motion', 'Keyframes, value and speed graphs, expressions, vector titles and shapes, masks, track mattes, parenting, point and box tracker.', 'Included (point and box tracker; no planar tracker).', 'Included (point and box tracker; no planar tracker).'],
-    ['Audio', 'Track mixer, EQ, dynamics, reverb, delay, denoise, voice cleanup, LUFS and true-peak metering, normalize to -14, -16 or -23 LUFS.', 'Included, with offline LUFS measurement and normalization.', 'Included in browser.'],
-    ['Shorts and transcription', '9:16, 1:1 and 16:9 compositions, reframing, four caption styles, and on-device transcription via Apple Speech.', 'Included, with local transcription when whisper.cpp is installed.', 'Reframing and manual or SRT/WebVTT captions only. No transcription.'],
+    ['Audio', 'Track mixer, EQ, dynamics, reverb, delay, denoise, voice cleanup, LUFS and true-peak metering, normalize to -14, -16 or -23 LUFS.', 'Included, with offline LUFS measurement and normalization.', 'Track mixer, effects, loudness metering and normalization. No denoise or voice cleanup.'],
+    ['Shorts and transcription', '9:16, 1:1 and 16:9 compositions, reframing, four caption styles, and transcription with Apple Speech, on device where the Mac supports it.', 'Included, with local transcription when whisper.cpp is installed.', 'Vertical and square projects only. No transcription, captions or shorts tools.'],
     ['AI assistant', 'Connect your own Claude Code or Codex account. Ordinary timeline edits with a change receipt and Undo.', 'Connect your own Claude Code or Codex account through the local server.', 'Not available in the hosted browser editor.'],
     ['Figma import', 'Import frames as editable text, shape and nested layers with a personal access token, or paste Figma MCP node data.', 'Import frames with a personal access token, or ask Claude Code with the Figma MCP server through /reel.', 'Not available in the hosted browser editor.'],
   ].map(([feature, mac, local, hosted]) => `<tr><th scope="row">${feature}</th><td data-label="Mac app">${mac}</td><td data-label="Local browser editor">${local}</td><td data-label="Hosted browser editor">${hosted}</td></tr>`).join('');
@@ -93,7 +93,7 @@ ${figure('motion')}
 ${figure('audio')}
 </article>
 <article class="craft-card craft-card-shorts" id="shorts" aria-labelledby="shorts-heading">
-<div class="chapter-copy"><p class="kicker">Shorts</p><h2 id="shorts-heading">Cut long recordings into editable shorts.</h2><p>Transcribe speech locally, search passages by topic or duration, and build each short as its own 9:16, 1:1 or 16:9 composition with linked audio, tracked reframing keyframes and captions in plain, boxed, word-highlight or one-word styles.</p></div>
+<div class="chapter-copy"><p class="kicker">Shorts</p><h2 id="shorts-heading">Cut long recordings into editable shorts.</h2><p>Transcribe speech, search passages by topic or duration, and build each short as its own 9:16, 1:1 or 16:9 composition with linked audio, tracked reframing keyframes and captions in plain, boxed, word-highlight or one-word styles.</p></div>
 ${figure('shorts')}
 </article>
 </div>
@@ -116,9 +116,9 @@ ${figure('shorts')}
 <h2 id="faq-heading">Questions before you start</h2>
 ${faq([
   ['Can I download Arya now?', downloadAnswer],
-  ['What is the difference between the Mac app and the browser editor?', 'The Mac app and the local browser editor (run from source) support local project folders, AI assistant connections, Figma imports and local transcription. The hosted browser editor at /editor/ runs entirely in your browser storage with no AI assistant, no Figma import and no transcription.'],
+  ['What is the difference between the Mac app and the browser editor?', 'The Mac app and the local browser editor (run from source) support local project folders, AI assistant connections, Figma imports and local transcription. The hosted browser editor at /editor/ runs entirely in your browser storage with no AI assistant, Figma import, transcription, captions or FCPXML and OTIO interchange.'],
   ['Do I need an AI subscription?', 'No. Editing, grading, motion, audio and export all work without an assistant. Connecting your own Claude Code or Codex account is optional.'],
-  ['Where does my footage go?', 'On Mac, your project file and media stay in the local folder you choose. In the hosted browser editor, files stay in your browser profile storage. Nothing is uploaded unless you send a prompt to your connected AI provider or import a frame from Figma. Read the privacy policy for details.'],
+  ['Where does my footage go?', 'On Mac, your project file and media stay in the local folder you choose. In the hosted browser editor, files stay in your browser profile storage. Nothing is uploaded unless you send a prompt to your connected AI provider, or the Mac app transcribes a language your Mac cannot recognize on device, which sends that audio to Apple. Read the privacy policy for details.'],
   ['Is Arya really free and open source?', publicSource ? 'Yes. Arya is released under the MIT license with no subscriptions, watermarks or paid tiers. The full source code is on GitHub.' : 'The repository is currently private. The plan is to publish it after a review of history, dependencies and licenses.'],
 ])}
 </section>

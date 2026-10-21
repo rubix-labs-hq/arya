@@ -274,7 +274,9 @@ final class NativeAssistant: ObservableObject {
         if let agent { guard agent.count <= 128, !agent.contains("\n"), !agent.contains("\r"), !agent.contains("\0"), provider == "claude-code" || agent.isEmpty else { throw Assistant.Failure.invalidModel } }
         if let apiKey {
             let value = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !value.isEmpty, value.count <= 512, value.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { throw Assistant.Failure.unconfigured }
+            guard !value.isEmpty, value.count <= 512, value.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+                throw ReelBackend.APIError("Paste the whole Anthropic API key as one line, without spaces or line breaks.")
+            }
             try AssistantCredential.store(value)
             #if os(macOS)
             hasRequestedCredentialAccess = true
@@ -413,6 +415,23 @@ final class NativeAssistant: ObservableObject {
         return candidate
     }
 
+    // macOS quarantines files a sandboxed app writes, and LaunchServices refuses to open a
+    // quarantined .command file. Ask Terminal to run the script through zsh instead, so zsh
+    // reads it as text. This needs the Terminal Apple Events exception in Reel.entitlements.
+    private static func runInTerminal(_ script: URL) throws {
+        let command = "/bin/zsh " + shellLiteral(script.path)
+        let quoted = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let source = "tell application id \"com.apple.Terminal\"\nactivate\ndo script \"\(quoted)\"\nend tell"
+        var failure: NSDictionary?
+        guard let appleScript = NSAppleScript(source: source) else { throw ReelBackend.APIError("Arya could not prepare the Terminal request.") }
+        appleScript.executeAndReturnError(&failure)
+        guard let failure else { return }
+        if (failure[NSAppleScript.errorNumber] as? Int) == -1743 {
+            throw ReelBackend.APIError("Arya needs permission to open Terminal. Turn on Terminal for Arya in System Settings > Privacy & Security > Automation, then try again.")
+        }
+        throw ReelBackend.APIError("Terminal could not start the assistant helper. " + ((failure[NSAppleScript.errorMessage] as? String) ?? "Open Terminal once, then try again."))
+    }
+
     private static func shellLiteral(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
@@ -478,7 +497,7 @@ final class NativeAssistant: ObservableObject {
         """
         try Data(script.utf8).write(to: launcher, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: try folder.output(launcher.path).path)
-        guard NSWorkspace.shared.open(try folder.output(launcher.path)) else { throw ReelBackend.APIError("Terminal could not open the sign-in launcher.") }
+        try Self.runInTerminal(try folder.output(launcher.path))
     }
 
     func restartBridge() async throws {
@@ -509,7 +528,7 @@ final class NativeAssistant: ObservableObject {
         connectionGeneration = UUID(); pendingPair = (nonce, Date().addingTimeInterval(120))
         accountStatusVerified = false; configured = false; reason = "Connecting the helper. Keep its Terminal window open."
         let command = try folder.output(directory.appendingPathComponent("Reel Agent Bridge.command").path)
-        guard NSWorkspace.shared.open(command) else { pendingPair = nil; throw ReelBackend.APIError("Terminal could not open the agent bridge launcher.") }
+        do { try Self.runInTerminal(command) } catch { pendingPair = nil; throw error }
     }
     #endif
 

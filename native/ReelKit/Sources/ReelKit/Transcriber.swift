@@ -37,7 +37,7 @@ public enum Transcriber {
         try Task.checkCancellation()
         switch status {
         case .authorized: return
-        case .denied: throw Failed(message: "Speech recognition is turned off for Reel. Turn it on in System Settings > Privacy & Security > Speech Recognition.")
+        case .denied: throw Failed(message: "Speech recognition is turned off for Arya. Turn it on in System Settings > Privacy & Security > Speech Recognition.")
         case .restricted: throw Failed(message: "Speech recognition is restricted on this device.")
         default: throw Failed(message: "Speech recognition was not allowed.")
         }

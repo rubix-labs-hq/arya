@@ -20,9 +20,9 @@ In the Mac app, Figma → Import editable layers accepts pasted XML or node JSON
 
 The native app starts an `ASWebAuthenticationSession` with a fresh state and device proof. The broker requests only `current_user:read` and `file_content:read`. Its HTTPS callback exchanges the authorization code immediately with Figma using the app secret and S256 PKCE. The callback returns a short-lived transfer ticket to `reelfigma://oauth/callback`. The app must prove it owns the original verifier before it receives an access token.
 
-The broker returns an encrypted refresh handle. It keeps the provider's refresh token out of the native app and stores no account credentials on disk. The app stores its access token, encrypted refresh handle and issuing broker origin in this device's Keychain. Refreshes go to that stored origin. Disconnect removes the local connection and invalidates pending requests. Users can also revoke Reel in Figma's settings.
+The broker returns an encrypted refresh handle. It keeps the provider's refresh token out of the native app and stores no account credentials on disk. The app stores its access token, encrypted refresh handle and issuing broker origin in this device's Keychain. Refreshes go to that stored origin. Disconnect removes the local connection and invalidates pending requests. Users can also revoke Arya in Figma's settings.
 
-Imports use read-only Figma endpoints. They copy downloaded images into the project and create editable Reel compositions, text, shapes and supported vector paths. Unsupported effects use rendered fallback layers and report warnings. The import report must state those limits; a flattened fallback does not make every original layer editable.
+Imports use read-only Figma endpoints. They copy downloaded images into the project and create editable Arya compositions, text, shapes and supported vector paths. Unsupported effects use rendered fallback layers and report warnings. The import report must state those limits; a flattened fallback does not make every original layer editable.
 
 ## Deferred provider setup
 
@@ -38,6 +38,6 @@ Imports use read-only Figma endpoints. They copy downloaded images into the proj
 
 ## Instructions for Figma's app review
 
-Open a Reel project and choose Figma, then Connect Figma. Approve the two read-only scopes in the system browser. Paste a design link for a file shared with your account, browse its frames and import one onto the timeline. Open the resulting composition, edit a text layer and move a shape. Inspect the import report for any rendered fallback layers. Close and reopen the project to confirm that its copied assets remain available. Disconnect the Figma account and confirm that remote browsing now requires sign-in. Reel does not change the original Figma file.
+Open an Arya project and choose Figma, then Connect Figma. Approve the two read-only scopes in the system browser. Paste a design link for a file shared with your account, browse its frames and import one onto the timeline. Open the resulting composition, edit a text layer and move a shape. Inspect the import report for any rendered fallback layers. Close and reopen the project to confirm that its copied assets remain available. Disconnect the Figma account and confirm that remote browsing now requires sign-in. Arya does not change the original Figma file.
 
 Use [Figma's OAuth documentation](https://developers.figma.com/docs/rest-api/oauth-apps/) for registration and browser requirements. Use the [May 16, 2025 API changelog](https://developers.figma.com/docs/rest-api/changelog/) for the current refresh endpoint, `/v1/oauth/token` with `grant_type=refresh_token`. The OAuth overview still shows the supported legacy refresh endpoint.

@@ -364,7 +364,7 @@ function ClipStrip() {
   return html`
     <div class="clip-strip" role="group" aria-label="Clips to grade">
       ${clips.map((c, i) => {
-        const name = c.label ?? (c.kind === 'adjustment' ? 'Adjustment' : String(c.src ?? c.id).split('/').pop())
+        const name = c.label ?? (c.kind === 'adjustment' ? 'Adjustment' : (p.assets?.[c.src]?.name?.trim() || String(c.src ?? c.id).split('/').pop()))
         const nodes = c.nodes ? c.nodes.list.length - 2 : 0
         return html`
         <button type="button" class=${`strip-clip ${active?.id === c.id ? 'on' : ''}`} aria-pressed=${active?.id === c.id} title=${`${name} (${c.id})`}
@@ -488,7 +488,7 @@ function Palettes({ clip }) {
   return html`
     <div class="color-head">
       <b>${clip.id}</b>
-      <span class="muted">${String(clip.src ?? clip.kind).split('/').pop()} · ${s.selection.length ? 'selected clip' : 'clip under the playhead'}</span>
+      <span class="muted">${(store.project?.assets?.[clip.src]?.name?.trim() || String(clip.src ?? clip.kind).split('/').pop())} · ${s.selection.length ? 'selected clip' : 'clip under the playhead'}</span>
       ${node ? html`<span class=${`node-chip ${node.enabled === false ? 'off' : ''}`} title="The grade controls edit this node">${num ? `${num} ` : ''}${nodeTitle(node)}${node.label ? ` (${TYPE_LABEL[node.type]})` : ''}${node.enabled === false ? ' · bypassed' : ''}</span>` : null}
       <span class="grow"></span>
       <div class="palette-tabs">${PALETTES.map(([k, l]) => html`<button class=${tab === k ? 'on' : ''} disabled=${!usable[k]} title=${usable[k] ? '' : 'Select a corrector node for this palette'} onClick=${() => set({ colorTab: k })}>${l}</button>`)}</div>

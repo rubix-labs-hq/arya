@@ -32,7 +32,7 @@ struct NativeGettingStartedView: View {
                 ])
                 section("Connect an assistant when you need it", [
                     "Open Arya Settings and choose Assistant. Install Claude Code or Codex using the official provider links shown there, then use the provider's sign-in flow. These provider command-line apps are separate from Arya's companion.",
-                    "Choose Start companion on this Mac in Assistant settings and follow its pairing instructions. Arya supplies the companion. If Assistant settings reports a missing companion runtime, use the app's release support instructions. Starting Terminal does not confirm that an account or model is ready. Check the account and model results before sending a request.",
+                    "Choose Turn on the assistant in Assistant settings. Arya opens the companion in a Terminal window and pairs with it. Arya supplies the companion. If Assistant settings reports a missing companion runtime, use the app's release support instructions. Starting Terminal does not confirm that an account or model is ready. Check the account and model results before sending a request.",
                     "The companion runs separately in Terminal. Quitting Arya does not stop it. To stop the companion you started, press Control-C in its Terminal window and wait for it to exit."
                 ])
                 #else
@@ -70,11 +70,11 @@ struct NativeGettingStartedView: View {
                 ])
                 #endif
                 section("Optional Figma connection", [
-                    "Manual editing does not require Figma sign-in. Public Figma sign-in is not available yet."
+                    "Manual editing does not require Figma. Public Figma sign-in is not available yet. To import frames now, connect a Figma personal access token in Settings under Figma."
                 ])
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Licenses and notices").font(.title2).accessibilityAddTraits(.isHeader)
-                    Text("These notices describe included dependencies. Arya's own source license and public repository have not been published.")
+                    Text("Arya is open source under the MIT License at github.com/rubix-labs-hq/arya. These notices describe the included dependencies.")
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     noticeLink(.editor)
                     #if os(macOS)

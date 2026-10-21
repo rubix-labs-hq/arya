@@ -35,7 +35,7 @@ export function selectionName(project, id) {
   const clipId = transition ? id.slice(3) : id
   const c = (project.tracks ?? []).flatMap(t => t.clips).find(x => x.id === clipId)
   if (!c) return null
-  const label = c.label ?? (c.kind === 'title' ? c.title?.text : c.kind === 'color' ? 'Color' : c.kind === 'adjustment' ? 'Adjustment' : String(c.src ?? '').split('/').pop())
+  const label = c.label ?? (c.kind === 'title' ? c.title?.text : c.kind === 'color' ? 'Color' : c.kind === 'adjustment' ? 'Adjustment' : (project.assets?.[c.src]?.name?.trim() || String(c.src ?? '').split('/').pop()))
   const name = label || c.kind || 'Clip'
   return transition ? `Transition into ${name}` : name
 }

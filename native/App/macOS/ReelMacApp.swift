@@ -29,6 +29,7 @@ struct ReelMacApp: App {
         Window("Getting started", id: "getting-started") {
             NavigationStack { NativeGettingStartedView() }
                 .frame(minWidth: 420, minHeight: 360)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
         }
         .defaultSize(width: 640, height: 680)
         Settings {
@@ -37,6 +38,8 @@ struct ReelMacApp: App {
                 NativeFigmaSettings(figma: session.figma).tabItem { Label("Figma", systemImage: "square.stack") }
                 NavigationStack { NativeGettingStartedView() }.tabItem { Label("Getting started", systemImage: "questionmark.circle") }
             }.frame(width: 560, height: 460)
+            // The accent is a light gold. Keep Settings dark like the editor so its text stays readable.
+            .preferredColorScheme(.dark)
             .tint(NativeEditorStyle.accent)
         }
     }

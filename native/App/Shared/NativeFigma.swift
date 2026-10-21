@@ -274,8 +274,12 @@ struct NativeFigmaSettings: View {
                     Text("Connect your Figma account to import editable frames.")
                     Button("Connect with Figma") { signIn() }.disabled(figma.working)
                 } else {
-                    Text("Public Figma sign-in is not configured for this build.")
+                    Text("Public Figma sign-in is not available yet.")
+                    #if os(macOS)
+                    Text("Connect with a personal access token below to import your frames. If you connected before, choose Check saved Figma connection.").font(.caption).foregroundStyle(.secondary)
+                    #else
                     Text("Connect with a personal access token below to import your frames.").font(.caption).foregroundStyle(.secondary)
+                    #endif
                 }
                 #if os(macOS)
                 Button("Check saved Figma connection") {
@@ -284,6 +288,9 @@ struct NativeFigmaSettings: View {
                 }.disabled(figma.working)
                 #endif
                 if figma.working { ProgressView("Connecting to Figma") }
+                // Show results here, near the top, so a failed token or check is visible without scrolling.
+                if let error { Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
+                else if let message = figma.message { Text(message).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
             }
             Section("Personal access token") {
                 Group {
@@ -316,7 +323,6 @@ struct NativeFigmaSettings: View {
                 }
             }
             }
-            if let message = error ?? figma.message { Text(message).foregroundStyle(.secondary) }
         }
         .formStyle(.grouped).padding()
         .onAppear { loadSettings() }

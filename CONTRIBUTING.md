@@ -27,7 +27,7 @@ Run the browser editor against a project folder:
 node editor/server.mjs --root /path/to/your/project --port 4870
 ```
 
-Build the native app with `native/Reel.xcodeproj` in Xcode, or run `./script/build_and_run.sh --verify`.
+Build the native app with `native/Reel.xcodeproj` in Xcode, or run `./script/build_and_run.sh --verify`. Run `npm ci --prefix editor` first, because the build copies files from `editor/node_modules`. Use the `Reel` scheme for Mac and `Reel iOS` for iPhone and iPad.
 
 ## Tests
 

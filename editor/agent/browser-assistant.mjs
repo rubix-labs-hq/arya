@@ -371,7 +371,7 @@ export function createBrowserAssistant(options) {
     assertRun(run)
     const file = confinedFile(root, result.path)
     const type = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }[path.extname(file).toLowerCase()]
-    if (!type || fs.statSync(file).size > 4 * 1024 * 1024) throw failure('A Reel frame must be a PNG, JPEG or WebP image smaller than 4 MiB.')
+    if (!type || fs.statSync(file).size > 4 * 1024 * 1024) throw failure('An Arya frame must be a PNG, JPEG or WebP image smaller than 4 MiB.')
     const data = fs.readFileSync(file)
     if (data.length > 4 * 1024 * 1024) throw failure('The frame changed or exceeded 4 MiB.')
     assertRun(run)

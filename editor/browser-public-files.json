@@ -674,5 +674,17 @@
   {
     "source": "node_modules/preact/hooks/dist/hooks.module.js",
     "target": "vendor/preact/hooks/dist/hooks.module.js"
+  },
+  {
+    "source": "web/ui/icons.css",
+    "target": "editor/ui/icons.css"
+  },
+  {
+    "source": "web/ui/phone.css",
+    "target": "editor/ui/phone.css"
+  },
+  {
+    "source": "web/ui/assistant.css",
+    "target": "editor/ui/assistant.css"
   }
 ]

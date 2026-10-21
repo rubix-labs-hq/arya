@@ -13,5 +13,13 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- The assistant helper runs outside the sandbox in Terminal. Arya asks Terminal to
+	     start it with Apple Events, because macOS will not open a script a sandboxed app wrote. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+	<key>com.apple.security.temporary-exception.apple-events</key>
+	<array>
+		<string>com.apple.Terminal</string>
+	</array>
 </dict>
 </plist>

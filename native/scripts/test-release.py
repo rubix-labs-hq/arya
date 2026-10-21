@@ -135,6 +135,14 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "newer macOS"):
             release.validate_persistence(self.app, {"LSMinimumSystemVersion": "13.0"}, None)
 
+    def testReleaseEntitlementsLetTheSandboxedAppStartTheAssistantInTerminal(self):
+        # macOS will not open a .command file the sandboxed app wrote, so Arya asks Terminal by Apple Event.
+        entitlements = plistlib.loads(release.ENTITLEMENTS.read_bytes())
+        self.assertTrue(entitlements["com.apple.security.automation.apple-events"])
+        self.assertEqual(entitlements["com.apple.security.temporary-exception.apple-events"], ["com.apple.Terminal"])
+        info = plistlib.loads((release.REPO / "native/App/macOS/Info.plist").read_bytes())
+        self.assertIn("Terminal", info["NSAppleEventsUsageDescription"])
+
     def testSignedCandidateCannotClaimPublicationReadiness(self):
         entitlements = plistlib.loads(release.ENTITLEMENTS.read_bytes())
         signature = "CodeDirectory flags=0x10000(runtime)\nAuthority=Developer ID Application: Fixture\n"

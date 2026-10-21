@@ -233,7 +233,7 @@ test('interchange routes on a running server', async t => {
       await assert.rejects(one.api('/api/interchange/import', { path: 'media' }), /is a folder/)
       fs.writeFileSync(path.join(root, 'premiere.xml'), '<xmeml version="5"/>')
       await assert.rejects(one.api('/api/interchange/import', { path: 'premiere.xml' }), /not FCPXML/)
-      await assert.rejects(one.api('/api/interchange/import', { path: 'reel.project.json' }), /Reel reads/)
+      await assert.rejects(one.api('/api/interchange/import', { path: 'reel.project.json' }), /Arya reads/)
       const cross = await one.request('POST', '/api/interchange/import', { path: 'subs.srt', apply: true }, { origin: 'http://elsewhere.example' })
       assert.equal(cross.status, 403)
     })

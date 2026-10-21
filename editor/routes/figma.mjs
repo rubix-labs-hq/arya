@@ -175,7 +175,7 @@ export default function figmaRoutes(ctx) {
     const res = await figmaFetch('/v1/me', { auth })
     if (res.status === 401 || res.status === 403) {
       await res.arrayBuffer().catch(() => {})
-      throw new Error(`Figma did not accept that token (${res.status}). Check that it is current and has the "current_user:read" and "file_content:read" scopes`)
+      throw new Error(`Figma did not accept that token (${res.status}). Check that it is current and has the "current_user:read" and "file_content:read" scopes.`)
     }
 
     return readFigmaJson(res, 'the token check (GET /v1/me)')

@@ -133,7 +133,7 @@ function EditPage() {
   const sizes = editPaneSizes(l, workspace.width)
   const scope = s.openComp == null ? s.project : s.project?.comps?.[s.openComp]
   const clip = scope?.tracks?.flatMap(track => track.clips).find(item => item.id === s.selection[0])
-  const selected = s.selection.length === 1 ? clip?.label ?? (clip?.kind === 'title' ? clip.title?.text?.split('\n')[0] : String(clip?.src ?? clip?.kind ?? s.selection[0]).split('/').pop()) : s.selection.length ? `${s.selection.length} selected` : s.selMarker ? 'Marker selected' : 'No clip selected'
+  const selected = s.selection.length === 1 ? clip?.label ?? (clip?.kind === 'title' ? clip.title?.text?.split('\n')[0] : (s.project?.assets?.[clip?.src]?.name?.trim() || String(clip?.src ?? clip?.kind ?? s.selection[0]).split('/').pop())) : s.selection.length ? `${s.selection.length} selected` : s.selMarker ? 'Marker selected' : 'No clip selected'
   const left = l.mediaSide === 'left' ? 'media' : 'inspector'
   const right = left === 'media' ? 'inspector' : 'media'
   const visible = name => name === 'media' ? l.showMedia : l.showInspector
@@ -194,7 +194,7 @@ function Welcome() {
     <div class="welcome">
       <div class="welcome-card">
         <div class="brand big"><img src="/assets/brand/wordmark.svg" alt="Arya" width="166" height="77" /></div>
-        <p>${host.kind === 'browser-local' ? 'Create a project, import your own footage, edit its native layers and download the completed export. Projects and media stay on this browser. Subscription agents require a supported native or local connection.' : 'A video editor you can direct.'}${host.kind === 'browser-local' ? '' : ' Edit by hand on the timeline, or ask your connected assistant to work with the current selection and references. Review its changes with undo.'}</p>
+        <p>${host.kind === 'browser-local' ? 'Create a project, import your own footage, edit it and download the finished export. Projects and media stay in this browser. The AI assistant, Figma import and transcription need the Mac app or the local editor.' : 'A video editor you can direct.'}${host.kind === 'browser-local' ? '' : ' Edit by hand on the timeline, or ask your connected assistant to work with the current selection and references. Review its changes with undo.'}</p>
         ${needsRecovery ? html`<p role="alert">The project file could not be opened. Preserve its original and choose a verified recovery copy, or repair the file and refresh recovery.</p>` : missing ? html`<p>The project file is missing. You can recover a saved copy or create a new project.</p>` : null}
         ${host.kind === 'http' && !fresh ? html`<button class="ghost" aria-haspopup="dialog" disabled=${s.assistantSharingReviewOpen === true} onClick=${showRecovery}>Choose a recovery copy</button>` : null}
         ${s.recovery?.warning ? html`<p role="status">${s.recovery.warning}</p>` : null}

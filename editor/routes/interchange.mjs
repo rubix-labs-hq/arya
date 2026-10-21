@@ -110,7 +110,7 @@ export default ctx => {
 
       return { kind: 'fcpxml', text, name, sourceHash, sourcePath }
     }
-    throw new Error(`${name}: Reel reads .fcpxml, .fcpxmld, .otio, .srt and .vtt`)
+    throw new Error(`${name}: Arya reads .fcpxml, .fcpxmld, .otio, .srt and .vtt`)
   }
 
   const captionOptions = body => Object.fromEntries(['maxChars', 'maxLines', 'maxDur', 'minGap'].filter(k => Number.isFinite(Number(body[k])) && body[k] !== null && body[k] !== '').map(k => [k, Number(body[k])]))
