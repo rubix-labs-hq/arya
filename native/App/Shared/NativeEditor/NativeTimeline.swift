@@ -838,9 +838,9 @@ struct NativeTimeline: View {
         let extending: Bool
     }
 
-    // Split into three parts so the iOS build type-checks in reasonable time.
+    // Split into parts so the iOS build type-checks in reasonable time on older compilers.
     var body: some View {
-        lifecycleResets(interactionTracking(timelineSurface))
+        lifecycleResets(armedFeedbackResets(interactionGestureResets(interactionFrameTracking(timelineSurface))))
     }
 
     private var timelineSurface: some View {
@@ -991,7 +991,7 @@ struct NativeTimeline: View {
         }.background(NativeEditorStyle.background)
     }
 
-    private func interactionTracking(_ content: some View) -> some View {
+    private func interactionFrameTracking(_ content: some View) -> some View {
         content
         #if os(iOS)
         .background {
@@ -1001,6 +1001,12 @@ struct NativeTimeline: View {
                     .onChange(of: frame) { _, next in updateInteractionFrame(next) }
             }.allowsHitTesting(false)
         }
+        #endif
+    }
+
+    private func interactionGestureResets(_ content: some View) -> some View {
+        content
+        #if os(iOS)
         .onChange(of: interactionLayout) { _, next in
             if next?.visible == false { keyboardFocus = false }
             cancelLayoutInteraction()
@@ -1012,6 +1018,12 @@ struct NativeTimeline: View {
             if !active { initialZoom = nil; magnifyLayout = nil; magnifyCanceled = false }
         }
         .onChange(of: model.processingContextID) { _, _ in cancelLayoutInteraction() }
+        #endif
+    }
+
+    private func armedFeedbackResets(_ content: some View) -> some View {
+        content
+        #if os(iOS)
         .onChange(of: model.version) { old, _ in invalidateArmedFeedback(gesture?.capture.version == old) }
         .onChange(of: model.selectedIDs) { old, _ in invalidateArmedFeedback(gesture?.capture.selected == old) }
         .onChange(of: model.selectedID) { old, _ in invalidateArmedFeedback(gesture?.capture.primary == old) }

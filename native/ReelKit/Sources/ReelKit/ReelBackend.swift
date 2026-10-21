@@ -2455,7 +2455,10 @@ public actor ReelBackend {
         let from = (b["in"] as? NSNumber)?.doubleValue ?? (b["from"] as? NSNumber)?.doubleValue ?? (original?["in"] as? NSNumber)?.doubleValue ?? 0
         let speed = (original?["speed"] as? NSNumber)?.doubleValue ?? 1
         let clipDuration = (original?["dur"] as? NSNumber)?.doubleValue
-        let duration = (b["dur"] as? NSNumber)?.doubleValue ?? ((b["to"] as? NSNumber)?.doubleValue).map { $0-from } ?? clipDuration.map { $0 * speed } ?? 1
+        let requestedEnd: Double? = (b["to"] as? NSNumber)?.doubleValue
+        let rangeDuration: Double? = requestedEnd.map { (end: Double) -> Double in end - from }
+        let clipSourceDuration: Double? = clipDuration.map { (dur: Double) -> Double in dur * speed }
+        let duration: Double = (b["dur"] as? NSNumber)?.doubleValue ?? rangeDuration ?? clipSourceDuration ?? 1
         let fps = (b["fps"] as? NSNumber)?.doubleValue ?? (kind == "track" ? 15 : 2)
         guard from.isFinite, from >= 0, duration.isFinite, duration > 0, duration <= 14_400, fps.isFinite, fps > 0, fps <= (kind == "track" ? 120 : 30), duration * fps <= 20_000,
               targetW.isFinite, targetH.isFinite, targetW > 0, targetH > 0, targetW <= 7680, targetH <= 7680 else { throw APIError("Give a finite source range, target dimensions and at most 20000 Vision samples.") }
