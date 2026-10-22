@@ -64,7 +64,7 @@ export function AnimateSelection({ clip, composition, compact = false }) {
   const currentScope = scope => scope && scope.root === store.root && scope.version === store.version && scope.project === store.project && scope.comp === (composition ?? store.openComp) && JSON.stringify([...scope.selection].sort()) === JSON.stringify([...store.selection].sort())
   const scopeCurrent = currentScope(captured)
   if (open) context = captured?.context
-  if (!context) return null
+  if (!context || s.caps?.host === 'browser-local') return null
   const hasFigma = context.layers.some(layer => layer.figma)
   const attach = value => {
     if (!currentScope(captured)) return toast('The project or selected layers changed. Refresh the selected layers before attaching this request.', 'error')
@@ -299,7 +299,7 @@ registerClipMenu((project, hit) => {
   const clip = hit.clip
   if (!clip || clip.kind === 'audio') return []
   return [
-    { label: 'Ask AI to animate selected layers', run: () => { if (root !== store.root || version !== store.version || sourceProject !== store.project || composition !== store.openComp) return toast('The project changed. Select its current layers.', 'error'); const reference = attachMotionIntent(sourceProject, [clip.id], composition, 'Animate this selected editable layer. Choose restrained timing and motion that fit the composition. Preserve its geometry, hierarchy and font, and use editable keyframes.', root, version); if (reference) set({ selection: [clip.id], inspectorTab: 'library' }) } },
+    store.caps?.host === 'browser-local' ? null : { label: 'Ask AI to animate selected layers', run: () => { if (root !== store.root || version !== store.version || sourceProject !== store.project || composition !== store.openComp) return toast('The project changed. Select its current layers.', 'error'); const reference = attachMotionIntent(sourceProject, [clip.id], composition, 'Animate this selected editable layer. Choose restrained timing and motion that fit the composition. Preserve its geometry, hierarchy and font, and use editable keyframes.', root, version); if (reference) set({ selection: [clip.id], inspectorTab: 'library' }) } },
     { label: 'Save component to library', run: () => root === store.root ? set({ selection: [clip.id], inspectorTab: 'library', browserTab: 'library' }) : toast('The open project changed. Select its current component.', 'error') },
   ]
 })

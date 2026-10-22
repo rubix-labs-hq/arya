@@ -175,17 +175,24 @@ test('Named empty selection still includes current scope and main empty selectio
   assert.throws(() => selectionMotionContext(project, [], null), /Select a layer/)
 })
 
-function motionMenu(project, composition = null) {
+function motionMenu(project, composition = null, caps = {}) {
   const plugin = fs.readFileSync(new URL('../web/ui/plugins/library.js', import.meta.url), 'utf8')
   const attachment = plugin.slice(plugin.indexOf('export function attachMotionIntent('), plugin.indexOf('export function AnimateSelection(')).replace('export ', '')
   const registration = plugin.slice(plugin.lastIndexOf('registerClipMenu('))
-  const store = { project, root: '/owned/motion', version: 7, openComp: composition, selection: ['prior'], inspectorTab: 'appearance', refs: [{ kind: 'image', id: 'saved-ref' }] }
+  const store = { project, root: '/owned/motion', version: 7, openComp: composition, selection: ['prior'], inspectorTab: 'appearance', refs: [{ kind: 'image', id: 'saved-ref' }], caps }
   const refs = [], errors = [], mutations = []
   let callback
   new Function('selectionMotionReference', 'store', 'toast', 'set', 'addRef', 'registerClipMenu', attachment + '\n' + registration)(selectionMotionReference, store, message => errors.push(message), fields => { mutations.push('set'); Object.assign(store, fields) }, ref => { mutations.push('addRef'); refs.push(ref); store.refs.push(ref) }, fn => { callback = fn })
   const scope = composition ? project.comps[composition] : project
   return { store, refs, errors, mutations, actions: callback(project, { clip: scope.tracks[0].clips[0] }) }
 }
+
+test('The hosted browser beta leaves the AI animation entry out of the clip menu', () => {
+  const { project } = repeatedScopeIDs()
+  const labels = menu => menu.actions.filter(Boolean).map(action => action.label)
+  assert(labels(motionMenu(project)).includes('Ask AI to animate selected layers'))
+  assert.deepEqual(labels(motionMenu(project, null, { host: 'browser-local' })), ['Save component to library'])
+})
 
 test('Actual clip-menu attachment resolves repeated IDs in its captured current scope', () => {
   for (const composition of [null, 'k1']) {

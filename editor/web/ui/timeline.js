@@ -947,8 +947,8 @@ export function clipMenu(p, hit, t) {
   if (c) {
     const ids = store.selection.filter(id => !id.startsWith('tr:'))
     items.push(
-      { label: 'Reference to Assistant', hint: '⌥-click', run: () => ids.forEach(id => { const cc = p.tracks.flatMap(tt => tt.clips).find(x => x.id === id); if (cc) addRef({ kind: 'clip', id, label: `${id} ${cc.label ?? cc.title?.text ?? mediaDisplayName(cc.src ?? cc.kind, p.assets?.[cc.src])}` }) }) },
-      { label: 'Ask the Assistant about this clip…', run: () => { addRef({ kind: 'clip', id: c.id, label: `${c.id}` }); set({ chatOpen: true }); setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50) } },
+      ...(store.caps?.host === 'browser-local' ? [] : [{ label: 'Reference to Assistant', hint: '⌥-click', run: () => ids.forEach(id => { const cc = p.tracks.flatMap(tt => tt.clips).find(x => x.id === id); if (cc) addRef({ kind: 'clip', id, label: `${id} ${cc.label ?? cc.title?.text ?? mediaDisplayName(cc.src ?? cc.kind, p.assets?.[cc.src])}` }) }) },
+      { label: 'Ask the Assistant about this clip…', run: () => { addRef({ kind: 'clip', id: c.id, label: `${c.id}` }); set({ chatOpen: true }); setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50) } }]),
       { sep: true },
       { label: 'Blade at playhead', hint: '⌘B', run: () => edit({ op: 'blade', at: time.t, id: c.id }) },
       { label: 'Blade here', run: () => edit({ op: 'blade', at: t, id: c.id }) },
@@ -998,7 +998,7 @@ export function clipMenu(p, hit, t) {
   }
 
   for (const fn of registry.clipMenus) {
-    const more = fn(p, hit, t) ?? []
+    const more = (fn(p, hit, t) ?? []).filter(Boolean)
     if (more.length) items.push({ sep: true }, ...more)
   }
 

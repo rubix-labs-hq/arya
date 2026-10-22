@@ -57,11 +57,13 @@ export function checkThirdPartyNotices({ sourceRoot = root, noticeRoot = sourceR
   if (bundleRoot && !noticeBytes.equals(bytes(bundleRoot, 'THIRD_PARTY_NOTICES.md'))) {
     throw new Error('The bundled third-party notice differs from the release notice.');
   }
+  let license = '';
+  try { license = boundedWorkingFile(resolve(sourceRoot, 'LICENSE'), sourceRoot)?.toString('utf8') ?? ''; } catch {}
   return {
-    schema: 1, componentNoticesVerified: true, sharedEditorBundleChecked: Boolean(bundleRoot),
-    readyToPublish: false, publicationApproved: false, sourceLicenseChosen: false,
+    schema: 2, componentNoticesVerified: true, sharedEditorBundleChecked: Boolean(bundleRoot),
+    sourceLicense: /^MIT License\b/.test(license) ? 'MIT' : null,
     lockfileSHA256: hash(lockBytes), noticeSHA256: hash(noticeBytes), components,
-    limitations: ['This checks notice packaging, not copyright ownership or source-license approval.',
+    limitations: ['This checks notice packaging and names the source license. It does not review copyright ownership.',
       'Node helper payloads and their complete license files need separate runtime-manifest validation.',
       'Fixture, project, screenshot and artwork provenance needs a separate owner record.'],
   };

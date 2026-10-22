@@ -277,7 +277,7 @@ function Frames() {
 }
 
 function Compositions({ project }) {
-  const { root, version, openComp } = useStore()
+  const { root, version, openComp, caps } = useStore()
   const comps = Object.values(project.comps ?? {}).sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)))
   const uses = id => [project.tracks, ...Object.values(project.comps ?? {}).map(k => k.tracks)].flat().flatMap(t => t.clips).filter(c => c.kind === 'comp' && c.comp === id).length
   const placeAt = comp => root === store.root && version === store.version && project === store.project && openComp === store.openComp ? edit(placeCompOps(project, comp, { start: time.t, comp: openComp }), `placed composition "${comp.name}"`, { expectedVersion: version }) : toast('The project changed. Choose its current composition.', 'error')
@@ -301,7 +301,7 @@ function Compositions({ project }) {
           </div>
           <div class="comp-actions">
             <button class="ghost tiny" title="Open this composition's editable layers" onClick=${() => { openComposition(k.id); set({ page: 'motion' }) }}>Open layers</button>
-            <button class="ghost tiny" title="Attach this composition and its exact layer IDs to an animation request" onClick=${() => ask(k)}>Ask AI</button>
+            ${caps?.host === 'browser-local' ? null : html`<button class="ghost tiny" title="Attach this composition and its exact layer IDs to an animation request" onClick=${() => ask(k)}>Ask AI</button>`}
             <button class="tiny" title="Place at the playhead on the top free video track" onClick=${() => placeAt(k)}>Place</button>
           </div>
         </div>`)}

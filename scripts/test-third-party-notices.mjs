@@ -35,12 +35,15 @@ function fixture(run) {
   finally { rmSync(base, { recursive: true, force: true }); }
 }
 
-test('checks the complete shared-editor notice without declaring publication ready', () => fixture(({ source, bundle }) => {
-  const receipt = checkThirdPartyNotices({ sourceRoot: source, bundleRoot: bundle });
+test('checks the complete shared-editor notice and names the source license', () => fixture(({ source, bundle, write }) => {
+  let receipt = checkThirdPartyNotices({ sourceRoot: source, bundleRoot: bundle });
   assert.equal(receipt.componentNoticesVerified, true);
   assert.equal(receipt.sharedEditorBundleChecked, true);
-  assert.equal(receipt.readyToPublish, false);
-  assert.equal(receipt.sourceLicenseChosen, false);
+  assert.equal(receipt.sourceLicense, null);
+  assert(!('readyToPublish' in receipt));
+  write(source, 'LICENSE', 'MIT License\n\nCopyright (c) 2026 Rubix Labs\n');
+  receipt = checkThirdPartyNotices({ sourceRoot: source, bundleRoot: bundle });
+  assert.equal(receipt.sourceLicense, 'MIT');
   assert.equal(receipt.components.length, 7);
   assert(!JSON.stringify(receipt).includes(source));
 }));
