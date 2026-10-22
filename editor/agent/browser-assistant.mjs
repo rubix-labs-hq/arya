@@ -14,8 +14,8 @@ import { SHARING_VERSION, normalizeSharingEnvelope, sharingScopeForRoute, sameSh
 import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
 
 const exec = promisify(execFile)
-const names = { 'claude-code': 'Claude Code', codex: 'Codex', antigravity: 'Google Antigravity', custom: 'Custom agent' }
-const installs = { 'claude-code': 'https://code.claude.com/docs/en/setup', codex: 'https://developers.openai.com/codex/cli/', antigravity: 'https://antigravity.google/download' }
+const names = { 'claude-code': 'Claude Code', codex: 'Codex', antigravity: 'Google Antigravity', 'gemini-cli': 'Google Gemini (beta)', custom: 'Custom agent' }
+const installs = { 'claude-code': 'https://code.claude.com/docs/en/setup', codex: 'https://developers.openai.com/codex/cli/', antigravity: 'https://antigravity.google/download', 'gemini-cli': 'https://geminicli.com/docs/get-started/installation/' }
 const loginArgs = { 'claude-code': ['auth', 'login', '--claudeai'], codex: ['login'] }
 const apiOverrides = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'OPENAI_FEDERATION_RULE_ID', 'OPENAI_IDENTITY_TOKEN_FILE', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'AGY_GATEWAY_API_KEY', 'AGY_GATEWAY_URL', 'AGY_ADC_AUTH', 'GOOGLE_GENAI_USE_VERTEXAI', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT']
 const shellQuote = value => `'${value.replaceAll("'", "'\\''")}'`
@@ -205,7 +205,7 @@ export function createBrowserAssistant(options) {
       return { id, name: names[id], available, installed: item.installed ?? null, authenticated: custom ? null : item.authenticated ?? null,
         modelSelectionSupported: item.modelSelectionSupported === true, billingMode: item.billingMode ?? 'unknown', adapterManaged: item.adapterManaged === true, adapterSupported: custom ? false : item.adapterSupported ?? (id !== 'antigravity'), catalogReason: item.catalogReason ?? null, productLoginApproval: item.productLoginApproval ?? 'unknown',
         reason: custom ? options.custom ? 'Custom editing is unavailable on this host. Choose Claude Code or Codex. Your custom preferences are saved.' : 'Custom editing is unavailable on this host. Choose Claude Code or Codex.' : String(item.reason ?? (statusPromise ? 'Checking the installed CLI account status.' : 'Provider account status is unavailable.')).slice(0, 500),
-        installURL: installs[id] ?? null, loginCommand: loginArgs[id] ? `${id === 'claude-code' ? 'claude' : 'codex'} ${loginArgs[id].join(' ')}` : null,
+        installURL: installs[id] ?? null, loginCommand: loginArgs[id] ? `${id === 'claude-code' ? 'claude' : 'codex'} ${loginArgs[id].join(' ')}` : id === 'gemini-cli' ? 'gemini' : null,
         canLogin: platform === 'darwin' && installed && !!loginArgs[id] }
     })
     const selected = providers.find(value => value.id === settings.provider)

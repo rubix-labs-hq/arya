@@ -73,7 +73,7 @@ export function lookLUT(options = {}) {
   const size = options.size ?? 33
   if (![17, 33, 65].includes(size)) throw new Error('LUT size must be 17, 33 or 65')
   const transform = lookTransform(options.grade, options.transfer)
-  const title = String(options.name ?? 'Reel look').replace(/["\r\n\0]/g, '').slice(0, 100)
+  const title = String(options.name ?? 'Arya look').replace(/["\r\n\0]/g, '').slice(0, 100)
   const lines = [`TITLE "${title}"`, `LUT_3D_SIZE ${size}`, 'DOMAIN_MIN 0 0 0', 'DOMAIN_MAX 1 1 1']
   for (let b = 0; b < size; b++) for (let g = 0; g < size; g++) for (let r = 0; r < size; r++) lines.push(transform([r / (size - 1), g / (size - 1), b / (size - 1)]).map(x => x.toFixed(7)).join(' '))
   return { text: lines.join('\n') + '\n', size, colorSpace: 'srgb', grade: options.grade ?? {}, transfer: options.transfer ?? {} }

@@ -12,7 +12,7 @@ public enum NativeLook {
     }
 
     public static func generate(folder: ProjectFolder, core: ReelCore, body: [String: Any], source: CGImage?) throws -> Result {
-        var options: [String: Any] = ["name": body["name"] as? String ?? "Reel look", "size": body["size"] as? Int ?? 33, "grade": body["grade"] as? [String: Any] ?? [:]]
+        var options: [String: Any] = ["name": body["name"] as? String ?? "Arya look", "size": body["size"] as? Int ?? 33, "grade": body["grade"] as? [String: Any] ?? [:]]
         var measurements: [String: Any] = [:], warnings: [String] = []
         if let reference = body["reference"] as? String {
             guard let source else { throw ReelRenderingError("Render a source frame before matching a reference look.") }
@@ -31,7 +31,7 @@ public enum NativeLook {
         let generated = try core.lookLUT(options: JSON(any: options).text)
         guard let fields = try JSON.parse(generated) as? [String: Any], let text = fields["text"] as? String,
               text.utf8.count <= 16 * 1024 * 1024 else { throw ReelRenderingError("The generated LUT is invalid.") }
-        let name = ProjectFolder.cleanFileName(options["name"] as? String ?? "Reel look")
+        let name = ProjectFolder.cleanFileName(options["name"] as? String ?? "Arya look")
         let stem = (name as NSString).deletingPathExtension + "-" + UUID().uuidString.prefix(8)
         let path = "luts/\(stem).cube", manifest = "luts/\(stem).look.json"
         let directory = try folder.output("luts")

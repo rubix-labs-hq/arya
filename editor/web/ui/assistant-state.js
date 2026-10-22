@@ -3,6 +3,7 @@ import { CATALOG_MAX_AGE_MS } from '../../core/assistant-routing.mjs'
 export const ASSISTANT_PROVIDERS = [
   { id: 'claude-code', name: 'Claude Code', account: 'Claude subscription', suggested: true },
   { id: 'codex', name: 'Codex', account: 'ChatGPT subscription' },
+  { id: 'gemini-cli', name: 'Google Gemini (beta)', account: 'Google account' },
   { id: 'antigravity', name: 'Google Antigravity', account: 'Google account' },
   { id: 'custom', name: 'Custom agent', account: 'Server-configured adapter' },
 ]
@@ -16,10 +17,10 @@ export function assistantState(status, provider = status?.provider ?? 'claude-co
   const selected = status?.provider === provider
   const auto = status?.mode === 'auto' && selected
   const ready = selected && status?.configured === true && (auto || detail?.available !== false)
-  const needsLogin = ['claude-code', 'codex'].includes(provider) && detail?.installed === true && detail?.authenticated === false
+  const needsLogin = ['claude-code', 'codex', 'gemini-cli'].includes(provider) && detail?.installed === true && detail?.authenticated === false
   const now = Date.now()
   const catalog = status?.catalogs?.find(item => item.provider === provider)
-  const expired = catalog?.complete === true && ['provider-cli', 'provider-sdk', 'verified-custom-adapter'].includes(catalog.source?.kind) && Number.isSafeInteger(catalog.checkedAt) && catalog.checkedAt <= now && now - catalog.checkedAt > CATALOG_MAX_AGE_MS
+  const expired = catalog?.complete === true && ['provider-cli', 'provider-sdk', 'provider-docs', 'verified-custom-adapter'].includes(catalog.source?.kind) && Number.isSafeInteger(catalog.checkedAt) && catalog.checkedAt <= now && now - catalog.checkedAt > CATALOG_MAX_AGE_MS
   const refreshRequired = selected && !ready && (auto
     ? status?.autoPreview?.ok === false && status.autoPreview.blocked?.length > 0 && status.autoPreview.blocked.every(item => item.reason === 'The model catalog needs a refresh.')
     : detail?.available === true && status?.manualPreview?.recovery === 'refresh-model-efforts' && expired)

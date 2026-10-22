@@ -88,7 +88,8 @@ export async function startBridge(options = {}) {
       let stderr = '', partial = false
       const output = createOutputStream(line => {
         const item = outputEvent(run.request.provider, line)
-        if (line.includes('text_delta')) partial = true
+        // Claude streams deltas and then repeats them as an assistant message.
+        if (run.request.provider !== 'gemini-cli' && line.includes('text_delta')) partial = true
         if (item && !(partial && line.includes('"assistant"'))) event(run, item)
         return !run.terminal
       })
@@ -104,7 +105,8 @@ export async function startBridge(options = {}) {
         child.once('close', code => {
           if (!run.terminal) {
             try { output.finish() } catch (error) { output.discard(); stop(run, error.message) }
-            if (!run.terminal) event(run, code === 0 ? { type: 'done' } : { type: 'error', message: `Agent exited with status ${code}. ${stderr.slice(-2000) || 'Check the CLI sign-in and permitted Reel MCP tools in Terminal.'}` })
+            const known = code !== 0 && adapter.exitMessage?.(code, stderr)
+            if (!run.terminal) event(run, code === 0 ? { type: 'done' } : { type: 'error', message: known || `Agent exited with status ${code}. ${stderr.slice(-2000) || 'Check the CLI sign-in and permitted Reel MCP tools in Terminal.'}` })
           }
           output.discard()
           resolve()
@@ -165,7 +167,7 @@ export async function startBridge(options = {}) {
         for (const value of [body.model, body.agent]) if (value !== undefined && (typeof value !== 'string' || !value || value.length > 128 || /[\0\r\n]/.test(value))) throw failure('Invalid model or agent')
         body.sharing = normalizeSharingEnvelope(body.sharing)
         if (![sharingCompanion, canonicalCompanion(endpoint)].includes(body.sharing.scope.companion)) throw failure('This sharing permission names a different companion. Review the current companion destination.', 403)
-        if (!['claude-code', 'codex'].includes(body.provider) && body.routing?.mode !== 'auto') throw failure('This custom or unsupported agent has no verified AI recipient. Choose Claude Code or Codex before sharing.', 403)
+        if (!['claude-code', 'codex', 'gemini-cli'].includes(body.provider) && body.routing?.mode !== 'auto') throw failure('This custom or unsupported agent has no verified AI recipient. Choose Claude Code, Codex or Google Gemini before sharing.', 403)
         if (body.routing !== undefined) body.routing = validateRoutingPreferences(body.routing)
         if (body.effort !== undefined) throw failure('Effort is chosen from the verified model catalog by Auto.')
         for (const value of [body.context, body.outline]) if (value !== undefined && (!value || typeof value !== 'object')) throw failure('Context and outline must be objects or arrays')
@@ -260,7 +262,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   }
   if (args.includes('--open') && !options.pairNonce) throw new Error('--open requires the app-issued --pair-nonce')
   const bridge = await startBridge(options)
-  process.stdout.write(`${JSON.stringify(bridge.pairing)}\n`)
-  if (args.includes('--open')) { spawn('/usr/bin/open', [bridge.pairing.pairURL], { stdio: 'ignore' }).on('error', () => process.stderr.write('Open Arya and pair the printed localhost address manually.\n')) }
+  // Arya receives the token through the pairing URL, so keep it out of the Terminal scrollback.
+  if (args.includes('--open')) process.stdout.write(`Arya assistant helper is running on port ${bridge.pairing.port}. Keep this window open while you use the assistant.\n`)
+  else process.stdout.write(`${JSON.stringify(bridge.pairing)}\n`)
+  if (args.includes('--open')) { spawn('/usr/bin/open', [bridge.pairing.pairURL], { stdio: 'ignore' }).on('error', () => process.stdout.write(`Arya could not be opened. Pair it manually with these details:\n${JSON.stringify(bridge.pairing)}\n`)) }
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { void bridge.close().then(() => process.exit(0)) })
 }

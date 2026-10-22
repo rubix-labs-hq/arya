@@ -24,7 +24,7 @@ Chosen B, with a second Settings entry in the assistant. The persistent labeled 
 
 The frontend uses Preact, htm and the existing plain CSS system. The server routes supply subscription-agent status and actions. Browser account actions do not run inside the native host. That host points to the app's Assistant settings.
 
-The account window supports Claude Code, Codex with ChatGPT, unavailable Antigravity and a server-configured custom adapter. Provider availability, authentication and limits come from status responses. An authenticated inactive provider says "Signed in, not selected" and has an explicit activation action. Save and close stays in the footer and closes only after successful configuration and a fresh status response. A failed save retains the form. Registered plugin account sections remain accessible through the existing settings registry.
+The account window supports Claude Code, Codex with ChatGPT, Google Gemini (beta) under Other connections, unavailable Antigravity and a server-configured custom adapter. Provider availability, authentication and limits come from status responses. An authenticated inactive provider says "Signed in, not selected" and has an explicit activation action. Save and close stays in the footer and closes only after successful configuration and a fresh status response. A failed save retains the form. Registered plugin account sections remain accessible through the existing settings registry.
 
 The exact old-server status 404 says "The Arya server needs a restart to load account settings." Account actions remain disabled. Prompt drafts and attached references survive this error. Model and agent fields use the backend's 128-character limit. Only Claude Code exposes its supported agent override.
 

@@ -181,7 +181,7 @@ export class BrowserBackend {
     } finally { await audio.close() }
   }
   assistantStatus() {
-    return { provider: 'claude-code', configured: false, mode: 'manual', reason: unsupported, loading: false, providers: ['claude-code', 'codex', 'antigravity', 'custom'].map(id => ({ id, installed: false, authenticated: false, available: false, reason: unsupported })), catalogs: [], usage: null }
+    return { provider: 'claude-code', configured: false, mode: 'manual', reason: unsupported, loading: false, providers: ['claude-code', 'codex', 'antigravity', 'gemini-cli', 'custom'].map(id => ({ id, installed: false, authenticated: false, available: false, reason: unsupported })), catalogs: [], usage: null }
   }
   caps() {
     const codec = this.codecCaps ?? {}, presets = ['audio-wav', ...(codec.aac ? ['audio-m4a'] : []), ...(codec.h264 ? ['h264-high', 'h264-web'] : []), ...(codec.hevc ? ['hevc'] : [])]

@@ -15,7 +15,7 @@ public struct AssistantSharingScope: Equatable, Sendable {
 
     public init(models: [Model], companion: URL) throws {
         guard !models.isEmpty, models.count <= 256,
-              models.allSatisfy({ ["claude-code", "codex", "anthropic"].contains($0.provider) && $0.model.count <= 128 && !$0.model.contains("\0") && !$0.model.contains("\n") && !$0.model.contains("\r") }) else { throw Assistant.Failure.sharingRequired }
+              models.allSatisfy({ ["claude-code", "codex", "gemini-cli", "anthropic"].contains($0.provider) && $0.model.count <= 128 && !$0.model.contains("\0") && !$0.model.contains("\n") && !$0.model.contains("\r") }) else { throw Assistant.Failure.sharingRequired }
         var unique: [Model] = []
         for model in models where !unique.contains(model) { unique.append(model) }
         self.models = unique.sorted { $0.provider == $1.provider ? $0.model < $1.model : $0.provider < $1.provider }

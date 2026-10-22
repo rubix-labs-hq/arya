@@ -76,7 +76,7 @@ final class NativeAssistantRoutingPolicyTests: XCTestCase {
     }
 
     func testUnsupportedManualRecipientsStaySavedButCannotReportReady() {
-        for provider in ["custom", "antigravity", "gemini-cli", "unknown"] {
+        for provider in ["custom", "antigravity", "unknown"] {
             for id in ["", "exact-model"] {
                 for bound in [false, true] {
                     for effort in ["", "high"] {
@@ -208,6 +208,19 @@ final class NativeAssistantRoutingPolicyTests: XCTestCase {
             XCTAssertTrue(NativeAssistantRoutingPolicy.availableModels(providers: [row], catalogs: [catalog(models, provider: provider)], verified: true, now: now).isEmpty)
             XCTAssertTrue(NativeAssistantRoutingPolicy.eligibleAutoModels(models, agent: "").isEmpty)
         }
+    }
+
+    func testGoogleGeminiBetaIsManualOnlyWithItsDocumentedList() {
+        let row: [String: Any] = ["id": "gemini-cli", "installed": true, "authenticated": true, "available": true,
+                                  "adapterSupported": true, "modelSelectionSupported": true, "billingMode": "subscription"]
+        let models = [model("gemini-3-pro-preview", provider: "gemini-cli", fields: ["isDefault": false, "reasoningEfforts": [String]()])]
+        let listed = NativeAssistantRoutingPolicy.availableModels(providers: [row], catalogs: [catalog(models, provider: "gemini-cli", fields: ["source": ["kind": "provider-docs"]])], verified: true, now: now)
+        XCTAssertEqual(listed.compactMap { $0["id"] as? String }, ["gemini-3-pro-preview"])
+        XCTAssertTrue(NativeAssistantRoutingPolicy.availableModels(providers: [row], catalogs: [catalog(models, provider: "gemini-cli")], verified: true, now: now).isEmpty)
+        XCTAssertTrue(NativeAssistantRoutingPolicy.eligibleAutoModels(listed, agent: "").isEmpty)
+        XCTAssertTrue(NativeAssistantRoutingPolicy.savedModelReferences(keys: ["gemini-cli:gemini-3-pro-preview"], defaultModels: listed).isEmpty)
+        XCTAssertNil(NativeAssistantRoutingPolicy.manualReadinessReason(provider: "gemini-cli", model: "", effort: "", catalogBound: false, availableModels: listed))
+        XCTAssertNil(NativeAssistantRoutingPolicy.manualReadinessReason(provider: "gemini-cli", model: "gemini-3-pro-preview", effort: "", catalogBound: true, availableModels: listed))
     }
 
     func testNativePriorityChoicesUseTheHostProtocolValues() {

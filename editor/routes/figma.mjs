@@ -45,6 +45,8 @@ const b64url = buf => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, 
 const sha256 = text => createHash('sha256').update(text).digest()
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 const sleep = ms => new Promise(r => setTimeout(r, ms))
+/** An error the server sends with this HTTP status instead of a generic 500. */
+const figmaError = (message, status) => Object.assign(new Error(message), { status })
 
 // ---------------------------------------------------------------- stored credentials
 
@@ -112,10 +114,10 @@ async function readFigmaJson(res, what) {
   } catch {}
   if (!res.ok) {
     const reason = [data?.err, data?.message, typeof data?.error === 'string' ? data.error : null].find(x => typeof x === 'string' && x)
-    if (res.status === 401 || res.status === 403) throw new Error(`Figma refused ${what} (${res.status})${reason ? `: ${reason}` : ''}. The token may be expired or missing a scope, or the file is not shared with this account`)
-    if (res.status === 404) throw new Error(`Figma could not find that file or node (404)`)
-    if (res.status === 429) throw new Error('Figma rate limit reached (429); try again in a minute')
-    throw new Error(`Figma ${what} failed (${res.status})${reason ? `: ${reason}` : ''}`)
+    if (res.status === 401 || res.status === 403) throw figmaError(`Figma refused ${what} (${res.status})${reason ? `: ${reason}` : ''}. The token may be expired or missing a scope, or the file is not shared with this account`, 403)
+    if (res.status === 404) throw figmaError(`Figma could not find that file or node (404)`, 404)
+    if (res.status === 429) throw figmaError('Figma rate limit reached (429); try again in a minute', 429)
+    throw figmaError(`Figma ${what} failed (${res.status})${reason ? `: ${reason}` : ''}`, 502)
   }
   if (data === null) throw new Error(`Figma ${what} did not answer with JSON`)
 
@@ -160,7 +162,7 @@ export default function figmaRoutes(ctx) {
   /** GET a Figma API path as the connected user, renewing an OAuth session once if Figma refuses it. */
   async function api(pathname, query, what = pathname) {
     let auth = await currentAuth()
-    if (!auth) throw new Error('Figma is not connected: open the Figma tab to sign in or paste a personal access token')
+    if (!auth) throw figmaError('Figma is not connected: open the Figma tab to sign in or paste a personal access token', 401)
     let res = await figmaFetch(pathname, { auth, query })
     if ((res.status === 401 || res.status === 403) && auth.method === 'oauth' && auth.refreshToken) {
       await res.arrayBuffer().catch(() => {})
@@ -175,7 +177,7 @@ export default function figmaRoutes(ctx) {
     const res = await figmaFetch('/v1/me', { auth })
     if (res.status === 401 || res.status === 403) {
       await res.arrayBuffer().catch(() => {})
-      throw new Error(`Figma did not accept that token (${res.status}). Check that it is current and has the "current_user:read" and "file_content:read" scopes.`)
+      throw figmaError(`Figma did not accept that token (${res.status}). Check that it is current and has the "current_user:read" and "file_content:read" scopes.`, 401)
     }
 
     return readFigmaJson(res, 'the token check (GET /v1/me)')
@@ -455,8 +457,8 @@ export default function figmaRoutes(ctx) {
 
     'POST /api/figma/token': async body => {
       const token = String(body.token ?? '').trim()
-      if (!token) throw new Error('Paste a Figma personal access token')
-      if (token.length > 512 || /\s/.test(token)) throw new Error('That does not look like a Figma token')
+      if (!token) throw figmaError('Paste a Figma personal access token', 400)
+      if (token.length > 512 || /\s/.test(token)) throw figmaError('That does not look like a Figma token', 400)
       const me = await whoIs({ method: 'pat', accessToken: token })
       writeToken({ method: 'pat', accessToken: token, handle: me.handle ?? null, email: me.email ?? null, userId: me.id ?? null, savedAt: Date.now() })
       ctx.pushActivity('reel', `Figma connected as ${me.handle}`)
@@ -473,7 +475,7 @@ export default function figmaRoutes(ctx) {
 
     'GET /api/figma/oauth/start': (_body, _query, req) => {
       const app = appConfig()
-      if (!app) throw new Error('No Figma app is configured for sign-in. Paste a personal access token instead, or add ~/.reel/figma-app.json with clientId and clientSecret')
+      if (!app) throw figmaError('No Figma app is configured for sign-in. Paste a personal access token instead, or add ~/.reel/figma-app.json with clientId and clientSecret', 409)
       const port = /:(\d+)$/.exec(String(req?.headers?.host ?? ''))?.[1] ?? JSON.parse(fs.readFileSync(path.join(ctx.DOT, 'server.json'), 'utf8')).port
       const redirectUri = app.redirectUri ?? `http://127.0.0.1:${port}/api/figma/callback`
       const state = b64url(randomBytes(24))

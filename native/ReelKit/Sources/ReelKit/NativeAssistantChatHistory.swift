@@ -8,7 +8,7 @@ public final class NativeAssistantChatHistory {
     public static let maximumMessages = 200
     public static let maximumDisplayedMessages = 100
     public static let maximumBytes = 2 * 1024 * 1024
-    private static let providers: Set<String> = ["claude-code", "codex", "antigravity", "custom", "anthropic"]
+    private static let providers: Set<String> = ["claude-code", "codex", "antigravity", "gemini-cli", "custom", "anthropic"]
     private static let messageKeys: Set<String> = ["role", "text", "at", "refs", "error", "provider"]
     private static let referenceKeys: Set<String> = ["kind", "id", "label"]
     private let folder: ProjectFolder

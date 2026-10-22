@@ -7,7 +7,7 @@ import { redact } from './protocol.mjs'
 
 export const CHAT_HISTORY_LIMITS = Object.freeze({ messages: 200, bytes: 2 * 1024 * 1024 })
 const messageKeys = new Set(['role', 'text', 'at', 'refs', 'error', 'provider'])
-const providers = new Set(['claude-code', 'codex', 'antigravity', 'custom', 'anthropic'])
+const providers = new Set(['claude-code', 'codex', 'antigravity', 'gemini-cli', 'custom', 'anthropic'])
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const fail = code => Object.assign(new Error(code), { code })
 const hash = data => createHash('sha256').update(data).digest('hex')

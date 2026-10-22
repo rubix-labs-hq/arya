@@ -209,7 +209,7 @@ final class NativeAssistant: ObservableObject {
     var autoModels: [[String: Any]] { eligibleAutoModels.filter { enabledModelKeys?.contains(Self.modelKey($0)) ?? true } }
     var routingLabel: String { routingMode == "auto" ? "Auto · \(NativeAssistantRoutingPolicy.priorityLabel(routingPriority))" : modelOptions.first { $0.string("provider") == provider && $0.string("id") == model }?.string("name") ?? (model.isEmpty ? "\(providerName) · Default" : model) }
     static func providerName(_ id: String) -> String {
-        ["claude-code": "Claude Code", "codex": "Codex", "antigravity": "Google Antigravity", "custom": "Custom agent", "anthropic": "Anthropic API"][id] ?? id
+        ["claude-code": "Claude Code", "codex": "Codex", "antigravity": "Google Antigravity", "gemini-cli": "Google Gemini (beta)", "custom": "Custom agent", "anthropic": "Anthropic API"][id] ?? id
     }
 
     var snapshot: JSON {
@@ -305,7 +305,7 @@ final class NativeAssistant: ObservableObject {
 
     func selectProvider(_ value: String) throws {
         guard task == nil, stoppingTask == nil else { throw Assistant.Failure.busy }
-        guard ["claude-code", "codex", "antigravity", "custom", "anthropic"].contains(value) else { throw AgentBridge.Failure.invalidConfiguration }
+        guard ["claude-code", "codex", "antigravity", "gemini-cli", "custom", "anthropic"].contains(value) else { throw AgentBridge.Failure.invalidConfiguration }
         connectionGeneration = UUID(); pendingPair = nil
         statusID = UUID(); provider = value; configured = false; checking = false
         UserDefaults.standard.set(value, forKey: Self.providerPreference)
@@ -476,6 +476,7 @@ final class NativeAssistant: ObservableObject {
         switch target ?? provider {
         case "claude-code": executable = "claude"; command = "claude auth login --claudeai"
         case "codex": executable = "codex"; command = "codex login"
+        case "gemini-cli": throw ReelBackend.APIError("Open Terminal, run gemini, and choose Sign in with Google. Then refresh status here.")
         default: throw ReelBackend.APIError("Use your agent's own sign-in flow in Terminal.")
         }
         let (folder, directory) = try prepareAgentDirectory()
@@ -767,7 +768,7 @@ final class NativeAssistant: ObservableObject {
             guard b[key] == nil || b[key] is Bool else { throw AgentBridge.Failure.invalidConfiguration }
         }
         let nextProvider = b["provider"] as? String ?? provider
-        guard ["claude-code", "codex", "antigravity", "custom", "anthropic"].contains(nextProvider) else { throw AgentBridge.Failure.invalidConfiguration }
+        guard ["claude-code", "codex", "antigravity", "gemini-cli", "custom", "anthropic"].contains(nextProvider) else { throw AgentBridge.Failure.invalidConfiguration }
         let nextModel = (b["model"] as? String ?? (nextProvider == provider ? model : UserDefaults.standard.string(forKey: "assistant.model.\(nextProvider)") ?? (nextProvider == "anthropic" ? Assistant.Configuration().model : ""))).trimmingCharacters(in: .whitespacesAndNewlines)
         let nextAgent = (b["agent"] as? String ?? (nextProvider == provider ? agent : "")).trimmingCharacters(in: .whitespacesAndNewlines)
         let chosenEffort = b["effort"] as? String ?? ""
@@ -898,7 +899,7 @@ final class NativeAssistant: ObservableObject {
                 models = autoModels.map { .init(provider: $0.string("provider"), model: $0.string("id")) }
                 guard routingSupported, !models.isEmpty, models.allSatisfy({ !$0.model.isEmpty }) else { throw ReelBackend.APIError("Refresh the eligible Auto pool before reviewing AI sharing.") }
             } else {
-                guard ["claude-code", "codex"].contains(provider), provider != "codex" || !model.isEmpty else { throw ReelBackend.APIError("Choose an available Claude Code or Codex model. Custom and unknown AI recipients cannot receive project data.") }
+                guard ["claude-code", "codex", "gemini-cli"].contains(provider), provider != "codex" || !model.isEmpty else { throw ReelBackend.APIError("Choose an available Claude Code, Codex or Google Gemini model. Custom and unknown AI recipients cannot receive project data.") }
                 let reviewedModel: String
                 if model.isEmpty && (catalogBound || !effort.isEmpty) {
                     guard let exact = modelOptions.first(where: { $0.string("provider") == provider && $0.flag("isDefault") }) else { throw ReelBackend.APIError("Refresh the selected default model before reviewing AI sharing.") }
@@ -941,7 +942,7 @@ final class NativeAssistant: ObservableObject {
             ("purpose", "Let the assistant review and edit the open project. Tools can access the project beyond selected layers."),
             ("recipients", .array(review.scope.providers.map { id in .object([
                 ("provider", .string(id)), ("name", .string(Self.providerName(id))),
-                ("destination", .string(id == "codex" ? "OpenAI's ChatGPT service" : "Anthropic's Claude service")),
+                ("destination", .string(id == "codex" ? "OpenAI's ChatGPT service" : id == "gemini-cli" ? "Google's Gemini service" : "Anthropic's Claude service")),
             ]) })),
             ("companion", .object([("endpoint", .string(review.scope.companion)), ("local", .bool(local)),
                                    ("description", .string(review.scope.providers == ["anthropic"] ? "Direct Anthropic API connection." : "This companion receives project data and forwards it to the approved agent. A remote operator also receives the data."))])),
@@ -1575,6 +1576,7 @@ struct NativeAssistantSettings: View {
     private func isCurrentSetupReceipt(_ receipt: SetupReceipt) -> Bool {
         return Self.acceptsPublishedSetupResult(receipt, current: currentSetupReceipt, active: viewActive)
     }
+    static let helperOpenedMessage = "Helper opened. Keep its Terminal window open and wait for the secure connection."
     private func visibleSetupResult(_ text: String?, key: String) -> String? {
         guard let text, !text.isEmpty, let receipt = resultReceipts[key], isCurrentSetupReceipt(receipt) else { return nil }
         return text
@@ -1760,10 +1762,26 @@ struct NativeAssistantSettings: View {
                 sharingSettings(proxy: proxy).id(SetupSection.sharing)
                 Section("Other connections") {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Google subscription connections").font(.body.weight(.medium))
-                        Text("Gemini CLI and Antigravity support Google account sign-in. Arya has not verified an isolated editing adapter for either CLI. Their account status, available models, tool permissions and spending policy are not verified here, so they cannot send requests or enter Auto.")
+                        Text("Google Gemini (beta)").font(.body.weight(.medium))
+                        Text("Uses Gemini CLI with your Google sign-in. Each run gets only the two Reel tools, and paid overage is turned off. The model list is fixed, not checked against your account, and Google may switch to a Flash model when quota runs out. Gemini instructions and policies in your home folder still load. This connection has not been verified in a live signed-in run, and it is not part of Auto.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        if let gemini = assistant.providers.first(where: { $0.string("id") == "gemini-cli" }), assistant.accountStatusVerified {
+                            Text(gemini["installed"] as? Bool != true ? "Gemini CLI is not installed on the companion Mac." : gemini["authenticated"] as? Bool == true ? "A saved Google sign-in was found. Arya checks only that it exists." : "Open Terminal, run gemini, and choose Sign in with Google. Then refresh status.")
+                                .font(.caption).fixedSize(horizontal: false, vertical: true)
+                        }
+                        Button {
+                            do { try assistant.selectProvider("gemini-cli"); try assistant.setRouting(mode: "manual", effort: ""); loadFields(); message = "Selected Google Gemini (beta). Review sharing before Send." }
+                            catch { message = error.localizedDescription }
+                        } label: {
+                            Label("Use Google Gemini (beta)", systemImage: assistant.provider == "gemini-cli" ? "checkmark.circle.fill" : "circle")
+                        }.frame(minHeight: 44).disabled(busy)
+                        Link("Install Gemini CLI", destination: URL(string: "https://geminicli.com/docs/get-started/installation/")!)
                         Link("Gemini CLI account setup", destination: URL(string: "https://geminicli.com/docs/get-started/authentication/")!)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Google Antigravity").font(.body.weight(.medium))
+                        Text("Arya has not verified an isolated editing adapter for the Antigravity CLI, so it cannot send requests or enter Auto.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Link("Antigravity CLI account setup", destination: URL(string: "https://antigravity.google/docs/cli/install/")!)
                     }
                     Text("Provider eligibility, available models and usage limits apply. Signing in does not establish remaining usage or an exact price.")
@@ -1784,6 +1802,10 @@ struct NativeAssistantSettings: View {
         .onChange(of: setupIdentity) { _, _ in invalidateSetupChecks() }
         .onChange(of: setupStatusIdentity) { _, _ in discardStaleSetupResults() }
         .onChange(of: setupDraftIdentity) { _, _ in discardStaleSetupResults() }
+        .onChange(of: assistant.configured) { _, configured in
+            // Pairing finished, so the "wait for the secure connection" hint is stale.
+            if configured && companionLauncherResult == Self.helperOpenedMessage { companionLauncherResult = "" }
+        }
         .onChange(of: assistant.endpoint) { _, current in
             accountCheckTask?.cancel(); accountCheckTask = nil; resultRequests.removeValue(forKey: .accounts)
             endpoint = current; token = ""; needsPrivateToken = false
@@ -1813,12 +1835,15 @@ struct NativeAssistantSettings: View {
                 if ["claude-code", "codex"].contains(assistant.provider) {
                 Link("Install \(assistant.providerName)", destination: URL(string: assistant.provider == "codex" ? "https://developers.openai.com/codex/cli/" : "https://code.claude.com/docs/en/setup")!)
                     .buttonStyle(.bordered).frame(minHeight: 44)
+                } else if assistant.provider == "gemini-cli" {
+                    Link("Install Gemini CLI", destination: URL(string: "https://geminicli.com/docs/get-started/installation/")!)
+                        .buttonStyle(.bordered).frame(minHeight: 44)
                 } else {
                     Text("For the Anthropic API, add your API key in Advanced. API requests are billed separately.").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section("2. Sign in") {
-                Text(signedIn == true ? "Signed in. Confirmed by the provider’s CLI." : "Sign in through the provider’s own account flow. Your credentials stay with the provider.")
+                Text(assistant.provider == "gemini-cli" ? (signedIn == true ? "A saved Google sign-in was found. Arya checks only that it exists, so an expired sign-in shows up when you send." : "Open Terminal, run gemini, and choose Sign in with Google. Then refresh status.") : signedIn == true ? "Signed in. Confirmed by the provider’s CLI." : "Sign in through the provider’s own account flow. Your credentials stay with the provider.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 #if os(macOS)
                 Button("Sign in to \(assistant.providerName)") {
@@ -2245,17 +2270,19 @@ struct NativeAssistantSettings: View {
                 connecting = true
                 connectionTask = Task {
                     defer { connecting = false; connectionTask = nil }
-                    do { try await assistant.restartBridge(); message = "Helper opened. Keep its Terminal window open and wait for the secure connection." }
+                    do { try await assistant.restartBridge(); message = Self.helperOpenedMessage }
                     catch { message = error.localizedDescription }
                     companionLauncherResult = message
                     resultReceipts["launcher"] = currentSetupReceipt
                 }
             }.frame(minHeight: 44).disabled(busy)
+                .accessibilityLabel(assistant.endpoint.isEmpty ? "Turn on the assistant" : "Restart helper and reconnect")
             if let result = visibleSetupResult(companionLauncherResult, key: "launcher") { Text(result).font(.caption).fixedSize(horizontal: false, vertical: true) }
             Text(assistant.configured ? "Assistant is on. \(assistant.providerName) is ready." : assistant.checking ? "Checking account status…" : "\(assistant.providerName): setup needed.")
                 .font(.caption).foregroundStyle(.secondary)
             Button(assistant.checking ? "Checking…" : "Refresh status") { checkAccounts() }
                 .frame(minHeight: 44).disabled(busy || assistant.checking || assistant.endpoint.isEmpty)
+                .accessibilityLabel(assistant.checking ? "Checking account status" : "Refresh assistant status")
             DisclosureGroup("Advanced") {
             Text(assistant.bridgeRuntimeDescription).font(.caption).foregroundStyle(.secondary)
             #if DEBUG
@@ -2293,6 +2320,7 @@ struct NativeAssistantSettings: View {
             }
             Button(connecting ? "Connecting…" : "Connect companion") { connectCompanion() }
                 .frame(minHeight: 44).disabled(busy || !canConnectCompanion)
+                .accessibilityLabel(connecting ? "Connecting companion" : "Connect companion")
             inlineResult(.companion, next: verifiedResultEndpoint != nil && verifiedResultEndpoint == assistant.endpoint ? .accounts : nil, proxy: proxy)
             if !assistant.endpoint.isEmpty {
                 if needsPrivateToken || normalizedEndpoint != assistant.endpoint {
@@ -2383,7 +2411,7 @@ struct NativeAssistantSettings: View {
                     do { try assistant.selectProvider(value); try assistant.setRouting(mode: "manual", effort: ""); loadFields(); setResult("Selected \(assistant.providerName). Check its configuration before sharing.", for: .advanced) }
                     catch { setResult(error.localizedDescription, for: .advanced) }
                 })) {
-                    ForEach(["claude-code", "codex", "custom", "anthropic"], id: \.self) { id in Text(id == "custom" ? "Custom agent · editing unavailable here" : NativeAssistant.providerName(id)).tag(id) }
+                    ForEach(["claude-code", "codex", "gemini-cli", "custom", "anthropic"], id: \.self) { id in Text(id == "custom" ? "Custom agent · editing unavailable here" : NativeAssistant.providerName(id)).tag(id) }
                     if assistant.provider == "antigravity" { Text("Google Antigravity · unavailable").tag("antigravity") }
                 }.frame(minHeight: 44).disabled(busy)
                 TextField(assistant.provider == "anthropic" ? "Anthropic API model ID" : "Exact model ID · blank for CLI default", text: $model).frame(minHeight: 44).disabled(busy)
@@ -2477,6 +2505,9 @@ struct NativeAssistantSharingReview: View {
                         }
                         if review.scope.providers.contains("codex") {
                             Text("Codex sends requests to OpenAI's ChatGPT service, which processes data off this device.").font(.caption).foregroundStyle(.secondary)
+                        }
+                        if review.scope.providers.contains("gemini-cli") {
+                            Text("Gemini CLI sends requests to Google's Gemini service with your Google sign-in, which processes data off this device.").font(.caption).foregroundStyle(.secondary)
                         }
                         if review.scope.providers.contains("anthropic") {
                             Text("Requests go directly to Anthropic's Claude Messages API, which processes data off this device.").font(.caption).foregroundStyle(.secondary)

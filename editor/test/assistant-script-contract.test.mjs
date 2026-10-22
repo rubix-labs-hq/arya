@@ -87,3 +87,11 @@ test('host re-resolution already consumes context inputKind; native status does 
   assert.doesNotMatch(snapshot, /inputCharacterLimit/)
   assert.match(native, /text\.count <= inputCharacterLimit/)
 })
+
+test('the app-launched helper keeps its pairing token out of the Terminal window', () => {
+  const bridge = fs.readFileSync(path.join(editor, 'agent/bridge.mjs'), 'utf8')
+  const cli = bridge.slice(bridge.indexOf('const bridge = await startBridge(options)'))
+  const opened = cli.split('\n').find(line => line.startsWith("  if (args.includes('--open')) process.stdout.write("))
+  assert.match(opened, /Arya assistant helper is running/)
+  assert.doesNotMatch(opened, /token|pairURL|JSON\.stringify/)
+})

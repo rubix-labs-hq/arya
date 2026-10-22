@@ -80,7 +80,7 @@ public actor AgentBridge {
         try Task.checkCancellation()
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty, prompt.count <= 128_000 else { throw Failure.invalidPrompt }
-        guard ["claude-code", "codex", "antigravity", "custom"].contains(provider) else { throw Failure.invalidConfiguration }
+        guard ["claude-code", "codex", "antigravity", "gemini-cli", "custom"].contains(provider) else { throw Failure.invalidConfiguration }
         for value in [model, agent].compactMap({ $0 }) {
             guard !value.isEmpty, value.count <= 128, !value.contains("\0"), !value.contains("\n"), !value.contains("\r") else { throw Assistant.Failure.invalidModel }
         }
@@ -118,7 +118,7 @@ public actor AgentBridge {
                         guard !receivedRoute, toolCalls == 0, answer.isEmpty,
                               let decision = event["routing"] as? [String: Any], JSON(any: decision["ok"]) == .bool(true),
                               let selectedProvider = decision["provider"] as? String,
-                              ["claude-code", "codex"].contains(selectedProvider) else { throw Failure.invalidResponse }
+                              ["claude-code", "codex"].contains(selectedProvider) || selectedProvider == "gemini-cli" && !automatic else { throw Failure.invalidResponse }
                         let selectedModel: String
                         if decision["model"] == nil || decision["model"] is NSNull {
                             guard !automatic, sharing.models == [.init(provider: selectedProvider, model: "")] else { throw Failure.invalidResponse }

@@ -131,8 +131,8 @@ test('subscription adapters remove API overrides and preserve explicit model/age
   }
 })
 
-test('Google editing adapters reject without launching a provider or granting permissions', async () => {
-  for (const provider of ['antigravity', 'gemini-cli']) {
+test('Antigravity editing adapter rejects without launching a provider or granting permissions', async () => {
+  for (const provider of ['antigravity']) {
     await assert.rejects(prepareAdapter({ id: randomUUID(), provider, text: 'Edit' }, { endpoint: 'http://127.0.0.1:12345/', token: 'a'.repeat(64) }), /Google subscription editing is unavailable in Arya.*have not been verified.*does not change global permissions or use an API fallback/)
   }
 })

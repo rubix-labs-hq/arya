@@ -81,7 +81,7 @@ The contribution form, its $5, $15 and $30 presets and the custom amount appear 
 
 The website configuration supports `optional-support` and `paid-download` separately. A paid download needs a real checkout that returns an authorized download. Payment destinations must be registered and reviewed before publishing. The website never handles card details and must never claim that a contribution succeeded without a provider receipt.
 
-Agent subscriptions and usage remain separate. A contribution to Arya does not include Claude, ChatGPT or another provider's subscription. Claude Code is the suggested default; Codex can use supported ChatGPT sign-in. Antigravity is not an available built-in editing adapter.
+Agent subscriptions and usage remain separate. A contribution to Arya does not include Claude, ChatGPT or another provider's subscription. Claude Code is the suggested default; Codex can use supported ChatGPT sign-in. Google Gemini (beta) can use a Google sign-in through Gemini CLI. Antigravity is not an available built-in editing adapter.
 
 ## Release honesty
 

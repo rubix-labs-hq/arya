@@ -14,16 +14,17 @@ export const PROVIDER_SETUP = Object.freeze([
     installURL: 'https://antigravity.google/docs/cli/install/', signInCommand: 'agy',
     discovery: 'agy models', adapterSupported: false,
     reason: 'Subscription-backed CLI use is documented. Arya has not verified account sign-in, isolated tool permissions and additional-credit controls for its editing adapter; built-in editing remains unavailable.' },
-  { id: 'gemini-cli', name: 'Gemini CLI', executable: 'gemini', account: 'Google account',
+  { id: 'gemini-cli', name: 'Google Gemini (beta)', executable: 'gemini', account: 'Google account', beta: true,
     installURL: 'https://geminicli.com/docs/get-started/installation/', signInCommand: 'gemini',
-    adapterSupported: false, discovery: 'Account status and account-specific model discovery have not been verified for Arya.',
-    reason: 'Google sign-in is documented, but Arya has no verified isolated editing adapter for this CLI yet.' },
+    discovery: 'Fixed model list from the Gemini CLI documentation. The CLI has no model-list command, so account access is not checked.',
+    productLoginApproval: 'unverified',
+    reason: 'Beta. Runs Gemini CLI with Google sign-in, only the two Reel tools and paid overage turned off. Not yet verified in a live signed-in run.' },
   { id: 'custom', name: 'Custom agent', account: 'Adapter-managed account', discovery: 'Adapter-supplied verified catalog',
     reason: 'Configure a host-side adapter and its model discovery. Arya does not assume its authentication or prices.' },
 ])
 
 const providerIDs = new Set([...PROVIDER_SETUP.map(item => item.id), 'anthropic'])
-const kinds = new Set(['provider-cli', 'provider-sdk', 'verified-custom-adapter'])
+const kinds = new Set(['provider-cli', 'provider-sdk', 'provider-docs', 'verified-custom-adapter'])
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const cleanText = (value, size = 500) => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, size) : ''
 const token = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._:/@+\[\]-]{0,127}$/.test(value)

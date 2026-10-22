@@ -280,11 +280,11 @@ test('personal access token: validate, store 0600, never echo', async () => {
   assert.equal(r.status, 200)
 
   r = await post('/api/figma/frames', { url: `https://www.figma.com/design/${KEY}/Lower-thirds` })
-  assert.equal(r.status, 500)
+  assert.equal(r.status, 401)
   assert.match(r.data.error, /not connected/)
 
   r = await post('/api/figma/token', { token: 'figd_wrong' })
-  assert.equal(r.status, 500)
+  assert.equal(r.status, 401)
   assert.match(r.data.error, /Figma did not accept that token \(403\)/)
   assert.ok(!fs.existsSync(path.join(CONFIG, 'figma-token.json')))
 
@@ -434,7 +434,7 @@ test('Claude path: MCP metadata plus asset URLs, without any Figma sign-in', asy
 
 test('OAuth with PKCE: start, callback, stored session, renewal before expiry', async () => {
   let r = await get('/api/figma/oauth/start')
-  assert.equal(r.status, 500)
+  assert.equal(r.status, 409)
   assert.match(r.data.error, /No Figma app is configured/)
   fs.writeFileSync(path.join(CONFIG, 'figma-app.json'), JSON.stringify({ clientId: CLIENT_ID, clientSecret: SECRET }))
   r = await get('/api/figma/status')

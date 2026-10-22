@@ -235,7 +235,7 @@ test('actual HTTP status excludes signed-out, unknown, uninstalled, unsupported 
     { name: 'explicit adapter disabled', source: { id: 'codex', installed: true, authenticated: true, adapterSupported: false }, available: false },
     { name: 'reported rate limit', source: { id: 'codex', installed: true, authenticated: true, rateLimited: true }, available: false },
     { name: 'unsupported Antigravity adapter', source: { id: 'antigravity', installed: true, authenticated: true }, available: false },
-    { name: 'unsupported Gemini adapter', source: { id: 'gemini-cli', installed: true, authenticated: true }, available: false },
+    { name: 'signed-out Gemini CLI', source: { id: 'gemini-cli', installed: true, authenticated: false }, available: false },
   ]
   for (const value of cases) await t.test(value.name, async child => {
     let discoveries = 0

@@ -23,11 +23,12 @@ public enum NativeAssistantRoutingPolicy {
         guard verified, now.isFinite, now >= 0 else { return [] }
         var seenProviders = Set<String>()
         return catalogs.flatMap { catalog in
-            guard let provider = catalog["provider"] as? String, ["claude-code", "codex"].contains(provider),
+            // Google Gemini (beta) is Manual-only. Its fixed list comes from the CLI docs.
+            guard let provider = catalog["provider"] as? String, ["claude-code", "codex", "gemini-cli"].contains(provider),
                   seenProviders.insert(provider).inserted,
                   catalog["complete"] as? Bool == true,
                   let source = catalog["source"] as? [String: Any],
-                  ["provider-cli", "provider-sdk"].contains(source["kind"] as? String ?? ""),
+                  (provider == "gemini-cli" ? ["provider-docs"] : ["provider-cli", "provider-sdk"]).contains(source["kind"] as? String ?? ""),
                   let checkedAt = catalog["checkedAt"] as? Double, checkedAt.isFinite,
                   checkedAt >= 0, checkedAt <= 9_007_199_254_740_991, checkedAt.rounded(.towardZero) == checkedAt,
                   checkedAt <= now, now - checkedAt <= 300_000,
@@ -76,13 +77,13 @@ public enum NativeAssistantRoutingPolicy {
 
     public static func manualReadinessReason(provider: String, model: String, effort: String, catalogBound: Bool,
                                              availableModels: [[String: Any]]) -> String? {
-        guard ["claude-code", "codex", "anthropic"].contains(provider) else {
+        guard ["claude-code", "codex", "gemini-cli", "anthropic"].contains(provider) else {
             return "Native AI sharing does not support this recipient. Choose a supported provider in Assistant settings."
         }
         if provider == "codex" && model.isEmpty {
             return "Choose an exact Codex model in Assistant settings. Refresh account discovery if no model is listed."
         }
-        // Deliberate raw IDs and Claude's provider-default Manual choice do not require discovery.
+        // Deliberate raw IDs and the Claude and Gemini provider-default Manual choices do not require discovery.
         guard catalogBound || !effort.isEmpty else { return nil }
         guard let selected = availableModels.first(where: {
             $0["provider"] as? String == provider && (model.isEmpty ? $0["isDefault"] as? Bool == true : $0["id"] as? String == model)

@@ -5,10 +5,11 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { INSTRUCTIONS, promptFor, redact } from './protocol.mjs'
+import { GEMINI_SIGN_IN, GEMINI_SYSTEM_POLICY_MESSAGE, geminiArgs, geminiSystemPolicyBlocks, geminiEnvironment, geminiExitMessage, geminiOutputEvent, geminiSignedIn, writeGeminiWorkspace } from './gemini.mjs'
 
 const exec = promisify(execFile)
 const directory = path.dirname(fileURLToPath(import.meta.url))
-export const PROVIDERS = ['claude-code', 'codex', 'antigravity', 'custom']
+export const PROVIDERS = ['claude-code', 'codex', 'antigravity', 'gemini-cli', 'custom']
 const codexDisabledFeatures = ['shell_tool', 'view_image', 'multi_agent', 'multi_agent_v2', 'hooks', 'apps', 'plugins', 'memories', 'shell_snapshot', 'skill_mcp_dependency_install', 'browser_use', 'computer_use', 'image_generation', 'skill_search', 'workspace_dependencies', 'in_app_browser', 'in_app_local_automation', 'daemon_auto_start']
 
 export function subscriptionEnvironment(original = process.env) {
@@ -26,10 +27,16 @@ export async function executable(name) {
 
 export async function providerStatus(custom) {
   const values = await Promise.all(PROVIDERS.map(async id => {
-    const command = await executable(id === 'claude-code' ? 'claude' : id === 'antigravity' ? 'agy' : id === 'custom' ? custom?.executable ?? '' : 'codex')
-    if (!command) return { id, installed: false, authenticated: false, reason: id === 'custom' ? 'Custom editing is unavailable on this host. Choose Claude Code or Codex.' : `Install and sign in to ${id === 'claude-code' ? 'Claude Code' : id === 'codex' ? 'Codex' : 'Google Antigravity'} on the computer running Arya.` }
+    const command = await executable(id === 'claude-code' ? 'claude' : id === 'antigravity' ? 'agy' : id === 'gemini-cli' ? 'gemini' : id === 'custom' ? custom?.executable ?? '' : 'codex')
+    if (!command) return { id, installed: false, authenticated: false, reason: id === 'custom' ? 'Custom editing is unavailable on this host. Choose Claude Code or Codex.' : `Install and sign in to ${id === 'claude-code' ? 'Claude Code' : id === 'codex' ? 'Codex' : id === 'gemini-cli' ? 'Gemini CLI' : 'Google Antigravity'} on the computer running Arya.` }
     if (id === 'custom') return { id, installed: true, authenticated: null, available: false, adapterSupported: false, authentication: 'unverified-custom', reason: 'Custom editing is unavailable on this host. A configured executable does not verify account login or subscription access. Choose Claude Code or Codex.' }
     if (id === 'antigravity') return { id, installed: true, authenticated: null, available: false, authentication: 'existing-cli-sign-in', reason: 'Google Antigravity CLI is installed. Arya has not verified its account login or an isolated editing adapter. Check account setup in the official CLI; built-in editing remains unavailable.' }
+    if (id === 'gemini-cli') {
+      // Gemini CLI has no account status command. A saved sign-in file is a heuristic:
+      // an expired or revoked sign-in is reported when a request starts.
+      const authenticated = await geminiSignedIn()
+      return { id, installed: true, authenticated, authentication: 'existing-cli-sign-in-file', reason: authenticated ? 'Gemini CLI has a saved Google sign-in on this computer. Arya checks only that it exists, so an expired sign-in shows up when you send a request.' : GEMINI_SIGN_IN }
+    }
     try {
       const args = id === 'claude-code' ? ['auth', 'status', '--json'] : id === 'codex' ? ['login', 'status'] : ['models']
       const result = await exec(command, args, { env: subscriptionEnvironment(), timeout: 15000, maxBuffer: 64 * 1024, windowsHide: true })
@@ -57,18 +64,18 @@ export async function prepareAdapter(request, transport, custom) {
     if (request.model && !(custom?.args ?? []).some(value => value.includes('{model}'))) throw new Error('This custom adapter cannot bind an exact requested model. Configure a literal {model} argument or use its explicit provider default.')
     if (request.effort && !(custom?.args ?? []).some(value => value.includes('{effort}'))) throw new Error('This custom adapter cannot bind the requested reasoning effort.')
   }
-  if (['antigravity', 'gemini-cli'].includes(request.provider)) throw new Error('Google subscription editing is unavailable in Arya. Account sign-in, isolated tool permissions and additional-credit controls have not been verified for this adapter. Arya does not change global permissions or use an API fallback. Use Claude Code or Codex.')
+  if (request.provider === 'antigravity') throw new Error('Google subscription editing is unavailable in Arya. Account sign-in, isolated tool permissions and additional-credit controls have not been verified for this adapter. Arya does not change global permissions or use an API fallback. Use Claude Code or Codex.')
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-agent-'))
   await fs.chmod(cwd, 0o700)
   try {
-    const env = { ...(request.provider === 'custom' ? process.env : subscriptionEnvironment()), REEL_AGENT_ENDPOINT: transport.endpoint, REEL_AGENT_RUN_ID: request.id, REEL_AGENT_RUN_TOKEN: transport.token }
+    const env = { ...(request.provider === 'custom' ? process.env : request.provider === 'gemini-cli' ? geminiEnvironment() : subscriptionEnvironment()), REEL_AGENT_ENDPOINT: transport.endpoint, REEL_AGENT_RUN_ID: request.id, REEL_AGENT_RUN_TOKEN: transport.token }
     const server = { command: process.execPath, args: [path.join(directory, 'mcp.mjs')], env: { REEL_AGENT_ENDPOINT: transport.endpoint, REEL_AGENT_RUN_ID: request.id, REEL_AGENT_RUN_TOKEN: transport.token } }
     const mcpConfig = path.join(cwd, 'mcp.json')
     await fs.writeFile(mcpConfig, JSON.stringify({ mcpServers: { reel: server } }), { mode: 0o600 })
     await fs.writeFile(path.join(cwd, 'context.json'), JSON.stringify({ context: request.context, outline: request.outline }), { mode: 0o600 })
     await fs.writeFile(path.join(cwd, 'AGENTS.md'), INSTRUCTIONS, { mode: 0o600 })
     const prompt = promptFor(request)
-    let command, args
+    let command, args, exitMessage
     if (request.provider === 'claude-code') {
       command = await executable('claude')
       args = ['--print', '--verbose', '--output-format', 'stream-json', '--include-partial-messages', '--tools', '', '--allowedTools', 'mcp__reel__reel_api,mcp__reel__reel_frame', '--strict-mcp-config', '--mcp-config', mcpConfig, '--setting-sources', '', '--settings', '{"disableAllHooks":true}', '--disable-slash-commands', '--no-session-persistence', '--permission-mode', 'dontAsk', '--append-system-prompt', INSTRUCTIONS]
@@ -81,18 +88,29 @@ export async function prepareAdapter(request, transport, custom) {
       if (request.model) args.splice(1, 0, '--model', request.model)
       if (request.effort) args.splice(1, 0, '-c', `model_reasoning_effort=${JSON.stringify(request.effort)}`)
       if (request.agent) throw new Error('Codex CLI does not expose an agent selector; leave Agent empty or use a custom executable.')
+    } else if (request.provider === 'gemini-cli') {
+      if (request.agent) throw new Error('Gemini CLI does not expose an agent selector; leave Agent empty.')
+      if (request.effort) throw new Error('Gemini CLI does not expose a reasoning effort setting; leave effort on the provider default.')
+      if (await geminiSystemPolicyBlocks()) throw new Error(GEMINI_SYSTEM_POLICY_MESSAGE)
+      command = await executable('gemini')
+      // The npm launcher starts with "env node". Keep its own Node first when PATH lacks one.
+      if (command && await executable(path.join(path.dirname(command), 'node'))) env.PATH = [path.dirname(command), env.PATH].filter(Boolean).join(path.delimiter)
+      // The prompt arrives on stdin; Gemini CLI puts stdin before the short -p text.
+      args = geminiArgs(await writeGeminiWorkspace(cwd, server), request.model)
+      exitMessage = geminiExitMessage
     } else {
       command = custom && await executable(custom.executable)
       args = (custom?.args ?? []).map(value => value.replaceAll('{mcpConfig}', mcpConfig).replaceAll('{context}', path.join(cwd, 'context.json')).replaceAll('{model}', request.model ?? '').replaceAll('{effort}', request.effort ?? ''))
     }
     if (!command) throw new Error(`The ${request.provider} executable is unavailable. Install and sign in to its CLI, then refresh Assistant settings.`)
-    return { command, args, cwd, env, prompt, cleanup: () => fs.rm(cwd, { recursive: true, force: true }) }
+    return { command, args, cwd, env, prompt, ...(exitMessage ? { exitMessage } : {}), cleanup: () => fs.rm(cwd, { recursive: true, force: true }) }
   } catch (error) { await fs.rm(cwd, { recursive: true, force: true }); throw error }
 }
 
 export function outputEvent(provider, line) {
   let value
   try { value = JSON.parse(line) } catch { return provider === 'custom' && line.trim() ? { type: 'text', text: line } : null }
+  if (provider === 'gemini-cli') return geminiOutputEvent(value)
   if (value.event === 'step_update' && typeof value.step_update?.text_delta === 'string') return { type: 'text', text: value.step_update.text_delta }
   if (value.event === 'result') return value.result?.status === 'SUCCESS' ? { type: 'done', text: String(value.result.response ?? '') } : { type: 'error', message: String(value.result?.error?.message ?? value.result?.error ?? 'Antigravity run failed') }
   if (value.type === 'error' || value.type === 'result' && value.is_error) return { type: 'error', message: value.error?.message ?? value.error ?? value.result ?? value.message ?? 'Agent run failed' }
