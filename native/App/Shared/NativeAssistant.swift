@@ -209,7 +209,7 @@ final class NativeAssistant: ObservableObject {
     var autoModels: [[String: Any]] { eligibleAutoModels.filter { enabledModelKeys?.contains(Self.modelKey($0)) ?? true } }
     var routingLabel: String { routingMode == "auto" ? "Auto · \(NativeAssistantRoutingPolicy.priorityLabel(routingPriority))" : modelOptions.first { $0.string("provider") == provider && $0.string("id") == model }?.string("name") ?? (model.isEmpty ? "\(providerName) · Default" : model) }
     static func providerName(_ id: String) -> String {
-        ["claude-code": "Claude Code", "codex": "Codex", "antigravity": "Google Antigravity", "gemini-cli": "Google Gemini (beta)", "custom": "Custom agent", "anthropic": "Anthropic API"][id] ?? id
+        ["claude-code": "Claude Code", "codex": "Codex", "antigravity": "Google Antigravity", "gemini-cli": "Gemini CLI · retired", "custom": "Custom agent", "anthropic": "Anthropic API"][id] ?? id
     }
 
     var snapshot: JSON {
@@ -448,7 +448,7 @@ final class NativeAssistant: ObservableObject {
     private func installAgentHelper(runtime: URL?) throws -> (ProjectFolder, URL) {
         guard let source = session?.editor.root.appendingPathComponent("agent") else { throw AgentBridge.Failure.unavailable }
         let (folder, directory) = try prepareAgentDirectory()
-        for name in ["bridge.mjs", "mcp.mjs", "adapters.mjs", "gemini.mjs", "protocol.mjs", "output-stream.mjs", "assistant-catalog.mjs", "catalog-discovery.mjs", "Reel Agent Bridge.command"] {
+        for name in ["bridge.mjs", "mcp.mjs", "adapters.mjs", "gemini.mjs", "antigravity.mjs", "protocol.mjs", "output-stream.mjs", "assistant-catalog.mjs", "catalog-discovery.mjs", "Reel Agent Bridge.command"] {
             let target = try folder.output(directory.appendingPathComponent(name).path)
             var data = try Data(contentsOf: source.appendingPathComponent(name))
             if name == "Reel Agent Bridge.command" {
@@ -476,7 +476,13 @@ final class NativeAssistant: ObservableObject {
         switch target ?? provider {
         case "claude-code": executable = "claude"; command = "claude auth login --claudeai"
         case "codex": executable = "codex"; command = "codex login"
-        case "gemini-cli": throw ReelBackend.APIError("Open Terminal, run gemini, and choose Sign in with Google. Then refresh status here.")
+        case "antigravity":
+            executable = "agy"
+            let runtime = try validatedBundledNode()
+            let (_, agentDirectory) = try installAgentHelper(runtime: runtime)
+            let quote: (String) -> String = { "'" + $0.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+            command = "\(quote(runtime?.path ?? "node")) \(quote(agentDirectory.appendingPathComponent("antigravity.mjs").path)) --login"
+        case "gemini-cli": throw ReelBackend.APIError("Google retired Gemini CLI individual sign-in. Choose Google Antigravity.")
         default: throw ReelBackend.APIError("Use your agent's own sign-in flow in Terminal.")
         }
         let (folder, directory) = try prepareAgentDirectory()
@@ -899,7 +905,7 @@ final class NativeAssistant: ObservableObject {
                 models = autoModels.map { .init(provider: $0.string("provider"), model: $0.string("id")) }
                 guard routingSupported, !models.isEmpty, models.allSatisfy({ !$0.model.isEmpty }) else { throw ReelBackend.APIError("Refresh the eligible Auto pool before reviewing AI sharing.") }
             } else {
-                guard ["claude-code", "codex", "gemini-cli"].contains(provider), provider != "codex" || !model.isEmpty else { throw ReelBackend.APIError("Choose an available Claude Code, Codex or Google Gemini model. Custom and unknown AI recipients cannot receive project data.") }
+                guard ["claude-code", "codex", "antigravity"].contains(provider), provider != "codex" || !model.isEmpty else { throw ReelBackend.APIError("Choose an available Claude Code, Codex or Google Antigravity model. Custom and unknown AI recipients cannot receive project data.") }
                 let reviewedModel: String
                 if model.isEmpty && (catalogBound || !effort.isEmpty) {
                     guard let exact = modelOptions.first(where: { $0.string("provider") == provider && $0.flag("isDefault") }) else { throw ReelBackend.APIError("Refresh the selected default model before reviewing AI sharing.") }
@@ -942,7 +948,7 @@ final class NativeAssistant: ObservableObject {
             ("purpose", "Let the assistant review and edit the open project. Tools can access the project beyond selected layers."),
             ("recipients", .array(review.scope.providers.map { id in .object([
                 ("provider", .string(id)), ("name", .string(Self.providerName(id))),
-                ("destination", .string(id == "codex" ? "OpenAI's ChatGPT service" : id == "gemini-cli" ? "Google's Gemini service" : "Anthropic's Claude service")),
+                ("destination", .string(id == "codex" ? "OpenAI's ChatGPT service" : id == "antigravity" ? "Google Antigravity and its selected model provider" : "Anthropic's Claude service")),
             ]) })),
             ("companion", .object([("endpoint", .string(review.scope.companion)), ("local", .bool(local)),
                                    ("description", .string(review.scope.providers == ["anthropic"] ? "Direct Anthropic API connection." : "This companion receives project data and forwards it to the approved agent. A remote operator also receives the data."))])),
@@ -1528,7 +1534,7 @@ struct NativeAssistantSettings: View {
             if !facts.configured { return .init(title: "Check or add your API key", detail: facts.reason, section: .advanced) }
             return .init(title: "Review API sharing before Send", detail: "The Anthropic API route is selected. API requests are billed separately from subscriptions; Send checks the exact sharing scope.", section: .sharing)
         }
-        if facts.mode == "manual" && ["custom", "antigravity"].contains(facts.provider) { return .init(title: "Choose a supported editing connection", detail: "This connection cannot send project data here. Use Claude Code or Codex, or continue manual editing.", section: .accounts) }
+        if facts.mode == "manual" && ["custom", "gemini-cli"].contains(facts.provider) { return .init(title: "Choose a supported editing connection", detail: "This connection cannot send project data here. Use Claude Code or Codex, or continue manual editing.", section: .accounts) }
         if facts.endpointEmpty { return .init(title: "Turn on the assistant", detail: "Choose your account and sign in below, then turn on the helper to check its status.", section: .companion) }
         if !facts.verified { return .init(title: "Reconnect the assistant", detail: "Restart the helper and reconnect below to check your saved account.", section: .companion) }
         if !facts.configured {
@@ -1761,29 +1767,8 @@ struct NativeAssistantSettings: View {
                 requestSettings(proxy: proxy).id(SetupSection.models)
                 sharingSettings(proxy: proxy).id(SetupSection.sharing)
                 Section("Other connections") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Google Gemini (beta)").font(.body.weight(.medium))
-                        Text("Uses Gemini CLI with your Google sign-in. Each run gets only the two Reel tools, and paid overage is turned off. The model list is fixed, not checked against your account, and Google may switch to a Flash model when quota runs out. Gemini instructions and policies in your home folder still load. This connection has not been verified in a live signed-in run, and it is not part of Auto.")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        if let gemini = assistant.providers.first(where: { $0.string("id") == "gemini-cli" }), assistant.accountStatusVerified {
-                            Text(gemini["installed"] as? Bool != true ? "Gemini CLI is not installed on the companion Mac." : gemini["authenticated"] as? Bool == true ? "A saved Google sign-in was found. Arya checks only that it exists." : "Open Terminal, run gemini, and choose Sign in with Google. Then refresh status.")
-                                .font(.caption).fixedSize(horizontal: false, vertical: true)
-                        }
-                        Button {
-                            do { try assistant.selectProvider("gemini-cli"); try assistant.setRouting(mode: "manual", effort: ""); loadFields(); message = "Selected Google Gemini (beta). Review sharing before Send." }
-                            catch { message = error.localizedDescription }
-                        } label: {
-                            Label("Use Google Gemini (beta)", systemImage: assistant.provider == "gemini-cli" ? "checkmark.circle.fill" : "circle")
-                        }.frame(minHeight: 44).disabled(busy)
-                        Link("Install Gemini CLI", destination: URL(string: "https://geminicli.com/docs/get-started/installation/")!)
-                        Link("Gemini CLI account setup", destination: URL(string: "https://geminicli.com/docs/get-started/authentication/")!)
-                    }
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Google Antigravity").font(.body.weight(.medium))
-                        Text("Arya has not verified an isolated editing adapter for the Antigravity CLI, so it cannot send requests or enter Auto.")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        Link("Antigravity CLI account setup", destination: URL(string: "https://antigravity.google/docs/cli/install/")!)
-                    }
+                    Text("Google retired individual-account Gemini CLI sign-in. Use Google Antigravity above. Existing Gemini preferences are preserved until you choose a new connection.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Text("Provider eligibility, available models and usage limits apply. Signing in does not establish remaining usage or an exact price.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -1821,19 +1806,19 @@ struct NativeAssistantSettings: View {
         let installed = known ? selected?["installed"] as? Bool : nil
         let signedIn = known ? selected?["authenticated"] as? Bool : nil
         return Group {
-            Section("1. Choose Claude Code or Codex") {
-                ForEach(["claude-code", "codex"], id: \.self) { id in
+            Section("1. Choose your assistant") {
+                ForEach(["claude-code", "codex", "antigravity"], id: \.self) { id in
                     Button {
                         do { try assistant.selectProvider(id); try assistant.setRouting(mode: "manual", effort: ""); loadFields() }
                         catch { message = error.localizedDescription }
                     } label: {
-                        Label(id == "claude-code" ? "Claude Code · Suggested" : "Codex · ChatGPT account", systemImage: assistant.provider == id ? "checkmark.circle.fill" : "circle")
+                        Label(id == "claude-code" ? "Claude Code · Suggested" : id == "codex" ? "Codex · ChatGPT account" : "Google Antigravity · Google account", systemImage: assistant.provider == id ? "checkmark.circle.fill" : "circle")
                     }.frame(minHeight: 44).disabled(busy)
                 }
                 Text(installed == true ? "\(assistant.providerName) is installed." : installed == false ? "Install \(assistant.providerName), then refresh status." : "Installation status will be checked when you turn on the assistant.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if ["claude-code", "codex"].contains(assistant.provider) {
-                Link("Install \(assistant.providerName)", destination: URL(string: assistant.provider == "codex" ? "https://developers.openai.com/codex/cli/" : "https://code.claude.com/docs/en/setup")!)
+                if ["claude-code", "codex", "antigravity"].contains(assistant.provider) {
+                Link("Install \(assistant.providerName)", destination: URL(string: assistant.provider == "codex" ? "https://developers.openai.com/codex/cli/" : assistant.provider == "antigravity" ? "https://antigravity.google/docs/getting-started/?tab=cli" : "https://code.claude.com/docs/en/setup")!)
                     .buttonStyle(.bordered).frame(minHeight: 44)
                 } else if assistant.provider == "gemini-cli" {
                     Link("Install Gemini CLI", destination: URL(string: "https://geminicli.com/docs/get-started/installation/")!)
@@ -1843,7 +1828,7 @@ struct NativeAssistantSettings: View {
                 }
             }
             Section("2. Sign in") {
-                Text(assistant.provider == "gemini-cli" ? (signedIn == true ? "A saved Google sign-in was found. Arya checks only that it exists, so an expired sign-in shows up when you send." : "Open Terminal, run gemini, and choose Sign in with Google. Then refresh status.") : signedIn == true ? "Signed in. Confirmed by the provider’s CLI." : "Sign in through the provider’s own account flow. Your credentials stay with the provider.")
+                Text(assistant.provider == "gemini-cli" ? "Gemini CLI individual sign-in is retired. Choose Google Antigravity." : signedIn == true ? "Signed in. Confirmed by the provider’s CLI." : assistant.provider == "antigravity" ? "Sign in to Arya’s separate Antigravity profile. Your normal CLI settings stay separate; extra AI credits are disabled." : "Sign in through the provider’s own account flow. Your credentials stay with the provider.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 #if os(macOS)
                 Button("Sign in to \(assistant.providerName)") {
@@ -1851,7 +1836,7 @@ struct NativeAssistantSettings: View {
                     catch { message = error.localizedDescription }
                     accountSignInResults[assistant.provider] = message
                     resultReceipts["sign-in.\(assistant.provider)"] = currentSetupReceipt
-                }.frame(minHeight: 44).disabled(busy || installed == false || !["claude-code", "codex"].contains(assistant.provider))
+                }.frame(minHeight: 44).disabled(busy || installed == false || !["claude-code", "codex", "antigravity"].contains(assistant.provider))
                 if let result = visibleSetupResult(accountSignInResults[assistant.provider], key: "sign-in.\(assistant.provider)") {
                     Text(result).font(.caption).fixedSize(horizontal: false, vertical: true)
                 }
@@ -1860,7 +1845,7 @@ struct NativeAssistantSettings: View {
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 #endif
                 DisclosureGroup("Account and model details") {
-                    ForEach(["claude-code", "codex"], id: \.self) { id in accountRow(id, proxy: proxy) }
+                    ForEach(["claude-code", "codex", "antigravity"], id: \.self) { id in accountRow(id, proxy: proxy) }
                 }
                 if !message.isEmpty { Text(message).font(.caption).fixedSize(horizontal: false, vertical: true) }
                 inlineResult(.accounts, next: assistant.accountStatusVerified ? .models : nil, proxy: proxy)
@@ -1925,12 +1910,15 @@ struct NativeAssistantSettings: View {
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Text("Claude Code's provider default remains a manual choice when no verified account model list is available.")
                         .font(.caption).foregroundStyle(.secondary)
+                } else if id == "antigravity" {
+                    Text("Use Google sign-in in Arya’s separate Antigravity profile. Only the two project tools are available, and extra AI credits are disabled. Choose a listed model below; image capabilities and prices are not reported by the CLI.")
+                        .font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text("Use the official Codex sign-in with ChatGPT. Model choices appear after this companion discovers your eligible account models.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 #if os(macOS)
-                Link("Installation instructions", destination: URL(string: id == "claude-code" ? "https://code.claude.com/docs/en/setup" : "https://developers.openai.com/codex/cli/")!)
+                Link("Installation instructions", destination: URL(string: id == "claude-code" ? "https://code.claude.com/docs/en/setup" : id == "antigravity" ? "https://antigravity.google/docs/getting-started/?tab=cli" : "https://developers.openai.com/codex/cli/")!)
                     .frame(minHeight: 44, alignment: .leading)
                 Button("Open official \(NativeAssistant.providerName(id)) sign-in") {
                     do {
@@ -1953,11 +1941,11 @@ struct NativeAssistantSettings: View {
                         if let reportedDefault {
                             try assistant.chooseModel(reportedDefault)
                             message = "Selected \(NativeAssistant.providerName(id)) with \(reportedDefault.string("name", reportedDefault.string("id")))."
-                        } else if id == "claude-code" {
+                        } else if ["claude-code", "antigravity"].contains(id) {
                             try assistant.selectProvider(id)
                             try assistant.update(apiKey: nil, model: "")
                             try assistant.setRouting(mode: "manual", effort: "")
-                            message = "Selected Claude Code with its configured default model."
+                            message = "Selected \(NativeAssistant.providerName(id)) with its configured default model."
                         }
                         loadFields()
                     } catch { message = error.localizedDescription }
@@ -1975,7 +1963,7 @@ struct NativeAssistantSettings: View {
             }.padding(.vertical, 8)
         } label: {
             VStack(alignment: .leading, spacing: 4) {
-                Text(id == "claude-code" ? "Claude Code · Suggested" : "Codex · ChatGPT account").font(.body.weight(.medium))
+                Text(id == "claude-code" ? "Claude Code · Suggested" : id == "codex" ? "Codex · ChatGPT account" : "Google Antigravity · Google account").font(.body.weight(.medium))
                 Text(accountSummary(id, known: known, ready: ready, installed: installed, authenticated: authenticated, modelCount: models.count))
                     .font(.caption).foregroundStyle(.secondary)
             }.frame(minHeight: 44, alignment: .leading)
@@ -2411,8 +2399,7 @@ struct NativeAssistantSettings: View {
                     do { try assistant.selectProvider(value); try assistant.setRouting(mode: "manual", effort: ""); loadFields(); setResult("Selected \(assistant.providerName). Check its configuration before sharing.", for: .advanced) }
                     catch { setResult(error.localizedDescription, for: .advanced) }
                 })) {
-                    ForEach(["claude-code", "codex", "gemini-cli", "custom", "anthropic"], id: \.self) { id in Text(id == "custom" ? "Custom agent · editing unavailable here" : NativeAssistant.providerName(id)).tag(id) }
-                    if assistant.provider == "antigravity" { Text("Google Antigravity · unavailable").tag("antigravity") }
+                    ForEach(["claude-code", "codex", "antigravity", "gemini-cli", "custom", "anthropic"], id: \.self) { id in Text(id == "custom" ? "Custom agent · editing unavailable here" : NativeAssistant.providerName(id)).tag(id) }
                 }.frame(minHeight: 44).disabled(busy)
                 TextField(assistant.provider == "anthropic" ? "Anthropic API model ID" : "Exact model ID · blank for CLI default", text: $model).frame(minHeight: 44).disabled(busy)
                 if assistant.provider == "claude-code" { TextField("Named Claude agent · optional", text: $agent).frame(minHeight: 44).disabled(busy) }
@@ -2506,8 +2493,8 @@ struct NativeAssistantSharingReview: View {
                         if review.scope.providers.contains("codex") {
                             Text("Codex sends requests to OpenAI's ChatGPT service, which processes data off this device.").font(.caption).foregroundStyle(.secondary)
                         }
-                        if review.scope.providers.contains("gemini-cli") {
-                            Text("Gemini CLI sends requests to Google's Gemini service with your Google sign-in, which processes data off this device.").font(.caption).foregroundStyle(.secondary)
+                        if review.scope.providers.contains("antigravity") {
+                            Text("Antigravity sends requests to Google and the selected model provider using your signed-in Arya profile. AI processing leaves this device.").font(.caption).foregroundStyle(.secondary)
                         }
                         if review.scope.providers.contains("anthropic") {
                             Text("Requests go directly to Anthropic's Claude Messages API, which processes data off this device.").font(.caption).foregroundStyle(.secondary)

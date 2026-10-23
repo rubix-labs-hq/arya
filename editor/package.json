@@ -3,7 +3,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Reel: the browser editor and local media server for the Reel Claude Code mod",
   "dependencies": {
     "htm": "^3.1.1",

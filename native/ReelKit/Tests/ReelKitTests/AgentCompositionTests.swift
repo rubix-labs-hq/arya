@@ -80,6 +80,8 @@ final class AgentCompositionTests: XCTestCase {
         let pairing = parse(String(decoding: line, as: UTF8.self))
         let port = try XCTUnwrap(pairing["port"] as? Int), token = try XCTUnwrap(pairing["token"] as? String)
         let bridge = try AgentBridge(configuration: .init(endpoint: URL(string: "http://127.0.0.1:\(port)")!, token: token))
+        let model = ProcessInfo.processInfo.environment["REEL_LIVE_AGENT_MODEL"] ?? ""
+        let sharing = try AssistantSharingScope(models: [.init(provider: provider, model: model)], companion: URL(string: "http://127.0.0.1:\(port)")!)
         let samples = (0..<144000).map { Float(sin(Double($0) * 2 * Double.pi * 440 / 48000) * 0.2) }
         try NativeAudioProcessing.write(.init(channels: [samples, samples]), to: folder.output("tone.wav"))
         let core = try ReelCore(scriptURL: Support.core())
@@ -97,7 +99,7 @@ final class AgentCompositionTests: XCTestCase {
         let prompt = """
         Build a synthetic three-second QA scene as editable native Reel objects. Create a 160x90 reusable composition named Subscription QA scene. Add a full-frame #102030 color background, a 20x20 solid #ff0000 rectangle centered at x 30, y 60, and an editable Inter title SUBSCRIPTION QA at x 80, y 20. Set title.size to 144, which yields a 12-pixel font at this canvas height. Animate the rectangle x from 30 at local time 0 to 130 at time 1 with linear keyframes, keeping y 60. Put existing tone.wav on an audio track from 0 for 3 seconds at volume 0 dB. Place the composition on the main timeline from 0 for 3 seconds. Keep the scene duration 3 seconds. Read the outline operation reference to get valid operation shapes and IDs. Batch related operations atomically. Inspect actual frames at 0 and 1 with reel_frame, then finish. Use only supplied synthetic assets and project tools.
         """
-        let first = try await bridge.run(prompt, provider: provider, context: .object([("projectID", "synthetic-subscription-qa")]), tool: tool, still: still)
+        let first = try await bridge.run(prompt, provider: provider, model: model.isEmpty ? nil : model, sharing: sharing, authorize: {}, context: .object([("projectID", "synthetic-subscription-qa")]), tool: tool, still: still)
         try Data(JSON(any: ["provider": provider, "toolCalls": first.toolCalls, "reply": first.text]).text.utf8).write(to: folder.output("first-provider-reply.json"))
         if first.toolCalls == 0 { print("Provider returned without project tools:", first.text) }
         XCTAssertGreaterThanOrEqual(first.toolCalls, 3)
@@ -116,7 +118,7 @@ final class AgentCompositionTests: XCTestCase {
         let pcm = try await NativeAudioMixer.render(plan: .raw(core.audioPlan(project: before, from: 0, to: 3)), folder: folder)
         let rms = sqrt(pcm.channels[0].reduce(0.0) { $0 + Double($1 * $1) } / Double(pcm.count))
         XCTAssertEqual(pcm.duration, 3, accuracy: 0.001); XCTAssertEqual(rms, 0.2 / sqrt(2), accuracy: 0.003)
-        let second = try await bridge.run("Change only the selected title text to SELECTED SUBSCRIPTION QA in one atomic ops batch. Preserve every other clip and all its motion/audio settings. Inspect the resulting frame and finish.", provider: provider,
+        let second = try await bridge.run("Change only the selected title text to SELECTED SUBSCRIPTION QA in one atomic ops batch. Preserve every other clip and all its motion/audio settings. Inspect the resulting frame and finish.", provider: provider, model: model.isEmpty ? nil : model, sharing: sharing, authorize: {},
             context: .object([("projectID", "synthetic-subscription-qa"), ("selection", .array([.string(titleID)])), ("comp", .string(key))]), tool: tool, still: still)
         let afterOptional = await backend.currentProject(), after = try XCTUnwrap(afterOptional)
         let changedComp = object(object(parse(after)["comps"])[key]), changedClips = (changedComp["tracks"] as? [[String: Any]] ?? []).flatMap { $0["clips"] as? [[String: Any]] ?? [] }
@@ -151,7 +153,7 @@ final class AgentCompositionTests: XCTestCase {
             XCTAssertGreaterThan(words.count, 20)
             _ = try await backend.handle(method: "POST", path: "/api/transcript", body: JSON(any: ["src":"speech.aiff","locale":"en-US","words":words,"revision":0]).text)
             let snapshot = await backend.currentProject(), beforeShort = try XCTUnwrap(snapshot)
-            let third = try await bridge.run("Read the saved source transcript for speech.aiff in bounded pages. Choose one coherent passage lasting 3 to 8 seconds about editable captions or the transcript workflow. Use the actual source words and times as evidence. Preview /api/shorts/build with apply:false and then apply with its expectedVersion to create one 180x320 composition with karaoke native captions. Preserve all existing compositions and main tracks. Inspect an actual frame in the new composition, then finish with the quoted passage and reason. Do not invent speech or predict virality.", provider:provider, context:.object([("projectID","synthetic-speech-shorts-qa")]),tool:tool,still:still)
+            let third = try await bridge.run("Read the saved source transcript for speech.aiff in bounded pages. Choose one coherent passage lasting 3 to 8 seconds about editable captions or the transcript workflow. Use the actual source words and times as evidence. Preview /api/shorts/build with apply:false and then apply with its expectedVersion to create one 180x320 composition with karaoke native captions. Preserve all existing compositions and main tracks. Inspect an actual frame in the new composition, then finish with the quoted passage and reason. Do not invent speech or predict virality.", provider:provider, model: model.isEmpty ? nil : model, sharing: sharing, authorize: {}, context:.object([("projectID","synthetic-speech-shorts-qa")]),tool:tool,still:still)
             let shortSnapshot = await backend.currentProject(), afterShort = try XCTUnwrap(shortSnapshot)
             let oldComps = object(parse(beforeShort)["comps"]), newComps = object(parse(afterShort)["comps"])
             let added = newComps.keys.filter { oldComps[$0] == nil }

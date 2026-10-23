@@ -1,6 +1,5 @@
 import { executable, providerStatus, subscriptionEnvironment } from './adapters.mjs'
 import { readCodexCatalog } from './catalog-discovery.mjs'
-import { GEMINI_CATALOG_SOURCE, geminiCatalogRecords } from './gemini.mjs'
 import { CATALOG_MAX_AGE_MS, normalizeCatalog, PROVIDER_SETUP, selectRoute } from '../core/assistant-routing.mjs'
 
 const boundedDiscovery = async run => {
@@ -13,7 +12,7 @@ const safeReason = value => typeof value === 'string' ? value.replace(/[\u0000-\
 
 const canonicalProvider = (row, custom) => {
   const installed = typeof row.installed === 'boolean' ? row.installed : null
-  const adapterSupported = ['claude-code', 'codex', 'gemini-cli'].includes(row.id) && row.adapterSupported !== false
+  const adapterSupported = ['claude-code', 'codex', 'antigravity'].includes(row.id) && row.adapterSupported !== false
   const adapterManaged = row.id === 'custom' && !!custom
   // Configuration is a host trust decision. Keep an unknown custom auth result
   // unknown; neither a configured executable nor a timeout verifies sign-in.
@@ -23,9 +22,8 @@ const canonicalProvider = (row, custom) => {
   const blocked = installed === false || authenticated === false || !adapterSupported || row.available === false || row.rateLimited === true
   const available = blocked ? false : installed === true && authenticated === true ? true : null
   return { ...row, installed, authenticated, available, adapterSupported,
-    modelSelectionSupported: ['claude-code', 'codex', 'gemini-cli'].includes(row.id),
-    // Gemini runs are forced onto Google account sign-in with paid overage turned off.
-    billingMode: ['claude-code', 'codex', 'gemini-cli'].includes(row.id) ? 'subscription' : 'unknown',
+    modelSelectionSupported: ['claude-code', 'codex', 'antigravity'].includes(row.id),
+    billingMode: ['claude-code', 'codex', 'antigravity'].includes(row.id) ? 'subscription' : 'unknown',
     adapterManaged,
     productLoginApproval: PROVIDER_SETUP.find(item => item.id === row.id)?.productLoginApproval ?? 'unknown' }
 }
@@ -63,8 +61,8 @@ export function createAssistantCatalog(options = {}) {
             const command = await resolveExecutable('codex')
             if (!command) throw new Error('Install Codex before discovering its models.')
             catalogs.push(await discover({ executable: command, env: subscriptionEnvironment(), timeoutMs: 15000 }))
-          } else if (row.id === 'gemini-cli') {
-            catalogs.push(normalizeCatalog({ provider: 'gemini-cli', records: geminiCatalogRecords(), checkedAt: now(), source: GEMINI_CATALOG_SOURCE }))
+          } else if (row.id === 'antigravity') {
+            catalogs.push(normalizeCatalog({ provider: 'antigravity', records: row.models ?? [], checkedAt: now(), source: { kind: 'provider-cli', label: 'Antigravity CLI models, checked in Arya’s signed-in profile. Image capabilities and prices are not reported.' } }))
           } else if (row.id === 'custom' && options.custom?.discoverModels) {
             let records = await boundedDiscovery(() => options.custom.discoverModels())
             // Do not advertise effort that the configured executable never receives.
