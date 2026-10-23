@@ -60,6 +60,8 @@ class StorePreflightTests(unittest.TestCase):
         if args[0].endswith("security"):
             return plistlib.dumps(self.profile), b""
         if "--entitlements" in args:
+            if args[args.index("--entitlements") + 1] == "-":
+                return b"[Dict]\n\t[Key] application-identifier\n\t[Value]\n\t\t[String] PREFIX1234.app.reel.ios\n", b""
             return plistlib.dumps(self.entitlements), b""
         if "--display" in args:
             return b"", ("TeamIdentifier=" + self.team + "\nAuthority=Fixture Distribution\n").encode()
