@@ -213,7 +213,7 @@ def distribution_checks(app, identifier, run=live_command):
     require("Signature=adhoc" not in signature, "Ad hoc signature is not an App Store signature")
     team = re.search(r"^TeamIdentifier=([A-Z0-9]{10})$", signature, re.M)
     require(team is not None, "Signing team is missing")
-    out, _ = run(["/usr/bin/codesign", "--display", "--entitlements", "-", str(app)])
+    out, _ = run(["/usr/bin/codesign", "--display", "--entitlements", ":-", str(app)])
     entitlements = plistlib.loads(out)
     require(entitlements.get("get-task-allow") is not True, "App debugging entitlement is enabled")
     app_id = entitlements.get("application-identifier")
