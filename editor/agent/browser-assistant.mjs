@@ -10,13 +10,14 @@ import { guardedOutput } from '../core/output-path.js'
 import { PREVIEW_STEP_ROUTES } from '../core/assistant-steps.js'
 import { validateRoutingPreferences, selectRoute } from '../core/assistant-routing.mjs'
 import { createAssistantCatalog } from './assistant-catalog.mjs'
+import { fileURLToPath } from 'node:url'
 import { SHARING_VERSION, normalizeSharingEnvelope, sharingScopeForRoute, sameSharingScope, canonicalCompanion, sharingDisclosure } from '../core/assistant-sharing.mjs'
 import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
 
 const exec = promisify(execFile)
-const names = { 'claude-code': 'Claude Code', codex: 'Codex', antigravity: 'Google Antigravity', 'gemini-cli': 'Google Gemini (beta)', custom: 'Custom agent' }
+const names = { 'claude-code': 'Claude Code', codex: 'Codex', antigravity: 'Google Antigravity', 'gemini-cli': 'Gemini CLI · retired', custom: 'Custom agent' }
 const installs = { 'claude-code': 'https://code.claude.com/docs/en/setup', codex: 'https://developers.openai.com/codex/cli/', antigravity: 'https://antigravity.google/download', 'gemini-cli': 'https://geminicli.com/docs/get-started/installation/' }
-const loginArgs = { 'claude-code': ['auth', 'login', '--claudeai'], codex: ['login'] }
+const loginArgs = { 'claude-code': ['auth', 'login', '--claudeai'], codex: ['login'], antigravity: [] }
 const apiOverrides = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'OPENAI_FEDERATION_RULE_ID', 'OPENAI_IDENTITY_TOKEN_FILE', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'AGY_GATEWAY_API_KEY', 'AGY_GATEWAY_URL', 'AGY_ADC_AUTH', 'GOOGLE_GENAI_USE_VERTEXAI', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT']
 const shellQuote = value => `'${value.replaceAll("'", "'\\''")}'`
 const failure = (message, status = 400) => Object.assign(new Error(message), { status })
@@ -203,9 +204,9 @@ export function createBrowserAssistant(options) {
       const custom = id === 'custom', installed = item.installed === true
       const available = !custom && installed && item.available !== false && item.authenticated === true
       return { id, name: names[id], available, installed: item.installed ?? null, authenticated: custom ? null : item.authenticated ?? null,
-        modelSelectionSupported: item.modelSelectionSupported === true, billingMode: item.billingMode ?? 'unknown', adapterManaged: item.adapterManaged === true, adapterSupported: custom ? false : item.adapterSupported ?? (id !== 'antigravity'), catalogReason: item.catalogReason ?? null, productLoginApproval: item.productLoginApproval ?? 'unknown',
+        modelSelectionSupported: item.modelSelectionSupported === true, billingMode: item.billingMode ?? 'unknown', adapterManaged: item.adapterManaged === true, adapterSupported: custom ? false : item.adapterSupported ?? ['claude-code', 'codex', 'antigravity'].includes(id), catalogReason: item.catalogReason ?? null, productLoginApproval: item.productLoginApproval ?? 'unknown',
         reason: custom ? options.custom ? 'Custom editing is unavailable on this host. Choose Claude Code or Codex. Your custom preferences are saved.' : 'Custom editing is unavailable on this host. Choose Claude Code or Codex.' : String(item.reason ?? (statusPromise ? 'Checking the installed CLI account status.' : 'Provider account status is unavailable.')).slice(0, 500),
-        installURL: installs[id] ?? null, loginCommand: loginArgs[id] ? `${id === 'claude-code' ? 'claude' : 'codex'} ${loginArgs[id].join(' ')}` : id === 'gemini-cli' ? 'gemini' : null,
+        installURL: installs[id] ?? null, loginCommand: id === 'antigravity' ? 'Use Sign in to open Arya’s separate Antigravity profile.' : loginArgs[id] ? `${id === 'claude-code' ? 'claude' : 'codex'} ${loginArgs[id].join(' ')}` : null,
         canLogin: platform === 'darwin' && installed && !!loginArgs[id] }
     })
     const selected = providers.find(value => value.id === settings.provider)
@@ -252,8 +253,8 @@ export function createBrowserAssistant(options) {
     assertOpen()
     if (!object(body) || Object.keys(body).some(key => key !== 'provider')) throw failure('Sign-in accepts only a provider.')
     const provider = body.provider ?? settings.provider
-    if (platform !== 'darwin' || !loginArgs[provider]) throw failure('Open the provider CLI in Terminal to sign in. Browser sign-in launching is available for Claude Code and Codex on macOS.')
-    const command = await resolveExecutable(provider === 'claude-code' ? 'claude' : 'codex')
+    if (platform !== 'darwin' || !loginArgs[provider]) throw failure('Use the provider sign-in on the companion Mac running macOS. Gemini CLI individual sign-in is retired; choose Google Antigravity.')
+    const command = await resolveExecutable(provider === 'claude-code' ? 'claude' : provider === 'antigravity' ? 'agy' : 'codex')
     assertOpen()
     if (!command) throw failure(`Install ${names[provider]} before signing in.`)
     const resolved = fs.realpathSync(command)
@@ -264,7 +265,8 @@ export function createBrowserAssistant(options) {
     const file = guardedOutput(root, path.join(directory, `${provider}-${randomUUID()}.command`))
     const original = process.env, cleaned = subscriptionEnvironment(original)
     // Terminal runs a fixed provider login. Preferences never become shell arguments.
-    const script = `#!/bin/sh\nexec /usr/bin/env ${apiOverrides.flatMap(key => ['-u', shellQuote(key)]).join(' ')} ${[resolved, ...loginArgs[provider]].map(shellQuote).join(' ')}\n`
+    const invocation = provider === 'antigravity' ? [process.execPath, fileURLToPath(new URL('./antigravity.mjs', import.meta.url)), '--login', resolved] : [resolved, ...loginArgs[provider]]
+    const script = `#!/bin/sh\nexec /usr/bin/env ${[...apiOverrides, 'NODE_OPTIONS', 'NODE_PATH'].flatMap(key => ['-u', shellQuote(key)]).join(' ')} ${invocation.map(shellQuote).join(' ')}\n`
     fs.writeFileSync(file, script, { mode: 0o700, flag: 'wx' })
     try { await launchLogin('/usr/bin/open', ['-a', 'Terminal', guardedOutput(root, file)], cleaned) }
     catch { try { fs.unlinkSync(guardedOutput(root, file)) } catch {}; throw failure('Terminal could not open the provider sign-in. Run the displayed login command in Terminal.') }

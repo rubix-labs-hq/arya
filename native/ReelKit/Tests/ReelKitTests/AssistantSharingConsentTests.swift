@@ -10,6 +10,13 @@ final class AssistantSharingConsentTests: XCTestCase {
         try .init(models: [.init(provider: "claude-code", model: model)], companion: URL(string: "http://127.0.0.1:8877/")!)
     }
 
+    func testAntigravitySharingDisclosesItsExactManualModel() throws {
+        let scope = try AssistantSharingScope(models: [.init(provider: "antigravity", model: "exact-google-model")], companion: URL(string: "http://127.0.0.1:8877/")!)
+        XCTAssertTrue(scope.allows(provider: "antigravity", model: "exact-google-model"))
+        XCTAssertFalse(scope.allows(provider: "antigravity", model: "other-model"))
+        XCTAssertTrue(scope.matchesEnvelope(scope.envelope))
+    }
+
     func testCanonicalDestinationsAndUnknownRecipientsFailClosed() throws {
         XCTAssertEqual(try AssistantSharingScope.canonicalCompanion(URL(string: "http://localhost:80/")!), "http://127.0.0.1/")
         XCTAssertEqual(try AssistantSharingScope.canonicalCompanion(URL(string: "http://[::1]:8877/")!), "http://127.0.0.1:8877/")
@@ -22,7 +29,7 @@ final class AssistantSharingConsentTests: XCTestCase {
         for value in ["http://remote.example.test/", "https://user:pass@example.test/", "https://example.test/path", "https://example.test/?token=secret", "https://example.test/#fragment"] {
             XCTAssertThrowsError(try AssistantSharingScope.canonicalCompanion(URL(string: value)!))
         }
-        for provider in ["custom", "antigravity", "unknown"] {
+        for provider in ["custom", "unknown"] {
             XCTAssertThrowsError(try AssistantSharingScope(models: [.init(provider: provider, model: "")], companion: URL(string: "https://example.test/")!))
         }
         let scope = try apiScope()

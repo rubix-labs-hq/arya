@@ -167,7 +167,7 @@ export async function startBridge(options = {}) {
         for (const value of [body.model, body.agent]) if (value !== undefined && (typeof value !== 'string' || !value || value.length > 128 || /[\0\r\n]/.test(value))) throw failure('Invalid model or agent')
         body.sharing = normalizeSharingEnvelope(body.sharing)
         if (![sharingCompanion, canonicalCompanion(endpoint)].includes(body.sharing.scope.companion)) throw failure('This sharing permission names a different companion. Review the current companion destination.', 403)
-        if (!['claude-code', 'codex', 'gemini-cli'].includes(body.provider) && body.routing?.mode !== 'auto') throw failure('This custom or unsupported agent has no verified AI recipient. Choose Claude Code, Codex or Google Gemini before sharing.', 403)
+        if (!['claude-code', 'codex', 'antigravity'].includes(body.provider) && body.routing?.mode !== 'auto') throw failure('This custom or unsupported agent has no verified AI recipient. Choose Claude Code, Codex or Google Antigravity before sharing.', 403)
         if (body.routing !== undefined) body.routing = validateRoutingPreferences(body.routing)
         if (body.effort !== undefined) throw failure('Effort is chosen from the verified model catalog by Auto.')
         for (const value of [body.context, body.outline]) if (value !== undefined && (!value || typeof value !== 'object')) throw failure('Context and outline must be objects or arrays')

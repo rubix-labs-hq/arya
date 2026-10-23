@@ -96,9 +96,26 @@ test('sign-in launches only fixed installed CLI arguments and removes subscripti
   assert.equal(result.started, true); assert.equal(result.authenticated, false); assert.equal(calls, 1)
   assert.deepEqual(JSON.parse(fs.readFileSync(marker)), { args: ['auth', 'login', '--claudeai'] })
   await assert.rejects(service.login({ provider: 'claude-code', command: 'rm -rf /' }), /only a provider/)
-  await assert.rejects(service.login({ provider: 'antigravity' }), /macOS/)
+  await assert.rejects(service.login({ provider: 'gemini-cli' }), /macOS/)
   const unsupported = createBrowserAssistant(options(root, { platform: 'linux' })); t.after(() => unsupported.close())
   await assert.rejects(unsupported.login({ provider: 'codex' }), /macOS/)
+})
+
+test('Antigravity sign-in retains its resolved CLI path when Terminal has a different PATH', async t => {
+  const root = temporary(t), home = path.join(root, 'profile-home'), marker = path.join(root, 'login.json'), cli = path.join(root, "a'b-agy")
+  fs.mkdirSync(home)
+  fs.writeFileSync(cli, `#!${process.execPath}\nimport fs from 'node:fs'; fs.writeFileSync(process.env.REEL_TEST_LOGIN_MARKER,JSON.stringify({args:process.argv.slice(2),home:process.env.HOME}));\n`, { mode: 0o700 })
+  const service = createBrowserAssistant(options(root, {
+    executable: async name => { assert.equal(name, 'agy'); return cli },
+    launchLogin: async (_command, argv) => {
+      const script = fs.readFileSync(argv[2], 'utf8')
+      assert.match(script, /antigravity\.mjs' '--login'/)
+      await exec('/bin/sh', [argv[2]], { env: { PATH: '/usr/bin:/bin', HOME: home, REEL_TEST_LOGIN_MARKER: marker } })
+    },
+  }))
+  t.after(() => service.close())
+  assert.equal((await service.login({ provider: 'antigravity' })).started, true)
+  assert.deepEqual(JSON.parse(fs.readFileSync(marker)), { args: [], home: path.join(home, '.arya', 'antigravity') })
 })
 
 test('an actual stdio CLI builds native editable layers, selection context, frame tools and undo', async t => {

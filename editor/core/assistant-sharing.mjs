@@ -4,6 +4,7 @@ export const SHARING_CLASSES = Object.freeze(['prompt', 'project_context', 'proj
 const recipients = Object.freeze({
   'claude-code': { name: 'Anthropic · Claude Code', destination: 'Anthropic through the signed-in Claude Code CLI' },
   codex: { name: 'OpenAI · Codex', destination: 'OpenAI through the signed-in Codex CLI' },
+  antigravity: { name: 'Google · Antigravity', destination: 'Google Antigravity through Arya’s signed-in CLI profile; its selected model may be provided by Google, Anthropic or another listed model provider' },
   'gemini-cli': { name: 'Google · Gemini CLI (beta)', destination: 'Google through the signed-in Gemini CLI' },
   anthropic: { name: 'Anthropic API', destination: 'https://api.anthropic.com/' },
 })

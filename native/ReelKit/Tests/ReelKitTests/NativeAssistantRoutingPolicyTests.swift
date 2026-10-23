@@ -76,7 +76,7 @@ final class NativeAssistantRoutingPolicyTests: XCTestCase {
     }
 
     func testUnsupportedManualRecipientsStaySavedButCannotReportReady() {
-        for provider in ["custom", "antigravity", "unknown"] {
+        for provider in ["custom", "gemini-cli", "unknown"] {
             for id in ["", "exact-model"] {
                 for bound in [false, true] {
                     for effort in ["", "high"] {
@@ -201,7 +201,7 @@ final class NativeAssistantRoutingPolicyTests: XCTestCase {
     }
 
     func testGoogleCustomAndAPIModelsCannotEnterSubscriptionAuto() {
-        for provider in ["antigravity", "gemini-cli", "custom", "anthropic", "unknown"] {
+        for provider in ["gemini-cli", "custom", "anthropic", "unknown"] {
             let row: [String: Any] = ["id": provider, "installed": true, "authenticated": true, "available": true,
                                       "adapterSupported": true, "modelSelectionSupported": true, "billingMode": "subscription"]
             let models = [model(provider: provider)]
@@ -210,17 +210,15 @@ final class NativeAssistantRoutingPolicyTests: XCTestCase {
         }
     }
 
-    func testGoogleGeminiBetaIsManualOnlyWithItsDocumentedList() {
-        let row: [String: Any] = ["id": "gemini-cli", "installed": true, "authenticated": true, "available": true,
-                                  "adapterSupported": true, "modelSelectionSupported": true, "billingMode": "subscription"]
-        let models = [model("gemini-3-pro-preview", provider: "gemini-cli", fields: ["isDefault": false, "reasoningEfforts": [String]()])]
-        let listed = NativeAssistantRoutingPolicy.availableModels(providers: [row], catalogs: [catalog(models, provider: "gemini-cli", fields: ["source": ["kind": "provider-docs"]])], verified: true, now: now)
-        XCTAssertEqual(listed.compactMap { $0["id"] as? String }, ["gemini-3-pro-preview"])
-        XCTAssertTrue(NativeAssistantRoutingPolicy.availableModels(providers: [row], catalogs: [catalog(models, provider: "gemini-cli")], verified: true, now: now).isEmpty)
-        XCTAssertTrue(NativeAssistantRoutingPolicy.eligibleAutoModels(listed, agent: "").isEmpty)
-        XCTAssertTrue(NativeAssistantRoutingPolicy.savedModelReferences(keys: ["gemini-cli:gemini-3-pro-preview"], defaultModels: listed).isEmpty)
-        XCTAssertNil(NativeAssistantRoutingPolicy.manualReadinessReason(provider: "gemini-cli", model: "", effort: "", catalogBound: false, availableModels: listed))
-        XCTAssertNil(NativeAssistantRoutingPolicy.manualReadinessReason(provider: "gemini-cli", model: "gemini-3-pro-preview", effort: "", catalogBound: true, availableModels: listed))
+    func testAntigravityIsManualOnlyWithItsAuthenticatedCLICatalog() {
+        let provider = "antigravity"
+        let account: [[String: Any]] = [["id": provider, "installed": true, "authenticated": true, "available": true, "adapterSupported": true, "modelSelectionSupported": true, "billingMode": "subscription"]]
+        let models = NativeAssistantRoutingPolicy.availableModels(providers: account, catalogs: [catalog([model("exact-google-model", provider: provider, fields: ["inputModalities": ["text"]])], provider: provider)], verified: true, now: now)
+        XCTAssertEqual(models.compactMap { $0["id"] as? String }, ["exact-google-model"])
+        XCTAssertTrue(NativeAssistantRoutingPolicy.eligibleAutoModels(models, agent: "").isEmpty)
+        XCTAssertNil(NativeAssistantRoutingPolicy.manualReadinessReason(provider: provider, model: "exact-google-model", effort: "", catalogBound: true, availableModels: models))
+        XCTAssertNil(NativeAssistantRoutingPolicy.manualReadinessReason(provider: provider, model: "", effort: "", catalogBound: false, availableModels: []))
+        XCTAssertNotNil(NativeAssistantRoutingPolicy.manualReadinessReason(provider: "gemini-cli", model: "old-model", effort: "", catalogBound: false, availableModels: []))
     }
 
     func testNativePriorityChoicesUseTheHostProtocolValues() {

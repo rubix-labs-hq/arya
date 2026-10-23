@@ -118,7 +118,7 @@ public actor AgentBridge {
                         guard !receivedRoute, toolCalls == 0, answer.isEmpty,
                               let decision = event["routing"] as? [String: Any], JSON(any: decision["ok"]) == .bool(true),
                               let selectedProvider = decision["provider"] as? String,
-                              ["claude-code", "codex"].contains(selectedProvider) || selectedProvider == "gemini-cli" && !automatic else { throw Failure.invalidResponse }
+                              ["claude-code", "codex"].contains(selectedProvider) || selectedProvider == "antigravity" && !automatic else { throw Failure.invalidResponse }
                         let selectedModel: String
                         if decision["model"] == nil || decision["model"] is NSNull {
                             guard !automatic, sharing.models == [.init(provider: selectedProvider, model: "")] else { throw Failure.invalidResponse }

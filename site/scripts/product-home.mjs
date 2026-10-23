@@ -34,7 +34,7 @@ export function productHome({ button, link, faq, stage, shots, figures, releaseR
     ['Motion', 'Keyframes, value and speed graphs, expressions, vector titles and shapes, masks, track mattes, parenting, point and box tracker.', 'Included (point and box tracker; no planar tracker).', 'Included (point and box tracker; no planar tracker).'],
     ['Audio', 'Track mixer, EQ, dynamics, reverb, delay, denoise, voice cleanup, LUFS and true-peak metering, normalize to -14, -16 or -23 LUFS.', 'Included, with offline LUFS measurement and normalization.', 'Track mixer, effects, loudness metering and normalization. No denoise or voice cleanup.'],
     ['Shorts and transcription', '9:16, 1:1 and 16:9 compositions, reframing, four caption styles, and transcription with Apple Speech, on device where the Mac supports it.', 'Included, with local transcription when whisper.cpp is installed.', 'Vertical and square projects only. No transcription, captions or shorts tools.'],
-    ['AI assistant', 'Connect your own Claude Code, Codex or Google Gemini (beta) account. Ordinary timeline edits with a change receipt and Undo.', 'Connect your own Claude Code, Codex or Google Gemini (beta) account through the local server.', 'Not available in the hosted browser editor.'],
+    ['AI assistant', 'Connect your own Claude Code, Codex or Google Antigravity account. Ordinary timeline edits with a change receipt and Undo.', 'Connect your own Claude Code, Codex or Google Antigravity account through the local server.', 'Not available in the hosted browser editor.'],
     ['Figma import', 'Import frames as editable text, shape and nested layers with a personal access token, or paste Figma MCP node data.', 'Import frames with a personal access token, or ask Claude Code with the Figma MCP server through /reel.', 'Not available in the hosted browser editor.'],
   ].map(([feature, mac, local, hosted]) => `<tr><th scope="row">${feature}</th><td data-label="Mac app">${mac}</td><td data-label="Local browser editor">${local}</td><td data-label="Hosted browser editor">${hosted}</td></tr>`).join('');
   const switching = [
@@ -72,7 +72,7 @@ ${browserEditor ? `<div class="action-item">${button(browserEditor, 'Try in your
 <div class="wrap assistant-card">
 <div class="assistant-grid">
 <div class="chapter-copy"><p class="kicker">AI assistant · Mac &amp; local browser editor</p><h2 id="ai-heading">Ask in plain words. Undo like any edit.</h2><p>Select clips, a title or a range and describe what should change. The assistant reads your selection, playhead, transcript and rendered frames, then edits through the same timeline operations you use by hand.</p>
-<ul class="points"><li><strong>Ordinary edits, not a black box.</strong> Every change comes with a receipt of what changed and reverses with Undo.</li><li><strong>Bring your own account.</strong> Connect Claude Code or Codex through their official sign-in. Arya includes no AI credits.</li><li><strong>Always optional.</strong> Every timeline, color, motion and audio tool works offline without an assistant.</li></ul>
+<ul class="points"><li><strong>Ordinary edits, not a black box.</strong> Every change comes with a receipt of what changed and reverses with Undo.</li><li><strong>Bring your own account.</strong> Connect Claude Code, Codex or Google Antigravity through the provider’s official sign-in. Arya includes no AI credits.</li><li><strong>Always optional.</strong> Every timeline, color, motion and audio tool works offline without an assistant.</li></ul>
 ${link('/install/#accounts', 'How assistant sign-in works')}</div>
 ${figure('assistant')}
 </div>
@@ -117,7 +117,7 @@ ${figure('shorts')}
 ${faq([
   ['Can I download Arya now?', downloadAnswer],
   ['What is the difference between the Mac app and the browser editor?', 'The Mac app and the local browser editor (run from source) support local project folders, AI assistant connections, Figma imports and local transcription. The hosted browser editor at /editor/ runs entirely in your browser storage with no AI assistant, Figma import, transcription, captions or FCPXML and OTIO interchange.'],
-  ['Do I need an AI subscription?', 'No. Editing, grading, motion, audio and export all work without an assistant. Connecting your own Claude Code, Codex or Google Gemini (beta) account is optional.'],
+  ['Do I need an AI subscription?', 'No. Editing, grading, motion, audio and export all work without an assistant. Connecting your own Claude Code, Codex or Google Antigravity account is optional.'],
   ['Where does my footage go?', 'On Mac, your project file and media stay in the local folder you choose. In the hosted browser editor, files stay in your browser profile storage. Nothing is uploaded unless you send a prompt to your connected AI provider, or the Mac app transcribes a language your Mac cannot recognize on device, which sends that audio to Apple. Read the privacy policy for details.'],
   ['Is Arya really free and open source?', publicSource ? 'Yes. Arya is released under the MIT license with no subscriptions, watermarks or paid tiers. The full source code is on GitHub.' : 'The repository is currently private. The plan is to publish it after a review of history, dependencies and licenses.'],
 ])}

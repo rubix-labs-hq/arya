@@ -131,12 +131,6 @@ test('subscription adapters remove API overrides and preserve explicit model/age
   }
 })
 
-test('Antigravity editing adapter rejects without launching a provider or granting permissions', async () => {
-  for (const provider of ['antigravity']) {
-    await assert.rejects(prepareAdapter({ id: randomUUID(), provider, text: 'Edit' }, { endpoint: 'http://127.0.0.1:12345/', token: 'a'.repeat(64) }), /Google subscription editing is unavailable in Arya.*have not been verified.*does not change global permissions or use an API fallback/)
-  }
-})
-
 test('agent tools allow Figma imports and project reference images while blocking account and external paths', () => {
   for (const route of ['/api/figma/import', '/api/figma/import-mcp', '/api/figma/frames', '/api/video/denoise', '/api/analysis/track', '/api/analysis/saliency', '/api/analysis/autoreframe', '/api/analysis/person-mask']) assert.equal(validateCall('reel_api', { method: 'POST', path: route, body: {} }).path, route)
   assert.equal(validateCall('reel_api', { method: 'GET', path: '/api/figma/status' }).path, '/api/figma/status')

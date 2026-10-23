@@ -5,7 +5,8 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { INSTRUCTIONS, promptFor, redact } from './protocol.mjs'
-import { GEMINI_SIGN_IN, GEMINI_SYSTEM_POLICY_MESSAGE, geminiArgs, geminiSystemPolicyBlocks, geminiEnvironment, geminiExitMessage, geminiOutputEvent, geminiSignedIn, writeGeminiWorkspace } from './gemini.mjs'
+import { geminiOutputEvent } from './gemini.mjs'
+import { antigravityAccount, prepareAntigravityProfile, antigravityEnvironment, writeAntigravityWorkspace, antigravityArgs, antigravityPrompt, antigravityOutputEvent, antigravityFailure } from './antigravity.mjs'
 
 const exec = promisify(execFile)
 const directory = path.dirname(fileURLToPath(import.meta.url))
@@ -30,12 +31,12 @@ export async function providerStatus(custom) {
     const command = await executable(id === 'claude-code' ? 'claude' : id === 'antigravity' ? 'agy' : id === 'gemini-cli' ? 'gemini' : id === 'custom' ? custom?.executable ?? '' : 'codex')
     if (!command) return { id, installed: false, authenticated: false, reason: id === 'custom' ? 'Custom editing is unavailable on this host. Choose Claude Code or Codex.' : `Install and sign in to ${id === 'claude-code' ? 'Claude Code' : id === 'codex' ? 'Codex' : id === 'gemini-cli' ? 'Gemini CLI' : 'Google Antigravity'} on the computer running Arya.` }
     if (id === 'custom') return { id, installed: true, authenticated: null, available: false, adapterSupported: false, authentication: 'unverified-custom', reason: 'Custom editing is unavailable on this host. A configured executable does not verify account login or subscription access. Choose Claude Code or Codex.' }
-    if (id === 'antigravity') return { id, installed: true, authenticated: null, available: false, authentication: 'existing-cli-sign-in', reason: 'Google Antigravity CLI is installed. Arya has not verified its account login or an isolated editing adapter. Check account setup in the official CLI; built-in editing remains unavailable.' }
+    if (id === 'antigravity') {
+      try { return { id, installed: true, adapterSupported: true, authentication: 'isolated-cli-sign-in', ...await antigravityAccount(command) } }
+      catch { return { id, installed: true, authenticated: null, available: false, adapterSupported: true, authentication: 'isolated-cli-sign-in', reason: 'Antigravity’s private profile could not be checked. Verify the CLI installation and refresh status.' } }
+    }
     if (id === 'gemini-cli') {
-      // Gemini CLI has no account status command. A saved sign-in file is a heuristic:
-      // an expired or revoked sign-in is reported when a request starts.
-      const authenticated = await geminiSignedIn()
-      return { id, installed: true, authenticated, authentication: 'existing-cli-sign-in-file', reason: authenticated ? 'Gemini CLI has a saved Google sign-in on this computer. Arya checks only that it exists, so an expired sign-in shows up when you send a request.' : GEMINI_SIGN_IN }
+      return { id, installed: true, authenticated: false, available: false, adapterSupported: false, authentication: 'retired', reason: 'Google retired individual-account Gemini CLI sign-in. Choose Google Antigravity and sign in to Arya’s separate profile.' }
     }
     try {
       const args = id === 'claude-code' ? ['auth', 'status', '--json'] : id === 'codex' ? ['login', 'status'] : ['models']
@@ -64,17 +65,17 @@ export async function prepareAdapter(request, transport, custom) {
     if (request.model && !(custom?.args ?? []).some(value => value.includes('{model}'))) throw new Error('This custom adapter cannot bind an exact requested model. Configure a literal {model} argument or use its explicit provider default.')
     if (request.effort && !(custom?.args ?? []).some(value => value.includes('{effort}'))) throw new Error('This custom adapter cannot bind the requested reasoning effort.')
   }
-  if (request.provider === 'antigravity') throw new Error('Google subscription editing is unavailable in Arya. Account sign-in, isolated tool permissions and additional-credit controls have not been verified for this adapter. Arya does not change global permissions or use an API fallback. Use Claude Code or Codex.')
+  if (request.provider === 'gemini-cli') throw new Error('Google retired individual-account Gemini CLI sign-in. Choose Google Antigravity in Assistant settings.')
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-agent-'))
   await fs.chmod(cwd, 0o700)
   try {
-    const env = { ...(request.provider === 'custom' ? process.env : request.provider === 'gemini-cli' ? geminiEnvironment() : subscriptionEnvironment()), REEL_AGENT_ENDPOINT: transport.endpoint, REEL_AGENT_RUN_ID: request.id, REEL_AGENT_RUN_TOKEN: transport.token }
+    const env = { ...(request.provider === 'custom' ? process.env : request.provider === 'antigravity' ? antigravityEnvironment() : subscriptionEnvironment()), REEL_AGENT_ENDPOINT: transport.endpoint, REEL_AGENT_RUN_ID: request.id, REEL_AGENT_RUN_TOKEN: transport.token }
     const server = { command: process.execPath, args: [path.join(directory, 'mcp.mjs')], env: { REEL_AGENT_ENDPOINT: transport.endpoint, REEL_AGENT_RUN_ID: request.id, REEL_AGENT_RUN_TOKEN: transport.token } }
     const mcpConfig = path.join(cwd, 'mcp.json')
     await fs.writeFile(mcpConfig, JSON.stringify({ mcpServers: { reel: server } }), { mode: 0o600 })
     await fs.writeFile(path.join(cwd, 'context.json'), JSON.stringify({ context: request.context, outline: request.outline }), { mode: 0o600 })
     await fs.writeFile(path.join(cwd, 'AGENTS.md'), INSTRUCTIONS, { mode: 0o600 })
-    const prompt = promptFor(request)
+    let prompt = promptFor(request)
     let command, args, exitMessage
     if (request.provider === 'claude-code') {
       command = await executable('claude')
@@ -88,16 +89,14 @@ export async function prepareAdapter(request, transport, custom) {
       if (request.model) args.splice(1, 0, '--model', request.model)
       if (request.effort) args.splice(1, 0, '-c', `model_reasoning_effort=${JSON.stringify(request.effort)}`)
       if (request.agent) throw new Error('Codex CLI does not expose an agent selector; leave Agent empty or use a custom executable.')
-    } else if (request.provider === 'gemini-cli') {
-      if (request.agent) throw new Error('Gemini CLI does not expose an agent selector; leave Agent empty.')
-      if (request.effort) throw new Error('Gemini CLI does not expose a reasoning effort setting; leave effort on the provider default.')
-      if (await geminiSystemPolicyBlocks()) throw new Error(GEMINI_SYSTEM_POLICY_MESSAGE)
-      command = await executable('gemini')
-      // The npm launcher starts with "env node". Keep its own Node first when PATH lacks one.
-      if (command && await executable(path.join(path.dirname(command), 'node'))) env.PATH = [path.dirname(command), env.PATH].filter(Boolean).join(path.delimiter)
-      // The prompt arrives on stdin; Gemini CLI puts stdin before the short -p text.
-      args = geminiArgs(await writeGeminiWorkspace(cwd, server), request.model)
-      exitMessage = geminiExitMessage
+    } else if (request.provider === 'antigravity') {
+      if (request.agent) throw new Error('Arya supplies its isolated Antigravity agent. Leave Agent empty.')
+      await prepareAntigravityProfile()
+      command = await executable('agy')
+      await writeAntigravityWorkspace(cwd, server)
+      args = antigravityArgs(request.model, request.effort)
+      prompt = antigravityPrompt(prompt)
+      exitMessage = (_code, stderr) => antigravityFailure(stderr)
     } else {
       command = custom && await executable(custom.executable)
       args = (custom?.args ?? []).map(value => value.replaceAll('{mcpConfig}', mcpConfig).replaceAll('{context}', path.join(cwd, 'context.json')).replaceAll('{model}', request.model ?? '').replaceAll('{effort}', request.effort ?? ''))
@@ -110,6 +109,7 @@ export async function prepareAdapter(request, transport, custom) {
 export function outputEvent(provider, line) {
   let value
   try { value = JSON.parse(line) } catch { return provider === 'custom' && line.trim() ? { type: 'text', text: line } : null }
+  if (provider === 'antigravity') return antigravityOutputEvent(value)
   if (provider === 'gemini-cli') return geminiOutputEvent(value)
   if (value.event === 'step_update' && typeof value.step_update?.text_delta === 'string') return { type: 'text', text: value.step_update.text_delta }
   if (value.event === 'result') return value.result?.status === 'SUCCESS' ? { type: 'done', text: String(value.result.response ?? '') } : { type: 'error', message: String(value.result?.error?.message ?? value.result?.error ?? 'Antigravity run failed') }

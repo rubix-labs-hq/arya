@@ -23,12 +23,12 @@ public enum NativeAssistantRoutingPolicy {
         guard verified, now.isFinite, now >= 0 else { return [] }
         var seenProviders = Set<String>()
         return catalogs.flatMap { catalog in
-            // Google Gemini (beta) is Manual-only. Its fixed list comes from the CLI docs.
-            guard let provider = catalog["provider"] as? String, ["claude-code", "codex", "gemini-cli"].contains(provider),
+            // Antigravity reports exact models for its signed-in Arya profile.
+            guard let provider = catalog["provider"] as? String, ["claude-code", "codex", "antigravity"].contains(provider),
                   seenProviders.insert(provider).inserted,
                   catalog["complete"] as? Bool == true,
                   let source = catalog["source"] as? [String: Any],
-                  (provider == "gemini-cli" ? ["provider-docs"] : ["provider-cli", "provider-sdk"]).contains(source["kind"] as? String ?? ""),
+                  ["provider-cli", "provider-sdk"].contains(source["kind"] as? String ?? ""),
                   let checkedAt = catalog["checkedAt"] as? Double, checkedAt.isFinite,
                   checkedAt >= 0, checkedAt <= 9_007_199_254_740_991, checkedAt.rounded(.towardZero) == checkedAt,
                   checkedAt <= now, now - checkedAt <= 300_000,
@@ -77,7 +77,7 @@ public enum NativeAssistantRoutingPolicy {
 
     public static func manualReadinessReason(provider: String, model: String, effort: String, catalogBound: Bool,
                                              availableModels: [[String: Any]]) -> String? {
-        guard ["claude-code", "codex", "gemini-cli", "anthropic"].contains(provider) else {
+        guard ["claude-code", "codex", "antigravity", "anthropic"].contains(provider) else {
             return "Native AI sharing does not support this recipient. Choose a supported provider in Assistant settings."
         }
         if provider == "codex" && model.isEmpty {

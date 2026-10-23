@@ -87,7 +87,7 @@ Arya runs as a native SwiftUI and Metal app for Mac, and as a browser editor. Yo
 **AI assistant**
 - Select clips, a title or a range and say what should change.
 - The assistant reads the project, can look at rendered frames and edits through the same operations as the timeline. Undo reverses its edits.
-- Connect your own Claude Code, Codex or Google Gemini (beta) account through the provider's official sign-in. Arya includes no AI credits.
+- Connect your own Claude Code, Codex or Google Antigravity account through the provider's official sign-in. Arya includes no AI credits.
 - Optional. Editing and export never need an assistant.
 
 ### Where each feature runs
@@ -217,7 +217,7 @@ Type-checking the plugin needs the Claude Code API declarations. Run `/plugin-ty
 | `editor/core/` | The project format and every edit operation (`project.js`), plus the expression language (`expr.js`). Plain JavaScript shared by the server, the browser and the native app. |
 | `editor/server.mjs` | Local media server. Owns `reel.project.json`, serves media, makes filmstrips, waveforms and proxies with ffmpeg, and runs analysis and export jobs. |
 | `editor/web/` | The browser editor: WebGL2 compositor, Web Audio mixer and Preact UI with Media, Edit, Motion, Color, Audio and Deliver pages. |
-| `editor/agent/` | Adapters and the paired local companion for Claude Code, Codex and configured custom agents. |
+| `editor/agent/` | Adapters and the paired local companion for Claude Code, Codex, Google Antigravity and configured custom agents. |
 | `.claude-plugin/`, `hooks/`, `types/`, `tests/` | The Claude Code plugin: `/reel` command, `mcp__reel__*` tools, the chat bridge and a launcher pane. |
 | `native/` | SwiftUI editor, Metal compositor, ReelKit backend, native audio and Vision processing, Speech transcription, Figma connection and assistant. |
 | `script/` | `build_and_run.sh` builds and opens the Mac app. |

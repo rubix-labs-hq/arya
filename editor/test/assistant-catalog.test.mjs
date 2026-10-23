@@ -234,7 +234,7 @@ test('actual HTTP status excludes signed-out, unknown, uninstalled, unsupported 
     { name: 'explicit unavailable', source: { id: 'codex', installed: true, authenticated: true, available: false }, available: false },
     { name: 'explicit adapter disabled', source: { id: 'codex', installed: true, authenticated: true, adapterSupported: false }, available: false },
     { name: 'reported rate limit', source: { id: 'codex', installed: true, authenticated: true, rateLimited: true }, available: false },
-    { name: 'unsupported Antigravity adapter', source: { id: 'antigravity', installed: true, authenticated: true }, available: false },
+    { name: 'explicitly disabled Antigravity adapter', source: { id: 'antigravity', installed: true, authenticated: true, adapterSupported: false }, available: false },
     { name: 'signed-out Gemini CLI', source: { id: 'gemini-cli', installed: true, authenticated: false }, available: false },
   ]
   for (const value of cases) await t.test(value.name, async child => {
@@ -273,7 +273,7 @@ test('host refresh coalesces account and metadata work; missing Claude discovery
   assert.equal(accounts, 1); assert.equal(probes, 1)
   assert.equal(values[0].catalogs[0].models.length, 3)
   assert.match(values[0].providers.find(row => row.id === 'claude-code').catalogReason, /uses your account’s default model\. Its CLI does not report a model list/)
-  assert.equal(values[0].providers.find(row => row.id === 'antigravity').adapterSupported, false)
+  assert.equal(values[0].providers.find(row => row.id === 'antigravity').adapterSupported, true)
   assert.equal(values[0].providers.find(row => row.id === 'claude-code').productLoginApproval, 'unverified')
   assert.equal((await host.resolve(prefs, { text: 'Rename this title', selectionCount: 1 })).model, 'swift')
   host.close(); await assert.rejects(host.status(), /closed/)
