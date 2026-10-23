@@ -72,7 +72,7 @@ ${browserEditor ? `<div class="action-item">${button(browserEditor, 'Try in your
 <div class="wrap assistant-card">
 <div class="assistant-grid">
 <div class="chapter-copy"><p class="kicker">AI assistant · Mac &amp; local browser editor</p><h2 id="ai-heading">Ask in plain words. Undo like any edit.</h2><p>Select clips, a title or a range and describe what should change. The assistant reads your selection, playhead, transcript and rendered frames, then edits through the same timeline operations you use by hand.</p>
-<ul class="points"><li><strong>Ordinary edits, not a black box.</strong> Every change comes with a receipt of what changed and reverses with Undo.</li><li><strong>Bring your own account.</strong> Connect Claude Code or Codex through their official sign-in. Arya includes no AI credits.</li><li><strong>Always optional.</strong> Every timeline, color, motion and audio tool works offline without an assistant.</li></ul>
+<ul class="points"><li><strong>Ordinary edits, not a black box.</strong> Every change comes with a receipt of what changed and reverses with Undo.</li><li><strong>Bring your own account.</strong> Connect Claude Code, Codex or Google Antigravity through the provider’s official sign-in. Arya includes no AI credits.</li><li><strong>Always optional.</strong> Every timeline, color, motion and audio tool works offline without an assistant.</li></ul>
 ${link('/install/#accounts', 'How assistant sign-in works')}</div>
 ${figure('assistant')}
 </div>

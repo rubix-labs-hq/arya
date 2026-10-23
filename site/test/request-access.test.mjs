@@ -87,7 +87,7 @@ test('the public default has no access destination and the download page shows a
     assert.ok(pageHTML.includes('href="/download/#access"'), `${page || 'home'} links its primary action to the access form`);
   }
   const privacy = await unreleasedPage('privacy');
-  assert.ok(privacy.includes('Effective date: 2026-10-20.'));
+  assert.ok(privacy.includes('Effective date: 2026-10-23.'));
   assert.ok(!privacy.includes('beta access form on the download page is a placeholder'));
 });
 
