@@ -7,7 +7,7 @@
   "description": "Reel: the browser editor and local media server for the Reel Claude Code mod",
   "dependencies": {
     "htm": "^3.1.1",
-    "mediabunny": "^1.61.0",
+    "mediabunny": "^1.61.6",
     "preact": "^10.29.8"
   },
   "scripts": {
