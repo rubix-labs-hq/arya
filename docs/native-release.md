@@ -36,7 +36,7 @@ NODE="$(command -v node)" swift test --package-path native/ReelKit
 python3 native/scripts/test-release.py
 ```
 
-The GitHub workflow runs only through manual dispatch. Repeatable local checks against the exact release source are the release gate. The workflow's ad hoc archive and any hosted result do not prove performance, permissions or device behavior. Keep local GPU comparisons and physical-device results with the release record.
+The public repository's GitHub workflow runs on pushes to `main` and pull requests. Private mirrors can run it through manual dispatch. Repeatable local checks against the exact release source are the release gate. The workflow's ad hoc archive and any hosted result do not prove performance, permissions or device behavior. Keep local GPU comparisons and physical-device results with the release record.
 
 ## Archives
 

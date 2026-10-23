@@ -149,6 +149,7 @@ jobs:
         run: |
           python3 native/scripts/test-node-runtime.py
           python3 native/scripts/test-arya-installer.py
+          python3 native/scripts/test-agent-helper.py
       - name: Validate local release archive
         run: python3 native/scripts/test-release.py
       - name: Build local release archive

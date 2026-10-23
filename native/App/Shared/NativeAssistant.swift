@@ -448,7 +448,7 @@ final class NativeAssistant: ObservableObject {
     private func installAgentHelper(runtime: URL?) throws -> (ProjectFolder, URL) {
         guard let source = session?.editor.root.appendingPathComponent("agent") else { throw AgentBridge.Failure.unavailable }
         let (folder, directory) = try prepareAgentDirectory()
-        for name in ["bridge.mjs", "mcp.mjs", "adapters.mjs", "protocol.mjs", "output-stream.mjs", "assistant-catalog.mjs", "catalog-discovery.mjs", "Reel Agent Bridge.command"] {
+        for name in ["bridge.mjs", "mcp.mjs", "adapters.mjs", "gemini.mjs", "protocol.mjs", "output-stream.mjs", "assistant-catalog.mjs", "catalog-discovery.mjs", "Reel Agent Bridge.command"] {
             let target = try folder.output(directory.appendingPathComponent(name).path)
             var data = try Data(contentsOf: source.appendingPathComponent(name))
             if name == "Reel Agent Bridge.command" {
