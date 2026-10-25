@@ -129,7 +129,7 @@ test('page copy, metadata and guide artwork follow release and public-source con
   const ready = { ...defaults.release, ready: true, notarized: true, version: '0.3.0', sha256: 'a'.repeat(64), macURL: 'https://example.com/Arya.dmg', allowedHosts: ['example.com'] };
   for (const releaseReady of [false, true]) {
     for (const sourcePublic of [false, true]) {
-      const config = { ...defaults, release: releaseReady ? ready : defaults.release, publicSourceURL: sourcePublic ? 'https://github.com/example/arya' : null, externalHosts: ['github.com'] };
+      const config = { ...defaults, mobileRelease: null, release: releaseReady ? ready : defaults.release, publicSourceURL: sourcePublic ? 'https://github.com/example/arya' : null, externalHosts: ['github.com'] };
       const pages = await generated(config);
       assert.equal(pages.download.includes('Public installer in preparation'), !releaseReady);
       assert.equal(pages.download.includes('Official Mac release available'), releaseReady);
