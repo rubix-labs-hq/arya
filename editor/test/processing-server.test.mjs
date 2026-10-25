@@ -22,8 +22,8 @@ async function fixture(t) {
   const project = newProject('Fixture'); project.tracks[0].clips.push({ id: 'c1', kind: 'video', src: 'media/source.mp4', start: 0, dur: 10, in: 0 }); project.assets['media/source.mp4'] = { hasVideo: true, hasAudio: false, duration: 10, codec: 'h264', width: 1920, height: 1080, fps: 30 }
   fs.mkdirSync(path.join(root, 'media')); fs.writeFileSync(path.join(root, 'media', 'source.mp4'), 'source')
   const file = path.join(root, 'reel.project.json'); fs.writeFileSync(file, JSON.stringify(project))
-  const children = [], fixtureKey = '__reelAdmissionServerFixture'
-  globalThis[fixtureKey] = { spawn(command, args) { const value = child(); value.argv = args; if (command === 'ffmpeg') children.push(value); else assert.equal(command, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'); return value }, process(command, args, options) { return runProcessingProcess(command, args, { ...options, spawn: this.spawn }) }, root }
+  const children = [], workers = [], fixtureKey = '__reelAdmissionServerFixture'
+  globalThis[fixtureKey] = { spawn(command, args) { const value = child(); value.argv = args; if (command === 'ffmpeg') children.push(value); else { assert.equal(command, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'); workers.push(value) } return value }, process(command, args, options) { return runProcessingProcess(command, args, { ...options, spawn: this.spawn }) }, root }
   const serverFile = fileURLToPath(new URL('../server.mjs', import.meta.url)); let source = fs.readFileSync(serverFile, 'utf8')
   source = source.replace("import { spawn } from 'node:child_process'", `const spawn = (...args) => globalThis.${fixtureKey}.spawn(...args)`)
   source = source.replace("import { runProcessingProcess } from './core/processing-process.mjs'", `const runProcessingProcess = (...args) => globalThis.${fixtureKey}.process(...args)`)
@@ -45,7 +45,12 @@ async function fixture(t) {
   globalThis[Symbol.for('arya.verification.registerOwnedEphemeralHTTP')]?.(module.server)
   t.after(async () => { module.server.closeAllConnections(); await new Promise(resolve => module.server.close(resolve)); delete globalThis[fixtureKey]; fs.rmSync(root, { recursive: true, force: true }) })
   function api(route, body, binary = false) { return new Promise((resolve, reject) => { const bytes = body === undefined ? null : binary ? body : Buffer.from(JSON.stringify(body)); const request = http.request({ hostname: '127.0.0.1', port, path: route, method: body === undefined ? 'GET' : 'POST', headers: { host: '127.0.0.1:0', ...(bytes ? { 'content-length': bytes.length } : {}) } }, response => { let data = ''; response.on('data', value => { data += value }); response.on('end', () => resolve({ status: response.statusCode, body: String(response.headers['content-type']).includes('json') ? JSON.parse(data) : Buffer.from(data) })) }); request.on('error', reject); request.end(bytes) }) }
-  async function worker() { const events = []; const request = http.get({ hostname: '127.0.0.1', port, path: '/api/events?role=worker', headers: { host: '127.0.0.1:0' } }); const [response] = await once(request, 'response'); let text = ''; response.on('data', bytes => { text += bytes; let end; while ((end = text.indexOf('\n\n')) >= 0) { const event = text.slice(0, end); text = text.slice(end + 2); const match = /event: (\S+)\ndata: ([\s\S]*)/.exec(event); if (match) events.push({ type: match[1], data: JSON.parse(match[2]) }) } }); t.after(() => request.destroy()); await turn(); return { request, events } }
+  async function worker() {
+    // A real worker page can only connect after Chrome starts. Export source
+    // staging is asynchronous, so even several admitted jobs do not prove that.
+    await until(() => workers.length > 0)
+    const events = []; const request = http.get({ hostname: '127.0.0.1', port, path: '/api/events?role=worker', headers: { host: '127.0.0.1:0' } }); const [response] = await once(request, 'response'); let text = ''; response.on('data', bytes => { text += bytes; let end; while ((end = text.indexOf('\n\n')) >= 0) { const event = text.slice(0, end); text = text.slice(end + 2); const match = /event: (\S+)\ndata: ([\s\S]*)/.exec(event); if (match) events.push({ type: match[1], data: JSON.parse(match[2]) }) } }); t.after(() => request.destroy()); await turn(); return { request, events }
+  }
   return { root, file, project, children, api, worker }
 }
 
@@ -66,7 +71,7 @@ test('server refuses invalid allocations, bounds queue, replays admitted snapsho
   assert.equal((await f.api('/api/state')).body.processing.queued, 7)
   const queuedStop = await f.api('/api/jobs/cancel', { id: jobs[7].id }); assert.equal(queuedStop.status, 200)
   assert.equal((await f.api('/api/state')).body.processing.queued, 6)
-  connection.request.destroy(); await turn(); const reconnect = await f.worker(); await turn()
+  connection.request.destroy(); await turn(); const reconnect = await f.worker(); await until(() => reconnect.events.some(event => event.type === 'render'))
   const replay = reconnect.events.filter(event => event.type === 'render'); assert.equal(replay.length, 1); assert.equal(replay[0].data.job.id, jobs[0].id); assert.equal(replay[0].data.version, jobs[0].projectVersion)
   assert.equal((await f.api(`/api/job/${jobs[1].id}/start`, {})).status, 409)
   assert.equal((await f.api(`/api/job/${jobs[0].id}/start`, {})).status, 200); assert.equal(f.children.length, 2)
