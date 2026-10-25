@@ -114,10 +114,10 @@ test('pending mobile release renders plain review status and provides no active 
   assert.equal(result.status, 0, result.stderr);
 
   const download = pages.download;
-  assert.ok(download.includes('Version 1.0.5 (build 1) is waiting for App Review, with no download yet. Automatic free worldwide release after approval.'));
+  assert.ok(download.includes('Version 1.0.5 (build 1) is waiting for App Review, with no download yet. It will be released automatically as a free download worldwide after approval.'));
   assert.ok(download.includes('waiting for App Review'));
   assert.ok(download.includes('no download yet'));
-  assert.ok(/automatic free worldwide release after approval/i.test(download));
+  assert.ok(/released automatically as a free download worldwide after approval/i.test(download));
 
   // Pending config must have no active App Store link
   assert.ok(!download.includes('https://apps.apple.com'));

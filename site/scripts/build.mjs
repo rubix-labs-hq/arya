@@ -38,7 +38,7 @@ const mobileAction = `<div id="mobile-action">${mobileReady ? button(esc(mobileU
 const mobileSection = mobile
   ? (mobileReady
       ? `<h2 id="mobile">iPad and iPhone</h2><p>iPad and iPhone builds share the project format. Version ${esc(mobileVersion)} is available as a free download worldwide on the App Store.</p>${mobileAction}`
-      : `<h2 id="mobile">iPad and iPhone</h2><p>iPad and iPhone builds share the project format. Version ${esc(mobileVersion)}${mobileBuild} is waiting for App Review, with no download yet. Automatic free worldwide release after approval.</p>${mobileAction}`)
+      : `<h2 id="mobile">iPad and iPhone</h2><p>iPad and iPhone builds share the project format. Version ${esc(mobileVersion)}${mobileBuild} is waiting for App Review, with no download yet. It will be released automatically as a free download worldwide after approval.</p>${mobileAction}`)
   : `<h2 id="mobile">iPad and iPhone</h2><p>iPad and iPhone builds share the project format and are coming later. There is no public mobile download or TestFlight link yet.</p>`;
 const mobileRoadmapStatus = mobileReady
   ? `Arya ${esc(mobileVersion)} is available on the App Store as a free download.`
