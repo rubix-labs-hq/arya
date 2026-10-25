@@ -18,6 +18,19 @@ export function releaseDestination(config) {
   if (release?.ready !== true || release.notarized !== true || typeof release.version !== 'string' || !release.version.trim() || !/^[a-f0-9]{64}$/.test(release.sha256 || '')) return null;
   return safeDestination(release.macURL, release.allowedHosts);
 }
+export function mobileReleaseDestination(config) {
+  const mobile = config?.mobileRelease;
+  if (mobile?.ready !== true || typeof mobile.version !== 'string' || !mobile.version.trim()) return null;
+  if (mobile.appId && String(mobile.appId).trim() !== '6826357116') return null;
+  const destination = safeDestination(mobile.appStoreURL, mobile.allowedHosts);
+  if (!destination) return null;
+  try {
+    const url = new URL(destination);
+    if (url.protocol !== 'https:' || url.username || url.password || url.hostname !== 'apps.apple.com' || url.port !== '') return null;
+    if (!/^\/(?:[a-z]{2}\/)?app(?:\/[^/]+)?\/id6826357116\/?$/.test(url.pathname)) return null;
+    return url.href;
+  } catch { return null; }
+}
 export function checkoutDestination(config, amount) {
   const result = contributionAmount(amount, config?.contributions?.minimum || 5);
   if (result.error) return result;

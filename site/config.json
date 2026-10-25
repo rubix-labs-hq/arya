@@ -29,6 +29,16 @@
       "github.com"
     ]
   },
+  "mobileRelease": {
+    "ready": false,
+    "version": "1.0.5",
+    "build": "1",
+    "appStoreURL": null,
+    "appId": "6826357116",
+    "allowedHosts": [
+      "apps.apple.com"
+    ]
+  },
   "publicSourceURL": "https://github.com/rubix-labs-hq/arya",
   "requestAccessURL": null,
   "contactURL": "https://github.com/rubix-labs-hq/arya/issues",
