@@ -76,17 +76,29 @@ for (const [label, upload] of [
   })
 }
 
-test('a later upload failure preserves prior uploaded data without claiming any import', async () => {
+test('a later upload failure still registers successful files in Media', async () => {
   const n = notices(), stored = [], requests = []
   const result = await uploadMediaFiles([{ name: 'keep.mov' }, { name: 'failed.mov' }], {
     ...n, upload: async file => { if (stored.length) throw Error('Provider disconnected'); stored.push(file.name); return { path: `media/${file.name}` } },
-    request: async (...args) => requests.push(args),
+    request: async (...args) => { requests.push(args); return { assets: { 'media/keep.mov': {} } } },
   })
-  assert.equal(result, null)
+  assert.equal(result?.count, 1)
   assert.deepEqual(stored, ['keep.mov'])
-  assert.deepEqual(requests, [])
-  assert.equal(successes(n.messages).length, 0)
+  assert.deepEqual(requests, [['/api/import', { paths: ['media/keep.mov'] }]])
+  assert.equal(successes(n.messages)[0].text, 'Imported 1 of 2 files. Some files could not be imported.')
   assert.equal(errors(n.messages).length, 1)
+})
+
+test('a failed middle upload does not skip later files in the same selection', async () => {
+  const n = notices(), requests = []
+  const result = await uploadMediaFiles([{ name: 'first.mp4' }, { name: 'bad.mp4' }, { name: 'last.mp4' }], {
+    ...n, upload: async file => file.name === 'bad.mp4' ? { error: 'Unreadable file' } : { path: `media/${file.name}` },
+    request: async (_url, body) => { requests.push(body.paths); return { assets: Object.fromEntries(body.paths.map(p => [p, {}])) } },
+  })
+  assert.equal(result?.count, 2)
+  assert.deepEqual(requests, [['media/first.mp4', 'media/last.mp4']])
+  assert.equal(successes(n.messages)[0].text, 'Imported 2 of 3 files. Some files could not be imported.')
+  assert.match(errors(n.messages)[0].text, /bad.mp4/)
 })
 
 for (const result of [null, {}, { assets: null }, { assets: [] }, { assets: 'bad' }, { error: 'Access denied', assets: {} }]) {

@@ -43,9 +43,10 @@ export async function importMediaPaths(paths, { request, notify, expectedCount }
 /** Uploaded files can fail probing. Success reports only the later import result. */
 export async function uploadMediaFiles(files, { upload, request, notify } = {}) {
   if (!files.length) return null
-  try {
-    const paths = []
-    for (const file of files) {
+  const paths = []
+  let failed = 0
+  for (const file of files) {
+    try {
       notify(`Uploading ${file.name}…`)
       const result = await upload(file)
       if (result?.error) throw new Error(`Could not upload ${file.name}: ${result.error}`)
@@ -53,11 +54,14 @@ export async function uploadMediaFiles(files, { upload, request, notify } = {}) 
         throw new Error(`Could not upload ${file.name}. The upload service did not return a file.`)
       }
       paths.push(result.path)
+    } catch (error) {
+      failed++
+      reportFailure(new Error(`${file.name}: ${error?.message || String(error)}`), notify)
     }
-    const uniquePaths = [...new Set(paths)]
-    return await importMediaPaths(uniquePaths, { request, notify, expectedCount: uniquePaths.length })
-  } catch (error) {
-    reportFailure(error, notify)
-    return null
   }
+  // Completed uploads are durable files. A later failure must not strand them
+  // outside the project catalog, or prevent the rest of the selection importing.
+  const uniquePaths = [...new Set(paths)]
+  if (!uniquePaths.length) return null
+  return await importMediaPaths(uniquePaths, { request, notify, expectedCount: uniquePaths.length + failed })
 }

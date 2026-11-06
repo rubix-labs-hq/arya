@@ -1219,6 +1219,7 @@ final class NativeEditorModel: ObservableObject {
         pauseSource()
         guard duration > 0, let session, let backend = session.backend, let root = session.folder else { return }
         if time >= duration { seek(0) }
+        showingSource = false
         playing = true
         let token = generation, folder = ProjectFolder(root: root), selectedComp = composition, capturedVersion = version
         #if os(iOS)

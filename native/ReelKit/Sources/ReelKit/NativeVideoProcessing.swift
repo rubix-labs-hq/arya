@@ -23,6 +23,7 @@ public enum NativeVideoProcessing {
         var color:[String:String]
         var mastering:Data?
         var contentLight:Data?
+        var convertSDRToRec709 = false
         func outputCodec(_ requested:String,personMask:Bool) throws -> AVVideoCodecType {
             guard ["auto","h264","hevc","prores-422hq","prores-4444"].contains(requested) else { throw ReelBackend.APIError("Processing codec must be auto, h264, hevc, prores-422hq or prores-4444.") }
             if alpha || personMask { return .proRes4444 }
@@ -37,8 +38,27 @@ public enum NativeVideoProcessing {
         let formats=try await track.load(.formatDescriptions),characteristics=try await track.load(.mediaCharacteristics)
         let extensions=formats.first.map { CMFormatDescriptionGetExtensions($0) as! [String:Any] } ?? [:]
         let value=extensions[kCMFormatDescriptionExtension_TransferFunction as String] as? String
-        let color=[AVVideoColorPrimariesKey:extensions[kCMFormatDescriptionExtension_ColorPrimaries as String] as? String ?? AVVideoColorPrimaries_ITU_R_709_2,AVVideoTransferFunctionKey:value ?? AVVideoTransferFunction_ITU_R_709_2,AVVideoYCbCrMatrixKey:extensions[kCMFormatDescriptionExtension_YCbCrMatrix as String] as? String ?? AVVideoYCbCrMatrix_ITU_R_709_2]
-        return SourceFormat(transfer:value==kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ as String ? .pq : value==kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG as String ? .hlg:nil,alpha:characteristics.contains(.containsAlphaChannel),color:color,mastering:extensions[kCMFormatDescriptionExtension_MasteringDisplayColorVolume as String] as? Data,contentLight:extensions[kCMFormatDescriptionExtension_ContentLightLevelInfo as String] as? Data)
+        var color=[AVVideoColorPrimariesKey:extensions[kCMFormatDescriptionExtension_ColorPrimaries as String] as? String ?? AVVideoColorPrimaries_ITU_R_709_2,AVVideoTransferFunctionKey:value ?? AVVideoTransferFunction_ITU_R_709_2,AVVideoYCbCrMatrixKey:extensions[kCMFormatDescriptionExtension_YCbCrMatrix as String] as? String ?? AVVideoYCbCrMatrix_ITU_R_709_2]
+        // Format descriptions also return opaque values such as "YCbCrMatrix#5".
+        // AVAssetWriterInput raises an uncatchable Objective-C exception for them.
+        // Convert unsupported SDR color encodings in Core Image, then tag the output
+        // consistently, instead of copying decoder metadata into writer settings.
+        var primaries = [AVVideoColorPrimaries_ITU_R_709_2, AVVideoColorPrimaries_SMPTE_C, AVVideoColorPrimaries_P3_D65, AVVideoColorPrimaries_ITU_R_2020]
+        var transfers = [AVVideoTransferFunction_ITU_R_709_2, AVVideoTransferFunction_SMPTE_ST_2084_PQ, AVVideoTransferFunction_ITU_R_2100_HLG, AVVideoTransferFunction_Linear]
+        var matrices = [AVVideoYCbCrMatrix_ITU_R_709_2, AVVideoYCbCrMatrix_ITU_R_601_4, AVVideoYCbCrMatrix_ITU_R_2020]
+        #if os(macOS)
+        primaries.append(AVVideoColorPrimaries_EBU_3213)
+        transfers.append(AVVideoTransferFunction_SMPTE_240M_1995)
+        matrices.append(AVVideoYCbCrMatrix_SMPTE_240M_1995)
+        #endif
+        if #available(macOS 15, iOS 18, *) { transfers.append(AVVideoTransferFunction_IEC_sRGB) }
+        let convert = !primaries.contains(color[AVVideoColorPrimariesKey]!) || !transfers.contains(color[AVVideoTransferFunctionKey]!) || !matrices.contains(color[AVVideoYCbCrMatrixKey]!)
+        if convert {
+            color = [AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+                     AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+                     AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2]
+        }
+        return SourceFormat(transfer:value==kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ as String ? .pq : value==kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG as String ? .hlg:nil,alpha:characteristics.contains(.containsAlphaChannel),color:color,mastering:extensions[kCMFormatDescriptionExtension_MasteringDisplayColorVolume as String] as? Data,contentLight:extensions[kCMFormatDescriptionExtension_ContentLightLevelInfo as String] as? Data,convertSDRToRec709:convert)
     }
 
     public static func scenes(_ file: URL, threshold: Double = 10) async throws -> [Double] {
@@ -80,7 +100,7 @@ public enum NativeVideoProcessing {
         let generator=AVAssetImageGenerator(asset:asset)
         generator.appliesPreferredTrackTransform=true; generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = .zero
         let first=try await generator.image(at:CMTime(seconds:spec.from,preferredTimescale:60000)).image
-        let sourceSpace=first.colorSpace ?? CGColorSpace(name:CGColorSpace.sRGB)!
+        let sourceSpace=format.convertSDRToRec709 ? CGColorSpace(name:CGColorSpace.itur_709)! : first.colorSpace ?? CGColorSpace(name:CGColorSpace.sRGB)!
         guard !FileManager.default.fileExists(atPath: try confine(output).path) else { throw ReelBackend.APIError("The processed output already exists.") }
         let width=first.width, height=first.height
         let movie=codec == .proRes4444 || codec == .proRes422HQ,transfer=format.transfer
@@ -93,6 +113,7 @@ public enum NativeVideoProcessing {
         var settings: [String: Any] = [AVVideoCodecKey:codec,AVVideoWidthKey:width,AVVideoHeightKey:height,AVVideoColorPropertiesKey:format.color]
         if !movie { settings[AVVideoCompressionPropertiesKey] = [AVVideoAverageBitRateKey:max(500_000,width*height*12),AVVideoExpectedSourceFrameRateKey:spec.fps] }
         if let transfer { settings=try NativeHDR.settings(settings,transfer:transfer,body:["maxLuminance":10000]);var compression=settings[AVVideoCompressionPropertiesKey] as? [String:Any] ?? [:];if let mastering=format.mastering,mastering.count==24 {compression[kVTCompressionPropertyKey_MasteringDisplayColorVolume as String]=mastering};if let content=format.contentLight,content.count==4 {compression[kVTCompressionPropertyKey_ContentLightLevelInfo as String]=content};settings[AVVideoCompressionPropertiesKey]=compression }
+        guard writer.canApply(outputSettings: settings, forMediaType: .video) else { throw ReelBackend.APIError("The processed video's codec or color settings are not supported on this device.") }
         let input=AVAssetWriterInput(mediaType:.video,outputSettings:settings)
         input.expectsMediaDataInRealTime=false
         let adaptor=AVAssetWriterInputPixelBufferAdaptor(assetWriterInput:input,sourcePixelBufferAttributes:[kCVPixelBufferPixelFormatTypeKey as String:transfer==nil ? kCVPixelFormatType_32BGRA:kCVPixelFormatType_64RGBAHalf,kCVPixelBufferWidthKey as String:width,kCVPixelBufferHeightKey as String:height,kCVPixelBufferIOSurfacePropertiesKey as String:[:]])

@@ -7,6 +7,31 @@ import Vision
 import XCTest
 
 final class NativeProcessingIntegrationTests: XCTestCase {
+    func testProcessingNormalizesUnsupportedSourceColorMetadataBeforeCreatingWriter() async throws {
+        let root = try Support.tempFolder("processing-color-metadata")
+        let source = root.appendingPathComponent("source.mp4"), tagged = root.appendingPathComponent("bt470bg.mp4")
+        try await makeVideo(source, frames: 6) { try fixtureImage(dx: $0 % 2) }
+        let command = Process(), errors = Pipe()
+        command.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        command.arguments = ["ffmpeg", "-nostdin", "-y", "-loglevel", "error", "-i", source.path,
+            "-c", "copy", "-bsf:v", "h264_metadata=matrix_coefficients=5", tagged.path]
+        command.standardError = errors
+        try command.run()
+        let diagnostic = errors.fileHandleForReading.readDataToEndOfFile()
+        command.waitUntilExit()
+        XCTAssertEqual(command.terminationStatus, 0, String(decoding: diagnostic, as: UTF8.self))
+        let format = try await NativeVideoProcessing.sourceFormat(tagged)
+        let accepted = [AVVideoYCbCrMatrix_ITU_R_709_2, AVVideoYCbCrMatrix_ITU_R_601_4, AVVideoYCbCrMatrix_ITU_R_2020]
+        XCTAssertTrue(accepted.contains(format.color[AVVideoYCbCrMatrixKey] ?? ""), "Unvalidated source metadata can raise an Objective-C exception in AVAssetWriterInput.")
+        guard accepted.contains(format.color[AVVideoYCbCrMatrixKey] ?? "") else { return }
+        let original = try Data(contentsOf: tagged), output = root.appendingPathComponent("processed.mp4")
+        try await NativeVideoProcessing.render(file: tagged, output: output, mode: "denoise",
+            spec: .init(duration: 0.3, fps: 10, denoise: .init(quality: "fast", strength: 0)))
+        let frame = try await NativeVisionAnalysis.image(file: output, at: 0)
+        XCTAssertGreaterThan(frame.width, 0)
+        XCTAssertEqual(try Data(contentsOf: tagged), original)
+    }
+
     func testProcessedVideoRemainsReusableInMediaAfterPlacementUndo() async throws {
         let root = try Support.tempFolder("processed-video-retention"), folder = ProjectFolder(root: root)
         try FileManager.default.createDirectory(at: folder.mediaDir, withIntermediateDirectories: true)

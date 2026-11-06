@@ -248,6 +248,7 @@ export function Transport({ p }) {
   const t = useTime()
   const s = store
   const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
   const edits = () => [0, duration(p), ...p.markers.map(m => m.t), ...p.tracks.flatMap(tr => tr.clips.flatMap(c => [c.start, clipEnd(c)]))].sort((a, b) => a - b)
   const jump = dir => {
     const pts = edits()
@@ -259,18 +260,32 @@ export function Transport({ p }) {
     <div class="transport timeline-transport">
       <div class="tc-box">
         ${editing
-          ? html`<input class="tc-input" autofocus value=${timecode(t, p.fps)} onKeyDown=${e => {
+          ? html`<input class="tc-input" aria-label="Playhead timecode" autofocus value=${draft} onInput=${e => { setDraft(e.target.value); e.target.setCustomValidity('') }} onKeyDown=${e => {
               if (e.key === 'Enter') {
-                const parts = e.target.value.split(/[:;.]/).map(Number)
+                const value = e.target.value.trim()
+                if (!/^\d+(?:[:;.]\d+){0,3}$/.test(value)) {
+                  e.target.setCustomValidity('Enter a timecode such as 00:00:02:13.')
+                  e.target.reportValidity()
+                  e.stopPropagation()
+                  return
+                }
+                const parts = value.split(/[:;.]/).map(Number)
                 while (parts.length < 4) parts.unshift(0)
                 const [hh, mm, ss, ff] = parts
-                player.seek(hh * 3600 + mm * 60 + ss + ff / p.fps)
+                const target = hh * 3600 + mm * 60 + ss + ff / p.fps
+                if (!Number.isFinite(target)) {
+                  e.target.setCustomValidity('Enter a finite timecode.')
+                  e.target.reportValidity()
+                  e.stopPropagation()
+                  return
+                }
+                player.seek(target)
                 setEditing(false)
               }
               if (e.key === 'Escape') setEditing(false)
               e.stopPropagation()
             }} onBlur=${() => setEditing(false)} />`
-          : html`<span class="tc" onClick=${() => setEditing(true)} title="Click to type a timecode">${timecode(t, p.fps)}</span>`}
+          : html`<span class="tc" onClick=${() => { setDraft(timecode(t, p.fps)); setEditing(true) }} title="Click to type a timecode">${timecode(t, p.fps)}</span>`}
         <span class="tc-dur">/ ${timecode(duration(p), p.fps)}</span>
       </div>
       <div class="buttons">

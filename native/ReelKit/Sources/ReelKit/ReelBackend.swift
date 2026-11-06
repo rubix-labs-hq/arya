@@ -2843,7 +2843,7 @@ public actor ReelBackend {
     private func exportInterchange(_ text: String, _ b: [String: Any]) throws -> JSON {
         guard let project else { throw APIError("No project yet: create one first") }
         let format = (b["format"] as? String ?? "").lowercased()
-        guard ["fcpxml", "otio", "srt", "vtt"].contains(format) else { throw APIError("format must be fcpxml, otio, srt or vtt") }
+        guard ["fcpxml", "otio", "edl", "srt", "vtt"].contains(format) else { throw APIError("format must be fcpxml, otio, edl, srt or vtt") }
         var body = b
         body["format"] = format
         let result = (try JSON.parse(core.exportInterchange(project: project, root: folder.root.path, body: JSON(any: body).text)) as? [String: Any]) ?? [:]

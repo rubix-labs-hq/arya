@@ -22,7 +22,8 @@ export const player = new Player({
   getProjectIdentity: () => store.project,
   prepareFrame: (p, at, { playback = false, to } = {}) => loadLuts(comp, store.project, playback ? { from: at, frames: Math.max(1, Math.ceil((to - at) * p.fps)), fps: p.fps, comp: p.compId } : { at, comp: p.compId }),
   onTime: t => setTime(t),
-  onState: s => set({ playing: s.playing, rate: s.rate }),
+  // Timeline commands must show the frames they play, even when Source was open.
+  onState: s => set({ playing: s.playing, rate: s.rate, ...(s.playing ? { viewerMode: 'timeline' } : {}) }),
 })
 
 const SCALE = { full: 1, half: 0.5, quarter: 0.25 }

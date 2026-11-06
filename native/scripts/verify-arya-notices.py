@@ -13,7 +13,7 @@ import sys
 DEPENDENCIES = (
     ("preact", "Preact", "10.29.8", "MIT"),
     ("htm", "htm", "3.1.1", "Apache-2.0"),
-    ("mediabunny", "Mediabunny", "1.61.0", "MPL-2.0"),
+    ("mediabunny", "Mediabunny", "1.62.1", "MPL-2.0"),
 )
 FONTS = (
     ("Inter", "editor/web/fonts/LICENSE-Inter.txt", "web/fonts/LICENSE-Inter.txt"),
@@ -22,7 +22,7 @@ FONTS = (
     ("Newsreader", "site/assets/fonts/newsreader-OFL.txt", None),
 )
 NOTICE = "THIRD_PARTY_NOTICES.md"
-MEDIABUNNY_SOURCE = "https://registry.npmjs.org/mediabunny/-/mediabunny-1.61.0.tgz"
+MEDIABUNNY_SOURCE = "https://registry.npmjs.org/mediabunny/-/mediabunny-1.62.1.tgz"
 LIMIT = 2 * 1024 * 1024
 OPEN = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 

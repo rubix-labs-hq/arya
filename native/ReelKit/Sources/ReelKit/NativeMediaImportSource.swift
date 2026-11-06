@@ -34,6 +34,12 @@ enum NativeMediaImportSource {
             guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { throw NativeMediaImportSource.posix("Reading import directory identity") }
             device = info.st_dev; inode = info.st_ino
         }
+        init(metadataAt url: URL) throws {
+            var info = Darwin.stat()
+            guard lstat(NativeMediaImportSource.normalized(url).path, &info) == 0 else { throw NativeMediaImportSource.posix("Reading selected media folder identity") }
+            guard info.st_mode & S_IFMT == S_IFDIR else { throw ReelBackend.APIError("The selected media folder changed or uses a symbolic link. Select its original path to retry.") }
+            device = info.st_dev; inode = info.st_ino
+        }
     }
     final class Root: @unchecked Sendable {
         let folder: ProjectFolder, descriptor: Int32, identity: DirectoryStamp
@@ -71,31 +77,28 @@ enum NativeMediaImportSource {
         }
     }
     private final class CoordinationPreflight {
-        let url: URL, parent: Int32, parentIdentity: DirectoryStamp
+        let url: URL, parentIdentity: DirectoryStamp
         let device: Int32, inode: UInt64
         init(_ selected: URL) throws {
             let url = NativeMediaImportSource.normalized(selected)
-            let parent = try NativeMediaImportSource.openDirectory(url.deletingLastPathComponent())
-            do {
-                var named = Darwin.stat()
-                guard fstatat(parent, url.lastPathComponent, &named, AT_SYMLINK_NOFOLLOW) == 0 else { throw NativeMediaImportSource.posix("Reading selected media identity") }
-                guard named.st_mode & S_IFMT == S_IFREG else {
-                    throw ReelBackend.APIError("Choose a regular media file. Symbolic links and special files are not imported.")
-                }
-                parentIdentity = try DirectoryStamp(parent)
-                self.url = url; self.parent = parent; device = named.st_dev; inode = named.st_ino
-            } catch { close(parent); throw error }
+            // A file picker grants access to this file, not read access to its parent.
+            // Compare parent metadata across coordination; the held source descriptor
+            // still verifies the exact path, identity and contents throughout copying.
+            parentIdentity = try DirectoryStamp(metadataAt: url.deletingLastPathComponent())
+            var named = Darwin.stat()
+            guard lstat(url.path, &named) == 0 else { throw NativeMediaImportSource.posix("Reading selected media identity") }
+            guard named.st_mode & S_IFMT == S_IFREG else {
+                throw ReelBackend.APIError("Choose a regular media file. Symbolic links and special files are not imported.")
+            }
+            self.url = url; device = named.st_dev; inode = named.st_ino
         }
-        deinit { close(parent) }
         func validate(captured: Stamp? = nil) throws {
             try Task.checkCancellation()
-            let current = try NativeMediaImportSource.openDirectory(url.deletingLastPathComponent())
-            defer { close(current) }
-            guard try DirectoryStamp(current) == parentIdentity, try DirectoryStamp(parent) == parentIdentity else {
+            guard try DirectoryStamp(metadataAt: url.deletingLastPathComponent()) == parentIdentity else {
                 throw ReelBackend.APIError("The selected media folder changed before coordinated import. Select it again.")
             }
             var named = Darwin.stat()
-            guard fstatat(parent, url.lastPathComponent, &named, AT_SYMLINK_NOFOLLOW) == 0,
+            guard lstat(url.path, &named) == 0,
                   named.st_mode & S_IFMT == S_IFREG, named.st_dev == device, named.st_ino == inode,
                   captured.map({ $0.device == device && $0.inode == inode }) ?? true else {
                 throw ReelBackend.APIError("The selected media changed before coordinated import. Select it again.")

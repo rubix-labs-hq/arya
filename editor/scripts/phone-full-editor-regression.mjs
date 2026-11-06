@@ -14,7 +14,7 @@ const history = [], operations = [], requests = [], failures = [], missing = []
 const plugins = (await fs.readdir(path.join(root, 'web/ui/plugins'))).filter(f=>f.endsWith('.js')).sort()
 const fixture = `await import('/ui/plugins-index.js');const {mountApp}=await import('/ui/app.js');await mountApp(document.querySelector('#app'));const {store,set,setTime}=await import('/ui/store.js');set({selection:['c1'],inspectorTab:'title',chatOpen:false});setTime(2);window.fixture={store,set,setTime};window.ready=true;`
 const browser = await chromium.launch({executablePath:process.env.REEL_CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true})
-const context = await browser.newContext({viewport:{width:760,height:800},hasTouch:true})
+const context = await browser.newContext({viewport:{width:1512,height:944},hasTouch:true})
 context.on('page',p=>{p.on('pageerror',e=>failures.push(e.message));p.on('console',m=>{if(m.type()==='error')console.error('Browser console: '+m.text())});p.on('requestfailed',r=>console.error('Request failed: '+r.url()+' '+r.failure()?.errorText))})
 await context.route('**/*', async route=>{
   const request=route.request(), url=new URL(request.url()), pathname=url.pathname
@@ -76,10 +76,10 @@ try{
   await page.waitForFunction(()=>window.fixture.store.version===2)
   assert.equal(operations.length,1,'explicit button blur commits once')
   assert.equal(project.tracks[2].clips[0].title.text,'Portrait draft with actions')
-  await page.setViewportSize({width:760,height:800});await page.waitForTimeout(150)
+  await page.setViewportSize({width:1512,height:944});await page.waitForTimeout(150)
   assert.equal(await page.locator('.viewer').isVisible(),true)
   assert.equal(await input.evaluate(el=>el===window.originalInput),true)
-  await page.getByRole('button',{name:'Undo',exact:true}).click();await page.waitForFunction(()=>window.fixture.store.version===3)
+  if(await page.getByRole('button',{name:'Editor actions',exact:true}).isVisible()) await page.getByRole('button',{name:'Editor actions',exact:true}).click();await page.getByRole('button',{name:'Undo',exact:true}).click();if(await page.getByRole('button',{name:'Close actions',exact:true}).isVisible()) await page.getByRole('button',{name:'Close actions',exact:true}).click();await page.waitForFunction(()=>window.fixture.store.version===3)
   assert.equal(project.tracks[2].clips[0].title.text,'Original title')
   await page.setViewportSize({width:390,height:500});await page.waitForTimeout(150)
   await page.getByRole('button',{name:'Ask AI',exact:true}).click()
@@ -89,9 +89,9 @@ try{
   await page.getByRole('button',{name:'Cancel',exact:true}).click()
   assert.equal(await input.isVisible(),true)
   await input.fill('Reverse portrait draft');await input.evaluate(el=>el.setSelectionRange(3,10))
-  for(const viewport of [{width:760,height:800},{width:390,height:500}]){await page.setViewportSize(viewport);await page.waitForTimeout(150);assert.deepEqual(await input.evaluate(el=>[el===window.originalInput,document.activeElement===el,el.value,el.selectionStart,el.selectionEnd]),[true,true,'Reverse portrait draft',3,10])}
+  for(const viewport of [{width:1512,height:944},{width:390,height:500}]){await page.setViewportSize(viewport);await page.waitForTimeout(150);assert.deepEqual(await input.evaluate(el=>[el===window.originalInput,document.activeElement===el,el.value,el.selectionStart,el.selectionEnd]),[true,true,'Reverse portrait draft',3,10])}
   assert.equal(operations.length,1);await input.evaluate(el=>el.blur());await page.waitForFunction(()=>window.fixture.store.version===4);assert.equal(operations.length,2);assert.equal(project.tracks[2].clips[0].title.text,'Reverse portrait draft')
-  await page.getByRole('button',{name:'Undo',exact:true}).click();await page.waitForFunction(()=>window.fixture.store.version===5);assert.equal(project.tracks[2].clips[0].title.text,'Original title')
+  if(await page.getByRole('button',{name:'Editor actions',exact:true}).isVisible()) await page.getByRole('button',{name:'Editor actions',exact:true}).click();await page.getByRole('button',{name:'Undo',exact:true}).click();if(await page.getByRole('button',{name:'Close actions',exact:true}).isVisible()) await page.getByRole('button',{name:'Close actions',exact:true}).click();await page.waitForFunction(()=>window.fixture.store.version===5);assert.equal(project.tracks[2].clips[0].title.text,'Original title')
   await page.getByRole('button',{name:'Show preview',exact:true}).click()
   for(const [name,time] of [['Mark in',2],['Mark out',3],['Clear range',3],['Loop playback',3]]){await page.evaluate(t=>window.fixture.setTime(t),time);await page.getByRole('button',{name,exact:true}).click();await page.waitForTimeout(100);const state=await page.evaluate(()=>({range:window.fixture.store.project.range,loop:window.fixture.store.loop}));assert.ok(name==='Mark in'?state.range?.in===2:name==='Mark out'?state.range?.out===3:name==='Clear range'?!state.range:state.loop,name+' actual transport action')}
   // Preview preference must not hide a draft on a height-only return to short portrait.
@@ -104,7 +104,7 @@ try{
   await fs.writeFile(path.join(out,'height-only-observation.json'),JSON.stringify({...heightOnly,operationsBefore:heightOpsBefore,operationsAfter:operations.length},null,2)+'\n')
   assert.equal(heightOnly.sameInput,true);assert.equal(heightOnly.focus,true);assert.equal(heightOnly.draft,'Height-only return draft');assert.deepEqual(heightOnly.selection,[4,11]);assert.ok(heightOnly.height>0&&heightOnly.bottom<=500,'height-only return keeps active Inspector visible: '+JSON.stringify(heightOnly));assert.equal(heightOnly.viewerVisible,false);assert.ok(heightOnly.bodyHeight>=120);assert.equal(operations.length,heightOpsBefore)
   await input.evaluate(el=>el.blur());await page.waitForFunction(()=>window.fixture.store.project.tracks[2].clips[0].title.text==='Height-only return draft');assert.equal(operations.length,heightOpsBefore+1)
-  await page.getByRole('button',{name:'Undo',exact:true}).click();await page.waitForFunction(()=>window.fixture.store.project.tracks[2].clips[0].title.text==='Original title')
+  if(await page.getByRole('button',{name:'Editor actions',exact:true}).isVisible()) await page.getByRole('button',{name:'Editor actions',exact:true}).click();await page.getByRole('button',{name:'Undo',exact:true}).click();if(await page.getByRole('button',{name:'Close actions',exact:true}).isVisible()) await page.getByRole('button',{name:'Close actions',exact:true}).click();await page.waitForFunction(()=>window.fixture.store.project.tracks[2].clips[0].title.text==='Original title')
   assert.deepEqual(failures,[]);assert.deepEqual(missing,[])
   const result={status:'PASS',boundary:'Complete unmodified editor UI, all real feature plugins, Viewer/canvas/transport/Inspector/store; intercepted disposable API using actual applyOps; no live server or project',loadedPlugins:plugins,measurements,preview,transport,heightOnly,draftResize:'no edit; same mounted input/viewer/canvas and selection',explicitBlur:'one edit',undo:'one undo restores original title',askAIForm:{status:'reachable and cancellable',controlBounds:aiForm},reverseDraft:'same input/selection, one edit and one Undo',transportActions:'4/4 actual action PASS',pageErrors:failures,missingResources:missing,requests}
   await fs.writeFile(path.join(out,'full-editor-results.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result,null,2))

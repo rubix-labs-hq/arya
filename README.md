@@ -50,7 +50,7 @@ Arya runs as a native SwiftUI and Metal app for Mac, and as a browser editor. Yo
 - Blade, ripple, roll, slip and slide on a multitrack timeline.
 - Snapping, markers, automatic proxies and nested compositions.
 - Multicam with audio sync for up to nine angles.
-- Import and export FCPXML, OpenTimelineIO, SRT and WebVTT. Export CMX 3600 EDL from the browser editor.
+- Import and export FCPXML, OpenTimelineIO, SRT and WebVTT. Export CMX 3600 EDL for individual video tracks.
 - Export H.264, HEVC, ProRes 422, 422 HQ and 4444, GIF, PNG sequences, WAV and AAC from a render queue.
 
 **Color**
@@ -97,13 +97,13 @@ The Mac app and the local browser editor share the same project format and editi
 | | Mac app | Browser editor, run locally | Hosted browser editor |
 | --- | --- | --- | --- |
 | Timeline editing, color, motion, audio mixing | Yes | Yes | Yes |
-| Track matte controls, render queue | Not yet (mattes render) | Yes | Yes |
+| Track matte controls, render queue | Yes | Yes | Yes |
 | Export formats | H.264, HEVC, ProRes, GIF, PNG, WAV, AAC | H.264, HEVC, ProRes, GIF, PNG, WAV, AAC | H.264, HEVC, WAV, AAC, up to 5 minutes |
 | Transcription, captions and shorts | Yes (Apple speech) | Yes (whisper.cpp) | No |
 | Loudness metering and normalization | Yes | Yes | Yes |
 | Denoise, voice cleanup, multicam sync | Yes | Yes | No |
 | FCPXML, OpenTimelineIO, SRT, WebVTT | Yes | Yes | No |
-| CMX 3600 EDL export | No | Yes | No |
+| CMX 3600 EDL export | Yes | Yes | No |
 | Figma import | Yes | Yes | No |
 | AI assistant | Yes | Yes | No |
 | Where projects live | A folder you choose | A folder you choose | This browser's storage. Use backups. |

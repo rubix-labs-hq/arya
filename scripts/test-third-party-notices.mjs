@@ -11,8 +11,8 @@ function fixture(run) {
   mkdirSync(source); mkdirSync(bundle);
   const write = (scope, path, data) => { const file = resolve(scope, path); mkdirSync(resolve(file, '..'), { recursive: true }); writeFileSync(file, data); };
   const packages = {};
-  let notice = 'https://registry.npmjs.org/mediabunny/-/mediabunny-1.61.0.tgz\n';
-  for (const [name, version, license] of [['preact', '10.29.8', 'MIT'], ['htm', '3.1.1', 'Apache-2.0'], ['mediabunny', '1.61.0', 'MPL-2.0']]) {
+  let notice = 'https://registry.npmjs.org/mediabunny/-/mediabunny-1.62.1.tgz\n';
+  for (const [name, version, license] of [['preact', '10.29.8', 'MIT'], ['htm', '3.1.1', 'Apache-2.0'], ['mediabunny', '1.62.1', 'MPL-2.0']]) {
     packages[`node_modules/${name}`] = { version, license };
     write(source, `editor/node_modules/${name}/package.json`, JSON.stringify({ version, license }));
     const text = `${name} fixture license text.\n`;
@@ -54,7 +54,7 @@ test('rejects dependency drift, absent source access, missing bundle licenses an
   write(source, packagePath, JSON.stringify({ version: '1.62.0', license: 'MPL-2.0' }));
   assert.throws(() => checkThirdPartyNotices({ sourceRoot: source }), /dependency changed/);
   write(source, packagePath, original);
-  write(source, 'THIRD_PARTY_NOTICES.md', notice.replace('https://registry.npmjs.org/mediabunny/-/mediabunny-1.61.0.tgz', ''));
+  write(source, 'THIRD_PARTY_NOTICES.md', notice.replace('https://registry.npmjs.org/mediabunny/-/mediabunny-1.62.1.tgz', ''));
   assert.throws(() => checkThirdPartyNotices({ sourceRoot: source }), /source-access notice/);
   write(source, 'THIRD_PARTY_NOTICES.md', notice.replace('Inter fixture license text.', ''));
   assert.throws(() => checkThirdPartyNotices({ sourceRoot: source }), /complete component license/);

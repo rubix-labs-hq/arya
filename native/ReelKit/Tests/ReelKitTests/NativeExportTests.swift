@@ -5,6 +5,32 @@ import XCTest
 @testable import ReelKit
 
 final class NativeExportTests: XCTestCase {
+    func testFullHDExportReleasesCompletedFrameTextures() async throws {
+        let root = try Support.tempFolder("full-hd-export"), folder = ProjectFolder(root: root)
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let core = try ReelCore(scriptURL: Support.core())
+        let base = try core.newProject(name: "Full HD export", options: #"{"width":1920,"height":1080,"fps":30}"#)
+        let project = try core.applyOps(project: base, ops: ##"[{"op":"add_color","color":"#3366ff","dur":10}]"##).project
+        let renderer = try ReelMetalRenderer(folder: folder, coreScriptURL: Support.core())
+        let movie = try await renderer.export(project: project, spec: ReelNativeExportSpec(body: #"{"preset":"h264-high","name":"full-hd","to":10}"#))
+        let asset = AVURLAsset(url: movie), tracks = try await asset.loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(tracks.first), size = try await track.load(.naturalSize)
+        XCTAssertEqual(size, CGSize(width: 1920, height: 1080))
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        reader.add(output); XCTAssertTrue(reader.startReading())
+        var frames = 0
+        while let sample = output.copyNextSampleBuffer() {
+            frames += 1
+            if frames == 300 {
+                let buffer = try XCTUnwrap(CMSampleBufferGetImageBuffer(sample))
+                XCTAssertGreaterThan(pixel(buffer, 960, 540)[2], 245)
+            }
+        }
+        XCTAssertEqual(reader.status, .completed)
+        XCTAssertEqual(frames, 300, "The whole export must remain decodable after hundreds of rendered frames")
+    }
+
     func testRec709MiddleGrayExportAndVideoReimportPreserveLevels() async throws {
         let root = try Support.tempFolder("rec709-gray"), folder = ProjectFolder(root: root), core = try ReelCore(scriptURL: Support.core())
         let base = try core.newProject(name: "Rec709 gray", options: #"{"width":160,"height":90,"fps":10}"#)

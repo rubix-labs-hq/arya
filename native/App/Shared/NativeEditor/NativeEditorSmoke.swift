@@ -28,6 +28,10 @@ enum NativeEditorSmoke {
     }
     #endif
     static func start(_ session: EditorSession, quit: @escaping () -> Void) {
+        if let out = Automation.value("--native-media-smoke-out") {
+            startMediaPlayback(session, out: out, quit: quit)
+            return
+        }
         #if os(macOS)
         if CommandLine.arguments.contains("--native-firstuse-root") {
             guard !firstUseStarted else { return }
@@ -263,6 +267,81 @@ enum NativeEditorSmoke {
                 result["mobileQueueGuards"] = true; result["foregroundGPUSuspended"] = true
                 #endif
             } catch { result["ok"] = false; result["error"] = error.localizedDescription }
+            try? JSON(any: result).text.write(toFile: out, atomically: true, encoding: .utf8)
+            if CommandLine.arguments.contains("--quit-after-automation") { quit() }
+        }
+    }
+    /// Exercises the real import, source placement and transport with generated moving MP4s.
+    /// Pixel changes are checked on the rendered Metal frames, independently of the playhead.
+    private static func startMediaPlayback(_ session: EditorSession, out: String, quit: @escaping () -> Void) {
+        Task {
+            var result: [String: Any] = [:]
+            let model = session.nativeEditor
+            do {
+                @MainActor func wait(_ label: String, until ready: @MainActor () -> Bool) async throws {
+                    for _ in 0..<600 {
+                        if ready() { return }
+                        try await Task.sleep(for: .milliseconds(50))
+                    }
+                    throw ReelBackend.APIError("Media smoke timed out: \(label). \(model.status) \(model.renderError ?? "")")
+                }
+                try await wait("open project") { model.project != nil && session.backend != nil }
+                guard session.folder?.lastPathComponent.hasPrefix("native-media-smoke-") == true,
+                      model.project?.assets.isEmpty == true, model.tracks.allSatisfy({ $0.clips.isEmpty }),
+                      let source = Automation.value("--native-media-smoke-source") else {
+                    throw ReelBackend.APIError("Media smoke requires an empty disposable native-media-smoke-* project and generated MP4 source.")
+                }
+                let original = try Data(contentsOf: URL(fileURLWithPath: source))
+                session.importFiles([URL(fileURLWithPath: source)], expectedBackend: session.backend)
+                try await wait("import registration") { model.project?.assets.count == 1 }
+                guard let asset = model.project?.assets.first, asset.kind == "video",
+                      try Data(contentsOf: model.mediaURL(asset.id)) == original else {
+                    throw ReelBackend.APIError("Imported MP4 was not registered as video with identical bytes.")
+                }
+                result["import"] = ["registered": true, "bytesEqual": true, "hasAudio": asset.fields.flag("hasAudio")]
+                model.openSource(asset)
+                try await wait("source ready") { !model.sourceLoading && model.sourceRange != nil }
+                guard model.sourceError == nil else { throw ReelBackend.APIError(model.sourceError!) }
+                model.placeSource("append")
+                try await wait("timeline placement") { model.tracks.contains(where: { $0.clips.contains(where: { $0.kind == "video" }) }) }
+                guard !model.showingSource else { throw ReelBackend.APIError("Placement left the frozen source viewer covering the timeline.") }
+                model.seek(0)
+                try await wait("first frame") { !model.rendering && model.metalFrame != nil }
+                let before = model.paintedFrames
+                model.play()
+                var hashes = Set<String>(), samples: [[String: Any]] = []
+                var lastPaint = before
+                for _ in 0..<300 {
+                    if model.paintedFrames != lastPaint, let frame = model.metalFrame {
+                        lastPaint = model.paintedFrames
+                        if let bytes = try frame.cgImage().dataProvider?.data {
+                            let hash = SHA256.hash(data: bytes as Data).map { String(format: "%02x", $0) }.joined()
+                            hashes.insert(hash)
+                            samples.append(["time": model.time, "displayedTime": model.displayedTime ?? -1, "hash": hash])
+                        }
+                    }
+                    if model.time >= 2.5 { break }
+                    try await Task.sleep(for: .milliseconds(40))
+                }
+                result["playback"] = ["time": model.time, "distinctPixelHashes": hashes.count,
+                    "paintedFrames": model.paintedFrames - before, "samples": samples]
+                guard model.time >= 2, hashes.count >= 3 else {
+                    throw ReelBackend.APIError("MP4 playback froze: time \(model.time), distinct frames \(hashes.count), \(model.renderError ?? model.status)")
+                }
+                model.pause()
+                model.openSource(asset)
+                try await wait("reopen source") { !model.sourceLoading && model.sourceRange != nil }
+                model.togglePlayback() // The Mac Timeline > Play or Pause / Space command.
+                try await Task.sleep(for: .milliseconds(600))
+                result["sourceTransport"] = ["showingSource": model.showingSource,
+                    "timelinePlaying": model.playing, "sourcePlaying": model.sourcePlaying]
+                guard model.showingSource ? model.sourcePlaying && !model.playing : model.playing else {
+                    throw ReelBackend.APIError("Play advances the timeline while the visible source viewer stays frozen.")
+                }
+                result["ok"] = true
+            } catch { result["ok"] = false; result["error"] = error.localizedDescription }
+            model.pause()
+            model.pauseSource()
             try? JSON(any: result).text.write(toFile: out, atomically: true, encoding: .utf8)
             if CommandLine.arguments.contains("--quit-after-automation") { quit() }
         }

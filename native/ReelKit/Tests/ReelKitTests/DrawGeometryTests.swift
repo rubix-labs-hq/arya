@@ -6,6 +6,21 @@ import XCTest
 @testable import ReelKit
 
 final class DrawGeometryTests: XCTestCase {
+    func testMissingMatteSourceMatchesTransparentBrowserMatteInEveryMode() async throws {
+        let root = try Support.tempFolder("missing-matte")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let core = try ReelCore(scriptURL: Support.core())
+        let renderer = try ReelMetalRenderer(folder: ProjectFolder(root: root), coreScriptURL: Support.core())
+        let base = try core.applyOps(project: blank(core), ops: ##"[{"op":"add_shape","dur":3,"shape":{"type":"rect","width":160,"height":90,"fill":{"color":"#ff0000"}}}]"##).project
+        for source in ["", "removed-layer"] {
+            for mode in ["alpha", "alphaInverted", "luma", "lumaInverted"] {
+                let project = try core.applyOps(project: base, ops: JSON(any: [["op": "matte", "id": "c1", "matte": ["mode": mode, "source": source]]]).text).project
+                let frame = try await renderer.render(project: project, at: 1)
+                XCTAssertEqual(pixel(frame.pixelBuffer, 80, 45), mode.hasSuffix("Inverted") ? [255, 0, 0, 255] : [0, 0, 0, 0], "\(mode), source: \(source)")
+            }
+        }
+    }
+
     private func records(_ frame: ReelRenderedFrame) throws -> [[String: Any]] { try JSON.parse(frame.drawGeometry.text) as! [[String: Any]] }
     private func first(_ frame: ReelRenderedFrame) throws -> [String: Any] { try XCTUnwrap(records(frame).first) }
     private func blank(_ core: ReelCore) throws -> String {

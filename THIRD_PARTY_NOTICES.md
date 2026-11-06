@@ -8,9 +8,9 @@ Arya includes the components listed below. Their license texts follow in full. A
 | --- | --- | --- | --- |
 | Preact | 10.29.8 | MIT | [preact on npm](https://www.npmjs.com/package/preact/v/10.29.8) |
 | htm | 3.1.1 | Apache-2.0 | [htm on npm](https://www.npmjs.com/package/htm/v/3.1.1) |
-| Mediabunny | 1.61.0 | MPL-2.0 | [mediabunny on npm](https://www.npmjs.com/package/mediabunny/v/1.61.0) |
+| Mediabunny | 1.62.1 | MPL-2.0 | [mediabunny on npm](https://www.npmjs.com/package/mediabunny/v/1.62.1) |
 
-Mediabunny's unmodified source for version 1.61.0 is in the `src/` directory of the [exact source package](https://registry.npmjs.org/mediabunny/-/mediabunny-1.61.0.tgz). Its package also contains the MPL-2.0 license. The shipped minified module is the bundle from that package. This source-access notice applies to Mediabunny, independently of the publication status of Arya's own repository. Distributions that modify Mediabunny must provide the corresponding modified source and keep its notices.
+Mediabunny's unmodified source for version 1.62.1 is in the `src/` directory of the [exact source package](https://registry.npmjs.org/mediabunny/-/mediabunny-1.62.1.tgz). Its package also contains the MPL-2.0 license. The shipped minified module is the bundle from that package. This source-access notice applies to Mediabunny, independently of the publication status of Arya's own repository. Distributions that modify Mediabunny must provide the corresponding modified source and keep its notices.
 
 ## Fonts
 

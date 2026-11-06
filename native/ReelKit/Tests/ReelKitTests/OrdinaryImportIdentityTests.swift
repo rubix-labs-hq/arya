@@ -58,6 +58,25 @@ final class OrdinaryImportIdentityTests: XCTestCase {
         XCTAssertThrowsError(try NativeMediaImportSource.selectedStamp(file))
         XCTAssertThrowsError(try NativeMediaImportSource.prepareSync(file, root: .init(ProjectFolder(root: project))))
     }
+    func testSelectedFileImportsWithoutPermissionToListItsParent() throws {
+        let project = try Support.tempFolder("import-file-access"), outside = try Support.tempFolder("import-search-only")
+        defer {
+            _ = chmod(outside.path, 0o700)
+            for dir in [project, outside] { try? FileManager.default.removeItem(at: dir) }
+        }
+        let selected = try source(outside), original = try Data(contentsOf: selected)
+        // NSOpenPanel grants the selected file, not permission to enumerate its parent.
+        // Search-only POSIX permissions exercise that same distinction without a UI grant.
+        XCTAssertEqual(chmod(outside.path, 0o100), 0)
+        let directory = Darwin.open(outside.path, O_RDONLY | O_DIRECTORY)
+        if directory >= 0 { close(directory); throw XCTSkip("This account bypasses directory read permissions.") }
+        XCTAssertEqual(try NativeMediaImportSource.selectedStamp(selected).bytes, Int64(original.count))
+        let snapshot = try NativeMediaImportSource.prepareSync(selected, root: .init(ProjectFolder(root: project)), destination: "media/source.png")
+        try snapshot.validate()
+        XCTAssertEqual(try Data(contentsOf: snapshot.file), original)
+        XCTAssertEqual(try Data(contentsOf: project.appendingPathComponent("media/source.png")), original)
+        XCTAssertEqual(try Data(contentsOf: selected), original)
+    }
     func testFolderSelectedFileSwitchedToFIFOIsRejected() throws {
         let project = try Support.tempFolder("import-selected-fifo"), outside = try Support.tempFolder("import-selected-fifo-source")
         defer { for dir in [project, outside] { try? FileManager.default.removeItem(at: dir) } }
