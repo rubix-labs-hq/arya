@@ -114,6 +114,10 @@
 		9E3155B7EF98373E5BDB2B74 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EEB2293AEC744DD34B53C686 /* Assets.xcassets */; };
 		668DE32E510CC564D019CE68 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EFA6F2CD53C9FAD69811D828 /* PrivacyInfo.xcprivacy */; };
 		E32F10B069858D5B6096380F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EFA6F2CD53C9FAD69811D828 /* PrivacyInfo.xcprivacy */; };
+		6D2F4973C879BD4CC50702D4 /* NativeMatteControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6B99006D32724E33DF69368 /* NativeMatteControls.swift */; };
+		DF3770D40FDE50B5A8F76F02 /* NativeMatteControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6B99006D32724E33DF69368 /* NativeMatteControls.swift */; };
+		282F9F378E8E74A94DB22560 /* NativeRenderQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E52DF2007E048799951524E /* NativeRenderQueue.swift */; };
+		59621F0A11BBE0D9E7880EB6 /* NativeRenderQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E52DF2007E048799951524E /* NativeRenderQueue.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -179,6 +183,8 @@
 		C557FE5D0F9518AF2F3B799D /* NativeBrand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBrand.swift; sourceTree = "<group>"; };
 		EEB2293AEC744DD34B53C686 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = App/Shared/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		EFA6F2CD53C9FAD69811D828 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		E6B99006D32724E33DF69368 /* NativeMatteControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMatteControls.swift; sourceTree = "<group>"; };
+		9E52DF2007E048799951524E /* NativeRenderQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRenderQueue.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -219,6 +225,8 @@
 				604DB5E2EB0036A00661F9D8 /* NativeControls.swift */,
 				01A3892D4E7CE691E5286F40 /* NativeCurveEditor.swift */,
 				33BF848D0474382FCDFAD344 /* NativeDeliverPanel.swift */,
+				9E52DF2007E048799951524E /* NativeRenderQueue.swift */,
+				E6B99006D32724E33DF69368 /* NativeMatteControls.swift */,
 				52DA328E67B996590DF9D16E /* NativeDrawingOverlay.swift */,
 				660E9B722A652821123EE80A /* NativeEditorModel.swift */,
 				BA860DCFEF3B78CA11206583 /* NativeEditorSmoke.swift */,
@@ -501,6 +509,8 @@
 				2558C25CF837EA20C790A6E7 /* NativeControls.swift in Sources */,
 				B0DDE199DDFCF410F3E0C024 /* NativeCurveEditor.swift in Sources */,
 				E7D36AD317A88E041B6D3606 /* NativeDeliverPanel.swift in Sources */,
+				282F9F378E8E74A94DB22560 /* NativeRenderQueue.swift in Sources */,
+				6D2F4973C879BD4CC50702D4 /* NativeMatteControls.swift in Sources */,
 				5AADC23BCAF5CFACD39FB487 /* NativeDrawingOverlay.swift in Sources */,
 				67CFD26225EB1F660DA603B0 /* NativeEditorModel.swift in Sources */,
 				29C1617404D6DA28366E0287 /* NativeEditorSmoke.swift in Sources */,
@@ -558,6 +568,8 @@
 				9A14A48498CE5ECD743E5298 /* NativeControls.swift in Sources */,
 				D4D380BEC91AD20A6D542ECF /* NativeCurveEditor.swift in Sources */,
 				07C22FF060BB9C31BCBCAC83 /* NativeDeliverPanel.swift in Sources */,
+				59621F0A11BBE0D9E7880EB6 /* NativeRenderQueue.swift in Sources */,
+				DF3770D40FDE50B5A8F76F02 /* NativeMatteControls.swift in Sources */,
 				688199E73DB55EE1BB46D93F /* NativeDrawingOverlay.swift in Sources */,
 				F3FF619B734CF342A84BA669 /* NativeEditorModel.swift in Sources */,
 				B2855A792FA434D4CE259422 /* NativeEditorSmoke.swift in Sources */,
@@ -693,7 +705,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.5;
+				MARKETING_VERSION = 1.0.6;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -776,7 +788,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.5;
+				MARKETING_VERSION = 1.0.6;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

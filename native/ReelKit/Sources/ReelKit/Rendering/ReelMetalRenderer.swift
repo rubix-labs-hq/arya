@@ -16,11 +16,12 @@ public final class ReelRenderedFrame: @unchecked Sendable {
     private static let readbackContext = CIContext(options: [.workingColorSpace: NSNull(), .outputColorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, .cacheIntermediates: false])
     public let pixelBuffer: CVPixelBuffer
     public let texture: MTLTexture
+    private let metalReference: CVMetalTexture
     public let editTransforms: JSON
     public let drawGeometry: JSON
     public var width: Int { texture.width }
     public var height: Int { texture.height }
-    init(pixelBuffer: CVPixelBuffer, texture: MTLTexture, editTransforms: JSON = .array([]), drawGeometry: JSON = .array([])) { self.pixelBuffer = pixelBuffer; self.texture = texture; self.editTransforms = editTransforms; self.drawGeometry = drawGeometry }
+    init(pixelBuffer: CVPixelBuffer, texture: MTLTexture, metalReference: CVMetalTexture, editTransforms: JSON = .array([]), drawGeometry: JSON = .array([])) { self.pixelBuffer = pixelBuffer; self.texture = texture; self.metalReference = metalReference; self.editTransforms = editTransforms; self.drawGeometry = drawGeometry }
     public func cgImage() throws -> CGImage {
         let image = CIImage(cvPixelBuffer: pixelBuffer)
         guard let result = Self.readbackContext.createCGImage(image, from: image.extent) else { throw ReelRenderingError("could not read the rendered GPU frame") }
@@ -46,8 +47,9 @@ public actor ReelMetalRenderer {
     var hdrDecoders: [String: NativeHDRDecoder] = [:]
     var hdrPipelines: [String: MTLComputePipelineState] = [:]
     var raster = NativeRasterizer()
+    private var outputBuffers: (width: Int, height: Int, format: OSType, pool: CVPixelBufferPool, cache: CVMetalTextureCache)?
 
-    public func releaseCaches() { imageCache.removeAll(); decoders.removeAll(); hdrDecoders.removeAll(); lutCache.removeAll(); identityLUT = nil; lutCacheGeneration += 1; CVMetalTextureCacheFlush(textureCache, 0) }
+    public func releaseCaches() { outputBuffers = nil; imageCache.removeAll(); decoders.removeAll(); hdrDecoders.removeAll(); lutCache.removeAll(); identityLUT = nil; lutCacheGeneration += 1; CVMetalTextureCacheFlush(textureCache, 0) }
 
     public init(folder: ProjectFolder, coreScriptURL: URL, fontURLs: [URL] = []) throws {
         self.folder = folder
@@ -86,12 +88,7 @@ public actor ReelMetalRenderer {
         guard let command = queue.makeCommandBuffer() else { throw ReelRenderingError("could not create a Metal command buffer") }
         let geometry = ReelDrawGeometryCollector()
         let rendered = try await composition(plan, width: w, height: h, geometry: geometry, command: command)
-        let attrs: [String: Any] = [kCVPixelBufferMetalCompatibilityKey as String: true, kCVPixelBufferIOSurfacePropertiesKey as String: [:]]
-        var buffer: CVPixelBuffer?
-        guard CVPixelBufferCreate(nil, w, h, NativeHDR.rendering ? kCVPixelFormatType_64RGBAHalf : kCVPixelFormatType_32BGRA, attrs as CFDictionary, &buffer) == kCVReturnSuccess, let buffer else { throw ReelRenderingError("could not allocate a rendered pixel buffer") }
-        if NativeHDR.rendering { NativeHDR.tag(buffer) }
-        var cvTexture: CVMetalTexture?
-        guard CVMetalTextureCacheCreateTextureFromImage(nil, textureCache, buffer, nil, NativeHDR.rendering ? .rgba16Float : .bgra8Unorm, w, h, 0, &cvTexture) == kCVReturnSuccess, let cvTexture, let output = CVMetalTextureGetTexture(cvTexture) else { throw ReelRenderingError("could not share the output buffer with Metal") }
+        let (buffer, cvTexture, output) = try outputFrame(width: w, height: h)
         try pass("blend", textures: [rendered, rendered], target: output, uniforms: ["uMode": [0], "uMix": [0]], command: command)
         try Task.checkCancellation()
         try validateLUTSnapshot(snapshot)
@@ -107,7 +104,38 @@ public actor ReelMetalRenderer {
                 return JSON(any: ["id": id, "pose": pose])
             }
         }
-        return ReelRenderedFrame(pixelBuffer: buffer, texture: output, editTransforms: .array(transforms), drawGeometry: .array(geometry.records))
+        return ReelRenderedFrame(pixelBuffer: buffer, texture: output, metalReference: cvTexture, editTransforms: .array(transforms), drawGeometry: .array(geometry.records))
+    }
+
+    private func outputFrame(width: Int, height: Int) throws -> (CVPixelBuffer, CVMetalTexture, MTLTexture) {
+        let format = NativeHDR.rendering ? kCVPixelFormatType_64RGBAHalf : kCVPixelFormatType_32BGRA
+        if outputBuffers?.width != width || outputBuffers?.height != height || outputBuffers?.format != format {
+            let attrs: [String: Any] = [kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height,
+                kCVPixelBufferPixelFormatTypeKey as String: format, kCVPixelBufferMetalCompatibilityKey as String: true,
+                kCVPixelBufferIOSurfacePropertiesKey as String: [:]]
+            var pool: CVPixelBufferPool?, cache: CVMetalTextureCache?
+            guard CVPixelBufferPoolCreate(nil, nil, attrs as CFDictionary, &pool) == kCVReturnSuccess, let pool,
+                  CVMetalTextureCacheCreate(nil, nil, device, nil, &cache) == kCVReturnSuccess, let cache else {
+                throw ReelRenderingError("could not create rendered frame buffers")
+            }
+            // Reuse IOSurfaces across frames. A new standalone pixel buffer each time
+            // leaves a new Metal backing in Core Video's cache even after a flush.
+            // Replace the pool and its cache together when output geometry changes.
+            outputBuffers = (width, height, format, pool, cache)
+        }
+        guard let buffers = outputBuffers else { throw ReelRenderingError("rendered frame buffers are unavailable") }
+        var buffer: CVPixelBuffer?
+        guard CVPixelBufferPoolCreatePixelBuffer(nil, buffers.pool, &buffer) == kCVReturnSuccess, let buffer else {
+            throw ReelRenderingError("could not allocate a rendered pixel buffer")
+        }
+        if NativeHDR.rendering { NativeHDR.tag(buffer) }
+        var reference: CVMetalTexture?
+        guard CVMetalTextureCacheCreateTextureFromImage(nil, buffers.cache, buffer, nil,
+            NativeHDR.rendering ? .rgba16Float : .bgra8Unorm, width, height, 0, &reference) == kCVReturnSuccess,
+            let reference, let texture = CVMetalTextureGetTexture(reference) else {
+            throw ReelRenderingError("could not share the output buffer with Metal")
+        }
+        return (buffer, reference, texture)
     }
 
     public func renderPreview(project: String, operations: String, at: Double, comp: String? = nil, width: Int? = nil) async throws -> ReelRenderedFrame {
@@ -221,7 +249,14 @@ public actor ReelMetalRenderer {
                 try pass("transition", textures: [a, b], target: target, uniforms: ["uP": [Float(layer.number("progress"))], "uType": [Float(renderTransitions[layer.string("transition")] ?? 0)], "uAspect": [Float(width) / Float(height)]], command: command)
                 top = target; blend = "normal"
             } else {
-                let matte = try await mattes[c.string("id")].asyncMap { try await self.clip($0, view: plan, width: width, height: height, command: command) }
+                let matte: MTLTexture?
+                if let source = mattes[c.string("id")] {
+                    matte = try await clip(source, view: plan, width: width, height: height, command: command)
+                } else if !c.object("matte").isEmpty {
+                    // A missing or inactive source still supplies a transparent matte.
+                    // Passing nil would disable masking and reveal the entire layer.
+                    matte = try clear(width, height, color: [0, 0, 0, 0])
+                } else { matte = nil }
                 top = try await clip(c, view: plan, width: width, height: height, matte: matte, geometry: geometry, command: command)
             }
             let target = try texture(width, height)

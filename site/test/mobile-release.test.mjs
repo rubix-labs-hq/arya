@@ -133,7 +133,7 @@ test('pending mobile release renders plain review status and provides no active 
 
   // Mac release config and links remain intact
   assert.ok(download.includes('Download Arya for Mac'));
-  assert.ok(download.includes('Version 1.0.5'));
+  assert.ok(download.includes(`Version ${shipped.release.version}`));
 });
 
 test('validated live mobile release enables the conditional App Store CTA and updates /project/', async () => {

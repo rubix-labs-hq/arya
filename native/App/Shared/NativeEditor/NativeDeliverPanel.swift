@@ -132,6 +132,7 @@ struct NativeDeliverPanel: View {
     @State private var starting = false
     @State private var importSheet: NativeInterchangeSheetDestination?
     @State private var interchange = "otio"
+    @State private var edlTrack = ""
     @State private var lastFile: URL?
     @State private var outputOverrides = false
     @State private var outputWidth = 1920.0
@@ -205,28 +206,25 @@ struct NativeDeliverPanel: View {
                     Button("Discard queued export", role: .destructive) { mobileExport.discard() }.disabled(!mobileExport.canResume)
                 }
                 #endif
+                NativeRenderQueue(model: model)
                 NativeDeliveryHistoryView(model: model, session: session)
-                ForEach(Array(model.jobs.enumerated()), id: \.offset) { _, job in
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(job.string("output", job.dictionary("spec").string("out", job.string("id")))).font(.caption).lineLimit(1)
-                        Text(job.string("state")).font(.caption2).foregroundStyle(.secondary)
-                        if ["queued", "running", "rendering"].contains(job.string("state")) {
-                            ProgressView(value: min(1, max(0, job.number("progress"))))
-                            Button("Cancel") { model.perform { _ = try await model.call("/api/jobs/cancel", ["id": job.string("id")]) } }
-                        }
-                        if !job.string("deliveryWarning").isEmpty { Text(job.string("deliveryWarning")).font(.caption).foregroundStyle(.orange) }
-                        if !job.string("error").isEmpty { Text(job.string("error")).font(.caption).foregroundStyle(.red) }
-                    }.padding(8).background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-                }
                 if let lastFile { ShareLink(item: lastFile) { Label("Share saved file", systemImage: "square.and.arrow.up") } }
                 Divider()
                 Text("Timeline and subtitles").font(.subheadline)
                 Button { importSheet = NativeInterchangeSheetDestination() } label: { Label("Import timeline or subtitles", systemImage: "square.and.arrow.down") }
                     .buttonStyle(NativeToolbarButtonStyle()).disabled(model.project == nil || model.busy)
-                Picker("Format", selection: $interchange) { Text("OpenTimelineIO").tag("otio"); Text("Final Cut Pro XML").tag("fcpxml"); Text("SubRip subtitles").tag("srt"); Text("WebVTT subtitles").tag("vtt") }
+                Picker("Format", selection: $interchange) { Text("OpenTimelineIO").tag("otio"); Text("Final Cut Pro XML").tag("fcpxml"); Text("CMX 3600 EDL").tag("edl"); Text("SubRip subtitles").tag("srt"); Text("WebVTT subtitles").tag("vtt") }
+                if interchange == "edl" {
+                    Picker("Video track", selection: $edlTrack) {
+                        Text("Bottom video track").tag("")
+                        ForEach(model.tracks.filter { $0.kind == "video" }) { Text($0.name).tag($0.id) }
+                    }
+                    Text("EDL describes one video track. Titles, shapes and nested compositions are omitted; transitions become cuts. Export each track separately.").font(.caption).foregroundStyle(.secondary)
+                }
                 Button("Export timeline or subtitles") {
                     model.perform {
                         var body: [String: Any] = ["format": interchange, "name": name]
+                        if interchange == "edl", !edlTrack.isEmpty { body["track"] = edlTrack }
                         if let comp = model.composition { body["comp"] = comp }
                         let result = try await model.call("/api/interchange/export", body)
                         lastFile = try model.mediaURL(result.string("path", result.string("file")))
@@ -240,8 +238,9 @@ struct NativeDeliverPanel: View {
         .onChange(of: presets) { _, values in if !values.contains(preset) { preset = values.first ?? "h264" } }
         .onChange(of: preset) { _, _ in if !hdrAvailable { transfer = "sdr" } }
         .onChange(of: hdrAvailable) { _, available in if !available { transfer = "sdr" } }
-        .onChange(of: session.sessionID) { _, _ in lastFile = nil }
-        .onChange(of: model.composition) { _, _ in exportScope = "whole"; outputOverrides = false }
+        .onChange(of: session.sessionID) { _, _ in lastFile = nil; starting = false; edlTrack = "" }
+        .onChange(of: model.composition) { _, _ in exportScope = "whole"; outputOverrides = false; edlTrack = "" }
+        .onChange(of: model.tracks.map(\.id)) { _, tracks in if !tracks.contains(edlTrack) { edlTrack = "" } }
         .onChange(of: activeRange?.upperBound) { _, _ in if activeRange == nil { exportScope = "whole" } }
     }
 
@@ -252,13 +251,19 @@ struct NativeDeliverPanel: View {
         if let comp = model.composition { body["comp"] = comp }
         if exportScope == "range", let range = activeRange { body["from"] = range.lowerBound; body["to"] = range.upperBound }
         let request = body
+        let backend = session.backend, version = model.version, composition = model.composition
         starting = true
         model.perform {
             defer { starting = false }
+            guard session.backend === backend, version == model.version, composition == model.composition else {
+                throw ReelBackend.APIError("The project changed. Review the export settings and try again.")
+            }
             #if os(iOS)
             _ = try await mobileExport.start(session: session, body: request)
             #else
-            let job = try await model.call("/api/export", request)
+            var capturedRequest = request
+            capturedRequest["expectedVersion"] = version
+            let job = try await model.call("/api/export", capturedRequest)
             model.registerExportFeedback(job)
             #endif
             model.status = "Export started"

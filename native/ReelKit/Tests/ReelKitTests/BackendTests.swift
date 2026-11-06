@@ -62,6 +62,30 @@ final class BackendTests: XCTestCase {
         XCTAssertEqual(state["bridgeAlive"] as? Bool, false)
     }
 
+    func testEDLExportUsesSharedTrackAndCompositionSemanticsAndRefusesOverwrite() async throws {
+        _ = try await call("POST", "/api/new", #"{"name":"EDL Cut","fps":25}"#)
+        _ = try await call("POST", "/api/import", #"{"paths":["media/clip.mp4"]}"#)
+        _ = try await call("POST", "/api/ops", #"{"ops":[{"op":"append","src":"media/clip.mp4","track":"V1","dur":1},{"op":"add_title","track":"V1","start":1,"dur":1,"text":"Omitted"},{"op":"add_comp","name":"Nested","duration":2},{"op":"append","comp":"k1","src":"media/clip.mp4","track":"V1","dur":1}]}"#)
+        let before = try Data(contentsOf: root.appendingPathComponent("reel.project.json"))
+        let result = try await call("POST", "/api/interchange/export", #"{"format":"edl","track":"V1"}"#)
+        let output = root.appendingPathComponent(try XCTUnwrap(result["path"] as? String))
+        let text = try String(contentsOf: output, encoding: .utf8)
+        XCTAssertTrue(text.contains("TITLE: EDL Cut"))
+        XCTAssertTrue(text.contains("FCM: NON-DROP FRAME"))
+        XCTAssertTrue(text.contains("* FROM CLIP NAME: clip.mp4"))
+        XCTAssertTrue((result["warnings"] as? [String] ?? []).contains { $0.contains("title") })
+        let nested = try await call("POST", "/api/interchange/export", #"{"format":"edl","comp":"k1","track":"V1"}"#)
+        let nestedText = try String(contentsOf: root.appendingPathComponent(try XCTUnwrap(nested["path"] as? String)), encoding: .utf8)
+        XCTAssertTrue(nestedText.contains("TITLE: Nested"))
+        XCTAssertFalse(nestedText.contains("Omitted"))
+        for body in [#"{"format":"edl","track":"missing","name":"bad"}"#, #"{"format":"edl","comp":"missing","name":"bad"}"#, #"{"format":"edl","track":"V1"}"#] {
+            do { _ = try await call("POST", "/api/interchange/export", body); XCTFail("Accepted invalid target or overwrite") }
+            catch { XCTAssertFalse(error.localizedDescription.isEmpty) }
+        }
+        XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), text)
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("reel.project.json")), before)
+    }
+
     func testNewImportEditUndoRedo() async throws {
         let created = try await call("POST", "/api/new", "{\"name\":\"Film\",\"width\":1280,\"height\":720,\"fps\":25}")
         XCTAssertEqual(object(created["project"])["name"] as? String, "Film")

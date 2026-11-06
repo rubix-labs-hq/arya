@@ -266,6 +266,7 @@ enum NativeInspectorNavigation {
         if kind == "caption" { sections.append(Section(title: "Caption", anchor: "inspector.caption")) }
         if kind != "audio" && kind != "caption" {
             sections.append(Section(title: "Transform", anchor: "inspector.transform"))
+            if !["null", "adjustment"].contains(kind) { sections.append(Section(title: "Track matte", anchor: "inspector.matte")) }
             if kind == "title" { sections.append(Section(title: "Text", anchor: "inspector.text")) }
             if kind == "shape" { sections.append(Section(title: "Shape", anchor: "inspector.shape")) }
             sections.append(Section(title: "Effects and transition", anchor: "inspector.effects"))
@@ -663,6 +664,7 @@ struct NativeInspector: View {
                         if clip.kind == "caption" { caption(clip).macInspectorAnchor("inspector.caption") }
                         if clip.kind != "audio" && clip.kind != "caption" {
                             transform(clip).macInspectorAnchor("inspector.transform")
+                            if !["null", "adjustment"].contains(clip.kind) { NativeMatteControls(model: model, clip: clip).macInspectorAnchor("inspector.matte") }
                             if clip.kind == "title" { title(clip).macInspectorAnchor("inspector.text") }
                             if clip.kind == "shape" { shape(clip).macInspectorAnchor("inspector.shape") }
                             effects(clip).macInspectorAnchor("inspector.effects")

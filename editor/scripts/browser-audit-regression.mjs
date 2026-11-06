@@ -46,7 +46,7 @@ const contextRoute=async route=>{
 await context.route('**/*',contextRoute)
 context.setDefaultTimeout(5000)
 const results=[]
-const check=async(name,run)=>{try{results.push({name,pass:true,evidence:await run()})}catch(error){results.push({name,pass:false,error:error.message,latestOperations:operations.slice(-3),projectRange:project.range})}}
+const check=async(name,run)=>{try{results.push({name,pass:true,evidence:await run()})}catch(error){results.push({name,pass:false,error:error.stack,latestOperations:operations.slice(-3),projectRange:project.range})}}
 const ready=async page=>{await page.goto('http://arya-full-editor.test/');await page.waitForFunction(()=>window.ready,null,{timeout:10000});await page.waitForTimeout(250)}
 try{
   const fine=await context.newPage();await fine.setViewportSize({width:1512,height:945});await ready(fine)
@@ -60,7 +60,20 @@ try{
     console.log('B5 action: Forward one frame');await fine.getByRole('button',{name:'Forward one frame',exact:true}).click();await fine.waitForFunction(()=>Math.abs(window.fixture.time.t-1/30)<1e-6)
     console.log('B5 action: Go to end');await fine.getByRole('button',{name:'Go to end',exact:true}).click();await fine.waitForFunction(()=>window.fixture.time.t===4)
     console.log('B5 action: Previous edit');await fine.getByRole('button',{name:'Previous edit',exact:true}).click();await fine.waitForFunction(()=>window.fixture.time.t===0)
-    console.log('B5 action: precise timecode');await fine.locator('.transport .tc').click();await fine.locator('.tc-input').fill('00:00:02:13');await fine.locator('.tc-input').press('Enter');await fine.waitForFunction(()=>Math.abs(window.fixture.time.t-(2+13/30))<1e-6)
+    console.log('B5 action: precise timecode');await fine.locator('.transport .tc').click()
+    const timecodeInput=fine.getByRole('textbox',{name:'Playhead timecode',exact:true})
+    await timecodeInput.fill('00:00:02:13')
+    await fine.evaluate(()=>{window.fixture.setTime(1);window.fixture.set({connected:true})})
+    assert.equal(await timecodeInput.inputValue(),'00:00:02:13','Playhead and store updates must preserve the typed draft')
+    await timecodeInput.press('Enter');await fine.waitForFunction(()=>Math.abs(window.fixture.time.t-(2+13/30))<1e-6)
+    for(const invalid of ['bad','','00::02:13','00:00:00:00:01','9'.repeat(400)]){
+      await fine.locator('.transport .tc').click();await timecodeInput.fill(invalid);await timecodeInput.press('Enter')
+      assert.equal(await timecodeInput.evaluate(el=>el.validity.valid),false)
+      assert.ok(Math.abs(await fine.evaluate(()=>window.fixture.time.t)-(2+13/30))<1e-6,'Invalid input must not move or poison the playhead')
+      await timecodeInput.press('Escape');await fine.locator('.transport .tc').waitFor()
+    }
+    await fine.locator('.transport .tc').click();await timecodeInput.fill('00:00:01:00');await timecodeInput.press('Escape')
+    assert.ok(Math.abs(await fine.evaluate(()=>window.fixture.time.t)-(2+13/30))<1e-6,'Escape cancels the draft')
     await fine.waitForFunction(()=>document.querySelector('.transport .tc')?.textContent==='00:00:02:13');console.log('B5 action: Mark in');await fine.getByRole('button',{name:'Mark in',exact:true}).click();await fine.waitForFunction(expected=>window.fixture.store.project.range?.in===expected,snapToFrame(2+13/30,initial.fps))
     await fine.evaluate(()=>window.fixture.setTime(3));await fine.waitForFunction(()=>document.querySelector('.transport .tc')?.textContent==='00:00:03:00');console.log('B5 action: Mark out');await fine.getByRole('button',{name:'Mark out',exact:true}).click();await fine.waitForFunction(()=>window.fixture.store.project.range?.out===3)
     console.log('B5 action: Clear range');await fine.getByRole('button',{name:'Clear range',exact:true}).click();await fine.waitForFunction(()=>!window.fixture.store.project.range)
@@ -93,12 +106,12 @@ try{
     for(const row of m.rows){assert.ok(row.height>=70);const header=m.headers.find(h=>h.id===row.id);assert.equal(header.height,row.height+2);for(const b of header.buttons){assert.ok(b.width>=44&&b.height>=44,JSON.stringify(b));assert.ok(b.top>=header.nameBottom&&b.bottom<=b.rowBottom,JSON.stringify(b));assert.ok(b.label);assert.equal(b.pressed,'false')}}
     for(const [id,label,key] of [['V3','Hide','hidden'],['V3','Mute','muted'],['V3','Lock','locked'],['A1','Solo','solo'],['A1','Mute','muted'],['A1','Lock','locked']]){
       const b=touch.getByRole('button',{name:label+' '+id,exact:true});await b.scrollIntoViewIfNeeded();const before=operations.length;await b.click();await touch.waitForFunction(({id,key})=>window.fixture.store.project.tracks.find(t=>t.id===id)[key]===true,{id,key});assert.equal(await b.getAttribute('aria-pressed'),'true');assert.equal(operations.length,before+1)
-      assert.deepEqual(operations.at(-1),[{op:'update_track',id,set:{[key]:true}}]);await touch.getByRole('button',{name:'Undo',exact:true}).click();await touch.waitForFunction(({id,key})=>!window.fixture.store.project.tracks.find(t=>t.id===id)[key],{id,key});assert.equal(await b.getAttribute('aria-pressed'),'false')
+      assert.deepEqual(operations.at(-1),[{op:'update_track',id,set:{[key]:true}}]);await touch.getByRole('button',{name:'Editor actions',exact:true}).click();await touch.getByRole('button',{name:'Undo',exact:true}).click();await touch.getByRole('button',{name:'Close actions',exact:true}).click();await touch.waitForFunction(({id,key})=>!window.fixture.store.project.tracks.find(t=>t.id===id)[key],{id,key});assert.equal(await b.getAttribute('aria-pressed'),'false')
     }
     await touch.locator('.th-scroll').evaluate(el=>{el.scrollTop=0;el.dispatchEvent(new Event('scroll'))});await touch.waitForTimeout(100)
     const row=m.rows.find(r=>r.id==='V3');await touch.locator('.tl-canvas canvas').click({position:{x:24,y:row.y+row.height/2}});await touch.waitForFunction(()=>window.fixture.store.selection.includes('c1'))
-    assert.deepEqual(await touch.evaluate(()=>window.fixture.store.trackHeight),{V3:30,A1:30});assert.equal(await touch.locator('.topbar .proj').isVisible(),false)
-    await touch.screenshot({path:path.join(out,'phone-track-touch-controls.png')});return {...m,toggles:6,undoRestores:6,canvasSelection:'c1',finePreferencesRetained:true,phoneHeaderMetadataHidden:true}
+    assert.deepEqual(await touch.evaluate(()=>window.fixture.store.trackHeight),{V3:30,A1:30});assert.equal(await touch.locator('.topbar .proj').isVisible(),true);assert.equal(await touch.locator('.topbar .proj-format').isVisible(),false)
+    await touch.screenshot({path:path.join(out,'phone-track-touch-controls.png')});return {...m,toggles:6,undoRestores:6,canvasSelection:'c1',finePreferencesRetained:true,phoneProjectNameVisible:true,phoneFormatHidden:true}
   })
   await touchContext.close();assert.deepEqual(failures,[]);assert.deepEqual(missing,[])
   await fs.writeFile(path.join(out,'result.json'),JSON.stringify({sourceRoot:root,plugins:plugins.length,checks:results,pageErrors:failures,missingResources:missing,operationCount:operations.length,requests},null,2)+'\n')

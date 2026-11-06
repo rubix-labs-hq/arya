@@ -30,7 +30,7 @@ final class NativeMediaImportDiagnosticsTests: XCTestCase {
             let error = error as NSError
             XCTAssertEqual(error.domain, NSPOSIXErrorDomain)
             XCTAssertEqual(error.code, Int(ENOENT))
-            XCTAssertTrue(error.localizedDescription.contains("Opening import directory"))
+            XCTAssertTrue(error.localizedDescription.contains("Reading selected media folder identity"))
         }
     }
 }

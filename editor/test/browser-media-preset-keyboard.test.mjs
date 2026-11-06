@@ -120,7 +120,7 @@ test('upload rejection uses the existing handled error path and preserves the pr
   const f = fixture({ uploadError: true })
   assert.equal(await f.input.props.onChange({ target: { files: [{ name: 'bad.mov' }], value: 'bad.mov' } }), null)
   assert.deepEqual(f.imports, []); assert.deepEqual(f.store.project, f.before)
-  assert.deepEqual(f.notices.at(-1), { message: 'Import failed: Owned upload failed', kind: 'error' })
+  assert.deepEqual(f.notices.at(-1), { message: 'Import failed: bad.mov: Owned upload failed', kind: 'error' })
 })
 
 const expectedOps = (f, kind) => ({
