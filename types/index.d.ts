@@ -1,4 +1,4 @@
-// Type contract for the Reel mod: what its launcher pane draws from.
+// Type contract for the Arya plugin: what its launcher pane draws from.
 
 export type ReelServer = {
   port: number

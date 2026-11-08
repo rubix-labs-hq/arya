@@ -1,4 +1,4 @@
-// Reel media server: serves the editor, owns the project file, generates media
+// Arya media server: serves the editor, owns the project file, generates media
 // derivatives with ffmpeg, runs render jobs, and hosts separate assistant CLI runs.
 //
 // node server.mjs --root <project folder> [--port 4870]

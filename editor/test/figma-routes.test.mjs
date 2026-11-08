@@ -1,5 +1,5 @@
 // node --test editor/test
-// Runs the Reel server (editor/server.mjs) against a local fake Figma API, end to end:
+// Runs the Arya server (editor/server.mjs) against a local fake Figma API, end to end:
 // personal-token and OAuth (PKCE) sign-in, token storage, frame listing with thumbnails,
 // import as a composition, Smart Animate, and the Figma MCP import path.
 //
@@ -219,7 +219,7 @@ const fakeServer = http.createServer(async (req, res) => {
   json(res, 404, { status: 404, err: 'Not found' })
 })
 
-// ---------------------------------------------------------------- the Reel server
+// ---------------------------------------------------------------- the Arya server
 
 let child
 let logs = ''
