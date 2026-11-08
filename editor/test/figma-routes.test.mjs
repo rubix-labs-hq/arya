@@ -255,7 +255,7 @@ before(async () => {
   child.stderr.on('data', d => (logs += d))
   const until = Date.now() + 15000
   while (!logs.includes('Arya editor at')) {
-    if (Date.now() > until || child.exitCode !== null) throw new Error(`the Reel server did not start:\n${logs}`)
+    if (Date.now() > until || child.exitCode !== null) throw new Error(`the Arya server did not start:\n${logs}`)
     await new Promise(r => setTimeout(r, 50))
   }
   assert.match(logs, /routes: figma\.mjs/)

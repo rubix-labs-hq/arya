@@ -9,7 +9,7 @@ export function nativeFigmaAssets(nodes, options = {}) {
 
 /** Builds one atomic import, including downloaded asset metadata and timeline placement. */
 export function nativeFigmaImport(project, nodes, body = {}) {
-  if (!project || typeof project !== 'object') throw new Error('Open a Reel project first')
+  if (!project || typeof project !== 'object') throw new Error('Open an Arya project first')
   const smart = body.mode === 'smartAnimate'
   const images = body.images ?? {}
   const from = body.mcp ? mcpToNodes(nodes, images, { coords: body.coords }) : nodes

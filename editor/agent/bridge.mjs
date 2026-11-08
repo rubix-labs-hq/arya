@@ -106,7 +106,7 @@ export async function startBridge(options = {}) {
           if (!run.terminal) {
             try { output.finish() } catch (error) { output.discard(); stop(run, error.message) }
             const known = code !== 0 && adapter.exitMessage?.(code, stderr)
-            if (!run.terminal) event(run, code === 0 ? { type: 'done' } : { type: 'error', message: known || `Agent exited with status ${code}. ${stderr.slice(-2000) || 'Check the CLI sign-in and permitted Reel MCP tools in Terminal.'}` })
+            if (!run.terminal) event(run, code === 0 ? { type: 'done' } : { type: 'error', message: known || `Agent exited with status ${code}. ${stderr.slice(-2000) || 'Check the CLI sign-in and permitted Arya MCP tools in Terminal.'}` })
           }
           output.discard()
           resolve()
@@ -193,7 +193,7 @@ export async function startBridge(options = {}) {
       if (request.method === 'POST' && match[2] === 'cancel') { await readBody(request, 1024); stop(run); return reply(200, { id: match[1], cancelled: true }) }
       if (request.method === 'POST' && match[2] === 'calls' && !match[3]) {
         if (run.terminal) throw failure('Run has finished', 410)
-        if (run.calls.size >= 128 || [...run.calls.values()].filter(call => !call.resultHash).length >= 8) throw failure('Reel tool-call limit reached', 429)
+        if (run.calls.size >= 128 || [...run.calls.values()].filter(call => !call.resultHash).length >= 8) throw failure('Arya tool-call limit reached', 429)
         const body = await readBody(request, 512 * 1024)
         const call = body.frame ? validateCall('reel_frame', body.frame) : validateCall('reel_api', body)
         if (run.terminal) throw failure('Run has finished', 410)
@@ -205,7 +205,7 @@ export async function startBridge(options = {}) {
         if (run.terminal) throw failure('Run has finished', 410)
         const call = run.calls.get(match[3]); if (!call) throw failure('Tool call not found', 404)
         if (call.evicted) return reply(410, { error: 'This tool result was already delivered or its run has finished' })
-        if (!call.result && (run.terminal || Date.now() - call.created > 120000)) return reply(200, { error: run.terminal ? 'Run has finished' : 'Reel tool exceeded two minutes' })
+        if (!call.result && (run.terminal || Date.now() - call.created > 120000)) return reply(200, { error: run.terminal ? 'Run has finished' : 'Arya tool exceeded two minutes' })
         call.delivered = !!call.result
         return reply(200, call.result ?? { pending: true })
       }

@@ -1,4 +1,4 @@
-// Figma for Reel: per-user Figma sign-in and frame import.
+// Figma for Arya: per-user Figma sign-in and frame import.
 //
 // Each person connects their own Figma account, either through OAuth 2.0 with PKCE (when the
 // app owner configured an OAuth app) or by pasting a personal access token. Both land in
@@ -252,7 +252,7 @@ export default function figmaRoutes(ctx) {
     const buf = await fetchBytes(source)
     if (buf.length > MAX_IMAGE_BYTES) throw new Error('an image from Figma is larger than 100 MB')
     const ext = sniff(buf)
-    if (ext === 'svg') throw new Error(`"${base}" is an SVG; Reel needs PNG or JPEG (ask Figma for format=png)`)
+    if (ext === 'svg') throw new Error(`"${base}" is an SVG; Arya needs PNG or JPEG (ask Figma for format=png)`)
     if (!ext) throw new Error(`"${base}" is not a PNG, JPEG, GIF or WebP image`)
     ctx.assertCurrent?.()
     const dir = guardedOutput(ctx.ROOT, path.join(ctx.ROOT, 'media', 'figma', key))
@@ -357,7 +357,7 @@ export default function figmaRoutes(ctx) {
   }
 
   function needProject() {
-    if (!ctx.getProject()) throw new Error('Open or create a Reel project first')
+    if (!ctx.getProject()) throw new Error('Open or create an Arya project first')
   }
 
   function refOf(body) {
@@ -417,11 +417,11 @@ export default function figmaRoutes(ctx) {
 
   async function finishOAuth(url) {
     const error = url.searchParams.get('error')
-    if (error) return { ok: false, title: 'Figma did not connect', text: `Figma said: ${error}. Start again from Reel's Figma tab.` }
+    if (error) return { ok: false, title: 'Figma did not connect', text: `Figma said: ${error}. Start again from Arya's Figma tab.` }
     const state = url.searchParams.get('state') ?? ''
     const code = url.searchParams.get('code') ?? ''
     const flow = pending.get(state)
-    if (!flow || !code) return { ok: false, title: 'This sign-in link is not valid', text: 'It expired or was already used. Start again from Reel\'s Figma tab.' }
+    if (!flow || !code) return { ok: false, title: 'This sign-in link is not valid', text: 'It expired or was already used. Start again from Arya\'s Figma tab.' }
     pending.delete(state)
     const app = appConfig()
     if (!app) return { ok: false, title: 'Figma is not configured', text: 'The Figma app settings are missing.' }
@@ -440,7 +440,7 @@ export default function figmaRoutes(ctx) {
       ctx.pushActivity('reel', `Figma connected as ${me.handle}`)
       ctx.broadcast('figma', { connected: true, handle: me.handle, method: 'oauth' })
 
-      return { ok: true, title: 'Figma connected', text: `Signed in as ${me.handle}. You can close this tab and go back to Reel.` }
+      return { ok: true, title: 'Figma connected', text: `Signed in as ${me.handle}. You can close this tab and go back to Arya.` }
     } catch (err) {
       ctx.log(`figma: sign-in failed: ${err.message}`)
 

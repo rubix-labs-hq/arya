@@ -1478,7 +1478,7 @@ const routeCtx = {
   checkAgentFile: file => { if (assistantCalls.getStore()) { assertAssistantPublication(); confinedFile(ROOT, file) } },
   callAPI: (method, route, body = {}) => {
     const handler = routes[`${method} ${route}`]
-    if (!handler) throw new Error('Unknown internal Reel route')
+    if (!handler) throw new Error('Unknown internal Arya route')
     return handler(body, new URLSearchParams(), { headers: {} })
   },
   commit: (next, who, lines) => commit(next, who, lines),

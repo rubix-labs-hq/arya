@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fake Gemini CLI 0.64 for adapter tests. It reads the per-run workspace settings, starts
-// the configured Reel MCP server, and prints stream-json records like the real CLI.
+// the configured Arya MCP server, and prints stream-json records like the real CLI.
 import fs from 'node:fs'
 import { spawn } from 'node:child_process'
 
