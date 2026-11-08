@@ -64,7 +64,7 @@ export default ctx => {
         port = JSON.parse(fs.readFileSync(path.join(ctx.DOT, 'server.json'), 'utf8')).port
       } catch {}
     }
-    if (!port) return Promise.reject(new Error('cannot find the Reel server port'))
+    if (!port) return Promise.reject(new Error('cannot find the Arya server port'))
 
     return new Promise((resolve, reject) => {
       const data = JSON.stringify(body)

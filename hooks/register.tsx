@@ -1,6 +1,7 @@
-// Reel: a video editor you can direct. This mod runs the Reel editor (a local web app
+// Arya: a video editor you can direct. This plugin runs the Arya editor (a local web app
 // with a GPU compositor, timeline, color, audio and delivery pages), gives Claude tools
-// that edit the same project live. Editor chat starts a separate CLI run.
+// that edit the same project live. Editor chat starts a separate CLI run. Compatibility
+// identifiers such as /reel, mcp__reel__* and the reel plugin key stay until a migration.
 
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
@@ -23,13 +24,13 @@ const TOOLS = [
   {
     name: 'reel_get',
     description:
-      "Reel video editor: read the timeline the user is editing. Returns an outline (tracks, clip ids, times, sources, effects), the editor's playhead and selection, the full op reference for reel_edit, and the project JSON. Call this first.",
+      "Arya video editor: read the timeline the user is editing. Returns an outline (tracks, clip ids, times, sources, effects), the editor's playhead and selection, the full op reference for reel_edit, and the project JSON. Call this first.",
     inputSchema: { type: 'object', properties: { json: { type: 'boolean', description: 'Include the full project JSON (default true)' } } },
   },
   {
     name: 'reel_edit',
     description:
-      'Reel video editor: apply editing operations to the timeline, all or nothing; the user sees them land live in the editor and can undo them. Ops include append/insert/overwrite/connect, blade, trim (ripple), roll, slip, slide, move, lift/ripple_delete/delete_range, speed, freeze, transition, effect, keyframe (with easing), update (transform, crop, blend, opacity, volume, pan, eq, fades, grade with lift/gamma/gain/offset/curves/LUT/looks, chroma key), add_title, add_color, adjustment, markers, tracks, range, project. Linked video and audio move together: trim, roll or slide a linked clip once, not once per partner; a second call for the partner moves the pair twice (unlinked:true edits one side). The exact op shapes are in reel_get output.',
+      'Arya video editor: apply editing operations to the timeline, all or nothing; the user sees them land live in the editor and can undo them. Ops include append/insert/overwrite/connect, blade, trim (ripple), roll, slip, slide, move, lift/ripple_delete/delete_range, speed, freeze, transition, effect, keyframe (with easing), update (transform, crop, blend, opacity, volume, pan, eq, fades, grade with lift/gamma/gain/offset/curves/LUT/looks, chroma key), add_title, add_color, adjustment, markers, tracks, range, project. Linked video and audio move together: trim, roll or slide a linked clip once, not once per partner; a second call for the partner moves the pair twice (unlinked:true edits one side). The exact op shapes are in reel_get output.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -41,27 +42,27 @@ const TOOLS = [
   },
   {
     name: 'reel_frame',
-    description: 'Reel video editor: render the composited frame at a timeline time to a PNG (same renderer as export) and return its path. Read the PNG to see the frame. Pass comp to render one composition on its own (time is then composition time).',
+    description: 'Arya video editor: render the composited frame at a timeline time to a PNG (same renderer as export) and return its path. Read the PNG to see the frame. Pass comp to render one composition on its own (time is then composition time).',
     inputSchema: { type: 'object', properties: { at: { type: 'number', description: "Timeline seconds; default the editor's playhead" }, width: { type: 'number', description: 'Pixel width, default 1280' }, comp: { type: 'string', description: 'A composition id (k1, …) to render instead of the main timeline' } } },
   },
   {
     name: 'reel_import',
-    description: 'Reel video editor: add media to the project (files or whole folders, relative to the project folder); returns duration, size, fps, codec and audio for each. With list=true, only lists media files in the folder.',
+    description: 'Arya video editor: add media to the project (files or whole folders, relative to the project folder); returns duration, size, fps, codec and audio for each. With list=true, only lists media files in the folder.',
     inputSchema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' } }, folder: { type: 'string' }, list: { type: 'boolean' } } },
   },
   {
     name: 'reel_analyze',
-    description: "Reel video editor: analyze a media file. kind: scenes (cut times), silence (silent ranges), beats (beat times and BPM), loudness (integrated LUFS), transcript (word timings; needs whisper.cpp). Times are source seconds; map them to the timeline through the clip's start/in/speed.",
+    description: "Arya video editor: analyze a media file. kind: scenes (cut times), silence (silent ranges), beats (beat times and BPM), loudness (integrated LUFS), transcript (word timings; needs whisper.cpp). Times are source seconds; map them to the timeline through the clip's start/in/speed.",
     inputSchema: { type: 'object', properties: { src: { type: 'string' }, kind: { type: 'string', enum: ['scenes', 'silence', 'beats', 'loudness', 'transcript'] }, threshold: { type: 'number' }, noise: { type: 'number' }, min: { type: 'number' } }, required: ['src', 'kind'] },
   },
   {
     name: 'reel_render',
-    description: 'Reel video editor: export the timeline (or its in/out range) and wait for it. preset: h264-high (default), h264-web, h264-fast, hevc, prores-422, prores-422hq, prores-4444, gif, audio-wav, audio-m4a, png-seq.',
+    description: 'Arya video editor: export the timeline (or its in/out range) and wait for it. preset: h264-high (default), h264-web, h264-fast, hevc, prores-422, prores-422hq, prores-4444, gif, audio-wav, audio-m4a, png-seq.',
     inputSchema: { type: 'object', properties: { preset: { type: 'string' }, name: { type: 'string' }, width: { type: 'number' }, from: { type: 'number' }, to: { type: 'number' } } },
   },
   {
     name: 'reel_figma',
-    description: 'Reel video editor: read Figma connection status, browse frames, or import copies as editable compositions. Uses the user\'s connected account for frames/import; import-mcp accepts XML or a node tree from Figma MCP without an account token. These actions never change the source Figma file. Set mode=smartAnimate and a second frame to animate A to B.',
+    description: 'Arya video editor: read Figma connection status, browse frames, or import copies as editable compositions. Uses the user\'s connected account for frames/import; import-mcp accepts XML or a node tree from Figma MCP without an account token. These actions never change the source Figma file. Set mode=smartAnimate and a second frame to animate A to B.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -77,7 +78,7 @@ const TOOLS = [
   },
   {
     name: 'reel_interchange',
-    description: 'Reel video editor: export FCPXML, OpenTimelineIO, a CMX 3600 EDL (one video track, named by track), SRT or WebVTT; list project interchange files; preview or apply an import; or generate captions from a clip transcript. Import and captions default to a preview. Set apply=true to make an undoable edit; timeline imports replace the project. Return warnings and missing media to the user.',
+    description: 'Arya video editor: export FCPXML, OpenTimelineIO, a CMX 3600 EDL (one video track, named by track), SRT or WebVTT; list project interchange files; preview or apply an import; or generate captions from a clip transcript. Import and captions default to a preview. Set apply=true to make an undoable edit; timeline imports replace the project. Return warnings and missing media to the user.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -91,7 +92,7 @@ const TOOLS = [
   },
   {
     name: 'reel_new',
-    description: 'Reel video editor: start a new empty project (replaces the current one; the old one stays in undo history).',
+    description: 'Arya video editor: start a new empty project (replaces the current one; the old one stays in undo history).',
     inputSchema: { type: 'object', properties: { name: { type: 'string' }, width: { type: 'number' }, height: { type: 'number' }, fps: { type: 'number' } } },
   },
 ] as const
@@ -176,7 +177,7 @@ async function ensureServer($: $): Promise<ReelServer> {
     }
     await pause($, 0.15)
   }
-  throw new Error(`the Reel server did not start; see ${root}/.reel/server.log`)
+  throw new Error(`the Arya server did not start; see ${root}/.reel/server.log`)
 }
 
 /** Waits by running `sleep`: unlike $.clock.sleep, a $ call in flight costs no hook budget. */
@@ -231,14 +232,14 @@ async function setOn($: $, enabled: boolean) {
     await registerTools($)
     await ensureServer($)
     watchServer($)
-    await $.ui.open({ id: PANE, title: 'Reel' })
+    await $.ui.open({ id: PANE, title: 'Arya' })
   } else {
     statusTimer?.cancel()
     statusTimer = null
     await stopServer($)
     await $.ui.close({ id: PANE })
   }
-  $.ui.status(enabled ? '🎬 Reel' : undefined)
+  $.ui.status(enabled ? '🎬 Arya' : undefined)
 }
 
 // ---------------------------------------------------------------- bridge
@@ -373,7 +374,7 @@ async function runTool($: $, name: string, input: Record<string, unknown>): Prom
       return JSON.stringify(r)
     }
   }
-  throw new Error(`unknown Reel tool ${name}`)
+  throw new Error(`unknown Arya tool ${name}`)
 }
 
 // ---------------------------------------------------------------- hooks
@@ -388,12 +389,12 @@ export const register: Register = (on, options) => {
     await update($, isOn, () => enabled)
     await $.command.register({
       name: 'reel',
-      description: 'Reel video editor: open it, or on | off | restart | status',
+      description: 'Arya video editor: open it, or on | off | restart | status',
       argumentHint: '[on|off|open|restart|status]',
     })
     if (enabled) {
       await registerTools($)
-      $.ui.status('🎬 Reel')
+      $.ui.status('🎬 Arya')
       // Reconnect to a server this project already runs; do not start one unasked.
       for (let p = BASE_PORT; p < BASE_PORT + 20; p++) {
         const st = await stateAt($, p)
@@ -416,18 +417,18 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'reel' }, async ($, e) => {
     const verb = e.args.trim().split(/\s+/)[0] ?? ''
-    if (!configOn && verb !== 'status') return { text: 'Reel is turned off in the config menu (reel.enabled). Turn it on there first.' }
+    if (!configOn && verb !== 'status') return { text: 'Arya is turned off in the config menu (reel.enabled). Turn it on there first.' }
     try {
       if (verb === 'off') {
         await setOn($, false)
 
-        return { text: 'Reel is off: the editor server stopped, Claude has no Reel tools to use, and editor chat is unavailable. /reel on brings it back.' }
+        return { text: 'Arya is off: the editor server stopped, Claude has no Arya tools to use, and editor chat is unavailable. /reel on brings it back.' }
       }
       if (verb === 'status') {
         await refreshServer($)
         const server = await read($, serverAtom)
 
-        return { text: `Reel is ${(await read($, isOn)) ? 'on' : 'off'}. ${server?.isRunning ? `Editor at ${server.url} (${server.editors} open).` : 'Editor server not running.'}` }
+        return { text: `Arya is ${(await read($, isOn)) ? 'on' : 'off'}. ${server?.isRunning ? `Editor at ${server.url} (${server.editors} open).` : 'Editor server not running.'}` }
       }
       if (verb === 'restart') {
         await stopServer($)
@@ -435,16 +436,16 @@ export const register: Register = (on, options) => {
       }
       if (!(await read($, isOn))) await setOn($, true)
       const server = await openEditor($)
-      await $.ui.open({ id: PANE, title: 'Reel' })
+      await $.ui.open({ id: PANE, title: 'Arya' })
 
-      return { text: `Reel editor open at ${server.url} (project: ${root}).` }
+      return { text: `Arya editor open at ${server.url} (project: ${root}).` }
     } catch (error) {
-      return { text: `Reel: ${error instanceof Error ? error.message : String(error)}`, exitCode: 1 }
+      return { text: `Arya: ${error instanceof Error ? error.message : String(error)}`, exitCode: 1 }
     }
   })
 
   on('tool.check', async ($, e, next) => {
-    if (typeof e.tool === 'string' && e.tool.startsWith(TOOL_PREFIX) && (await read($, isOn))) return { decision: 'allow', reason: 'Reel editor tool' }
+    if (typeof e.tool === 'string' && e.tool.startsWith(TOOL_PREFIX) && (await read($, isOn))) return { decision: 'allow', reason: 'Arya editor tool' }
 
     return next(e)
   })
@@ -452,12 +453,12 @@ export const register: Register = (on, options) => {
   on('tool.call', async ($, e, next) => {
     const tool = String(e.tool)
     if (!tool.startsWith(TOOL_PREFIX)) return next(e)
-    if (!(await read($, isOn))) return { deny: 'The Reel editor is turned off. The user can run /reel on to enable it.' }
+    if (!(await read($, isOn))) return { deny: 'The Arya editor is turned off. The user can run /reel on to enable it.' }
     await update($, isWorking, () => true)
     try {
       return { result: await runTool($, tool.slice(TOOL_PREFIX.length), e as Record<string, unknown>) }
     } catch (error) {
-      return { isError: true, result: `Reel: ${error instanceof Error ? error.message : String(error)}` }
+      return { isError: true, result: `Arya: ${error instanceof Error ? error.message : String(error)}` }
     } finally {
       await update($, isWorking, () => false)
       await claudeStatus($, 'idle')
@@ -474,7 +475,7 @@ export const register: Register = (on, options) => {
       if (ids.length) {
         try {
           const refs: ReelRef[] = ids.map(id => ({ kind: /^[VA]/.test(id) ? 'track' : id.startsWith('m') ? 'marker' : 'clip', id, label: id }))
-          context.push(`Reel editor references:\n${(await describeRefs($, refs)).join('\n')}`)
+          context.push(`Arya editor references:\n${(await describeRefs($, refs)).join('\n')}`)
         } catch {}
       }
     }
@@ -493,8 +494,8 @@ export const register: Register = (on, options) => {
     if (!enabled) {
       return (
         <Box flexDirection="column" gap={1}>
-          <Text dimColor>Reel is off.</Text>
-          <Button key="on" label="Turn Reel on" variant="primary" onPress={() => void setOn($, true)} />
+          <Text dimColor>Arya is off.</Text>
+          <Button key="on" label="Turn Arya on" variant="primary" onPress={() => void setOn($, true)} />
         </Box>
       )
     }
@@ -503,7 +504,7 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" gap={1}>
           <Text bold color="#f5b942">
-            🎬 REEL
+            🎬 ARYA
           </Text>
           <Text dimColor>{server?.isRunning ? `editor at ${server.url}` : 'editor not running'}</Text>
         </Box>
@@ -512,8 +513,8 @@ export const register: Register = (on, options) => {
           {working ? ' · Claude is editing' : ''}
         </Text>
         <Box flexDirection="row" gap={1}>
-          <Button key="open" label="Open editor" variant="primary" hotkey="o" onPress={() => void openEditor($).catch(err => $.ui.toast(`Reel: ${String(err)}`))} />
-          <Button key="restart" label="Restart server" onPress={() => void stopServer($).then(() => openEditor($)).catch(err => $.ui.toast(`Reel: ${String(err)}`))} />
+          <Button key="open" label="Open editor" variant="primary" hotkey="o" onPress={() => void openEditor($).catch(err => $.ui.toast(`Arya: ${String(err)}`))} />
+          <Button key="restart" label="Restart server" onPress={() => void stopServer($).then(() => openEditor($)).catch(err => $.ui.toast(`Arya: ${String(err)}`))} />
           <Button key="off" label="Turn off" dimColor onPress={() => void setOn($, false)} />
         </Box>
         <Box flexDirection="column">

@@ -4,7 +4,7 @@ import { TOOLS, UUID, validateCall } from './protocol.mjs'
 const endpoint = process.env.REEL_AGENT_ENDPOINT, runID = process.env.REEL_AGENT_RUN_ID, token = process.env.REEL_AGENT_RUN_TOKEN
 const base = endpoint && new URL(endpoint)
 if (!base || base.protocol !== 'http:' || base.hostname !== '127.0.0.1' || !base.port || base.username || base.password || base.pathname !== '/' || base.search || base.hash || !UUID.test(runID ?? '') || !/^[a-f0-9]{64}$/.test(token ?? '')) {
-  process.stderr.write('Reel MCP requires a local run endpoint and token. Launch it through the paired bridge.\n'); process.exit(1)
+  process.stderr.write('Arya MCP requires a local run endpoint and token. Launch it through the paired bridge.\n'); process.exit(1)
 }
 let initialized = false, buffer = '', active = 0
 const send = message => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`)
@@ -12,9 +12,9 @@ const send = message => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0',
 async function request(method, path, body) {
   const response = await fetch(new URL(path, base), { method, headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(125000) })
   const text = await response.text()
-  if (text.length > 6 * 1024 * 1024) throw new Error('Reel tool result exceeded its limit')
+  if (text.length > 6 * 1024 * 1024) throw new Error('Arya tool result exceeded its limit')
   const value = JSON.parse(text)
-  if (!response.ok) throw new Error(value.error ?? `Reel HTTP ${response.status}`)
+  if (!response.ok) throw new Error(value.error ?? `Arya HTTP ${response.status}`)
   return value
 }
 
@@ -28,7 +28,7 @@ async function tool(name, args) {
       if (value.error) return { isError: true, content: [{ type: 'text', text: String(value.error) }] }
       if (value.image) {
         const { data, mediaType } = value.image
-        if (!['image/png', 'image/jpeg', 'image/webp'].includes(mediaType) || typeof data !== 'string' || data.length > 5592408 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw new Error('Invalid Reel frame result')
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(mediaType) || typeof data !== 'string' || data.length > 5592408 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw new Error('Invalid Arya frame result')
         return { content: [{ type: 'image', data, mimeType: mediaType }] }
       }
       const result = value.result ?? {}
@@ -36,13 +36,13 @@ async function tool(name, args) {
     }
     await new Promise(resolve => setTimeout(resolve, 100))
   }
-  throw new Error('Reel tool exceeded two minutes; inspect the project before retrying')
+  throw new Error('Arya tool exceeded two minutes; inspect the project before retrying')
 }
 
 async function handle(message) {
   if (!message || message.jsonrpc !== '2.0') return send({ id: message?.id ?? null, error: { code: -32600, message: 'Invalid JSON-RPC request' } })
   if (!Object.hasOwn(message, 'id')) return
-  if (++active > 8) { active--; return send({ id: message.id, error: { code: -32000, message: 'Too many concurrent Reel requests' } }) }
+  if (++active > 8) { active--; return send({ id: message.id, error: { code: -32000, message: 'Too many concurrent Arya requests' } }) }
   try {
     let result
     if (message.method === 'initialize') {

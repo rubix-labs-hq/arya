@@ -32,7 +32,7 @@ export async function geminiSignedIn(home) {
 export const GEMINI_SIGN_IN = 'Sign in once by running gemini in Terminal and choosing Sign in with Google. Then refresh status here.'
 
 // Admin tier outranks user and workspace policies. A global deny also hides every other
-// tool from the model; only the two Reel tools are allowed.
+// tool from the model; only the two Arya tools are allowed.
 export const GEMINI_POLICY = `[[rule]]
 toolName = "*"
 decision = "deny"
@@ -58,7 +58,7 @@ export function geminiSettings(server) {
     context: { fileFiltering: { respectGeminiIgnore: true, enableRecursiveFileSearch: false } },
     mcp: { allowed: ['reel'] },
     // Gemini CLI redacts inherited variables whose names contain TOKEN, so the run
-    // credentials are passed to the Reel MCP server explicitly.
+    // credentials are passed to the Arya MCP server explicitly.
     mcpServers: { reel: { command: server.command, args: server.args, env: server.env, includeTools: ['reel_api', 'reel_frame'], trust: false } },
   }
 }
@@ -103,7 +103,7 @@ function failure(message) {
 
 // Maps one Gemini CLI stream-json record (headless docs: init, message, tool_use,
 // tool_result, error, result) to a bridge event. Tool calls themselves are reported by
-// the Reel MCP server, so tool_use adds nothing here.
+// the Arya MCP server, so tool_use adds nothing here.
 export function geminiOutputEvent(value) {
   if (!value || typeof value !== 'object') return null
   switch (value.type) {

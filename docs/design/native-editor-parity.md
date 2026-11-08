@@ -2,7 +2,7 @@
 
 ## Brief
 
-The native app must be the same Reel product as the browser editor, with familiar editing workflows and the browser's dark panels, system typography and restrained gold accent. SwiftUI controls, the Metal viewer, native audio and ReelKit remain the implementation. A successful build or a model-driven smoke does not establish interface parity.
+The native app must be the same Arya product as the browser editor, with familiar editing workflows and the browser's dark panels, system typography and restrained gold accent. SwiftUI controls, the Metal viewer, native audio and ReelKit remain the implementation. A successful build or a model-driven smoke does not establish interface parity.
 
 Early native builds looked like a basic mobile form enlarged onto a Mac: bottom navigation, competing utility panels, generic gray controls and no visual editing tools. The native app is still in development, and its visual and interaction acceptance is open.
 

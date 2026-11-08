@@ -72,7 +72,7 @@ describe('reel mod', () => {
         surface,
         component: 'Pane',
         requestId: 'reel',
-        props: { title: 'Reel', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
+        props: { title: 'Arya', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
         viewport: { columns: 90, rows: 30, isFullscreen: true },
       })
       expect(await ui.find({ key: 'open' })).toBeDefined()
@@ -148,7 +148,7 @@ describe('reel mod', () => {
       surface: 'terminal',
       component: 'Pane',
       requestId: 'reel',
-      props: { title: 'Reel', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
+      props: { title: 'Arya', isFocused: true, bodyColumns: 90, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
       viewport: { columns: 90, rows: 30, isFullscreen: true },
     })
     expect(await ui.find({ type: 'Text', text: /editor at http:\/\/127\.0\.0\.1:4870/ })).toBeDefined()

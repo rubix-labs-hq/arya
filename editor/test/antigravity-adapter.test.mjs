@@ -43,7 +43,7 @@ test('child environment isolates the profile and strips inherited billing, endpo
   assert.equal(original.HOME, '/real')
 })
 
-test('run workspace exposes the private Reel server and no built-in agent tools', async t => {
+test('run workspace exposes the private Arya server and no built-in agent tools', async t => {
   const cwd = await temporary(t), server = { command: '/node', args: ['/mcp.mjs'], env: { REEL_AGENT_RUN_TOKEN: 'fixture' } }
   await writeAntigravityWorkspace(cwd, server)
   const config = JSON.parse(await fs.readFile(path.join(cwd, '.agents', 'mcp_config.json')))
