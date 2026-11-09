@@ -36,3 +36,22 @@ test('trimming either edge of a reversed clip keeps the remaining footage and so
   const q = applyOps(p, [{ op: 'trim', id: 'c1', edge: 'right', to: 12 }]).project
   same(p, q, [0, 5, 9.5])
 })
+
+test('rolling and sliding next to a reversed clip keep its footage', () => {
+  const p = newProject('Reverse roll')
+  p.assets['media/a.mp4'] = { hasVideo: true, duration: 30, fps: 30 }
+  p.assets['media/b.mp4'] = { hasVideo: true, duration: 30, fps: 30 }
+  p.tracks = [{ id: 'V1', kind: 'video', clips: [
+    { id: 'a', kind: 'video', src: 'media/a.mp4', start: 0, dur: 10, in: 5, speed: 1 },
+    { id: 'b', kind: 'video', src: 'media/b.mp4', start: 10, dur: 10, in: 5, speed: 1, reverse: true },
+    { id: 'c', kind: 'video', src: 'media/a.mp4', start: 20, dur: 5, in: 5, speed: 1, reverse: true },
+  ] }]
+  // Roll the a|b cut earlier: b gains frames at its head, the rest of b is unchanged.
+  same(p, applyOps(p, [{ op: 'roll', a: 'a', b: 'b', to: 8 }]).project, [0, 7.5, 10, 15, 19.5])
+  // Roll the b|c cut later: b grows at its tail and c loses its head.
+  same(p, applyOps(p, [{ op: 'roll', a: 'b', b: 'c', to: 22 }]).project, [10, 15, 19.5, 22, 24.5])
+  // Slide b earlier: a shortens, c starts sooner, and b's frames move with it.
+  const slid = applyOps(p, [{ op: 'slide', id: 'b', delta: -2 }]).project
+  for (const t of [10, 15, 19.5]) assert.ok(Math.abs(at(p, t) - at(slid, t - 2)) < 1e-6, `b footage at ${t}s`)
+  same(p, slid, [0, 7.5, 21, 24.5])
+})

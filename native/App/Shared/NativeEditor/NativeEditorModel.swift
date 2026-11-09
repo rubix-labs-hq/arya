@@ -955,11 +955,20 @@ final class NativeEditorModel: ObservableObject {
         }
     }
     func split() {
-        // Split every selected clip at the playhead, as the clip menu does. A linked partner is
-        // cut with its clip, so a partner that is also selected is already split when its turn comes.
-        let ids = selectedIDs.sorted()
-        let operations: [[String: Any]] = ids.isEmpty ? [["op": "blade", "at": time]] : ids.map { ["op": "blade", "id": $0, "at": time] }
-        editBatch(operations, summary: ids.count > 1 ? "Split selected clips" : nil, feedback: true)
+        // Split every selected clip under the playhead, as the clip menu does. A linked partner is
+        // cut with its clip, so each linked group gets one operation. Clips on locked tracks or away from the playhead are left out: the batch is all or nothing,
+        // and the core rejects a locked clip.
+        if selectedIDs.isEmpty { editBatch([["op": "blade", "at": time]], feedback: true); return }
+        let playhead = time
+        var ids: [String] = [], links = Set<String>()
+        for track in tracks where !track.locked {
+            for clip in track.clips where selectedIDs.contains(clip.id) && clip.start < playhead - 1e-6 && clip.end > playhead + 1e-6 {
+                let link = clip.fields.string("link")
+                if link.isEmpty || links.insert(link).inserted { ids.append(clip.id) }
+            }
+        }
+        guard !ids.isEmpty else { status = "Move the playhead over a selected clip on an unlocked track to split it."; return }
+        editBatch(ids.map { ["op": "blade", "id": $0, "at": time] }, summary: ids.count > 1 ? "Split selected clips" : nil, feedback: true)
     }
     // BEGIN NATIVE CLIPBOARD CONTROLLER
     func clipboardActionCapture() -> NativeClipboardActionCapture? {

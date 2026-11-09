@@ -562,9 +562,12 @@ function moveBounds(track, clip, moving) {
 }
 
 function moveEdge(clip, edge, d) {
-  if (edge === 'right') clip.dur = round(clip.dur + d)
-  else {
-    if (clip.in !== undefined) clip.in = round(clip.in + d * (clip.speed ?? 1))
+  // A reversed clip reads its source from the end, so its right edge owns `in`.
+  if (edge === 'right') {
+    if (clip.in !== undefined && clip.reverse) clip.in = round(clip.in - d * (clip.speed ?? 1))
+    clip.dur = round(clip.dur + d)
+  } else {
+    if (clip.in !== undefined && !clip.reverse) clip.in = round(clip.in + d * (clip.speed ?? 1))
     shiftKeys(clip, -d)
     clip.start = round(clip.start + d)
     clip.dur = round(clip.dur - d)
