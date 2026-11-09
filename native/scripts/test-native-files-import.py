@@ -27,6 +27,16 @@ check('guard let urls = try NativeMediaPickerOutcome.files(result) else { return
 # instead of session.error; the notice is rendered under "Files import needs attention".
 check('} catch { filesNotice = error.localizedDescription }' in view, 'Real picker errors remain visible')
 check('if let filesNotice {' in view and 'Text(filesNotice)' in view, 'Picker error notice is rendered in the import sheet')
+# Choosing files must start the copy. A separate "Import batch" button below the fold made
+# imports look like they did nothing.
+picker = view.split('.fileImporter(isPresented: $pickerPresented,', 1)[1].split('@ViewBuilder private var importContent', 1)[0]
+check('startFiles(urls)' in picker, 'Choosing files in the picker starts the import')
+check('pendingURLs' not in view and 'Import batch' not in view, 'No hidden second confirmation step after choosing files')
+mac_list = view.split('List {', 1)[1].split('#endif', 1)[0]
+check(mac_list.index('filesStatus') < mac_list.index('filesButton'), 'Mac import progress and results show above the source buttons')
+check('finishImport(.media)' in view.split('.onChange(of: filesImporting)', 1)[1].split('#else', 1)[0], 'A clean Mac import closes the sheet and reveals Media')
+editor_view = (root / 'native/App/Shared/EditorView.swift').read_text()
+check('.dropDestination(for: URL.self)' in editor_view and 'session.importFiles(files)' in editor_view, 'Files dropped on the native editor are imported')
 import_session = session.split('func importFiles(', 1)[1].split('func undo(', 1)[0]
 check('guard self.backend === backend else { return }' in import_session, 'Stale import receipt cannot update current project UI')
 check('NativeFilesImportOutcome(receipt: result)' in import_session, 'Success count derives from confirmed receipt')

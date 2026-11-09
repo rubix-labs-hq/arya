@@ -36,6 +36,15 @@ struct ContentView: View {
                     EditorView(session: session).ignoresSafeArea()
                 } else {
                     NativeEditorView(session: session, model: session.nativeEditor, openFolder: openFolder, newProject: newProject)
+                        #if os(macOS)
+                        // Files dragged from Finder import like File > Import Media.
+                        .dropDestination(for: URL.self) { urls, _ in
+                            let files = urls.filter(\.isFileURL)
+                            guard !files.isEmpty, session.projectReadOnlyReason == nil else { return false }
+                            session.importFiles(files)
+                            return true
+                        }
+                        #endif
                 }
             } else {
                 #if os(iOS)
