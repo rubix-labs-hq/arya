@@ -598,7 +598,6 @@ struct NativeMediaImportSheet: View {
     @State private var rootName = ""
     @State private var newRootID = UUID()
     @State private var rootSubfolder = ""
-    @State private var pendingURLs: [URL]?
     @State private var retainedCopies: [NativeRetainedMediaCopies] = []
     @State private var retryTask: Task<Void, Never>?
     @State private var retryingCopies = false
@@ -667,16 +666,22 @@ struct NativeMediaImportSheet: View {
         #endif
         .onDisappear {
             // Covering this sheet with a system picker does not revoke its captured request.
-            if !current { pendingURLs = nil; filesTask?.cancel(); photosTask?.cancel(); retryTask?.cancel(); recoveryTask?.cancel(); retainedCopies = []; verifiedAssetIDs = []; recoveredCopies = nil; recoveryAdmissionID = nil; recoveryNotice = nil }
+            if !current { filesTask?.cancel(); photosTask?.cancel(); retryTask?.cancel(); recoveryTask?.cancel(); retainedCopies = []; verifiedAssetIDs = []; recoveredCopies = nil; recoveryAdmissionID = nil; recoveryNotice = nil }
         }
-        .onChange(of: model.processingContextID) { _, _ in pendingURLs = nil; filesTask?.cancel(); photosTask?.cancel(); retryTask?.cancel(); recoveryTask?.cancel(); retainedCopies = []; verifiedAssetIDs = []; recoveredCopies = nil; recoveryAdmissionID = nil; recoveryNotice = nil }
-        .onChange(of: model.composition) { _, _ in pendingURLs = nil; filesTask?.cancel(); photosTask?.cancel(); retryTask?.cancel(); recoveryTask?.cancel(); retainedCopies = []; verifiedAssetIDs = []; recoveredCopies = nil; recoveryAdmissionID = nil; recoveryNotice = nil }
-        .onChange(of: model.mediaImportRequest?.id) { _, id in if id != request.id { pendingURLs = nil; filesTask?.cancel(); photosTask?.cancel(); retryTask?.cancel(); recoveryTask?.cancel(); retainedCopies = []; verifiedAssetIDs = []; recoveredCopies = nil; recoveryAdmissionID = nil; recoveryNotice = nil } }
+        .onChange(of: model.processingContextID) { _, _ in filesTask?.cancel(); photosTask?.cancel(); retryTask?.cancel(); recoveryTask?.cancel(); retainedCopies = []; verifiedAssetIDs = []; recoveredCopies = nil; recoveryAdmissionID = nil; recoveryNotice = nil }
+        .onChange(of: model.composition) { _, _ in filesTask?.cancel(); photosTask?.cancel(); retryTask?.cancel(); recoveryTask?.cancel(); retainedCopies = []; verifiedAssetIDs = []; recoveredCopies = nil; recoveryAdmissionID = nil; recoveryNotice = nil }
+        .onChange(of: model.mediaImportRequest?.id) { _, id in if id != request.id { filesTask?.cancel(); photosTask?.cancel(); retryTask?.cancel(); recoveryTask?.cancel(); retainedCopies = []; verifiedAssetIDs = []; recoveredCopies = nil; recoveryAdmissionID = nil; recoveryNotice = nil } }
         .onChange(of: rootChoice) { _, choice in
             if choice == "new" { newRootID = UUID(); rootName = ""; rootSubfolder = "" }
         }
         #if os(macOS)
         .frame(minWidth: 360, idealWidth: 460, minHeight: 340)
+        .onChange(of: filesImporting) { _, running in
+            // A clean import returns to Media with the new items. Problems keep the sheet open.
+            guard !running, let outcome = filesOutcome, outcome.imported > 0, outcome.issues.isEmpty, outcome.warnings.isEmpty,
+                  filesNotice == nil, retainedCopies.isEmpty else { return }
+            finishImport(.media)
+        }
         #else
         .presentationDetents([.medium, .large], selection: $resultDetent)
         .presentationDragIndicator(.visible)
@@ -690,7 +695,9 @@ struct NativeMediaImportSheet: View {
                     guard folderPicker || NativeMediaImportLimits.acceptsFileSelection(count: urls.count) else {
                         filesNotice = "Choose up to \(NativeMediaImportLimits.filesPerBatch) files. Nothing from this selection was copied."; return
                     }
-                    pendingURLs = urls
+                    // Choosing files is the confirmation. A second confirmation button below the fold
+                    // left people thinking nothing happened.
+                    startFiles(urls)
                 } catch { filesNotice = error.localizedDescription }
             }
     }
@@ -700,20 +707,20 @@ struct NativeMediaImportSheet: View {
         mobileContent
         #else
         List {
+            // Progress and results come first so they are visible without scrolling.
+            if filesImporting || filesOutcome != nil || filesNotice != nil { Section("Files and folder import") { filesStatus } }
+            if !retainedCopies.isEmpty || retryNotice != nil { Section("Retained copies") { retainedCopiesStatus } }
             Section("Add media to this project") {
                 filesButton
                 folderButton
             }
-            Section("Already copied files") { recoveryStatus }
             Section("Files and folder organization") { rootControls }
-            if let urls = pendingURLs { Section("Review selected batch") { batchReview(urls) } }
+            Section("Already copied files") { recoveryStatus }
             Section {
                 Text("Files and folders are copied into this project; your originals stay in place.")
                     .font(.footnote).foregroundStyle(.secondary)
                 folderPolicy
             }
-            if filesImporting || filesOutcome != nil || filesNotice != nil { Section("Files and folder import") { filesStatus } }
-            if !retainedCopies.isEmpty || retryNotice != nil { Section("Retained copies") { retainedCopiesStatus } }
             // Structured import sections already show the outcome; keep this for other status only.
             if !model.status.isEmpty, photosOutcome == nil, filesOutcome == nil, filesNotice == nil, photosNotice == nil {
                 Section("Import status") { Text(model.status).font(.footnote) }
@@ -753,7 +760,6 @@ struct NativeMediaImportSheet: View {
                 filesButton
                 folderButton
                 rootControls
-                if let urls = pendingURLs { batchReview(urls).id("import-batch-review") }
                 if !recoveryActive { recoveryStatus }
                 Text("Your originals stay in place. Only the Photos items you choose are available to Arya.")
                     .font(.footnote).foregroundStyle(NativeEditorStyle.muted)
@@ -765,12 +771,6 @@ struct NativeMediaImportSheet: View {
             .padding(16)
         }
         .background(NativeEditorStyle.panel)
-        .onChange(of: pendingURLs) { _, urls in
-            guard current, let urls, !urls.isEmpty else { return }
-            resultDetent = .large
-            if reduceMotion { scroll.scrollTo("import-batch-review", anchor: .top) }
-            else { withAnimation(.easeInOut(duration: 0.2)) { scroll.scrollTo("import-batch-review", anchor: .top) } }
-        }
         .onChange(of: resultSignal) { _, _ in
             guard hasImportResult else { return }
             resultDetent = .large
@@ -906,22 +906,6 @@ struct NativeMediaImportSheet: View {
         }.disabled(importing).accessibilityElement(children: .contain)
     }
 
-    private func batchReview(_ urls: [URL]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(folderPicker ? "Selected folder: \(urls.first?.lastPathComponent ?? "")" : "Selected \(urls.count) file\(urls.count == 1 ? "" : "s")")
-                .font(.subheadline.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
-            Text(rootChoice.isEmpty ? "Use the selected source folders." : "Imported root: \(rootChoice == "new" ? rootName : importedRoots.first(where: { $0.id == rootChoice })?.name ?? "Unavailable"). Subfolder: \(rootSubfolder.isEmpty ? "root level" : rootSubfolder).")
-                .font(.footnote).fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Button("Cancel selection") { pendingURLs = nil }.frame(minHeight: 44)
-                Spacer(minLength: 8)
-                Button("Import batch") { startFiles(urls) }.frame(minHeight: 44)
-                    .buttonStyle(NativeToolbarButtonStyle(selected: true))
-            }
-        }.disabled(importing).padding(12).background(NativeEditorStyle.input, in: RoundedRectangle(cornerRadius: 12))
-            .accessibilityElement(children: .contain).accessibilityIdentifier("editor.import.batchReview")
-    }
-
     private func importSession(version: Int) throws -> NativeMediaImportSession? {
         if rootChoice.isEmpty { return nil }
         let root: NativeMediaImportRoot
@@ -976,7 +960,6 @@ struct NativeMediaImportSheet: View {
               let capture = NativeFilesImportCapture(model: model, request: request, session: session) else {
             filesNotice = "The import target changed or is not editable. Close Import and open it again in the project you want."; return
         }
-        pendingURLs = nil
         filesCapture = capture; folderPicker = folder; pickerPresented = true
     }
 
@@ -992,7 +975,6 @@ struct NativeMediaImportSheet: View {
         let batch: NativeMediaImportSession?
         do { batch = try importSession(version: capture.version) }
         catch { filesNotice = error.localizedDescription; return }
-        pendingURLs = nil
         filesSelection = folderPicker ? "folder \(urls.first?.lastPathComponent ?? "")" : "\(urls.count) selected file\(urls.count == 1 ? "" : "s")"
         verifiedAssetIDs = []; recoveryNotice = nil; recoveredCopies = nil; recoveryAdmissionID = nil; photosOutcome = nil; photosNotice = nil; retryNotice = nil; filesOutcome = nil; filesNotice = nil; filesImporting = true; filesCancelling = false
         filesTask = Task {
