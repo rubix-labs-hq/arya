@@ -11,6 +11,7 @@ import { openMenu } from './menu.js'
 import { player } from './engine-host.js'
 import { registry } from './registry.js'
 import { mediaDisplayName } from './media-label.js'
+import { detachedAudioSettings } from '/core/audio-cleanup.js'
 import { titlePresetOp } from './title-presets.js'
 
 const html = htm.bind(h)
@@ -676,7 +677,7 @@ export function Timeline() {
         const target = rows.find(r => y + state.scrollY >= r.y && y + state.scrollY < r.y + r.h)
         const trackChange = target && target.track.kind === d.row.track.kind && target.track !== d.row.track ? target.track.id : null
         state.tip = { x, y, text: `${delta >= 0 ? '+' : '−'}${timecode(Math.abs(delta), p.fps)}` }
-        if (d.duplicate) return d.ids.filter(id => !id.startsWith('tr:')).map(id => ({ op: 'duplicate', id, start: (p.tracks.flatMap(tt => tt.clips).find(c => c.id === id)?.start ?? 0) + delta, track: id === lead.id ? trackChange ?? undefined : undefined }))
+        if (d.duplicate) return d.ids.filter(id => !id.startsWith('tr:')).map(id => ({ op: 'duplicate', id, start: (p.tracks.flatMap(tt => tt.clips).find(c => c.id === id)?.start ?? 0) + delta, track: id === lead.id ? trackChange ?? undefined : undefined, ...(store.linked ? {} : { unlinked: true }) }))
         // The move op carries linked partners along, so send one move per link group.
         const seen = new Set()
         const movers = [lead.id, ...d.ids.filter(id => id !== lead.id && !id.startsWith('tr:'))].filter(id => {
@@ -715,7 +716,7 @@ export function Timeline() {
         state.tip = { x, y, text: `slip ${dt >= 0 ? '+' : '−'}${timecode(Math.abs(dt), p.fps)}` }
 
         // The footage follows the pointer. A reversed clip runs its source right to left.
-        return [{ op: 'slip', id: d.clip.id, delta: (d.clip.reverse ? dt : -dt) * (d.clip.speed ?? 1) }]
+        return [{ op: 'slip', id: d.clip.id, delta: (d.clip.reverse ? dt : -dt) * (d.clip.speed ?? 1), ...(store.linked ? {} : { unlinked: true }) }]
       case 'slide':
         state.tip = { x, y, text: `slide ${dt >= 0 ? '+' : '−'}${timecode(Math.abs(dt), p.fps)}` }
 
@@ -1034,18 +1035,16 @@ export function openComposition(id) {
 // Puts a clip's own audio under it on a free audio track, with the same timing, speed and
 // direction, and mutes the picture's embedded audio so it is not heard twice.
 export function detachAudio(p, c) {
-  // Use an unlocked audio track that is free under the clip, or add one, so no other audio is cut.
-  const free = p.tracks.find(tt => tt.kind === 'audio' && !tt.locked && !tt.clips.some(x => x.start < clipEnd(c) - 1e-6 && clipEnd(x) > c.start + 1e-6))
+  // Use an unlocked, audible audio track that is free under the clip, or add one, so no other
+  // audio is cut and the sound is not silenced by a muted or un-soloed track.
+  const solo = p.tracks.some(tt => tt.kind === 'audio' && tt.solo)
+  const free = p.tracks.find(tt => tt.kind === 'audio' && !tt.locked && !tt.muted && (!solo || tt.solo) && !tt.clips.some(x => x.start < clipEnd(c) - 1e-6 && clipEnd(x) > c.start + 1e-6))
   let n = 1
   while (p.tracks.some(tt => tt.id === `A${n}`)) n++
   const track = free?.id ?? `A${n}`
-  // The audio keeps how it sounded: level, pan, fades, audio effects and their keyframes.
-  const set = { ...(c.speed !== undefined ? { speed: c.speed } : {}), ...(c.reverse ? { reverse: true } : {}) }
-  for (const key of ['volume', 'pan', 'eq', 'fx', 'fadeIn', 'fadeOut']) if (c[key] !== undefined) set[key] = structuredClone(c[key])
-  for (const key of ['anim', 'expr']) {
-    const sound = Object.fromEntries(Object.entries(c[key] ?? {}).filter(([prop]) => prop === 'volume' || prop === 'pan'))
-    if (Object.keys(sound).length) set[key] = structuredClone(sound)
-  }
+  // The audio keeps how it sounded: enabled and mute state, level, pan, EQ, effects, fades and
+  // their automation, plus the direction of a reversed clip.
+  const set = { ...detachedAudioSettings(c), ...(c.reverse ? { reverse: true } : {}) }
   return edit([
     ...(free ? [] : [{ op: 'add_track', kind: 'audio' }]),
     { op: 'overwrite', kind: 'audio', src: c.src, track, start: c.start, in: c.in, dur: c.dur, set },

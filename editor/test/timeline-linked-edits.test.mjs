@@ -8,10 +8,11 @@ import test from 'node:test'
 import { h } from 'preact'
 import htm from 'htm'
 import * as core from '../core/project.js'
+import { detachedAudioSettings } from '../core/audio-cleanup.js'
 
 const source = fs.readFileSync(new URL('../web/ui/timeline.js', import.meta.url), 'utf8')
 const body = source.replace(/^import .*$/gm, '').replace(/^export function /gm, 'function ').replace(/^export \{.*\}\s*$/gm, '')
-const factory = new Function('deps', 'matchMedia', `const {h,htm,useEffect,useLayoutEffect,useRef,useState,applyOps,clipEnd,duration,hasAudio,snapToFrame,timecode,MARKER_COLORS,addRef,api,edit,onTime,set,store,subscribe,time,toast,useStore,useTime,viewProject,openMenu,player,registry,devicePixelRatio,ResizeObserver,requestAnimationFrame,mediaDisplayName}=deps;${body};return {rowsOf,Timeline}`)
+const factory = new Function('deps', 'matchMedia', `const {h,htm,useEffect,useLayoutEffect,useRef,useState,applyOps,clipEnd,duration,hasAudio,snapToFrame,timecode,MARKER_COLORS,addRef,api,edit,onTime,set,store,subscribe,time,toast,useStore,useTime,viewProject,openMenu,player,registry,devicePixelRatio,ResizeObserver,requestAnimationFrame,mediaDisplayName,detachedAudioSettings}=deps;${body};return {rowsOf,Timeline}`)
 
 function project() {
   const p = core.newProject('Gestures')
@@ -29,7 +30,7 @@ function timeline({ linked, tool, locked = [], setup = () => {} }) {
     ...core, h, htm, store, useStore: () => store, viewProject: () => p, useTime: () => 0, time: { t: 0 }, useRef: value => ({ current: value }), useState: () => [0, () => {}],
     useEffect: () => {}, useLayoutEffect: () => {}, subscribe: () => () => {}, onTime: () => () => {}, set: patch => Object.assign(store, typeof patch === 'function' ? patch(store) : patch),
     edit: ops => { edits.push(structuredClone(ops)); p = core.applyOps(p, ops).project }, api: () => {}, addRef: () => {}, toast: text => notices.push(text), openMenu: () => {}, player: { beginScrub() {}, endScrub() {} },
-    registry: { clipMenus: [] }, devicePixelRatio: 1, ResizeObserver: class { observe() {} disconnect() {} }, requestAnimationFrame: () => 1, mediaDisplayName: s => s,
+    registry: { clipMenus: [] }, devicePixelRatio: 1, ResizeObserver: class { observe() {} disconnect() {} }, requestAnimationFrame: () => 1, mediaDisplayName: s => s, detachedAudioSettings,
   }
   const { Timeline, rowsOf } = factory(deps, () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))
   const find = node => {
@@ -125,4 +126,23 @@ test('right-clicking an unselected clip selects its linked partner when Linked s
   const off = timeline({ linked: false, tool: 'select' })
   off.context(600, off.row('V1').y + 20)
   assert.deepEqual(off.store.selection, ['c2'])
+})
+
+test('Option-Shift-drag duplicates only the dragged clip when Linked selection is off', () => {
+  const t = timeline({ linked: false, tool: 'select' })
+  t.drag(600, t.row('V1').y + 20, 1000, { altKey: true, shiftKey: true })
+  assert.deepEqual(t.edits.at(-1).map(op => [op.op, op.id, op.unlinked]), [['duplicate', 'c2', true]])
+  assert.equal(t.project().tracks.find(tr => tr.id === 'V1').clips.length, 3)
+  assert.equal(t.project().tracks.find(tr => tr.id === 'A1').clips.length, 2, 'the linked audio is not copied')
+})
+
+test('with Linked selection off, slip changes only the dragged clip', () => {
+  for (const linked of [true, false]) {
+    const t = timeline({ linked, tool: 'slip' })
+    const audioIn = t.project().tracks.find(tr => tr.id === 'A1').clips.find(c => c.id === 'c2a').in
+    t.drag(600, t.row('V1').y + 20, 700)
+    const after = t.project()
+    assert.notEqual(after.tracks.find(tr => tr.id === 'V1').clips.find(c => c.id === 'c2').in, 10, `linked ${linked}: the video slips`)
+    assert.equal(after.tracks.find(tr => tr.id === 'A1').clips.find(c => c.id === 'c2a').in === audioIn, !linked, `linked ${linked}: the audio ${linked ? 'follows' : 'stays'}`)
+  }
 })

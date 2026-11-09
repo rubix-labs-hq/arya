@@ -341,7 +341,43 @@ test('nudging left near zero moves every selected clip by the same amount', () =
   assert.deepEqual(starts, [0, 4], 'the clip at zero stops the whole group')
 })
 
-test('the browser Assistant sends on Return and Command-Return, not Shift-Return', () => {
+test('the browser Assistant sends a prompt on Return, and anything on Command-Return, never on Shift-Return', () => {
+  // composer-refinement.test.mjs drives the keys; this pins the rule to the Mac Assistant's.
   const chat = fs.readFileSync(new URL('web/ui/chat.js', editor), 'utf8')
-  assert.match(chat, /e\.key === 'Enter' && !e\.shiftKey && !e\.altKey && !e\.ctrlKey\)/)
+  assert.match(chat, /e\.key === 'Enter' && !e\.shiftKey && !e\.altKey && !e\.ctrlKey && \(e\.metaKey \|\| draft\.inputKind === 'prompt'\)\)/)
+})
+
+test('nudge follows the Linked toggle', () => {
+  const on = keyboard({ selection: ['c2'] })
+  on.dispatch('.')
+  assert.deepEqual(on.calls[0].map(op => [op.id, op.unlinked]), [['c2', undefined]])
+  assert.ok(Math.abs(on.state.project.tracks[1].clips.find(c => c.id === 'c2a').start - (4 + 1 / 30)) < 1e-3, 'the linked audio moves too')
+  const pair = keyboard({ selection: ['c2', 'c2a'] })
+  pair.dispatch('.')
+  assert.equal(pair.calls[0].length, 1, 'one move per linked group')
+  const off = keyboard({ selection: ['c2'] })
+  off.state.linked = false
+  off.dispatch('.')
+  assert.deepEqual(off.calls[0].map(op => [op.id, op.unlinked]), [['c2', true]])
+  assert.equal(off.state.project.tracks[1].clips.find(c => c.id === 'c2a').start, 4, 'the audio stays when linking is off')
+})
+
+test('nudging a clip already at zero to the left does nothing and says nothing', () => {
+  const c = keyboard({ selection: ['c1', 'c1a'] })
+  c.dispatch(',')
+  assert.equal(c.calls.length, 0)
+  assert.deepEqual(c.notices, [])
+})
+
+test('Cut clears the selection, as Delete does, so later keys do not name removed clips', () => {
+  const c = keyboard({ selection: ['c2', 'c2a'] })
+  c.keys.runEditorCommand('cut')
+  assert.deepEqual(c.state.selection, [])
+  c.dispatch('v')
+  assert.deepEqual(c.notices, [])
+})
+
+test('the Inspector hides the Audio tab on a video whose audio was detached', () => {
+  const source = fs.readFileSync(new URL('../web/ui/inspector.js', import.meta.url), 'utf8')
+  assert.match(source, /clip\.kind === 'video' && !clip\.link && !clip\.audioDetached && p\.assets\[clip\.src\]\?\.hasAudio\) \? \['audio', 'Audio'\]/)
 })

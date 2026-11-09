@@ -34,6 +34,9 @@ assert 'let delta = max(frames / max(1, fps), -(clips.map(\\.start).min() ?? 0))
 assert 'if action == "duplicate" { model.duplicate(); return }' in timeline, 'Clip menu Duplicate must share the locked-aware path'
 assert timeline.count('if mode == .move, model.selectionTouchesLockedTrack { model.nudgeUnlocked(frames: direction); return }') == 2, 'Keyboard and iOS precision nudges must share the locked-aware path'
 assert 'Button("Detach audio")' not in timeline, 'Native only unlinks, so it must say Unlink'
+assert timeline.count('guard let id = model.selectedID ?? model.selectedIDs.sorted().first else { return }') == 2, 'nudge works after Select All with no primary clip'
+assert '.disabled(precisionStepsDisabled)' in timeline and 'track in !track.locked && track.clips.contains { ids.contains($0.id) || links.contains' in timeline, 'iPhone -/+ stay on when an unlocked partner can move'
+assert timeline.count('if clip.kind == "video" && !clip.fields.string("link").isEmpty { Button("Unlink audio and video")') == 2, 'Unlink shows only on linked video clips'
 assert 'let playhead = (time * fps).rounded() / max(1, fps)' in model, 'Split tests the frame the core cuts on'
 assert 'if press.key == .upArrow || press.key == .downArrow' in timeline, 'Up and Down jump between edits, as in the browser'
 print('Mac menu state checks passed.')

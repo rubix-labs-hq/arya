@@ -662,10 +662,10 @@ export function applyOps(source, ops) {
 
     return found
   }
-  const withLinked = (id, fn) => {
+  const withLinked = (id, fn, unlinked = false) => {
     const found = clipOf(id)
     fn(found)
-    for (const other of linkedOf(p, found.clip)) if (!other.track.locked) fn(other)
+    if (!unlinked) for (const other of linkedOf(p, found.clip)) if (!other.track.locked) fn(other)
   }
 
   // A batch that slides or rolls each linked clip itself (the native timeline plans one op per
@@ -905,7 +905,7 @@ export function applyOps(source, ops) {
           const len = sourceLength(p, clip)
           const span = clip.dur * (clip.speed ?? 1)
           clip.in = round(Math.max(0, Math.min(len - span, clip.in + op.delta)))
-        })
+        }, op.unlinked)
         log.push(`slipped ${op.id} by ${round(op.delta, 3)}s`)
         break
       }
@@ -1290,7 +1290,7 @@ export const OPS_DOC = [
   '  Nested fields require nested objects: set:{title:{text:"New title"}}. Dotted update.set keys are rejected. Use keyframe/expression prop for animated property paths.',
   '    grade {exposure, contrast, pivot, saturation, hue, temperature, tint, lift:[r,g,b], gamma:[r,g,b], gain:[r,g,b], offset:[r,g,b], curves:{master|r|g|b:[[x,y],...]}, lut (path to .cube), lutMix, look: none|mono|warm|cool|punch|film|fade|teal-orange|bleach|noir}, key {color, similarity, smoothness, spill}; null deletes a field',
   '    Grade ranges (neutral first): exposure 0 in stops; contrast 1 and saturation 1 multiply; pivot 0.435; hue 0 degrees; temperature 0 and tint 0, each -1..1. lift, gamma, gain, offset, shadowTint and highlightTint are additive per channel with neutral 0, usually within -0.5..0.5: gain multiplies by 1+gain, lift raises blacks, gamma bends mids, offset adds. These are not Resolve units: Resolve Gain 1.00 is 0 here and 1.10 is 0.1, Resolve Offset 25 is 0. Ops refuse a gain mean of 0.95 or more and any wheel value beyond 2.',
-  '- move {id, start, track?, overwrite?, unlinked?}  - trim {id, edge:left|right, to, ripple?, unlinked?}  - roll {a, b, to, unlinked?}  - slip {id, delta}  - slide {id, delta, unlinked?}',
+  '- move {id, start, track?, overwrite?, unlinked?}  - trim {id, edge:left|right, to, ripple?, unlinked?}  - roll {a, b, to, unlinked?}  - slip {id, delta, unlinked?}  - slide {id, delta, unlinked?}',
   '  Linked video and audio trim, roll and slide together; unlinked:true edits one side only (for a J or L cut, roll the audio edit with unlinked). Edit a linked clip once: a separate call for its partner moves the pair twice. A trim without ripple stops at the neighbouring clip.',
   '- blade|split {at, id?, tracks?}  - delete|lift {id|ids} (leaves a gap)  - ripple_delete {id|ids}  - delete_range {from, to, tracks?, ripple?}  - duplicate {id, start?, track?, unlinked?} (copies linked audio too; without start it lands after the clip without covering another)  - paste {at, clips:[{track, clip, offset}]} places copies of clip objects at timeline seconds at',
   '- speed {id, speed, reverse?, ripple?} (a slower clip pushes later clips; ripple:true also closes the gap a faster clip leaves; ripple:false stops at the next clip)  - freeze {id, at, dur?}  - detach_audio {id}  - link {ids}',

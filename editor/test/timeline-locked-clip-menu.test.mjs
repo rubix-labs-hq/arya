@@ -6,17 +6,18 @@ import test from 'node:test'
 import { h } from 'preact'
 import htm from 'htm'
 import * as core from '../core/project.js'
+import { detachedAudioSettings } from '../core/audio-cleanup.js'
 
 const source = fs.readFileSync(new URL('../web/ui/timeline.js', import.meta.url), 'utf8')
 const body = source.replace(/^import .*$/gm, '').replace(/^export function /gm, 'function ').replace(/^export \{.*\}\s*$/gm, '')
-const factory = new Function('deps', 'matchMedia', `const {h,htm,useEffect,useLayoutEffect,useRef,useState,applyOps,clipEnd,duration,hasAudio,snapToFrame,timecode,MARKER_COLORS,addRef,api,edit,onTime,set,store,subscribe,time,toast,useStore,useTime,viewProject,openMenu,player,registry,devicePixelRatio,ResizeObserver,requestAnimationFrame,mediaDisplayName}=deps;${body};return {clipMenu,detachAudio}`)
+const factory = new Function('deps', 'matchMedia', `const {h,htm,useEffect,useLayoutEffect,useRef,useState,applyOps,clipEnd,duration,hasAudio,snapToFrame,timecode,MARKER_COLORS,addRef,api,edit,onTime,set,store,subscribe,time,toast,useStore,useTime,viewProject,openMenu,player,registry,devicePixelRatio,ResizeObserver,requestAnimationFrame,mediaDisplayName,detachedAudioSettings}=deps;${body};return {clipMenu,detachAudio}`)
 
 function menu(p, selection) {
   const edits = [], notices = []
   const store = { project: p, selection, linked: true, root: 'r', version: 1, caps: { host: 'browser-local' } }
   const deps = {
     ...core, h, htm, store, set: patch => Object.assign(store, patch), time: { t: 3 }, edit: ops => edits.push(structuredClone(ops)),
-    toast: text => notices.push(text), addRef() {}, registry: { clipMenus: [] }, mediaDisplayName: s => s,
+    toast: text => notices.push(text), addRef() {}, registry: { clipMenus: [] }, mediaDisplayName: s => s, detachedAudioSettings,
   }
   return { ...factory(deps, () => ({ matches: false })), edits, notices }
 }
@@ -75,4 +76,29 @@ test('Detach audio keeps the level, pan, fades and volume keyframes', () => {
   assert.deepEqual({ volume: audio.volume, pan: audio.pan, fadeIn: audio.fadeIn, fadeOut: audio.fadeOut, anim: audio.anim },
     { volume: -12, pan: -0.5, fadeIn: 0.5, fadeOut: 1, anim: { volume: [[0, -12], [2, -6]] } })
   assert.ok(Math.abs(core.gainAt(p, audio, 1.5) - core.gainAt(p, p.tracks[0].clips[0], 1.5)) < 1e-9)
+})
+
+test('Detach audio never lands on a muted track or one silenced by solo', () => {
+  for (const setup of [p => { p.tracks[1].muted = true }, p => { p.tracks.push({ id: 'A9', kind: 'audio', solo: true, clips: [] }) }]) {
+    const p = fixture()
+    p.tracks[1].clips = []
+    setup(p)
+    const m = menu(p, ['c1'])
+    m.clipMenu(p, { clip: p.tracks[0].clips[0] }, 3).find(it => it.label === 'Detach audio').run()
+    const after = core.applyOps(p, m.edits[0]).project
+    const home = after.tracks.find(t => t.clips.some(c => c.kind === 'audio' && c.start === 2))
+    assert.equal(home.muted, undefined)
+    assert.ok(!after.tracks.some(t => t.solo) || home.solo || home.id === 'A9', `audio on ${home.id} is audible`)
+  }
+})
+
+test('Detach audio keeps a disabled clip silent and keeps its effect automation', () => {
+  const p = fixture()
+  Object.assign(p.tracks[0].clips[0], { enabled: false, fx: [{ id: 'f1', type: 'reverb', mix: 0.3 }], anim: { 'fx.f1.mix': [[0, 0.3], [2, 0.8]], opacity: [[0, 1]] } })
+  const m = menu(p, ['c1'])
+  m.clipMenu(p, { clip: p.tracks[0].clips[0] }, 3).find(it => it.label === 'Detach audio').run()
+  const audio = core.applyOps(p, m.edits[0]).project.tracks[1].clips.find(c => c.start === 2)
+  assert.equal(audio.enabled, false)
+  assert.equal(audio.reverse, true)
+  assert.deepEqual(audio.anim, { 'fx.f1.mix': [[0, 0.3], [2, 0.8]] })
 })

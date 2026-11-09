@@ -1223,7 +1223,7 @@ struct NativeTimeline: View {
                     Button("Duplicate clip") { clipAction("duplicate", clip: clip) }
                     if clip.kind == "comp" { Button("Open composition") { clipAction("open", clip: clip) } }
                     Button("Precompose selection") { clipAction("precompose", clip: clip) }
-                    if clip.kind == "video" { Button("Unlink audio and video") { clipAction("detach", clip: clip) } }
+                    if clip.kind == "video" && !clip.fields.string("link").isEmpty { Button("Unlink audio and video") { clipAction("detach", clip: clip) } }
                     Button("Delete selection", role: .destructive) { deleteSelection(false) }
                     Button("Ripple delete selection", role: .destructive) { deleteSelection(true) }
                 }
@@ -1275,10 +1275,21 @@ struct NativeTimeline: View {
                 .accessibilityLabel(precisionStepLabel(1))
         }
         .buttonStyle(NativeToolbarButtonStyle())
-        .disabled(model.selected == nil || model.tracks.first(where: { $0.clips.contains(where: { $0.id == model.selectedID }) })?.locked == true)
+        .disabled(precisionStepsDisabled)
+    }
+    /// Off only when nothing is selected, or when every selected clip and linked partner is on a
+    /// locked track. A locked primary with an unlocked partner can still nudge that partner.
+    private var precisionStepsDisabled: Bool {
+        var ids = model.selectedIDs
+        if let id = model.selectedID { ids.insert(id) }
+        guard !ids.isEmpty else { return true }
+        let clips = model.tracks.flatMap(\.clips)
+        let links = Set(clips.filter { ids.contains($0.id) }.map { $0.fields.string("link") }.filter { !$0.isEmpty })
+        return !model.tracks.contains { track in !track.locked && track.clips.contains { ids.contains($0.id) || links.contains($0.fields.string("link")) } }
     }
     private func precisionStep(_ direction: Double) {
-        guard let id = model.selectedID else { return }
+        // Select All keeps the primary it had, which may be none.
+        guard let id = model.selectedID ?? model.selectedIDs.sorted().first else { return }
         if mode == .move, model.selectionTouchesLockedTrack { model.nudgeUnlocked(frames: direction); return }
         precisionNudge(id, direction: direction, edge: [.trim, .ripple, .roll].contains(mode) ? precisionEdge : nil)
     }
@@ -1395,7 +1406,7 @@ struct NativeTimeline: View {
         model.select(ids: source.extending ? source.selection.union(ids) : ids, primary: model.selectedID)
     }
     private func nudge(_ direction: Double) {
-        guard let id = model.selectedID else { return }
+        guard let id = model.selectedID ?? model.selectedIDs.sorted().first else { return }
         // The planner refuses a selection with a locked linked partner. In Move mode the core
         // can move the unlocked clips and leave that partner where it is, as the browser does.
         if mode == .move, model.selectionTouchesLockedTrack { model.nudgeUnlocked(frames: direction); return }
@@ -2093,7 +2104,7 @@ private struct NativeTimelineClip: View {
         Button("Duplicate clip") { action("duplicate") }
         if clip.kind == "comp" { Button("Open composition") { action("open") } }
         Button("Precompose selection") { action("precompose") }
-        if clip.kind == "video" { Button("Unlink audio and video") { action("detach") } }
+        if clip.kind == "video" && !clip.fields.string("link").isEmpty { Button("Unlink audio and video") { action("detach") } }
         Button("Match Frame") {
             if let matchFrame {
                 do { model.matchFrame(try matchFrame.get()) } catch { model.status = error.localizedDescription }

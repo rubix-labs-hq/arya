@@ -143,15 +143,27 @@ export function leafTiming(item, { t0, when, rate = 1, latency = 0, bufferFrom =
 
 const reversedBuffers = new WeakMap()
 
-/** A copy of a decoded buffer with its samples in reverse order, made once per buffer. */
-export function reversedBuffer(ctx, buffer) {
-  let out = reversedBuffers.get(buffer)
+/**
+ * The samples of `buffer` between buffer seconds `from` and `to`, in reverse order. Only the span a
+ * reversed clip reads is copied, so a short clip from a long source stays cheap. Each copy is made
+ * once per buffer and span; a few recent spans are kept per buffer. Returns the copy and the buffer
+ * seconds it covers (rounded out to whole samples), or null when the span is empty.
+ */
+export function reversedBuffer(ctx, buffer, from = 0, to = buffer.length / buffer.sampleRate) {
+  const sr = buffer.sampleRate
+  const a = Math.max(0, Math.floor(from * sr)), b = Math.min(buffer.length, Math.ceil(to * sr))
+  if (b <= a) return null
+  let spans = reversedBuffers.get(buffer)
+  if (!spans) reversedBuffers.set(buffer, spans = new Map())
+  const key = `${a}:${b}`
+  let out = spans.get(key)
   if (!out) {
-    out = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate)
-    for (let ch = 0; ch < buffer.numberOfChannels; ch++) out.getChannelData(ch).set(buffer.getChannelData(ch).slice().reverse())
-    reversedBuffers.set(buffer, out)
+    out = ctx.createBuffer(buffer.numberOfChannels, b - a, sr)
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) out.getChannelData(ch).set(buffer.getChannelData(ch).slice(a, b).reverse())
+    spans.set(key, out)
+    if (spans.size > 8) spans.delete(spans.keys().next().value)
   }
-  return out
+  return { buffer: out, from: a / sr, dur: (b - a) / sr }
 }
 
 /** The processing steps of a clip (or comp clip), in order. */
@@ -536,8 +548,12 @@ export class AudioEngine {
       const got = loaded.get(item)
       if (!got?.buffer) return
       const lat = chainLatency(item.clip.fx, fs)
-      const buffer = item.clip.reverse ? reversedBuffer(ctx, got.buffer) : got.buffer
-      const tm = leafTiming(item, { t0, when, rate, latency: down + lat, bufferFrom: got.from, bufferDur: item.clip.reverse ? got.buffer.duration : undefined, now: env.now })
+      // A reversed clip plays a reversed copy of just the source span it reads.
+      const from = item.srcIn - got.from
+      const rev = item.clip.reverse ? reversedBuffer(ctx, got.buffer, from, from + item.clip.dur * item.speed) : null
+      if (item.clip.reverse && !rev) return
+      const buffer = rev?.buffer ?? got.buffer
+      const tm = leafTiming(item, { t0, when, rate, latency: down + lat, bufferFrom: rev ? got.from + rev.from : got.from, bufferDur: rev?.dur, now: env.now })
       if (tm.dur <= 1e-6 || tm.offset >= buffer.duration) return
       const src = ctx.createBufferSource()
       src.buffer = buffer

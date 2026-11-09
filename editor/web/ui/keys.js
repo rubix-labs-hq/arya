@@ -92,6 +92,7 @@ export function runEditorCommand(command) {
       if (ids.length) {
         copySelection(p, ids)
         edit({ op: 'ripple_delete', ids, ...unlinked() })
+        set({ selection: [] })
       } else if (sel().length) toast('The selected clips are on locked tracks.')
       break
     }
@@ -298,8 +299,14 @@ export function installKeys() {
           const starts = editable(p).map(id => all.find(c => c.id === id)?.start ?? 0)
           // One shared delta, stopped at zero by the earliest clip, keeps the spacing between clips.
           const d = Math.max(((k === ',' || k === '<') ? -1 : 1) * (e.shiftKey ? 10 : 1) / fps, -Math.min(...starts))
-          if (editable(p).length && d !== 0) edit(editable(p).map((id, i) => ({ op: 'move', id, start: starts[i] + d, unlinked: true })))
-          else if (sel().length) toast('The selected clips are on locked tracks.')
+          // With Linked selection on, each link group moves once and brings its unlocked partners,
+          // even one left out of the selection; off, each selected clip moves alone.
+          const seen = new Set()
+          const movers = editable(p).map((id, i) => ({ id, start: starts[i], link: all.find(c => c.id === id)?.link }))
+            .filter(m => !store.linked || !m.link || (!seen.has(m.link) && seen.add(m.link)))
+          // A clip already at zero simply stays put; only an all-locked selection is explained.
+          if (!movers.length) { if (sel().length) toast('The selected clips are on locked tracks.') }
+          else if (d !== 0) edit(movers.map(m => ({ op: 'move', id: m.id, start: m.start + d, ...unlinked() })))
           break
         }
         case 'v':

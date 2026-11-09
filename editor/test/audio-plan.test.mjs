@@ -202,8 +202,24 @@ test('reversedBuffer flips every channel once and caches the copy', async () => 
   const buffer = { numberOfChannels: 2, length: 3, sampleRate: 48000, getChannelData: ch => channels[ch] }
   const ctx = { createBuffer: (n, length) => { const data = Array.from({ length: n }, () => new Float32Array(length)); return { getChannelData: ch => data[ch] } } }
   const out = reversedBuffer(ctx, buffer)
-  assert.deepEqual([...out.getChannelData(0)], [3, 2, 1])
-  assert.deepEqual([...out.getChannelData(1)], [6, 5, 4])
-  assert.equal(reversedBuffer(ctx, buffer), out)
+  assert.deepEqual([...out.buffer.getChannelData(0)], [3, 2, 1])
+  assert.deepEqual([...out.buffer.getChannelData(1)], [6, 5, 4])
+  assert.equal(reversedBuffer(ctx, buffer).buffer, out.buffer)
   assert.deepEqual([...channels[0]], [1, 2, 3], 'the original is untouched')
+})
+
+test('reversedBuffer copies only the span a reversed clip reads', async () => {
+  const { reversedBuffer, leafTiming } = await import('../web/engine/audio.js')
+  // A 10 s source at 10 samples per second; sample i holds source time i / 10.
+  const data = Float32Array.from({ length: 100 }, (_, i) => i / 10)
+  const buffer = { numberOfChannels: 1, length: 100, sampleRate: 10, getChannelData: () => data }
+  const ctx = { createBuffer: (n, length) => { const d = new Float32Array(length); return { length, getChannelData: () => d } } }
+  const span = reversedBuffer(ctx, buffer, 3, 5)
+  assert.equal(span.buffer.length, 20, 'two seconds, not the whole source')
+  assert.deepEqual([span.from, span.dur], [3, 2])
+  // The clip reads source 3 to 5 backwards; at clip time 0.5 s it plays source 4.5 s.
+  const item = { clip: { reverse: true, start: 0, dur: 2 }, srcIn: 3, speed: 1, A: 0, B: 1, from: 0.5, to: 2 }
+  const tm = leafTiming(item, { t0: 0.5, when: 0, bufferFrom: span.from, bufferDur: span.dur })
+  assert.ok(Math.abs(span.buffer.getChannelData(0)[Math.round(tm.offset * 10)] - 4.5) < 0.11)
+  assert.equal(reversedBuffer(ctx, buffer, 5, 5), null)
 })

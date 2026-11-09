@@ -145,6 +145,23 @@ test('Command-Return sends like Return, as in the Mac Assistant', async () => {
   assert.ok(f.calls.some(call => call.route === '/api/bridge/send'))
 })
 
+test('in a script or screenplay, Return adds a line and Command-Return sends', async () => {
+  for (const inputKind of ['script', 'screenplay']) {
+    const f = fixture({ assistantDraft: { root: '/fixture', text: 'INT. ROOM - DAY', inputKind } })
+    const plain = event()
+    input(f.draw()).props.onKeyDown(plain)
+    await tick()
+    assert.equal(plain.prevented, 0, `${inputKind}: Return keeps the newline`)
+    assert.deepEqual(f.calls, [])
+    assert.match(text(f.draw()), /⌘Return to send · Return for a new line/)
+    const command = event({ metaKey: true })
+    input(f.draw()).props.onKeyDown(command)
+    await tick()
+    assert.equal(command.prevented, 1)
+    assert.ok(f.calls.some(call => call.route === '/api/bridge/send'), `${inputKind}: Command-Return sends`)
+  }
+})
+
 test('composition lifecycle prevents dispatch until composition ends', async () => {
   const f = fixture(), field = input(f.draw()), during = event()
   field.props.onCompositionStart?.()
