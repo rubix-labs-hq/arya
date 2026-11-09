@@ -1223,7 +1223,7 @@ struct NativeTimeline: View {
                     Button("Duplicate clip") { clipAction("duplicate", clip: clip) }
                     if clip.kind == "comp" { Button("Open composition") { clipAction("open", clip: clip) } }
                     Button("Precompose selection") { clipAction("precompose", clip: clip) }
-                    if clip.kind == "video" { Button("Detach audio") { clipAction("detach", clip: clip) } }
+                    if clip.kind == "video" { Button("Unlink audio and video") { clipAction("detach", clip: clip) } }
                     Button("Delete selection", role: .destructive) { deleteSelection(false) }
                     Button("Ripple delete selection", role: .destructive) { deleteSelection(true) }
                 }
@@ -1279,6 +1279,7 @@ struct NativeTimeline: View {
     }
     private func precisionStep(_ direction: Double) {
         guard let id = model.selectedID else { return }
+        if mode == .move, model.selectionTouchesLockedTrack { model.nudgeUnlocked(frames: direction); return }
         precisionNudge(id, direction: direction, edge: [.trim, .ripple, .roll].contains(mode) ? precisionEdge : nil)
     }
     private func precisionStepLabel(_ direction: Double) -> String {
@@ -1435,11 +1436,12 @@ struct NativeTimeline: View {
         if !model.selectedIDs.contains(clip.id) { selectClip(clip.id, extending: false) }
         if action == "split" { splitSelection(); return }
         if action == "delete" || action == "ripple" { deleteSelection(action == "ripple"); return }
+        // Duplicate shares the model path with ⌘D, which leaves locked partners out.
+        if action == "duplicate" { model.duplicate(); return }
         do {
             let source = try capture(clip.id)
             let operation: [String: Any]
-            if action == "duplicate" { operation = ["op": "duplicate", "id": clip.id, "start": clip.end] }
-            else if action == "detach" { operation = ["op": "detach_audio", "id": clip.id] }
+            if action == "detach" { operation = ["op": "detach_audio", "id": clip.id] }
             else { operation = ["op": "precompose", "ids": source.selected.sorted(), "name": clip.name] }
             guard matches(source) else { return }
             model.editBatch(source.scoped([operation]), expectedVersion: source.version, feedback: true)
@@ -1482,6 +1484,15 @@ struct NativeTimeline: View {
         if press.key == .delete { deleteSelection(press.modifiers.contains(.shift)); return .handled }
         // Arrows move the playhead, as in the browser editor (Shift moves one second).
         // Comma and period nudge the selection by a frame (Shift: ten frames).
+        // Up and Down jump to the previous or next edit, marker or end, as in the browser editor.
+        if press.key == .upArrow || press.key == .downArrow, press.modifiers.isDisjoint(with: [.command, .option, .control, .shift]) {
+            let markerTimes = NativeTimelineMarkerEditing.markers(model.project?.fields ?? [:], composition: model.composition)
+                .map { NativeTimelineMarkerEditing.number($0, "t") }.filter(\.isFinite)
+            let points = ([0, model.duration] + markerTimes + model.tracks.flatMap { $0.clips.flatMap { [$0.start, $0.end] } }).sorted()
+            let target = press.key == .upArrow ? points.last { $0 < model.time - 1e-3 } : points.first { $0 > model.time + 1e-3 }
+            if let target { model.seek(target) }
+            return .handled
+        }
         // Option, Control and Command arrows stay with the system and the menus.
         if press.key == .leftArrow || press.key == .rightArrow, press.modifiers.isDisjoint(with: [.command, .option, .control]) {
             let direction = press.key == .leftArrow ? -1.0 : 1.0
@@ -2082,7 +2093,7 @@ private struct NativeTimelineClip: View {
         Button("Duplicate clip") { action("duplicate") }
         if clip.kind == "comp" { Button("Open composition") { action("open") } }
         Button("Precompose selection") { action("precompose") }
-        if clip.kind == "video" { Button("Detach audio") { action("detach") } }
+        if clip.kind == "video" { Button("Unlink audio and video") { action("detach") } }
         Button("Match Frame") {
             if let matchFrame {
                 do { model.matchFrame(try matchFrame.get()) } catch { model.status = error.localizedDescription }

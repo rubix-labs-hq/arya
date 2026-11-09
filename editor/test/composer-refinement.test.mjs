@@ -130,11 +130,19 @@ test('suggestions follow the selection, sit before the text box and set a draft 
   assert.equal(nodes(fixture({ claude: { state: 'working' }, selection: ['c1'], project: { assets: {}, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} } }).draw()).find(node => node.props?.class === 'assistant-suggestion').props.disabled, true)
 })
 
-for (const flags of [{ isComposing: true }, { nativeEvent: { isComposing: true } }, { keyCode: 229 }, { altKey: true }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true }]) test(`Enter preserves composition or newline for ${JSON.stringify(flags)}`, async () => {
+for (const flags of [{ isComposing: true }, { nativeEvent: { isComposing: true } }, { keyCode: 229 }, { altKey: true }, { ctrlKey: true }, { shiftKey: true }]) test(`Enter preserves composition or newline for ${JSON.stringify(flags)}`, async () => {
   const f = fixture(), e = event(flags)
   input(f.draw()).props.onKeyDown(e)
   await tick()
   assert.equal(e.prevented, 0); assert.equal(e.stopped, 1); assert.deepEqual(f.calls, []); assert.deepEqual(f.drafts, [])
+})
+
+test('Command-Return sends like Return, as in the Mac Assistant', async () => {
+  const f = fixture(), e = event({ metaKey: true })
+  input(f.draw()).props.onKeyDown(e)
+  await tick()
+  assert.equal(e.prevented, 1)
+  assert.ok(f.calls.some(call => call.route === '/api/bridge/send'))
 })
 
 test('composition lifecycle prevents dispatch until composition ends', async () => {

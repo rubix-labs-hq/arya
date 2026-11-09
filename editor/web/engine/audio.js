@@ -122,10 +122,14 @@ export const itemSource = (item, T) => item.srcIn + itemLocal(item, T) * item.sp
  * seconds), and the playback rate. `bufferFrom` is the source second the buffer starts at;
  * a start before `now` is moved to now and the offset advanced to match.
  */
-export function leafTiming(item, { t0, when, rate = 1, latency = 0, bufferFrom = 0, now = -Infinity }) {
+export function leafTiming(item, { t0, when, rate = 1, latency = 0, bufferFrom = 0, bufferDur, now = -Infinity }) {
   const playbackRate = (item.speed / item.B) * rate
   let at = when + (item.from - t0) / rate - latency
-  let offset = itemSource(item, item.from) - bufferFrom
+  // A reversed clip reads its source from the end (source = in + (dur - local) * speed) and plays
+  // a reversed copy of its buffer, whose second r holds source second bufferFrom + bufferDur - r.
+  let offset = item.clip.reverse && bufferDur !== undefined
+    ? bufferFrom + bufferDur - (item.srcIn + (item.clip.dur - itemLocal(item, item.from)) * item.speed)
+    : itemSource(item, item.from) - bufferFrom
   let dur = ((item.to - item.from) * item.speed) / item.B
   if (at < now) {
     const skip = (now - at) * playbackRate
@@ -135,6 +139,19 @@ export function leafTiming(item, { t0, when, rate = 1, latency = 0, bufferFrom =
   }
 
   return { at, offset, dur, playbackRate }
+}
+
+const reversedBuffers = new WeakMap()
+
+/** A copy of a decoded buffer with its samples in reverse order, made once per buffer. */
+export function reversedBuffer(ctx, buffer) {
+  let out = reversedBuffers.get(buffer)
+  if (!out) {
+    out = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate)
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) out.getChannelData(ch).set(buffer.getChannelData(ch).slice().reverse())
+    reversedBuffers.set(buffer, out)
+  }
+  return out
 }
 
 /** The processing steps of a clip (or comp clip), in order. */
@@ -519,10 +536,11 @@ export class AudioEngine {
       const got = loaded.get(item)
       if (!got?.buffer) return
       const lat = chainLatency(item.clip.fx, fs)
-      const tm = leafTiming(item, { t0, when, rate, latency: down + lat, bufferFrom: got.from, now: env.now })
-      if (tm.dur <= 1e-6 || tm.offset >= got.buffer.duration) return
+      const buffer = item.clip.reverse ? reversedBuffer(ctx, got.buffer) : got.buffer
+      const tm = leafTiming(item, { t0, when, rate, latency: down + lat, bufferFrom: got.from, bufferDur: item.clip.reverse ? got.buffer.duration : undefined, now: env.now })
+      if (tm.dur <= 1e-6 || tm.offset >= buffer.duration) return
       const src = ctx.createBufferSource()
-      src.buffer = got.buffer
+      src.buffer = buffer
       src.playbackRate.value = tm.playbackRate
       env.nodes.push(src)
       const built = buildChain(env, src, clipSteps(item.clip))

@@ -959,8 +959,9 @@ final class NativeEditorModel: ObservableObject {
         // Split every selected clip under the playhead, as the clip menu does. A linked partner is
         // cut with its clip, so each linked group gets one operation. Clips on locked tracks or away from the playhead are left out: the batch is all or nothing,
         // and the core rejects a locked clip.
-        if selectedIDs.isEmpty { editBatch([["op": "blade", "at": time]], expectedVersion: version, feedback: true); return }
-        let playhead = time
+        // The core cuts on a frame, so test against the playhead's frame.
+        let playhead = (time * fps).rounded() / max(1, fps)
+        if selectedIDs.isEmpty { editBatch([["op": "blade", "at": playhead]], expectedVersion: version, feedback: true); return }
         var ids: [String] = [], links = Set<String>()
         for track in tracks where !track.locked {
             for clip in track.clips where selectedIDs.contains(clip.id) && clip.start < playhead - 1e-6 && clip.end > playhead + 1e-6 {
@@ -969,7 +970,7 @@ final class NativeEditorModel: ObservableObject {
             }
         }
         guard !ids.isEmpty else { status = "Move the playhead over a selected clip on an unlocked track to split it."; return }
-        editBatch(ids.map { ["op": "blade", "id": $0, "at": time] }, summary: ids.count > 1 ? "Split selected clips" : nil, expectedVersion: version, feedback: true)
+        editBatch(ids.map { ["op": "blade", "id": $0, "at": playhead] }, summary: ids.count > 1 ? "Split selected clips" : nil, expectedVersion: version, feedback: true)
     }
     // BEGIN NATIVE CLIPBOARD CONTROLLER
     func clipboardActionCapture() -> NativeClipboardActionCapture? {
@@ -1078,10 +1079,16 @@ final class NativeEditorModel: ObservableObject {
     /// Moves the selected clips on unlocked tracks by `frames`, leaving locked partners in place.
     /// The selection already holds each linked group, so every clip moves on its own.
     func nudgeUnlocked(frames: Double) {
-        let clips = tracks.filter { !$0.locked }.flatMap(\.clips).filter { selectedIDs.contains($0.id) }.sorted { $0.id < $1.id }
+        // Unlocked members of each selected link group move too, so linked clips stay in sync.
+        let all = tracks.flatMap(\.clips)
+        let links = Set(all.filter { selectedIDs.contains($0.id) }.map { $0.fields.string("link") }.filter { !$0.isEmpty })
+        let clips = tracks.filter { !$0.locked }.flatMap(\.clips)
+            .filter { selectedIDs.contains($0.id) || links.contains($0.fields.string("link")) }.sorted { $0.id < $1.id }
         guard !clips.isEmpty else { status = "The selected clips are on locked tracks."; return }
-        let delta = frames / max(1, fps)
-        editBatch(clips.map { ["op": "move", "id": $0.id, "start": max(0, $0.start + delta), "unlinked": true] },
+        // One shared delta, stopped at zero by the earliest clip, keeps the spacing between clips.
+        let delta = max(frames / max(1, fps), -(clips.map(\.start).min() ?? 0))
+        guard delta != 0 else { return }
+        editBatch(clips.map { ["op": "move", "id": $0.id, "start": $0.start + delta, "unlinked": true] },
                   summary: "Nudge selected clips", expectedVersion: version, feedback: true)
     }
     func add(_ asset: NativeAsset) {

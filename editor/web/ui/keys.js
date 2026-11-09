@@ -294,9 +294,11 @@ export function installKeys() {
         case '.':
         case '<':
         case '>': {
-          const d = ((k === ',' || k === '<') ? -1 : 1) * (e.shiftKey ? 10 : 1) / fps
           const all = p.tracks.flatMap(t => t.clips)
-          if (editable(p).length) edit(editable(p).map(id => ({ op: 'move', id, start: Math.max(0, (all.find(c => c.id === id)?.start ?? 0) + d), unlinked: true })))
+          const starts = editable(p).map(id => all.find(c => c.id === id)?.start ?? 0)
+          // One shared delta, stopped at zero by the earliest clip, keeps the spacing between clips.
+          const d = Math.max(((k === ',' || k === '<') ? -1 : 1) * (e.shiftKey ? 10 : 1) / fps, -Math.min(...starts))
+          if (editable(p).length && d !== 0) edit(editable(p).map((id, i) => ({ op: 'move', id, start: starts[i] + d, unlinked: true })))
           else if (sel().length) toast('The selected clips are on locked tracks.')
           break
         }

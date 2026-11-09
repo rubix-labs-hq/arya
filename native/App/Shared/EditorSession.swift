@@ -307,7 +307,6 @@ struct NativeProjectRecoveryRequest: Identifiable {
 
 /// The native editor state the Timeline menu needs to enable its items.
 struct NativeMenuAvailability: Equatable {
-    var hasPrimary = false
     var hasSelection = false
     var canCopy = false
     var canPaste = false
@@ -380,7 +379,7 @@ final class EditorSession: ObservableObject {
     private func refreshNativeMenu() {
         nativeMenuRefreshQueued = false
         let model = nativeEditor
-        let next = NativeMenuAvailability(hasPrimary: model.selectedID != nil, hasSelection: !model.selectedIDs.isEmpty,
+        let next = NativeMenuAvailability(hasSelection: !model.selectedIDs.isEmpty,
                                           canCopy: model.canCopyTimelineSelection, canPaste: model.canPasteTimelineClipboard,
                                           canMatchFrame: model.canRequestMatchFrame)
         if next != nativeMenu { nativeMenu = next }

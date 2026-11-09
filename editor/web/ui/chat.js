@@ -258,7 +258,8 @@ export function ChatPanel() {
           onKeyDown=${e => {
             e.stopPropagation()
             if (composing.current || e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) return
-            if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+            // Return and ⌘Return send, as in the Mac Assistant. Shift-Return adds a line.
+            if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey) {
               e.preventDefault()
               if (canSend) send()
               else if (text.trim() && !working) { toast('Connect an assistant to send. Your draft is kept.'); list.current?.parentElement.querySelector('.assistant-setup button:last-child')?.focus() }

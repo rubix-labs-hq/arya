@@ -53,3 +53,26 @@ test('Detach audio places matching reversed audio under the clip and mutes the p
   assert.equal(after.tracks[0].clips[0].audioDetached, true)
   assert.equal(m.clipMenu(after, { clip: after.tracks[0].clips[0] }, 3).some(it => it.label === 'Detach audio'), false)
 })
+
+test('Detach audio never cuts other audio: it uses a free track or adds one', () => {
+  const p = fixture()
+  p.tracks[1].clips.push({ id: 'music', kind: 'audio', src: 'm.mp4', start: 0, dur: 8, in: 0 })
+  const m = menu(p, ['c1'])
+  m.clipMenu(p, { clip: p.tracks[0].clips[0] }, 3).find(it => it.label === 'Detach audio').run()
+  const after = core.applyOps(p, m.edits[0]).project
+  assert.deepEqual(after.tracks.find(t => t.id === 'A1').clips, p.tracks[1].clips, 'the music on A1 is untouched')
+  const added = after.tracks.find(t => t.id === 'A2')
+  assert.equal(added.clips.length, 1)
+  assert.equal(added.clips[0].start, 2)
+})
+
+test('Detach audio keeps the level, pan, fades and volume keyframes', () => {
+  const p = fixture()
+  Object.assign(p.tracks[0].clips[0], { volume: -12, pan: -0.5, fadeIn: 0.5, fadeOut: 1, anim: { volume: [[0, -12], [2, -6]], opacity: [[0, 1]] } })
+  const m = menu(p, ['c1'])
+  m.clipMenu(p, { clip: p.tracks[0].clips[0] }, 3).find(it => it.label === 'Detach audio').run()
+  const audio = core.applyOps(p, m.edits[0]).project.tracks[1].clips.find(c => c.start === 2)
+  assert.deepEqual({ volume: audio.volume, pan: audio.pan, fadeIn: audio.fadeIn, fadeOut: audio.fadeOut, anim: audio.anim },
+    { volume: -12, pan: -0.5, fadeIn: 0.5, fadeOut: 1, anim: { volume: [[0, -12], [2, -6]] } })
+  assert.ok(Math.abs(core.gainAt(p, audio, 1.5) - core.gainAt(p, p.tracks[0].clips[0], 1.5)) < 1e-9)
+})

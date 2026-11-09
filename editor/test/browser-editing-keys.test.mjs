@@ -332,3 +332,16 @@ test('nudge and trim to playhead explain when every selected clip is locked', ()
     assert.match(c.notices.at(-1) ?? '', /locked/, key)
   }
 })
+
+test('nudging left near zero moves every selected clip by the same amount', () => {
+  const c = keyboard({ selection: ['c1', 'c2'] })
+  c.state.linked = false
+  c.dispatch(',')
+  const starts = ['c1', 'c2'].map(id => c.state.project.tracks[0].clips.find(clip => clip.id === id).start)
+  assert.deepEqual(starts, [0, 4], 'the clip at zero stops the whole group')
+})
+
+test('the browser Assistant sends on Return and Command-Return, not Shift-Return', () => {
+  const chat = fs.readFileSync(new URL('web/ui/chat.js', editor), 'utf8')
+  assert.match(chat, /e\.key === 'Enter' && !e\.shiftKey && !e\.altKey && !e\.ctrlKey\)/)
+})

@@ -179,3 +179,31 @@ test('a muted audio clip is silent in preview and export plans', () => {
   assert.equal(sounds(p, p.tracks.find(t => t.id === 'A1').clips[0]), false)
   assert.deepEqual(planLeaves(planAudio(p, 0)).map(leaf => leaf.clip.id), [playing.id])
 })
+
+test('reversed audio plays its buffer backwards and stays continuous across a blade', async () => {
+  const { applyOps } = await import('../core/project.js')
+  const p = base()
+  p.assets['a.wav'] = { duration: 30, hasAudio: true }
+  audioTrack(p, 'A1').clips.push({ id: 'r', kind: 'audio', src: 'a.wav', start: 0, dur: 10, in: 5, speed: 1, reverse: true })
+  // The buffer covers source 5..15. Reversed, buffer second r holds source 15 - r.
+  const heard = (proj, T) => {
+    const leaf = planLeaves(planAudio(proj, 0)).find(l => T >= l.from - 1e-9 && T < l.to)
+    const tm = leafTiming(leaf, { t0: 0, when: 0, bufferFrom: leaf.srcIn, bufferDur: leaf.clip.dur * leaf.speed })
+    return leaf.srcIn + leaf.clip.dur * leaf.speed - (tm.offset + (T - leaf.from) * tm.playbackRate)
+  }
+  for (const T of [0, 3.9, 4, 7, 9.9]) near(heard(p, T), 15 - T)
+  const bladed = applyOps(p, [{ op: 'blade', id: 'r', at: 4 }]).project
+  for (const T of [0, 3.9, 4, 7, 9.9]) near(heard(bladed, T), 15 - T)
+})
+
+test('reversedBuffer flips every channel once and caches the copy', async () => {
+  const { reversedBuffer } = await import('../web/engine/audio.js')
+  const channels = [Float32Array.from([1, 2, 3]), Float32Array.from([4, 5, 6])]
+  const buffer = { numberOfChannels: 2, length: 3, sampleRate: 48000, getChannelData: ch => channels[ch] }
+  const ctx = { createBuffer: (n, length) => { const data = Array.from({ length: n }, () => new Float32Array(length)); return { getChannelData: ch => data[ch] } } }
+  const out = reversedBuffer(ctx, buffer)
+  assert.deepEqual([...out.getChannelData(0)], [3, 2, 1])
+  assert.deepEqual([...out.getChannelData(1)], [6, 5, 4])
+  assert.equal(reversedBuffer(ctx, buffer), out)
+  assert.deepEqual([...channels[0]], [1, 2, 3], 'the original is untouched')
+})

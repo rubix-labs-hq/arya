@@ -714,7 +714,8 @@ export function Timeline() {
       case 'slip':
         state.tip = { x, y, text: `slip ${dt >= 0 ? '+' : '−'}${timecode(Math.abs(dt), p.fps)}` }
 
-        return [{ op: 'slip', id: d.clip.id, delta: -dt * (d.clip.speed ?? 1) }]
+        // The footage follows the pointer. A reversed clip runs its source right to left.
+        return [{ op: 'slip', id: d.clip.id, delta: (d.clip.reverse ? dt : -dt) * (d.clip.speed ?? 1) }]
       case 'slide':
         state.tip = { x, y, text: `slide ${dt >= 0 ? '+' : '−'}${timecode(Math.abs(dt), p.fps)}` }
 
@@ -835,7 +836,11 @@ export function Timeline() {
     const { x, y } = local(e)
     const hit = hitAt(p, x, y, state)
     const t = snapToFrame(xt(x), p.fps)
-    if (hit.clip && !store.selection.includes(hit.clip.id)) set({ selection: [hit.clip.id] })
+    if (hit.clip && !store.selection.includes(hit.clip.id)) {
+      // Right-click selects like a click does: with Linked selection on, the partners come too.
+      const link = store.linked && hit.clip.link
+      set({ selection: [hit.clip.id, ...(link ? p.tracks.flatMap(tt => tt.clips).filter(o => o.link === link && o.id !== hit.clip.id).map(o => o.id) : [])] })
+    }
     openMenu(e.clientX, e.clientY, clipMenu(p, hit, t))
   }
 
@@ -1026,14 +1031,24 @@ export function openComposition(id) {
   player.seek(0)
 }
 
-// Puts a clip's own audio under it on an audio track, with the same timing, speed and
+// Puts a clip's own audio under it on a free audio track, with the same timing, speed and
 // direction, and mutes the picture's embedded audio so it is not heard twice.
 export function detachAudio(p, c) {
-  const track = p.tracks.find(tt => tt.kind === 'audio' && !tt.locked)
-  if (!track) return toast('Add or unlock an audio track to detach audio.')
+  // Use an unlocked audio track that is free under the clip, or add one, so no other audio is cut.
+  const free = p.tracks.find(tt => tt.kind === 'audio' && !tt.locked && !tt.clips.some(x => x.start < clipEnd(c) - 1e-6 && clipEnd(x) > c.start + 1e-6))
+  let n = 1
+  while (p.tracks.some(tt => tt.id === `A${n}`)) n++
+  const track = free?.id ?? `A${n}`
+  // The audio keeps how it sounded: level, pan, fades, audio effects and their keyframes.
   const set = { ...(c.speed !== undefined ? { speed: c.speed } : {}), ...(c.reverse ? { reverse: true } : {}) }
+  for (const key of ['volume', 'pan', 'eq', 'fx', 'fadeIn', 'fadeOut']) if (c[key] !== undefined) set[key] = structuredClone(c[key])
+  for (const key of ['anim', 'expr']) {
+    const sound = Object.fromEntries(Object.entries(c[key] ?? {}).filter(([prop]) => prop === 'volume' || prop === 'pan'))
+    if (Object.keys(sound).length) set[key] = structuredClone(sound)
+  }
   return edit([
-    { op: 'overwrite', kind: 'audio', src: c.src, track: track.id, start: c.start, in: c.in, dur: c.dur, set },
+    ...(free ? [] : [{ op: 'add_track', kind: 'audio' }]),
+    { op: 'overwrite', kind: 'audio', src: c.src, track, start: c.start, in: c.in, dur: c.dur, set },
     { op: 'update', ids: [c.id], set: { audioDetached: true } },
   ])
 }

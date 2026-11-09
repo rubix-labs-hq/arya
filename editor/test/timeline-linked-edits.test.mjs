@@ -48,7 +48,8 @@ function timeline({ linked, tool, locked = [], setup = () => {} }) {
     canvasNode.props.onPointerMove(event(x1))
     canvasNode.props.onPointerUp(event(x1))
   }
-  return { edits, notices, drag, row, project: () => p }
+  const context = (x, y) => canvasNode.props.onContextMenu({ clientX: x, clientY: y, button: 2, preventDefault() {} })
+  return { edits, notices, drag, context, row, store, project: () => p }
 }
 
 const span = (p, id) => { const c = p.tracks.flatMap(t => t.clips).find(x => x.id === id); return [c.start, c.dur, c.in] }
@@ -104,4 +105,24 @@ test('a locked linked partner neither clamps nor cancels a drag or Option-drag',
   copy.drag(600, copy.row('V1').y + 20, 1000, { altKey: true, shiftKey: true }) // Option-click alone references the clip
   assert.deepEqual(copy.edits.at(-1).map(op => [op.op, op.id]), [['duplicate', 'c2']], 'the locked audio is not named')
   assert.equal(copy.project().tracks.find(t => t.id === 'V1').clips.length, 3)
+})
+
+test('slipping a reversed clip moves its footage with the pointer', () => {
+  for (const reverse of [false, true]) {
+    const t = timeline({ linked: true, tool: 'slip', setup: p => { for (const tr of p.tracks) for (const c of tr.clips) if (c.id.startsWith('c2')) c.reverse = reverse || undefined } })
+    const before = core.sourceTime(t.project(), t.project().tracks.find(tr => tr.id === 'V1').clips.find(c => c.id === 'c2'), 6)
+    t.drag(600, t.row('V1').y + 20, 700)
+    const c2 = t.project().tracks.find(tr => tr.id === 'V1').clips.find(c => c.id === 'c2')
+    // The frame that was at 6 s now shows at 7 s.
+    assert.ok(Math.abs(core.sourceTime(t.project(), c2, 7) - before) < 1e-3, `reverse ${reverse}`)
+  }
+})
+
+test('right-clicking an unselected clip selects its linked partner when Linked selection is on', () => {
+  const on = timeline({ linked: true, tool: 'select' })
+  on.context(600, on.row('V1').y + 20)
+  assert.deepEqual([...on.store.selection].sort(), ['c2', 'c2a'])
+  const off = timeline({ linked: false, tool: 'select' })
+  off.context(600, off.row('V1').y + 20)
+  assert.deepEqual(off.store.selection, ['c2'])
 })

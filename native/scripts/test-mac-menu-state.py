@@ -30,4 +30,10 @@ assert '!(cut && $0.0.flag("locked"))' in model, 'Cut must leave locked linked p
 timeline = (root / 'native/App/Shared/NativeEditor/NativeTimeline.swift').read_text()
 assert 'if mode == .move, model.selectionTouchesLockedTrack { model.nudgeUnlocked(frames: direction); return }' in timeline, 'Nudge must not be cancelled by a locked partner'
 assert 'press.modifiers.isDisjoint(with: [.command, .option, .control])' in timeline, 'Modified arrows belong to the system'
+assert 'let delta = max(frames / max(1, fps), -(clips.map(\\.start).min() ?? 0))' in model, 'Nudge must move every clip by one shared delta'
+assert 'if action == "duplicate" { model.duplicate(); return }' in timeline, 'Clip menu Duplicate must share the locked-aware path'
+assert timeline.count('if mode == .move, model.selectionTouchesLockedTrack { model.nudgeUnlocked(frames: direction); return }') == 2, 'Keyboard and iOS precision nudges must share the locked-aware path'
+assert 'Button("Detach audio")' not in timeline, 'Native only unlinks, so it must say Unlink'
+assert 'let playhead = (time * fps).rounded() / max(1, fps)' in model, 'Split tests the frame the core cuts on'
+assert 'if press.key == .upArrow || press.key == .downArrow' in timeline, 'Up and Down jump between edits, as in the browser'
 print('Mac menu state checks passed.')
