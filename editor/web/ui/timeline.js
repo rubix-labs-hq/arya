@@ -946,7 +946,7 @@ export function clipMenu(p, hit, t) {
   const c = hit.clip
   if (c) {
     const ids = store.selection.filter(id => !id.startsWith('tr:'))
-    // Linked selection can include partners on locked tracks; deleting must leave those out.
+    // Linked selection can include partners on locked tracks; edits must leave those out.
     const unlockedIds = ids.filter(id => !p.tracks.some(tt => tt.locked && tt.clips.some(x => x.id === id)))
     items.push(
       ...(store.caps?.host === 'browser-local' ? [] : [{ label: 'Reference to Assistant', hint: '⌥-click', run: () => ids.forEach(id => { const cc = p.tracks.flatMap(tt => tt.clips).find(x => x.id === id); if (cc) addRef({ kind: 'clip', id, label: `${id} ${cc.label ?? cc.title?.text ?? mediaDisplayName(cc.src ?? cc.kind, p.assets?.[cc.src])}` }) }) },
@@ -955,10 +955,10 @@ export function clipMenu(p, hit, t) {
       { label: 'Blade at playhead', hint: '⌘B', run: () => edit({ op: 'blade', at: time.t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: 'Blade here', run: () => edit({ op: 'blade', at: t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: 'Duplicate', run: () => edit({ op: 'duplicate', id: c.id }) },
-      { label: c.enabled === false ? 'Enable clip' : 'Disable clip', hint: 'V', run: () => edit({ op: 'update', ids, set: { enabled: c.enabled === false ? null : false } }) },
+      { label: c.enabled === false ? 'Enable clip' : 'Disable clip', hint: 'V', run: () => edit({ op: 'update', ids: unlockedIds, set: { enabled: c.enabled === false ? null : false } }) },
       { sep: true },
       { label: 'Add cross dissolve', hint: '⌘T', run: () => edit({ op: 'transition', id: c.id, type: 'crossDissolve', dur: 1 }) },
-      { label: 'Fade in & out', run: () => edit({ op: 'update', ids, set: { fadeIn: 0.5, fadeOut: 0.5 } }) },
+      { label: 'Fade in & out', run: () => edit({ op: 'update', ids: unlockedIds, set: { fadeIn: 0.5, fadeOut: 0.5 } }) },
       {
         label: 'Speed',
         sub: [
@@ -969,13 +969,13 @@ export function clipMenu(p, hit, t) {
     )
     if (c.kind === 'video') items.push({ label: 'Freeze frame at playhead', hint: '⌥F', run: () => edit({ op: 'freeze', id: c.id, at: time.t, dur: 2 }) })
     if (c.kind === 'comp') items.push({ label: 'Open composition', hint: 'double-click', run: () => openComposition(c.comp) })
-    if (ids.length) items.push({ label: ids.length > 1 ? `Precompose ${ids.length} clips…` : 'Precompose…', run: () => { const name = prompt('Composition name', 'Precomp'); if (name) edit({ op: 'precompose', ids, name }) } })
+    if (ids.length) items.push({ label: ids.length > 1 ? `Precompose ${ids.length} clips…` : 'Precompose…', run: () => { const name = prompt('Composition name', 'Precomp'); if (name) edit({ op: 'precompose', ids: unlockedIds, name }) } })
     if (c.link) items.push({ label: 'Unlink audio/video', run: () => edit({ op: 'detach_audio', id: c.id }) })
     if (c.kind === 'video' && !c.link && hasAudio(p, { ...c, audioDetached: false })) items.push({ label: 'Detach audio', run: () => edit({ op: 'append', src: c.src, track: p.tracks.find(tt => tt.kind === 'audio')?.id, start: c.start, in: c.in, dur: c.dur }) })
     items.push(
       {
         label: 'Color label',
-        sub: ['#ff5f57', '#f5b942', '#3fb950', '#58a6ff', '#bc8cff', null].map(col => ({ label: col ? `● ${col}` : 'None', run: () => edit({ op: 'update', ids, set: { tag: col } }) })),
+        sub: ['#ff5f57', '#f5b942', '#3fb950', '#58a6ff', '#bc8cff', null].map(col => ({ label: col ? `● ${col}` : 'None', run: () => edit({ op: 'update', ids: unlockedIds, set: { tag: col } }) })),
       },
       { sep: true },
       { label: 'Copy', hint: '⌘C', run: () => copySelection(p) },

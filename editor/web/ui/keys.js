@@ -33,6 +33,10 @@ function editable(p) {
 
 const unlinked = () => (store.linked ? {} : { unlinked: true })
 
+function unlockedUnderPlayhead(p) {
+  return p.tracks.filter(t => !t.locked).flatMap(t => t.clips.filter(c => c.start < time.t && clipEnd(c) > time.t)).map(c => c.id)
+}
+
 function clipsUnderPlayhead(p) {
   return p.tracks.flatMap(t => t.clips.filter(c => c.start < time.t && clipEnd(c) > time.t))
 }
@@ -150,7 +154,7 @@ export function installKeys() {
           set({ selection: p.tracks.flatMap(t => t.clips.map(c => c.id)) })
           break
         case 't': {
-          const ids = sel().length ? sel() : clipsUnderPlayhead(p).map(c => c.id)
+          const ids = sel().length ? editable(p) : unlockedUnderPlayhead(p)
           const targets = ids.length ? ids : p.tracks.flatMap(t => t.clips.filter(c => Math.abs(c.start - time.t) < 0.5 && c.start > 0)).map(c => c.id)
           if (targets.length) edit(targets.map(id => ({ op: 'transition', id, type: 'crossDissolve', dur: 1 })))
           else toast('Select a clip or park the playhead on a cut')
@@ -266,7 +270,7 @@ export function installKeys() {
           const seen = new Set()
           const all = p.tracks.flatMap(t => t.clips)
           // The core trims linked partners, so send one trim per link group.
-          const ids = (sel().length ? sel() : clipsUnderPlayhead(p).map(c => c.id)).filter(id => {
+          const ids = (sel().length ? editable(p) : unlockedUnderPlayhead(p)).filter(id => {
             const link = all.find(c => c.id === id)?.link
             if (!link || !store.linked) return true
             if (seen.has(link)) return false
@@ -282,14 +286,14 @@ export function installKeys() {
         case '>': {
           const d = ((k === ',' || k === '<') ? -1 : 1) * (e.shiftKey ? 10 : 1) / fps
           const all = p.tracks.flatMap(t => t.clips)
-          edit(sel().map(id => ({ op: 'move', id, start: Math.max(0, (all.find(c => c.id === id)?.start ?? 0) + d), unlinked: true })))
+          edit(editable(p).map(id => ({ op: 'move', id, start: Math.max(0, (all.find(c => c.id === id)?.start ?? 0) + d), unlinked: true })))
           break
         }
         case 'v':
-          if (sel().length) {
-            const first = p.tracks.flatMap(t => t.clips).find(c => c.id === sel()[0])
-            edit({ op: 'update', ids: sel(), set: { enabled: first?.enabled === false ? null : false } })
-          }
+          if (editable(p).length) {
+            const first = p.tracks.flatMap(t => t.clips).find(c => c.id === editable(p)[0])
+            edit({ op: 'update', ids: editable(p), set: { enabled: first?.enabled === false ? null : false } })
+          } else if (sel().length) toast('The selected clips are on locked tracks.')
           break
         case 'ƒ': // ⌥F
         case 'f': {

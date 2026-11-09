@@ -174,8 +174,9 @@ for kind in ["script", "screenplay"] {
     check(writer.press(Press(modifiers: .command)) == .handled && writer.sent == 1, "Command-Return sends a script")
 }
 check(composer.press(Press(modifiers: .command)) == .handled && composer.sent == 2, "Command-Return also sends a prompt")
+check(composer.press(Press(modifiers: .capsLock)) == .handled && composer.sent == 3, "Caps Lock does not block Return")
 composer.assistant.applyingProposal = Proposal(finished: true)
-check(composer.press(Press(modifiers: [])) == .handled && composer.sent == 3, "A finished preview permits another request")
+check(composer.press(Press(modifiers: [])) == .handled && composer.sent == 4, "A finished preview permits another request")
 print("Passed \\(checks) assistant keyboard checks.")
 '''
     run(source, 'keyboard')

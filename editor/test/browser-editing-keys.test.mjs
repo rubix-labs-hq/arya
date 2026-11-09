@@ -273,3 +273,17 @@ test('with Linked selection off, Cmd-B cuts only the selected audio', () => {
   assert.equal(c.state.project.tracks[1].clips.length, 4)
   assert.equal(c.state.project.tracks[0].clips.length, 3, 'the linked picture stays whole')
 })
+
+test('moving, nudging or disabling a clip leaves its linked partner on a locked track alone', () => {
+  const p = fixture()
+  p.tracks[1].locked = true
+  const moved = core.applyOps(p, [{ op: 'move', id: 'c2', start: 6 }]).project
+  assert.equal(moved.tracks[0].clips.find(c => c.id === 'c2').start, 6)
+  assert.deepEqual(moved.tracks[1].clips, p.tracks[1].clips, 'move keeps locked audio in place')
+  const c = keyboard({ project: p, selection: ['c2', 'c2a'] })
+  c.dispatch('.')
+  assert.ok(Math.abs(c.state.project.tracks[0].clips.find(clip => clip.id === 'c2').start - (4 + 1 / 30)) < 1e-3, 'period nudges the video a frame')
+  c.dispatch('v')
+  assert.equal(c.state.project.tracks[0].clips.find(clip => clip.id === 'c2').enabled, false)
+  assert.deepEqual(c.state.project.tracks[1].clips, p.tracks[1].clips)
+})

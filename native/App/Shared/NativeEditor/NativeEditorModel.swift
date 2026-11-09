@@ -958,7 +958,7 @@ final class NativeEditorModel: ObservableObject {
         // Split every selected clip under the playhead, as the clip menu does. A linked partner is
         // cut with its clip, so each linked group gets one operation. Clips on locked tracks or away from the playhead are left out: the batch is all or nothing,
         // and the core rejects a locked clip.
-        if selectedIDs.isEmpty { editBatch([["op": "blade", "at": time]], feedback: true); return }
+        if selectedIDs.isEmpty { editBatch([["op": "blade", "at": time]], expectedVersion: version, feedback: true); return }
         let playhead = time
         var ids: [String] = [], links = Set<String>()
         for track in tracks where !track.locked {

@@ -811,7 +811,7 @@ export function applyOps(source, ops) {
       case 'move': {
         const { track, clip } = clipOf(op.id)
         const delta = snapToFrame(Math.max(0, op.start), p.fps) - clip.start
-        const movers = [{ track, clip }, ...(op.unlinked ? [] : linkedOf(p, clip))]
+        const movers = [{ track, clip }, ...(op.unlinked ? [] : linkedOf(p, clip).filter(o => !o.track.locked))]
         for (const m of movers) m.clip.start = round(Math.max(0, m.clip.start + delta))
         if (op.track && op.track !== track.id) {
           const target = trackOf(p, op.track)

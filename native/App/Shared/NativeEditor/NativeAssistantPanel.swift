@@ -366,7 +366,8 @@ struct NativeAssistantPanel: View {
         .onKeyPress(.return, phases: .down) { press in
             // Return sends a prompt. Scripts and screenplays are multi-line, so Return adds a line
             // there and Command-Return sends.
-            let send = press.modifiers == .command || (press.modifiers.isEmpty && model.assistantInputKind == "prompt")
+            let modifiers = press.modifiers.subtracting(.capsLock)
+            let send = modifiers == .command || (modifiers.isEmpty && model.assistantInputKind == "prompt")
             guard send else { return .ignored }
             if !assistant.configured && !model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 settings = true; return .handled
