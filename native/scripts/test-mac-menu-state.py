@@ -23,4 +23,11 @@ for item in ('Delete Selected Clip', 'Ripple Delete', 'Duplicate Selected Clips'
 assert '@Published private(set) var nativeMenu = NativeMenuAvailability()' in session
 assert 'model.objectWillChange.sink' in session and 'refreshNativeMenu()' in session
 assert 'if next != nativeMenu { nativeMenu = next }' in session, 'Publish only when availability changes'
+model = (root / 'native/App/Shared/NativeEditor/NativeEditorModel.swift').read_text()
+assert 'case .duplicate:\n            session.nativeEditor.duplicate()' in app, 'Duplicate must skip locked clips through the model'
+assert re.search(r'func duplicate\(\) \{[\s\S]*?!\$0\.locked[\s\S]*?The selected clips are on locked tracks', model), 'Duplicate must leave locked clips out'
+assert '!(cut && $0.0.flag("locked"))' in model, 'Cut must leave locked linked partners in place, as Delete does'
+timeline = (root / 'native/App/Shared/NativeEditor/NativeTimeline.swift').read_text()
+assert 'if mode == .move, model.selectionTouchesLockedTrack { model.nudgeUnlocked(frames: direction); return }' in timeline, 'Nudge must not be cancelled by a locked partner'
+assert 'press.modifiers.isDisjoint(with: [.command, .option, .control])' in timeline, 'Modified arrows belong to the system'
 print('Mac menu state checks passed.')

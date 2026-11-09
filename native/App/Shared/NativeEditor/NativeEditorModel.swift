@@ -357,9 +357,10 @@ struct NativeTimelineClipboard {
         let allIDs = all.map { $0.1.string("id") }
         guard !selected.isEmpty, selected.isSubset(of: Set(allIDs)), Set(allIDs).count == allIDs.count, !allIDs.contains("") else { throw ReelBackend.APIError("Choose current timeline clips to copy.") }
         let links = Set(all.filter { selected.contains($0.1.string("id")) }.map { $0.1.string("link") }.filter { !$0.isEmpty })
-        let clips = all.filter { selected.contains($0.1.string("id")) || links.contains($0.1.string("link")) }
+        // Cut takes only clips it can remove. A locked linked partner stays, as with Delete.
+        let clips = all.filter { (selected.contains($0.1.string("id")) || links.contains($0.1.string("link"))) && !(cut && $0.0.flag("locked")) }
+        if cut, clips.isEmpty { throw ReelBackend.APIError("The selected clips are on locked tracks.") }
         guard !clips.isEmpty, clips.count <= 1000 else { throw ReelBackend.APIError("Copy at most 1000 clips at a time.") }
-        if cut, clips.contains(where: { $0.0.flag("locked") }) { throw ReelBackend.APIError("Unlock every selected or linked track before cutting.") }
         let start = try clips.map { try Self.finite($0.1, "start") }.min() ?? -.infinity
         guard start.isFinite, start >= 0 else { throw ReelBackend.APIError("The selected clips have invalid timing.") }
         var media: [String: Data] = [:], comps: [String: Data] = [:]
@@ -1060,6 +1061,28 @@ final class NativeEditorModel: ObservableObject {
         guard !ids.isEmpty else { status = "The selected clips are on locked tracks."; return }
         editBatch([["op": ripple ? "ripple_delete" : "delete", "ids": ids]], summary: ripple ? "Ripple delete selected clips" : "Delete selected clips",
                   expectedVersion: version, feedback: true)
+    }
+    func duplicate() {
+        guard !selectedIDs.isEmpty else { return }
+        // A locked linked partner would make the core reject the whole batch, so leave it out.
+        let ids = tracks.filter { !$0.locked }.flatMap(\.clips).map(\.id).filter { selectedIDs.contains($0) }.sorted()
+        guard !ids.isEmpty else { status = "The selected clips are on locked tracks."; return }
+        editBatch(ids.map { ["op": "duplicate", "id": $0] }, summary: "Duplicate selected clips", expectedVersion: version, feedback: true)
+    }
+    /// True when a selected clip, or a clip linked to one, sits on a locked track.
+    var selectionTouchesLockedTrack: Bool {
+        let all = tracks.flatMap(\.clips)
+        let links = Set(all.filter { selectedIDs.contains($0.id) }.map { $0.fields.string("link") }.filter { !$0.isEmpty })
+        return tracks.contains { $0.locked && $0.clips.contains { selectedIDs.contains($0.id) || links.contains($0.fields.string("link")) } }
+    }
+    /// Moves the selected clips on unlocked tracks by `frames`, leaving locked partners in place.
+    /// The selection already holds each linked group, so every clip moves on its own.
+    func nudgeUnlocked(frames: Double) {
+        let clips = tracks.filter { !$0.locked }.flatMap(\.clips).filter { selectedIDs.contains($0.id) }.sorted { $0.id < $1.id }
+        guard !clips.isEmpty else { status = "The selected clips are on locked tracks."; return }
+        let delta = frames / max(1, fps)
+        editBatch(clips.map { ["op": "move", "id": $0.id, "start": max(0, $0.start + delta), "unlinked": true] },
+                  summary: "Nudge selected clips", expectedVersion: version, feedback: true)
     }
     func add(_ asset: NativeAsset) {
         let track = tracks.first { $0.kind == (asset.kind == "audio" ? "audio" : "video") && !$0.locked }

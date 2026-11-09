@@ -80,13 +80,21 @@ export function runEditorCommand(command) {
       else if (p.range) edit({ op: 'delete_range', from: p.range.in, to: p.range.out, ripple: command === 'rippleDelete' })
       break
     }
-    case 'duplicate': if (editable(p).length) edit(editable(p).map(id => ({ op: 'duplicate', id }))); break
+    case 'duplicate':
+      if (editable(p).length) edit(editable(p).map(id => ({ op: 'duplicate', id, ...unlinked() })))
+      else if (sel().length) toast('The selected clips are on locked tracks.')
+      break
     case 'export': set({ page: 'deliver' }); break
     case 'copy': copySelection(p); break
-    case 'cut':
-      copySelection(p)
-      if (editable(p).length) edit({ op: 'ripple_delete', ids: editable(p), ...unlinked() })
+    case 'cut': {
+      // Copy only what is removed, so Paste never brings back a locked clip that stayed put.
+      const ids = editable(p)
+      if (ids.length) {
+        copySelection(p, ids)
+        edit({ op: 'ripple_delete', ids, ...unlinked() })
+      } else if (sel().length) toast('The selected clips are on locked tracks.')
       break
+    }
     case 'paste':
       if (store.clipboard) edit({ op: 'paste', at: time.t, clips: store.clipboard })
       break
@@ -154,9 +162,10 @@ export function installKeys() {
           set({ selection: p.tracks.flatMap(t => t.clips.map(c => c.id)) })
           break
         case 't': {
-          const ids = sel().length ? editable(p) : unlockedUnderPlayhead(p)
-          const targets = ids.length ? ids : p.tracks.flatMap(t => t.clips.filter(c => Math.abs(c.start - time.t) < 0.5 && c.start > 0)).map(c => c.id)
+          const nearCut = () => p.tracks.filter(t => !t.locked).flatMap(t => t.clips.filter(c => Math.abs(c.start - time.t) < 0.5 && c.start > 0)).map(c => c.id)
+          const targets = sel().length ? editable(p) : unlockedUnderPlayhead(p).length ? unlockedUnderPlayhead(p) : nearCut()
           if (targets.length) edit(targets.map(id => ({ op: 'transition', id, type: 'crossDissolve', dur: 1 })))
+          else if (sel().length) toast('The selected clips are on locked tracks.')
           else toast('Select a clip or park the playhead on a cut')
           break
         }
@@ -277,7 +286,8 @@ export function installKeys() {
             seen.add(link)
             return true
           })
-          edit(ids.map(id => ({ op: 'trim', id, edge: right ? 'right' : 'left', to: time.t, ripple: e.altKey, ...(store.linked ? {} : { unlinked: true }) })))
+          if (ids.length) edit(ids.map(id => ({ op: 'trim', id, edge: right ? 'right' : 'left', to: time.t, ripple: e.altKey, ...(store.linked ? {} : { unlinked: true }) })))
+          else if (sel().length) toast('The selected clips are on locked tracks.')
           break
         }
         case ',':
@@ -286,7 +296,8 @@ export function installKeys() {
         case '>': {
           const d = ((k === ',' || k === '<') ? -1 : 1) * (e.shiftKey ? 10 : 1) / fps
           const all = p.tracks.flatMap(t => t.clips)
-          edit(editable(p).map(id => ({ op: 'move', id, start: Math.max(0, (all.find(c => c.id === id)?.start ?? 0) + d), unlinked: true })))
+          if (editable(p).length) edit(editable(p).map(id => ({ op: 'move', id, start: Math.max(0, (all.find(c => c.id === id)?.start ?? 0) + d), unlinked: true })))
+          else if (sel().length) toast('The selected clips are on locked tracks.')
           break
         }
         case 'v':
@@ -298,8 +309,10 @@ export function installKeys() {
         case 'ƒ': // ⌥F
         case 'f': {
           if (e.altKey || k === 'ƒ') {
-            const c = sel().length ? p.tracks.flatMap(t => t.clips).find(cc => cc.id === sel()[0]) : clipsUnderPlayhead(p).filter(cc => cc.kind === 'video').at(-1)
+            const unlocked = p.tracks.filter(t => !t.locked).flatMap(t => t.clips)
+            const c = sel().length ? unlocked.find(cc => editable(p).includes(cc.id) && cc.kind === 'video') : clipsUnderPlayhead(p).filter(cc => cc.kind === 'video' && unlocked.includes(cc)).at(-1)
             if (c) edit({ op: 'freeze', id: c.id, at: time.t, dur: 2 })
+            else if (sel().length) toast('Select a video clip on an unlocked track to freeze a frame.')
           } else handled = runEditorCommand('matchFrame') === 'handled'
           break
         }

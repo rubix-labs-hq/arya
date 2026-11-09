@@ -37,7 +37,7 @@ function keyboard({ nested = false, project = fixture(nested), selection = [], a
     state.project = core.applyOps(state.project, scoped(Array.isArray(op) ? op : [op])).project
   }
   const document = { activeElement: null, querySelector: selector => selector === '.tl-canvas' ? { clientWidth: 900 } : null }
-  const keys = keysFactory({ ...core, player: { toggle: () => playerCalls.push(['toggle']), step: n => playerCalls.push(['step', n]) }, api: (route, body) => { apiCalls.push({ route, body }); return Promise.resolve({ project: state.project, version: state.version }) }, edit, set, store: state, time, toast: text => notices.push(text), viewProject, copySelection: () => {}, sourcePlacementPlan,
+  const keys = keysFactory({ ...core, player: { toggle: () => playerCalls.push(['toggle']), step: n => playerCalls.push(['step', n]) }, api: (route, body) => { apiCalls.push({ route, body }); return Promise.resolve({ project: state.project, version: state.version }) }, edit, set, store: state, time, toast: text => notices.push(text), viewProject, copySelection: (_p, ids = state.selection) => { state.copied = ids }, sourcePlacementPlan,
     window: { addEventListener: (name, fn) => { assert.equal(name, 'keydown'); handlers.push(fn) } }, Element: class {}, getComputedStyle: () => ({}), document })
   keys.installKeys()
   assert.equal(handlers.length, 1)
@@ -286,4 +286,49 @@ test('moving, nudging or disabling a clip leaves its linked partner on a locked 
   c.dispatch('v')
   assert.equal(c.state.project.tracks[0].clips.find(clip => clip.id === 'c2').enabled, false)
   assert.deepEqual(c.state.project.tracks[1].clips, p.tracks[1].clips)
+})
+
+test('Duplicate and freeze skip locked clips and respect Linked selection', () => {
+  const off = keyboard({ selection: ['c2'] })
+  off.state.linked = false
+  off.keys.runEditorCommand('duplicate')
+  assert.equal(off.calls[0][0].unlinked, true)
+  assert.equal(off.state.project.tracks[1].clips.length, 3, 'the linked audio is not duplicated')
+
+  const p = fixture()
+  p.tracks[0].locked = true
+  const dup = keyboard({ project: p, selection: ['c2'] })
+  dup.keys.runEditorCommand('duplicate')
+  assert.equal(dup.calls.length, 0)
+  assert.match(dup.notices.at(-1), /locked/)
+
+  const frozen = keyboard({ project: p, selection: ['c2', 'c2a'], at: 5 })
+  frozen.dispatch('f', { altKey: true })
+  assert.equal(frozen.calls.length, 0, 'no freeze on a locked video clip')
+  assert.match(frozen.notices.at(-1), /unlocked track/)
+})
+
+test('Cut copies only the clips it removes, and Cmd-T never falls back past a locked selection', () => {
+  const p = fixture()
+  p.tracks[1].locked = true
+  const cut = keyboard({ project: p, selection: ['c2', 'c2a'] })
+  cut.keys.runEditorCommand('cut')
+  assert.deepEqual(cut.state.copied, ['c2'], 'the locked audio is not put on the clipboard')
+
+  const t = keyboard({ project: p, selection: ['c2a'], at: 8.2 })
+  t.dispatch('t', { metaKey: true })
+  assert.equal(t.calls.length, 0, 'no transition on a nearby clip when the selection is locked')
+  assert.match(t.notices.at(-1), /locked/)
+})
+
+test('nudge and trim to playhead explain when every selected clip is locked', () => {
+  for (const [key, options] of [['.', {}], [',', {}], ['[', { altKey: true }]]) {
+    const p = fixture()
+    p.tracks[0].locked = true
+    p.tracks[1].locked = true
+    const c = keyboard({ project: p, selection: ['c2', 'c2a'], at: 5 })
+    c.dispatch(key, options)
+    assert.equal(c.calls.length, 0, key)
+    assert.match(c.notices.at(-1) ?? '', /locked/, key)
+  }
 })

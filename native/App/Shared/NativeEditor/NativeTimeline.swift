@@ -1395,6 +1395,9 @@ struct NativeTimeline: View {
     }
     private func nudge(_ direction: Double) {
         guard let id = model.selectedID else { return }
+        // The planner refuses a selection with a locked linked partner. In Move mode the core
+        // can move the unlocked clips and leave that partner where it is, as the browser does.
+        if mode == .move, model.selectionTouchesLockedTrack { model.nudgeUnlocked(frames: direction); return }
         precisionNudge(id, direction: direction, edge: [.trim, .ripple, .roll].contains(mode) ? "right" : nil)
     }
     private func precisionNudge(_ id: String, direction: Double, edge: String?, mode requestedMode: NativeTimelineMode? = nil) {
@@ -1479,7 +1482,8 @@ struct NativeTimeline: View {
         if press.key == .delete { deleteSelection(press.modifiers.contains(.shift)); return .handled }
         // Arrows move the playhead, as in the browser editor (Shift moves one second).
         // Comma and period nudge the selection by a frame (Shift: ten frames).
-        if press.key == .leftArrow || press.key == .rightArrow {
+        // Option, Control and Command arrows stay with the system and the menus.
+        if press.key == .leftArrow || press.key == .rightArrow, press.modifiers.isDisjoint(with: [.command, .option, .control]) {
             let direction = press.key == .leftArrow ? -1.0 : 1.0
             if press.modifiers.contains(.shift) { model.seek(max(0, model.time + direction)) } else { model.step(direction) }
             return .handled

@@ -615,6 +615,7 @@ export function Timeline() {
     }
     if (store.tool === 'blade' && hit.clip) {
       const at = snap(p, t, new Set()).t
+      if (!e.shiftKey && hit.row?.track.locked) return toast(`${hit.row.track.name ?? hit.row.track.id} is locked. Unlock it to cut this clip.`)
       edit(e.shiftKey ? [{ op: 'blade', at }] : [{ op: 'blade', at, id: hit.clip.id, ...(store.linked ? {} : { unlinked: true }) }])
 
       return
@@ -652,7 +653,11 @@ export function Timeline() {
     else if (hit.zone === 'left' || hit.zone === 'right') state.drag = { ...base, kind: 'trim', edge: hit.zone, ripple: store.tool === 'trim' }
     else if (store.tool === 'slip' || (store.tool === 'trim' && !e.altKey)) state.drag = { ...base, kind: store.tool === 'slip' || store.tool === 'trim' ? 'slip' : 'move' }
     else if (store.tool === 'slide' || (store.tool === 'trim' && e.altKey)) state.drag = { ...base, kind: 'slide' }
-    else state.drag = { ...base, kind: 'move', ids: selection, duplicate: e.altKey }
+    else {
+      // A linked partner on a locked track stays put, so it must not clamp or cancel the drag.
+      const lockedIds = new Set(p.tracks.filter(tt => tt.locked).flatMap(tt => tt.clips.map(x => x.id)))
+      state.drag = { ...base, kind: 'move', ids: selection.filter(id => !lockedIds.has(id)), duplicate: e.altKey }
+    }
   }
 
   const opsFor = (d, x, y) => {
@@ -944,7 +949,14 @@ export function clipMenu(p, hit, t) {
     return edit({ ...op, comp }, undefined, { expectedVersion })
   }
   const c = hit.clip
-  if (c) {
+  const lockedTrack = c && p.tracks.find(tt => tt.locked && tt.clips.some(x => x.id === c.id))
+  if (lockedTrack) {
+    // Every edit below names this clip, which the core refuses on a locked track.
+    items.push(
+      { label: `${lockedTrack.name ?? lockedTrack.id} is locked. Unlock it to edit this clip.`, disabled: true },
+      { label: 'Copy', hint: '⌘C', run: () => copySelection(p) },
+    )
+  } else if (c) {
     const ids = store.selection.filter(id => !id.startsWith('tr:'))
     // Linked selection can include partners on locked tracks; edits must leave those out.
     const unlockedIds = ids.filter(id => !p.tracks.some(tt => tt.locked && tt.clips.some(x => x.id === id)))
@@ -954,7 +966,7 @@ export function clipMenu(p, hit, t) {
       { sep: true },
       { label: 'Blade at playhead', hint: '⌘B', run: () => edit({ op: 'blade', at: time.t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: 'Blade here', run: () => edit({ op: 'blade', at: t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
-      { label: 'Duplicate', run: () => edit({ op: 'duplicate', id: c.id }) },
+      { label: 'Duplicate', run: () => edit({ op: 'duplicate', id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: c.enabled === false ? 'Enable clip' : 'Disable clip', hint: 'V', run: () => edit({ op: 'update', ids: unlockedIds, set: { enabled: c.enabled === false ? null : false } }) },
       { sep: true },
       { label: 'Add cross dissolve', hint: '⌘T', run: () => edit({ op: 'transition', id: c.id, type: 'crossDissolve', dur: 1 }) },
@@ -969,9 +981,9 @@ export function clipMenu(p, hit, t) {
     )
     if (c.kind === 'video') items.push({ label: 'Freeze frame at playhead', hint: '⌥F', run: () => edit({ op: 'freeze', id: c.id, at: time.t, dur: 2 }) })
     if (c.kind === 'comp') items.push({ label: 'Open composition', hint: 'double-click', run: () => openComposition(c.comp) })
-    if (ids.length) items.push({ label: ids.length > 1 ? `Precompose ${ids.length} clips…` : 'Precompose…', run: () => { const name = prompt('Composition name', 'Precomp'); if (name) edit({ op: 'precompose', ids: unlockedIds, name }) } })
+    if (unlockedIds.length) items.push({ label: unlockedIds.length > 1 ? `Precompose ${unlockedIds.length} clips…` : 'Precompose…', run: () => { const name = prompt('Composition name', 'Precomp'); if (name) edit({ op: 'precompose', ids: unlockedIds, name }) } })
     if (c.link) items.push({ label: 'Unlink audio/video', run: () => edit({ op: 'detach_audio', id: c.id }) })
-    if (c.kind === 'video' && !c.link && hasAudio(p, { ...c, audioDetached: false })) items.push({ label: 'Detach audio', run: () => edit({ op: 'append', src: c.src, track: p.tracks.find(tt => tt.kind === 'audio')?.id, start: c.start, in: c.in, dur: c.dur }) })
+    if (c.kind === 'video' && !c.link && !c.audioDetached && hasAudio(p, { ...c, audioDetached: false })) items.push({ label: 'Detach audio', run: () => detachAudio(p, c) })
     items.push(
       {
         label: 'Color label',
@@ -1014,8 +1026,20 @@ export function openComposition(id) {
   player.seek(0)
 }
 
-export function copySelection(p) {
-  const sel = p.tracks.flatMap(t => t.clips.filter(c => store.selection.includes(c.id)).map(c => ({ track: t.id, clip: c })))
+// Puts a clip's own audio under it on an audio track, with the same timing, speed and
+// direction, and mutes the picture's embedded audio so it is not heard twice.
+export function detachAudio(p, c) {
+  const track = p.tracks.find(tt => tt.kind === 'audio' && !tt.locked)
+  if (!track) return toast('Add or unlock an audio track to detach audio.')
+  const set = { ...(c.speed !== undefined ? { speed: c.speed } : {}), ...(c.reverse ? { reverse: true } : {}) }
+  return edit([
+    { op: 'overwrite', kind: 'audio', src: c.src, track: track.id, start: c.start, in: c.in, dur: c.dur, set },
+    { op: 'update', ids: [c.id], set: { audioDetached: true } },
+  ])
+}
+
+export function copySelection(p, ids = store.selection) {
+  const sel = p.tracks.flatMap(t => t.clips.filter(c => ids.includes(c.id)).map(c => ({ track: t.id, clip: c })))
   if (!sel.length) return
   const t0 = Math.min(...sel.map(s => s.clip.start))
   set({ clipboard: sel.map(s => ({ track: s.track, clip: s.clip, offset: s.clip.start - t0 })) })

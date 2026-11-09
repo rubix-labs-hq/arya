@@ -145,7 +145,7 @@ struct ReelMacApp: App {
         case .previousFrame: session.nativeEditor.step(-1)
         case .nextFrame: session.nativeEditor.step(1)
         case .duplicate:
-            session.nativeEditor.editBatch(session.nativeEditor.selectedIDs.sorted().map { ["op": "duplicate", "id": $0] }, expectedVersion: session.nativeEditor.version)
+            session.nativeEditor.duplicate()
         case .export: session.nativeEditor.panel = .deliver
         case .copy, .cut, .paste:
             guard let capture = session.nativeEditor.clipboardActionCapture() else { return }
