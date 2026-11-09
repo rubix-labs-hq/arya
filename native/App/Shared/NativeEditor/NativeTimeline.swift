@@ -977,7 +977,7 @@ struct NativeTimeline: View {
             #if os(macOS)
             .background(NativeTimelineCanvasFocusAnchor(owner: canvasFocusOwner).allowsHitTesting(false))
             #endif
-            .accessibilityLabel("Timeline. Command A selects all. Arrow keys nudge the current editing mode. S toggles snapping.")
+            .accessibilityLabel("Timeline. Command A selects all. Arrow keys move the playhead. Comma and period nudge the selection in the current editing mode. S toggles snapping.")
             #if os(iOS)
             // A phone timeline shows about two tracks. When the top tracks are empty, open on the
             // first track that holds clips instead of on empty rows. Runs once per project and timeline.
@@ -1494,8 +1494,15 @@ struct NativeTimeline: View {
         if press.key == "a", press.modifiers.contains(.command) { selectAll(); return .handled }
         if press.key == .escape { model.select(id: nil); clearGesture(); return .handled }
         if press.key == .delete { deleteSelection(press.modifiers.contains(.shift)); return .handled }
+        // Arrows move the playhead, as in the browser editor (Shift moves one second).
+        // Comma and period nudge the selection by a frame (Shift: ten frames).
         if press.key == .leftArrow || press.key == .rightArrow {
-            nudge((press.key == .leftArrow ? -1 : 1) * (press.modifiers.contains(.shift) ? 10 : 1)); return .handled
+            let direction = press.key == .leftArrow ? -1.0 : 1.0
+            if press.modifiers.contains(.shift) { model.seek(max(0, model.time + direction)) } else { model.step(direction) }
+            return .handled
+        }
+        if press.modifiers.subtracting([.shift, .capsLock]).isEmpty, let nudgeDirection = ([",": -1, "<": -1, ".": 1, ">": 1] as [String: Double])[press.characters] {
+            nudge(nudgeDirection * (press.modifiers.contains(.shift) ? 10 : 1)); return .handled
         }
         guard press.modifiers.isEmpty else { return .ignored }
         switch press.characters.lowercased() {

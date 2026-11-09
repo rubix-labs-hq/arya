@@ -144,7 +144,7 @@ def keyboard():
 import SwiftUI
 struct Proposal { var finished: Bool }
 final class Assistant { var configured = true, isWorking = false; var applyingProposal: Proposal?; var inputCharacterLimit = 20 }
-final class Model { var assistantDraft = "Make a title" }
+final class Model { var assistantDraft = "Make a title", assistantInputKind = "prompt" }
 struct Press { var modifiers: EventModifiers }
 final class Composer {
     let assistant = Assistant(), model = Model()
@@ -167,6 +167,10 @@ for blocked in 0..<6 {
     default: composer.model.assistantDraft = ""
     }
     check(composer.press(Press(modifiers: [])) == (blocked == 0 ? .handled : .ignored) && composer.sent == 0, "Unavailable, busy, blank and oversized drafts must not send")
+}
+for kind in ["script", "screenplay"] {
+    let writer = Composer(); writer.model.assistantInputKind = kind
+    check(writer.press(Press(modifiers: [])) == .ignored && writer.sent == 0, "Return adds a line while writing a script")
 }
 composer.assistant.applyingProposal = Proposal(finished: true)
 check(composer.press(Press(modifiers: [])) == .handled && composer.sent == 2, "A finished preview permits another request")

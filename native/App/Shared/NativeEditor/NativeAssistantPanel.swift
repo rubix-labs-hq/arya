@@ -364,7 +364,8 @@ struct NativeAssistantPanel: View {
         .accessibilityLabel("Assistant prompt or script")
         .accessibilityIdentifier("editor.assistant.draft")
         .onKeyPress(.return, phases: .down) { press in
-            guard press.modifiers.isEmpty else { return .ignored }
+            // Return sends a prompt. Scripts and screenplays are multi-line, so Return adds a line.
+            guard press.modifiers.isEmpty, model.assistantInputKind == "prompt" else { return .ignored }
             if !assistant.configured && !model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 settings = true; return .handled
             }

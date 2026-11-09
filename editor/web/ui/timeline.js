@@ -977,8 +977,8 @@ export function clipMenu(p, hit, t) {
       },
       { sep: true },
       { label: 'Copy', hint: '⌘C', run: () => copySelection(p) },
-      { label: 'Delete (leave gap)', hint: '⌫', run: () => edit({ op: 'lift', ids }) },
-      { label: 'Ripple delete', hint: '⇧⌫', danger: true, run: () => edit({ op: 'ripple_delete', ids }) },
+      { label: 'Delete (leave gap)', hint: '⌫', run: () => edit({ op: 'lift', ids, ...(store.linked ? {} : { unlinked: true }) }) },
+      { label: 'Ripple delete', hint: '⇧⌫', danger: true, run: () => edit({ op: 'ripple_delete', ids, ...(store.linked ? {} : { unlinked: true }) }) },
     )
   } else if (hit.zone === 'transition') {
     items.push({ label: 'Remove transition', run: () => edit({ op: 'transition', id: hit.clip.id, type: 'none' }) })

@@ -221,3 +221,26 @@ test('ScrollTabs arrow and endpoint keys keep its own selection and focus behavi
   }
   assert.deepEqual(c.playerCalls, [])
 })
+
+test('Delete with Linked selection off removes only the selected clip', () => {
+  const c = keyboard({ selection: ['c2'] })
+  c.state.linked = false
+  c.keys.runEditorCommand('delete')
+  const ids = c.state.project.tracks.flatMap(t => t.clips.map(clip => clip.id))
+  assert.equal(c.calls[0].unlinked, true)
+  assert.equal(ids.includes('c2'), false)
+  assert.equal(ids.includes('c2a'), true, 'the linked audio stays when linking is off')
+})
+
+test('Deleting or blading a clip never changes its linked partner on a locked track', () => {
+  const p = fixture()
+  p.tracks[1].locked = true
+  for (const op of ['lift', 'ripple_delete', 'delete']) {
+    const after = core.applyOps(p, [{ op, ids: ['c2'] }]).project
+    assert.deepEqual(after.tracks[1].clips, p.tracks[1].clips, `${op} keeps locked audio`)
+    assert.equal(after.tracks[0].clips.some(c => c.id === 'c2'), false)
+  }
+  const bladed = core.applyOps(p, [{ op: 'blade', id: 'c2', at: 6 }]).project
+  assert.deepEqual(bladed.tracks[1].clips, p.tracks[1].clips, 'blade keeps locked audio whole')
+  assert.equal(bladed.tracks[0].clips.length, 4)
+})

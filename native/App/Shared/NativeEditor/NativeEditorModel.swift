@@ -955,9 +955,11 @@ final class NativeEditorModel: ObservableObject {
         }
     }
     func split() {
-        var operation: [String: Any] = ["op": "blade", "at": time]
-        if let selectedID { operation["id"] = selectedID }
-        edit(operation, feedback: true)
+        // Split every selected clip at the playhead, as the clip menu does. A linked partner is
+        // cut with its clip, so a partner that is also selected is already split when its turn comes.
+        let ids = selectedIDs.sorted()
+        let operations: [[String: Any]] = ids.isEmpty ? [["op": "blade", "at": time]] : ids.map { ["op": "blade", "id": $0, "at": time] }
+        editBatch(operations, summary: ids.count > 1 ? "Split selected clips" : nil, feedback: true)
     }
     // BEGIN NATIVE CLIPBOARD CONTROLLER
     func clipboardActionCapture() -> NativeClipboardActionCapture? {

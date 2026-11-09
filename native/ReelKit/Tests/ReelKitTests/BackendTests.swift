@@ -223,6 +223,8 @@ final class BackendTests: XCTestCase {
         }
         let caps = try await call("GET", "/api/caps")
         XCTAssertEqual(caps["presets"] as? [String], ReelBackend.nativePresets)
+        XCTAssertEqual(caps["webPresets"] as? [String], ReelBackend.inPagePresets)
+        XCTAssertEqual(Set(ReelBackend.inPagePresets), Set(ReelBackend.presetExtensions.keys), "Web Editor presets match what /api/export accepts")
         XCTAssertEqual(caps["chrome"] as? Bool, false)
         XCTAssertEqual(object(caps["analysis"])["scenes"] as? Bool, true)
         XCTAssertEqual(object(caps["export"])["renderer"] as? String, "metal")

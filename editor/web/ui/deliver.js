@@ -43,7 +43,9 @@ export function DeliverPage() {
   const outH = Math.round((outW * p.height) / p.width / 2) * 2
   const range = rangeMode === 'range' && p.range ? p.range : { in: 0, out: duration(p) }
   const native = host.kind === 'native' || host.kind === 'browser-local'
-  const presets = s.caps?.presets ? PRESETS.filter(pr => s.caps.presets.includes(pr.preset)) : PRESETS
+  // In the Mac app's Web Editor the page encodes with WebCodecs, so offer only what that route renders.
+  const offered = host.kind === 'native' && s.caps?.webPresets ? s.caps.webPresets : s.caps?.presets
+  const presets = offered ? PRESETS.filter(pr => offered.includes(pr.preset)) : PRESETS
   useEffect(() => { if (presets.length && !presets.some(preset => preset.id === choice.id)) setChoice(presets[0]) }, [presets.map(preset => preset.id).join('|')])
   const [, refreshRequest] = useState(0)
   const request = useRef(null)
@@ -100,7 +102,7 @@ export function DeliverPage() {
         <div class="kv"><span>Output</span><b>renders/${name.replace(/[^\w.-]+/g, '-')}.${choice.preset.startsWith('prores') ? 'mov' : choice.preset === 'gif' ? 'gif' : choice.preset === 'audio-wav' ? 'wav' : choice.preset === 'audio-m4a' ? 'm4a' : choice.preset === 'png-seq' ? 'png…' : 'mp4'}</b></div>
         <div class="row gap deliver-actions"><button class="primary" disabled=${requestPending} aria-busy=${requestPending} onClick=${render}>${renderRequest.phase === 'stale-pending' ? 'Waiting for previous request…' : renderRequest.phase === 'pending' ? 'Preparing render…' : renderRequest.phase === 'failed' ? 'Retry render' : '⇪ Render'}</button><button class="ghost" disabled=${host.kind === 'browser-local'} title=${host.kind === 'browser-local' ? 'Still-frame saving is not yet available in the hosted beta.' : undefined} onClick=${still}>Save still frame</button></div>
         ${renderRequest.phase === 'failed' ? html`<div class="hint" role="alert">Render could not start: ${renderRequest.error} Retry when you’re ready.</div>` : null}
-        <div class="hint">${host.kind === 'browser-local' ? 'Your browser renders the GPU compositor and audio mix, then saves the completed file on this device. Use Download in Saved exports. Keep this tab open during rendering. The hosted beta supports exports up to five minutes. Available presets depend on the browser codecs.' : native ? 'Renders use the viewer compositor and audio mixer. WebCodecs encodes the file and Arya saves it in your project. ProRes, GIF and PNG sequences are available in the browser editor.' : 'Renders use the same compositor as the viewer, in a background browser, encoded by ffmpeg.'}</div>
+        <div class="hint">${host.kind === 'browser-local' ? 'Your browser renders the GPU compositor and audio mix, then saves the completed file on this device. Use Download in Saved exports. Keep this tab open during rendering. The hosted beta supports exports up to five minutes. Available presets depend on the browser codecs.' : native ? 'Renders use the viewer compositor and audio mixer. WebCodecs encodes the file and Arya saves it in your project. For ProRes, GIF or PNG sequences, turn off View > Web Editor and render from the Deliver page.' : 'Renders use the same compositor as the viewer, in a background browser, encoded by ffmpeg.'}</div>
         ${registry.deliver.length ? html`<h3>Interchange</h3><div class="row gap wrap">${registry.deliver.map(a => html`<button class="ghost" onClick=${() => a.run(p)}>${a.label}</button>`)}</div>` : null}
       </div>
       <div class="deliver-center"><${Viewer} compact=${true} /></div>

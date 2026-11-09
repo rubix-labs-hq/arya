@@ -65,13 +65,13 @@ test('unmount suppresses late notices and prevents requests from the disposed co
   await f.request.run({}, f.scope().project); assert.equal(f.calls.length, 1)
 })
 
-function component() {
+function component({ hostKind = 'browser', caps = {} } = {}) {
   const text = fs.readFileSync(new URL('../web/ui/deliver.js', import.meta.url), 'utf8').replace(/^import .*\n/gm, '').replace(/^export /gm, '').replace('const html = htm.bind(h)', '')
   const hooks = [], cleanups = [], toasts = [], calls = []
   let index = 0, resolve, reject
   const response = new Promise((yes, no) => { resolve = yes; reject = no })
-  const state = { root: '/synthetic/project', version: 4, project: { name: 'Timeline', width: 64, height: 64, fps: 1, tracks: [] }, openComp: null, jobs: [], caps: {} }
-  const context = vm.createContext({ createDeliverRequest, host: { kind: 'browser' }, useStore: () => state,
+  const state = { root: '/synthetic/project', version: 4, project: { name: 'Timeline', width: 64, height: 64, fps: 1, tracks: [] }, openComp: null, jobs: [], caps }
+  const context = vm.createContext({ createDeliverRequest, host: { kind: hostKind }, useStore: () => state,
     useState(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = initial; return [hooks[slot], value => { hooks[slot] = typeof value === 'function' ? value(hooks[slot]) : value }] },
     useRef(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = { current: initial }; return hooks[slot] },
     useEffect(effect) { const slot = index++; if (!(slot in hooks)) { hooks[slot] = true; const cleanup = effect(); if (cleanup) cleanups.push(cleanup) } },
@@ -127,4 +127,14 @@ test('actual DeliverPage labels an old-scope pending request and keeps duplicate
   await button.click(); assert.equal(f.calls.length, 1)
   f.resolve({ id: 'old-scope-job' }); await pending
   assert.equal(f.button(f.render()).disabled, false); assert.equal(f.toasts.length, 0)
+})
+
+test('the Mac Web Editor offers only presets its WebCodecs route can render', () => {
+  const nativePresets = ['h264-high', 'h264-web', 'h264-fast', 'hevc', 'audio-m4a', 'audio-wav', 'prores-422', 'prores-422hq', 'prores-4444', 'gif', 'png-seq']
+  const webPresets = nativePresets.slice(0, 6)
+  const offered = rendered => JSON.stringify(rendered, (key, value) => typeof value === 'function' ? undefined : value)
+  const mac = offered(component({ hostKind: 'native', caps: { presets: nativePresets, webPresets } }).render())
+  assert.ok(mac.includes('YouTube 1080p') && !mac.includes('ProRes 4444') && !mac.includes('palette-optimized'), 'ProRes and GIF are hidden in the Mac Web Editor')
+  const full = offered(component({ hostKind: 'server', caps: { presets: nativePresets, webPresets } }).render())
+  assert.ok(full.includes('ProRes 4444'), 'the server editor still offers every preset it renders')
 })

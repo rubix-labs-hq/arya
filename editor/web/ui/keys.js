@@ -61,7 +61,7 @@ export function runEditorCommand(command) {
         edit({ op: 'delete_marker', id: store.selMarker })
         set({ selMarker: null })
       } else if (ids.length) {
-        edit({ op: command === 'rippleDelete' ? 'ripple_delete' : 'lift', ids })
+        edit({ op: command === 'rippleDelete' ? 'ripple_delete' : 'lift', ids, ...(store.linked ? {} : { unlinked: true }) })
         set({ selection: [] })
       } else if (p.range) edit({ op: 'delete_range', from: p.range.in, to: p.range.out, ripple: command === 'rippleDelete' })
       break
@@ -71,7 +71,7 @@ export function runEditorCommand(command) {
     case 'copy': copySelection(p); break
     case 'cut':
       copySelection(p)
-      if (sel().length) edit({ op: 'ripple_delete', ids: sel() })
+      if (sel().length) edit({ op: 'ripple_delete', ids: sel(), ...(store.linked ? {} : { unlinked: true }) })
       break
     case 'paste':
       if (store.clipboard) edit({ op: 'paste', at: time.t, clips: store.clipboard })
