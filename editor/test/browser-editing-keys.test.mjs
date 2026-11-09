@@ -244,3 +244,32 @@ test('Deleting or blading a clip never changes its linked partner on a locked tr
   assert.deepEqual(bladed.tracks[1].clips, p.tracks[1].clips, 'blade keeps locked audio whole')
   assert.equal(bladed.tracks[0].clips.length, 4)
 })
+
+test('a locked linked partner in the selection does not cancel Delete, Cut or Cmd-B', () => {
+  for (const command of ['delete', 'rippleDelete', 'cut', 'split']) {
+    const p = fixture()
+    p.tracks[1].locked = true
+    const c = keyboard({ project: p, selection: ['c2', 'c2a'], at: 6 })
+    c.keys.runEditorCommand(command)
+    const video = c.state.project.tracks[0].clips, audio = c.state.project.tracks[1].clips
+    assert.deepEqual(audio, p.tracks[1].clips, `${command} leaves the locked audio alone`)
+    if (command === 'split') assert.equal(video.length, 4, 'the unlocked video is cut')
+    else assert.equal(video.some(clip => clip.id === 'c2'), false, `${command} removes the unlocked video`)
+  }
+  const p = fixture()
+  p.tracks[0].locked = true
+  p.tracks[1].locked = true
+  const c = keyboard({ project: p, selection: ['c2', 'c2a'] })
+  c.keys.runEditorCommand('delete')
+  assert.equal(c.calls.length, 0)
+  assert.match(c.notices.at(-1), /locked/)
+})
+
+test('with Linked selection off, Cmd-B cuts only the selected audio', () => {
+  const c = keyboard({ selection: ['c2a'], at: 6 })
+  c.state.linked = false
+  c.keys.runEditorCommand('split')
+  assert.equal(c.calls[0][0].unlinked, true)
+  assert.equal(c.state.project.tracks[1].clips.length, 4)
+  assert.equal(c.state.project.tracks[0].clips.length, 3, 'the linked picture stays whole')
+})

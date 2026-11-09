@@ -968,7 +968,7 @@ final class NativeEditorModel: ObservableObject {
             }
         }
         guard !ids.isEmpty else { status = "Move the playhead over a selected clip on an unlocked track to split it."; return }
-        editBatch(ids.map { ["op": "blade", "id": $0, "at": time] }, summary: ids.count > 1 ? "Split selected clips" : nil, feedback: true)
+        editBatch(ids.map { ["op": "blade", "id": $0, "at": time] }, summary: ids.count > 1 ? "Split selected clips" : nil, expectedVersion: version, feedback: true)
     }
     // BEGIN NATIVE CLIPBOARD CONTROLLER
     func clipboardActionCapture() -> NativeClipboardActionCapture? {
@@ -1055,7 +1055,11 @@ final class NativeEditorModel: ObservableObject {
 
     func delete(ripple: Bool = false) {
         guard !selectedIDs.isEmpty else { return }
-        edit(["op": ripple ? "ripple_delete" : "delete", "ids": selectedIDs.sorted()], expectedVersion: version, feedback: true)
+        // The core rejects an edit that names a locked clip, so leave selected locked clips out.
+        let ids = tracks.filter { !$0.locked }.flatMap(\.clips).map(\.id).filter { selectedIDs.contains($0) }.sorted()
+        guard !ids.isEmpty else { status = "The selected clips are on locked tracks."; return }
+        editBatch([["op": ripple ? "ripple_delete" : "delete", "ids": ids]], summary: ripple ? "Ripple delete selected clips" : "Delete selected clips",
+                  expectedVersion: version, feedback: true)
     }
     func add(_ asset: NativeAsset) {
         let track = tracks.first { $0.kind == (asset.kind == "audio" ? "audio" : "video") && !$0.locked }

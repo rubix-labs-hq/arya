@@ -1409,27 +1409,10 @@ struct NativeTimeline: View {
             model.editBatch(result.operations, summary: result.detail, expectedVersion: source.version, feedback: true)
         } catch { model.status = error.localizedDescription }
     }
-    private func splitSelection() {
-        guard let id = model.selectedID else { return }
-        do {
-            let source = try capture(id)
-            var operations: [[String: Any]] = [], seen = Set<String>()
-            for clip in source.affectedSelection where model.time > clip.start && model.time < clip.end {
-                let key = clip.link.isEmpty ? "id:\(clip.id)" : "link:\(clip.link)"
-                if seen.insert(key).inserted { operations.append(["op": "blade", "id": clip.id, "at": model.time]) }
-            }
-            guard matches(source) else { return }
-            model.editBatch(source.scoped(operations), summary: "Split selected clips", expectedVersion: source.version, feedback: true)
-        } catch { model.status = error.localizedDescription }
-    }
-    private func deleteSelection(_ ripple: Bool) {
-        guard let id = model.selectedID else { return }
-        do {
-            let source = try capture(id)
-            guard matches(source) else { return }
-            model.editBatch(source.scoped([["op": ripple ? "ripple_delete" : "delete", "ids": source.selected.sorted()]]), summary: ripple ? "Ripple delete selected clips" : "Delete selected clips", expectedVersion: source.version, feedback: true)
-        } catch { model.status = error.localizedDescription }
-    }
+    // Split and Delete go through the model, as the Timeline menu does. The core leaves linked
+    // partners on locked tracks alone, so a locked partner no longer blocks the edit.
+    private func splitSelection() { model.split() }
+    private func deleteSelection(_ ripple: Bool) { model.delete(ripple: ripple) }
     private func editMotion(clip: NativeClip, context: UUID, version: Int, composition: String?) {
         guard model.processingContextID == context, model.version == version, model.composition == composition,
               let current = model.tracks.flatMap(\.clips).first(where: { $0.id == clip.id }),

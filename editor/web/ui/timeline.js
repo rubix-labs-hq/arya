@@ -615,7 +615,7 @@ export function Timeline() {
     }
     if (store.tool === 'blade' && hit.clip) {
       const at = snap(p, t, new Set()).t
-      edit(e.shiftKey ? [{ op: 'blade', at }] : [{ op: 'blade', at, id: hit.clip.id }])
+      edit(e.shiftKey ? [{ op: 'blade', at }] : [{ op: 'blade', at, id: hit.clip.id, ...(store.linked ? {} : { unlinked: true }) }])
 
       return
     }
@@ -946,12 +946,14 @@ export function clipMenu(p, hit, t) {
   const c = hit.clip
   if (c) {
     const ids = store.selection.filter(id => !id.startsWith('tr:'))
+    // Linked selection can include partners on locked tracks; deleting must leave those out.
+    const unlockedIds = ids.filter(id => !p.tracks.some(tt => tt.locked && tt.clips.some(x => x.id === id)))
     items.push(
       ...(store.caps?.host === 'browser-local' ? [] : [{ label: 'Reference to Assistant', hint: '⌥-click', run: () => ids.forEach(id => { const cc = p.tracks.flatMap(tt => tt.clips).find(x => x.id === id); if (cc) addRef({ kind: 'clip', id, label: `${id} ${cc.label ?? cc.title?.text ?? mediaDisplayName(cc.src ?? cc.kind, p.assets?.[cc.src])}` }) }) },
       { label: 'Ask the Assistant about this clip…', run: () => { addRef({ kind: 'clip', id: c.id, label: `${c.id}` }); set({ chatOpen: true }); setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50) } }]),
       { sep: true },
-      { label: 'Blade at playhead', hint: '⌘B', run: () => edit({ op: 'blade', at: time.t, id: c.id }) },
-      { label: 'Blade here', run: () => edit({ op: 'blade', at: t, id: c.id }) },
+      { label: 'Blade at playhead', hint: '⌘B', run: () => edit({ op: 'blade', at: time.t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
+      { label: 'Blade here', run: () => edit({ op: 'blade', at: t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: 'Duplicate', run: () => edit({ op: 'duplicate', id: c.id }) },
       { label: c.enabled === false ? 'Enable clip' : 'Disable clip', hint: 'V', run: () => edit({ op: 'update', ids, set: { enabled: c.enabled === false ? null : false } }) },
       { sep: true },
@@ -977,8 +979,8 @@ export function clipMenu(p, hit, t) {
       },
       { sep: true },
       { label: 'Copy', hint: '⌘C', run: () => copySelection(p) },
-      { label: 'Delete (leave gap)', hint: '⌫', run: () => edit({ op: 'lift', ids, ...(store.linked ? {} : { unlinked: true }) }) },
-      { label: 'Ripple delete', hint: '⇧⌫', danger: true, run: () => edit({ op: 'ripple_delete', ids, ...(store.linked ? {} : { unlinked: true }) }) },
+      { label: 'Delete (leave gap)', hint: '⌫', run: () => edit({ op: 'lift', ids: unlockedIds, ...(store.linked ? {} : { unlinked: true }) }) },
+      { label: 'Ripple delete', hint: '⇧⌫', danger: true, run: () => edit({ op: 'ripple_delete', ids: unlockedIds, ...(store.linked ? {} : { unlinked: true }) }) },
     )
   } else if (hit.zone === 'transition') {
     items.push({ label: 'Remove transition', run: () => edit({ op: 'transition', id: hit.clip.id, type: 'none' }) })

@@ -24,6 +24,15 @@ function sel() {
   return store.selection.filter(id => !id.startsWith('tr:'))
 }
 
+// Linked selection also picks up partners on locked tracks. The core rejects an edit that names
+// a locked clip, so one locked partner would cancel the whole edit.
+function editable(p) {
+  const locked = new Set(p.tracks.filter(t => t.locked).flatMap(t => t.clips.map(c => c.id)))
+  return sel().filter(id => !locked.has(id))
+}
+
+const unlinked = () => (store.linked ? {} : { unlinked: true })
+
 function clipsUnderPlayhead(p) {
   return p.tracks.flatMap(t => t.clips.filter(c => c.start < time.t && clipEnd(c) > time.t))
 }
@@ -43,35 +52,36 @@ export function runEditorCommand(command) {
     case 'nextFrame': player.step(1); break
     case 'split': {
       const selected = sel()
-      const ids = selected.filter(id => {
+      const ids = editable(p).filter(id => {
         const c = p.tracks.flatMap(t => t.clips).find(clip => clip.id === id)
         return c && c.start < time.t && clipEnd(c) > time.t
       })
-      if (ids.length) edit(ids.map(id => ({ op: 'blade', at: time.t, id })))
+      if (ids.length) edit(ids.map(id => ({ op: 'blade', at: time.t, id, ...unlinked() })))
       else if (!selected.length) edit([{ op: 'blade', at: time.t }])
-      else toast('Place the playhead inside a selected clip before splitting.')
+      else toast('Place the playhead inside a selected clip on an unlocked track before splitting.')
       break
     }
     case 'delete':
     case 'rippleDelete': {
-      const ids = sel()
+      const ids = editable(p)
       const transition = store.selection.find(id => id.startsWith('tr:'))
       if (transition) edit({ op: 'transition', id: transition.slice(3), type: 'none' })
       else if (store.selMarker) {
         edit({ op: 'delete_marker', id: store.selMarker })
         set({ selMarker: null })
       } else if (ids.length) {
-        edit({ op: command === 'rippleDelete' ? 'ripple_delete' : 'lift', ids, ...(store.linked ? {} : { unlinked: true }) })
+        edit({ op: command === 'rippleDelete' ? 'ripple_delete' : 'lift', ids, ...unlinked() })
         set({ selection: [] })
-      } else if (p.range) edit({ op: 'delete_range', from: p.range.in, to: p.range.out, ripple: command === 'rippleDelete' })
+      } else if (sel().length) toast('The selected clips are on locked tracks.')
+      else if (p.range) edit({ op: 'delete_range', from: p.range.in, to: p.range.out, ripple: command === 'rippleDelete' })
       break
     }
-    case 'duplicate': if (sel().length) edit(sel().map(id => ({ op: 'duplicate', id }))); break
+    case 'duplicate': if (editable(p).length) edit(editable(p).map(id => ({ op: 'duplicate', id }))); break
     case 'export': set({ page: 'deliver' }); break
     case 'copy': copySelection(p); break
     case 'cut':
       copySelection(p)
-      if (sel().length) edit({ op: 'ripple_delete', ids: sel(), ...(store.linked ? {} : { unlinked: true }) })
+      if (editable(p).length) edit({ op: 'ripple_delete', ids: editable(p), ...unlinked() })
       break
     case 'paste':
       if (store.clipboard) edit({ op: 'paste', at: time.t, clips: store.clipboard })

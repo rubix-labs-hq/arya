@@ -153,7 +153,7 @@ final class Composer {
 ''' + block(panel, '    private var canSendDraft: Bool') + '\nfunc press(_ press: Press) -> KeyPress.Result {\n' + body + '\n}\n}\n' + checks + '''
 let composer = Composer()
 check(composer.press(Press(modifiers: [])) == .handled && composer.sent == 1, "Unmodified hardware Return sends once")
-for modifier: EventModifiers in [.shift, .command, .option, .control, [.shift, .command]] {
+for modifier: EventModifiers in [.shift, .option, .control, [.shift, .command]] {
     check(composer.press(Press(modifiers: modifier)) == .ignored && composer.sent == 1, "Modified Return keeps normal text editing")
 }
 for blocked in 0..<6 {
@@ -171,9 +171,11 @@ for blocked in 0..<6 {
 for kind in ["script", "screenplay"] {
     let writer = Composer(); writer.model.assistantInputKind = kind
     check(writer.press(Press(modifiers: [])) == .ignored && writer.sent == 0, "Return adds a line while writing a script")
+    check(writer.press(Press(modifiers: .command)) == .handled && writer.sent == 1, "Command-Return sends a script")
 }
+check(composer.press(Press(modifiers: .command)) == .handled && composer.sent == 2, "Command-Return also sends a prompt")
 composer.assistant.applyingProposal = Proposal(finished: true)
-check(composer.press(Press(modifiers: [])) == .handled && composer.sent == 2, "A finished preview permits another request")
+check(composer.press(Press(modifiers: [])) == .handled && composer.sent == 3, "A finished preview permits another request")
 print("Passed \\(checks) assistant keyboard checks.")
 '''
     run(source, 'keyboard')
