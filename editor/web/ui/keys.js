@@ -297,8 +297,13 @@ export function installKeys() {
         case '>': {
           const all = p.tracks.flatMap(t => t.clips)
           const starts = editable(p).map(id => all.find(c => c.id === id)?.start ?? 0)
-          // One shared delta, stopped at zero by the earliest clip, keeps the spacing between clips.
-          const d = Math.max(((k === ',' || k === '<') ? -1 : 1) * (e.shiftKey ? 10 : 1) / fps, -Math.min(...starts))
+          // One shared delta, stopped at zero by the earliest clip that moves, keeps the spacing
+          // between clips. With Linked selection on that includes unlocked partners left out of
+          // the selection, such as the audio of a J cut.
+          const lockedIds = new Set(p.tracks.filter(t => t.locked).flatMap(t => t.clips.map(c => c.id)))
+          const links = new Set(store.linked ? editable(p).map(id => all.find(c => c.id === id)?.link).filter(Boolean) : [])
+          const moving = all.filter(c => !lockedIds.has(c.id) && (editable(p).includes(c.id) || links.has(c.link)))
+          const d = Math.max(((k === ',' || k === '<') ? -1 : 1) * (e.shiftKey ? 10 : 1) / fps, -Math.min(...moving.map(c => c.start)))
           // With Linked selection on, each link group moves once and brings its unlocked partners,
           // even one left out of the selection; off, each selected clip moves alone.
           const seen = new Set()

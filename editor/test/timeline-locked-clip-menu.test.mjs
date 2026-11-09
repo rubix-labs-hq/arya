@@ -102,3 +102,15 @@ test('Detach audio keeps a disabled clip silent and keeps its effect automation'
   assert.equal(audio.reverse, true)
   assert.deepEqual(audio.anim, { 'fx.f1.mix': [[0, 0.3], [2, 0.8]] })
 })
+
+test('Detach audio solos the track it adds when another track is soloed', () => {
+  const p = fixture()
+  p.tracks[1].solo = true
+  p.tracks[1].clips.push({ id: 'music', kind: 'audio', src: 'm.mp4', start: 0, dur: 8, in: 0 })
+  const m = menu(p, ['c1'])
+  m.clipMenu(p, { clip: p.tracks[0].clips[0] }, 3).find(it => it.label === 'Detach audio').run()
+  const after = core.applyOps(p, m.edits[0]).project
+  const added = after.tracks.find(t => t.id === 'A2')
+  assert.equal(added.solo, true)
+  assert.equal(added.clips[0].start, 2)
+})

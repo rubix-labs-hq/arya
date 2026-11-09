@@ -381,3 +381,17 @@ test('the Inspector hides the Audio tab on a video whose audio was detached', ()
   const source = fs.readFileSync(new URL('../web/ui/inspector.js', import.meta.url), 'utf8')
   assert.match(source, /clip\.kind === 'video' && !clip\.link && !clip\.audioDetached && p\.assets\[clip\.src\]\?\.hasAudio\) \? \['audio', 'Audio'\]/)
 })
+
+test('with Linked selection on, an unselected partner nearer zero stops the nudge, so the pair stays in sync', () => {
+  const p = fixture()
+  // A J cut: the audio leads the video by 4.1 s and starts at 0; only the video is selected.
+  p.tracks[0].clips.find(c => c.id === 'c2').start = 4.1
+  p.tracks[0].clips = p.tracks[0].clips.filter(c => c.id !== 'c1')
+  p.tracks[1].clips = p.tracks[1].clips.filter(c => c.id !== 'c1a')
+  for (const c of p.tracks.flatMap(t => t.clips)) if (c.id !== 'c2') c.start -= 4
+  const c = keyboard({ project: p, selection: ['c2'] })
+  c.dispatch(',', { shiftKey: true })
+  const after = id => c.state.project.tracks.flatMap(t => t.clips).find(x => x.id === id).start
+  assert.ok(Math.abs(after('c2') - after('c2a') - 4.1) < 1e-6, 'the offset between video and audio is kept')
+  assert.equal(after('c2a'), 0)
+})

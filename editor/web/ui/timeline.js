@@ -1046,7 +1046,8 @@ export function detachAudio(p, c) {
   // their automation, plus the direction of a reversed clip.
   const set = { ...detachedAudioSettings(c), ...(c.reverse ? { reverse: true } : {}) }
   return edit([
-    ...(free ? [] : [{ op: 'add_track', kind: 'audio' }]),
+    // A new track joins the solo, if there is one, so the detached sound stays audible.
+    ...(free ? [] : [{ op: 'add_track', kind: 'audio' }, ...(solo ? [{ op: 'update_track', id: track, set: { solo: true } }] : [])]),
     { op: 'overwrite', kind: 'audio', src: c.src, track, start: c.start, in: c.in, dur: c.dur, set },
     { op: 'update', ids: [c.id], set: { audioDetached: true } },
   ])
