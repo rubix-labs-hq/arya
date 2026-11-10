@@ -11,7 +11,7 @@ import { contributionAmount, checkoutDestination, releaseDestination, safeDestin
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const shipped = JSON.parse(await readFile(join(root, 'config.json'), 'utf8'));
 // The unreleased state, independent of the release the committed config ships.
-const defaults = { ...shipped, release: { ...shipped.release, ready: false, notarized: false, version: null, macURL: null, sha256: null, size: null } };
+const defaults = { ...shipped, contributions: { ...shipped.contributions, checkoutURLs: {} }, release: { ...shipped.release, ready: false, notarized: false, version: null, macURL: null, sha256: null, size: null } };
 const source = (await readFile(join(root, 'assets/site.mjs'), 'utf8')).replace(/^import[^\n]+\n/, '');
 
 class Element {
@@ -87,7 +87,7 @@ test('the public default has no access destination and the download page shows a
     assert.ok(pageHTML.includes('href="/download/#access"'), `${page || 'home'} links its primary action to the access form`);
   }
   const privacy = await unreleasedPage('privacy');
-  assert.ok(privacy.includes('Effective date: 2026-10-23.'));
+  assert.ok(privacy.includes('Effective date: 2026-11-10.'));
   assert.ok(!privacy.includes('beta access form on the download page is a placeholder'));
 });
 

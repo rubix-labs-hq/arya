@@ -40,5 +40,7 @@
   "privacy/index.html",
   "project/index.html",
   "robots.txt",
-  "support/index.html"
+  "support/index.html",
+  "llms.txt",
+  "llms-full.txt"
 ]

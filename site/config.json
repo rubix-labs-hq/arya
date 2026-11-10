@@ -7,10 +7,10 @@
     "minimum": 5,
     "suggested": 15,
     "checkoutURLs": {
-      "5": null,
-      "15": null,
-      "30": null,
-      "custom": null
+      "5": "https://buy.stripe.com/cNieVc2Zx24ogos7fmejK0G",
+      "15": "https://buy.stripe.com/5kQ00i0Rp24ob487fmejK0H",
+      "30": "https://buy.stripe.com/4gMbJ043B4cw0pufLSejK0I",
+      "custom": "https://buy.stripe.com/4gM9ASdEbdN67RW8jqejK0K"
     },
     "allowedHosts": [
       "buy.stripe.com"
@@ -30,10 +30,10 @@
     ]
   },
   "mobileRelease": {
-    "ready": false,
+    "ready": true,
     "version": "1.0.5",
     "build": "1",
-    "appStoreURL": null,
+    "appStoreURL": "https://apps.apple.com/us/app/arya-video-editor/id6826357116",
     "appId": "6826357116",
     "allowedHosts": [
       "apps.apple.com"

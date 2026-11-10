@@ -43,6 +43,11 @@ jobs:
         working-directory: editor
       - run: npm run processing:smoke
         working-directory: editor
+      - name: Install and verify optional tip receiver
+        working-directory: services/tips
+        run: |
+          npm ci
+          npm test
       - name: Verify website build and behavior contracts
         run: |
           npm run build --prefix site

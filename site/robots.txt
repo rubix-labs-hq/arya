@@ -1,4 +1,5 @@
 User-agent: *
 Allow: /
 Disallow: /editor/
+Disallow: /api/
 Sitemap: https://editwitharya.app/sitemap.xml

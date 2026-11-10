@@ -17,6 +17,7 @@ From the repository root:
 
 ```bash
 npm ci --prefix editor
+npm ci --prefix services/tips
 npm run --prefix editor prepare:persistence
 npm run --prefix editor check:persistence
 ```
@@ -38,6 +39,7 @@ Run the checks that fit your change.
 | Shared core, server and browser editor | `npm test --prefix editor` |
 | Renderer output | `npm run --prefix editor renderer:regressions` and `npm run --prefix editor golden` |
 | Media processing | `npm run --prefix editor processing:smoke` |
+| Tip payment receiver | `npm test --prefix services/tips` |
 | Website | `npm test --prefix site` |
 | Third-party notices | `node --test scripts/test-third-party-notices.mjs` and `node scripts/check-third-party-notices.mjs` |
 | ReelKit (Swift) | `NODE="$(command -v node)" swift test --package-path native/ReelKit` |
