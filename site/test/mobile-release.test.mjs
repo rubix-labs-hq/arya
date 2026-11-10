@@ -105,7 +105,8 @@ test('mobile release destination helper enforces literal ready boolean, non-empt
   assert.equal(mobileReleaseDestination({ mobileRelease: { ...live, appStoreURL: 'https://user:pass@apps.apple.com/app/id6826357116' } }), null);
   assert.equal(mobileReleaseDestination({ mobileRelease: { ...live, appStoreURL: 'http://apps.apple.com/app/id6826357116' } }), null);
 
-  // Pending config has no destination link
+  // The shipped config links the public listing; pending config has no destination link
+  assert.equal(mobileReleaseDestination(shipped), 'https://apps.apple.com/us/app/arya-video-editor/id6826357116');
   assert.equal(mobileReleaseDestination(pending), null);
   assert.equal(mobileReleaseDestination({ mobileRelease: { ...live, ready: false } }), null);
 });
@@ -131,6 +132,8 @@ test('pending mobile release renders plain review status and provides no active 
 
   // /project/ page preserves pending roadmap state
   assert.ok(pages.project.includes('Shared project format is in testing on devices. Public iPhone and iPad builds are coming later.'));
+  assert.ok(pages.project.includes('iPhone and iPad coming later'));
+  assert.ok(pages.home.includes('iPhone and iPad builds are coming later.'));
 
   // Mac release config and links remain intact
   assert.ok(download.includes('Download Arya for Mac'));
@@ -151,6 +154,10 @@ test('validated live mobile release enables the conditional App Store CTA and up
   // /project/ iPhone and iPad row reflects availability and does not claim builds are coming later
   assert.ok(pages.project.includes('Arya 1.0.5 is available on the App Store as a free download.'));
   assert.ok(!pages.project.includes('Public iPhone and iPad builds are coming later.'));
+  assert.ok(pages.project.includes('iPhone and iPad on the App Store'));
+  assert.ok(!pages.project.includes('iPhone and iPad coming later'));
+  assert.ok(pages.home.includes('Arya 1.0.5 is also available on the App Store for iPhone and iPad.'));
+  assert.ok(!pages.home.includes('iPhone and iPad builds are coming later'));
 
   // Mac release still preserved
   assert.ok(download.includes('Download Arya for Mac'));
