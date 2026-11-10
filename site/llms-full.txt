@@ -30,6 +30,7 @@ Core editing and export are free. Tips are voluntary one-time payments and unloc
 - [Downloads](https://editwitharya.app/download/): Current verified releases and checksums.
 - [Installation and setup](https://editwitharya.app/install/): Installation, optional assistant connections, updates and rollback.
 - [Project status](https://editwitharya.app/project/): Supported features, limits and source links.
+- [Help](https://editwitharya.app/help/): Import, playback, backups, export and issue reporting.
 - [Support and tips](https://editwitharya.app/support/): Contact options and optional one-time support.
 - [Privacy](https://editwitharya.app/privacy/): Local storage, optional services and payment processing.
 

@@ -43,6 +43,7 @@ export async function writeDiscoveryFiles(root, config) {
     ['Downloads', '/download/', 'Current verified releases and checksums.'],
     ['Installation and setup', '/install/', 'Installation, optional assistant connections, updates and rollback.'],
     ['Project status', '/project/', 'Supported features, limits and source links.'],
+    ['Help', '/help/', 'Import, playback, backups, export and issue reporting.'],
     ['Support and tips', '/support/', 'Contact options and optional one-time support.'],
     ['Privacy', '/privacy/', 'Local storage, optional services and payment processing.'],
   ].map(([name, path, detail]) => `- [${name}](${url(path)}): ${detail}`).join('\n');

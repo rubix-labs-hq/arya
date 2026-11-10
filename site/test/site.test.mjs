@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
 import { safeDestination, contributionAmount, releaseDestination, checkoutDestination } from '../assets/config.mjs';
 const root=resolve(fileURLToPath(new URL('..',import.meta.url)));
-const routes=['','download','install','support','privacy','project'];
+const routes=['','download','install','help','support','privacy','project'];
 const config=JSON.parse(await readFile(join(root,'config.json'),'utf8'));
 test('contribution amounts reject ambiguous, invalid and excessive values',()=>{
   for(const value of ['','0','4.99','5.001','-5','1e2','Infinity','NaN','5,00','1000.01','9999999999999999999'])assert.ok(contributionAmount(value).error,value);
@@ -101,4 +101,12 @@ test('configured tips expose only reviewed HTTPS checkout links and keep downloa
   assert.match(support, /does not include an AI provider subscription/);
   const download = await readFile(join(root, 'download/index.html'), 'utf8');
   assert.ok(download.includes(config.release.macURL));
+});
+
+test('App Store help is reachable without a payment call to action', async () => {
+  const help = await readFile(join(root, 'help/index.html'), 'utf8');
+  assert.match(help, /Keep your edit moving/);
+  assert.match(help, /rubix-labs-hq\/arya\/issues/);
+  assert.ok(!help.includes('buy.stripe.com'));
+  assert.ok(!help.includes('href="/support/"'));
 });

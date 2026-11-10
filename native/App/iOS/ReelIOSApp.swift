@@ -27,7 +27,7 @@ struct NativeMobilePresentation {
         let sessionID: String
     }
     struct SheetRequest: Identifiable, Equatable {
-        enum Kind: Equatable { case newProject, assistantSettings, gettingStarted }
+        enum Kind: Equatable { case newProject, assistantSettings, gettingStarted, support }
         let id = UUID()
         let kind: Kind
     }
@@ -95,13 +95,19 @@ struct ReelIOSApp: App {
     @StateObject private var session = EditorSession(platform: nil)
     @State private var presentation = NativeMobilePresentation()
 
+    init() {
+        // StoreKit delivers unfinished tip transactions only to a listener running at launch.
+        NativeSupportStore.shared.start()
+    }
+
     var body: some Scene {
         WindowGroup {
             let sheetRequest = presentation.sheet
             ContentView(session: session,
                         openFolder: { presentation.presentPicker(sessionID: session.sessionID) },
                         newProject: { presentation.presentSheet(.newProject) },
-                        openAssistantSettings: { presentation.presentSheet(.assistantSettings) })
+                        openAssistantSettings: { presentation.presentSheet(.assistantSettings) },
+                        openSupport: { presentation.presentSheet(.support) })
                 .background {
                     if let request = presentation.picker {
                         NativeMobileProjectPicker(request: request, isPresented: pickerBinding(request), completed: finishPicker)
@@ -138,6 +144,7 @@ struct ReelIOSApp: App {
                             Button("Recover saved project…") { session.offerProjectRecovery() }
                             Button("Assistant settings") { presentation.presentSheet(.assistantSettings) }
                             Button("Getting started") { presentation.presentSheet(.gettingStarted) }
+                            Button("Support Arya") { presentation.presentSheet(.support) }
                             Button("Native editor") { session.useWebEditor = false }
                         } label: {
                             Image(systemName: "folder").padding(10)
@@ -162,6 +169,12 @@ struct ReelIOSApp: App {
                     case .gettingStarted:
                         NativeGettingStartedSheet(onDismiss: { presentation.dismissSheet(route) })
                             .id(route.id)
+                    case .support:
+                        NavigationStack {
+                            NativeSupportView(store: .shared)
+                                .toolbar { Button("Done") { presentation.dismissSheet(route) } }
+                        }
+                        .id(route.id)
                     }
                 }
         }

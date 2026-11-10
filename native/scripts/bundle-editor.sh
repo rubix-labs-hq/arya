@@ -68,7 +68,7 @@ done
 
 mkdir -p "$DEST/scripts"
 cp "$EDITOR/scripts/prepare-project-writer.mjs" "$DEST/scripts/prepare-project-writer.mjs"
-if [ "${PLATFORM_NAME:-${ARYA_BUNDLE_PLATFORM:-}}" = "macosx" ]; then
+if [ "${PLATFORM_NAME:-${ARYA_BUNDLE_PLATFORM:-}}" = "macosx" ] && [ "${EFFECTIVE_PLATFORM_NAME:-}" != "-maccatalyst" ]; then
   # These are generated build-product files, never source or a user project.
   # Signing occurs after this phase; each rebuilt app gets a newly generated pin.
   rm -f "$DEST/core/project-writer.prepared.json" "$DEST/../../Helpers/project-writer"

@@ -1,0 +1,61 @@
+{
+  "identifier": "A7A15A01",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "4.99",
+      "familyShareable": false,
+      "internalID": "5B7D2E01",
+      "localizations": [
+        {
+          "description": "A one-time tip. It unlocks nothing; Arya stays free.",
+          "displayName": "Small tip",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "app.reel.ios.support.small",
+      "referenceName": "Support small (local review price only)",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "14.99",
+      "familyShareable": false,
+      "internalID": "5B7D2E02",
+      "localizations": [
+        {
+          "description": "A one-time tip. It unlocks nothing; Arya stays free.",
+          "displayName": "Medium tip",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "app.reel.ios.support.medium",
+      "referenceName": "Support medium (local review price only)",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "29.99",
+      "familyShareable": false,
+      "internalID": "5B7D2E03",
+      "localizations": [
+        {
+          "description": "A one-time tip. It unlocks nothing; Arya stays free.",
+          "displayName": "Large tip",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "app.reel.ios.support.large",
+      "referenceName": "Support large (local review price only)",
+      "type": "Consumable"
+    }
+  ],
+  "settings": {
+    "_failTransactionsEnabled": false,
+    "_locale": "en_US",
+    "_storefront": "USA"
+  },
+  "subscriptionGroups": [],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}

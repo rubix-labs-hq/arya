@@ -74,8 +74,9 @@ static char *names(int fd, ssize_t *size) {
     }
     return result;
 }
-#if TARGET_OS_OSX
-// macOS may regenerate the quarantine creator and timestamp for a new file.
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
+// macOS may regenerate the quarantine creator and timestamp for a new file,
+// including files written by sandboxed Mac Catalyst apps.
 // Keep the kernel's marker. Require identical flags and event identity, a valid
 // bounded representation, and no timestamp rollback. Other attributes stay exact.
 static int quarantine_restrictions_preserved(const void *original, size_t size, const void *staged, size_t other) {
@@ -110,7 +111,7 @@ static int compare_xattrs(int from, int to, int verify) {
     for (size_t p = 0; verify && p < (size_t)target_size;) {
         size_t length = strnlen(target + p, (size_t)target_size - p);
         if (length >= (size_t)target_size - p) { invalid(); goto done; }
-#if TARGET_OS_OSX
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
         // App Sandbox can add quarantine to a new stage. Retain that marker when the
         // original has none; original quarantine restrictions remain unchanged.
         if (!strcmp(target + p, "com.apple.quarantine")) {
@@ -141,7 +142,7 @@ static int compare_xattrs(int from, int to, int verify) {
                 failure("fgetxattr staged size"); goto done;
             }
             int quarantine = 0;
-#if TARGET_OS_OSX
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
             quarantine = !strcmp(name, "com.apple.quarantine");
 #endif
             if (other != size && !quarantine) { result = 1; goto done; }
@@ -153,7 +154,7 @@ static int compare_xattrs(int from, int to, int verify) {
             ssize_t second = first < 0 ? -1 : fgetxattr(to, name, b, (size_t)other, 0, 0);
             int code = errno;
             int equal = first == size && second == other && size == other && !memcmp(a, b, (size_t)size);
-#if TARGET_OS_OSX
+#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
             if (!equal && first == size && second == other && quarantine)
                 equal = quarantine_restrictions_preserved(a, (size_t)size, b, (size_t)other);
 #endif

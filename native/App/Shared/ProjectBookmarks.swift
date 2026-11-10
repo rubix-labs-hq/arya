@@ -14,13 +14,21 @@ enum ProjectBookmarks {
     private static let key = "recentProjects"
     private static let limit = 12
 
-    #if os(macOS)
+    #if os(macOS) || targetEnvironment(macCatalyst)
     private static let createOptions: URL.BookmarkCreationOptions = [.withSecurityScope]
     private static let resolveOptions: URL.BookmarkResolutionOptions = [.withSecurityScope]
     #else
     private static let createOptions: URL.BookmarkCreationOptions = []
     private static let resolveOptions: URL.BookmarkResolutionOptions = []
     #endif
+
+    static func makeBookmark(_ url: URL) throws -> Data {
+        try url.bookmarkData(options: createOptions, includingResourceValuesForKeys: nil, relativeTo: nil)
+    }
+
+    static func resolveBookmark(_ data: Data, stale: inout Bool) throws -> URL {
+        try URL(resolvingBookmarkData: data, options: resolveOptions, relativeTo: nil, bookmarkDataIsStale: &stale)
+    }
 
     static func load() -> [Recent] {
         let stored = UserDefaults.standard.array(forKey: key) as? [[String: Any]] ?? []

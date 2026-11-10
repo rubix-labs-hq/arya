@@ -42,5 +42,6 @@
   "robots.txt",
   "support/index.html",
   "llms.txt",
-  "llms-full.txt"
+  "llms-full.txt",
+  "help/index.html"
 ]

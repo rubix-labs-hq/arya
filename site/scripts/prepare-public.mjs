@@ -31,7 +31,7 @@ export async function preparePublicOutput({ repoRoot = defaultRoot, outputRoot =
   const pages = JSON.parse(await confinedRead(root, 'site/public-files.json'))
   if (!Array.isArray(pages) || !pages.length) throw Error('Website allowlist is empty')
   for (const name of pages) {
-    if (!relative(name) || !(/^(?:index|404)\.html$/.test(name) || /^(?:download|install|support|privacy|project)\/index\.html$/.test(name) || ['config.json', 'robots.txt', 'llms.txt', 'llms-full.txt'].includes(name) || /^assets\/[A-Za-z0-9._/-]+\.(?:mjs|css|svg|png|jpg|webp|ttf|woff2?|json|txt)$/.test(name))) throw Error(`Unexpected website file: ${name}`)
+    if (!relative(name) || !(/^(?:index|404)\.html$/.test(name) || /^(?:download|install|help|support|privacy|project)\/index\.html$/.test(name) || ['config.json', 'robots.txt', 'llms.txt', 'llms-full.txt'].includes(name) || /^assets\/[A-Za-z0-9._/-]+\.(?:mjs|css|svg|png|jpg|webp|ttf|woff2?|json|txt)$/.test(name))) throw Error(`Unexpected website file: ${name}`)
     await add(`site/${name}`, name)
   }
   const indexing = JSON.parse(files.get('config.json')?.toString('utf8') ?? '{}').indexing === true
@@ -64,8 +64,21 @@ export async function preparePublicOutput({ repoRoot = defaultRoot, outputRoot =
       if (!files.has(dependency)) throw Error(`Unmapped asset ${asset} in ${target}`)
     }
   }
-  const entry = files.get('editor/index.html')?.toString('utf8')
+  let entry = files.get('editor/index.html')?.toString('utf8')
   if (!entry?.includes('./browser-local/bootstrap.js')) throw Error('The browser-local entry is missing')
+  // The hosted editor's support link. It is added only here, so the editor files that the
+  // native apps bundle never carry a website or checkout URL.
+  const siteURL = JSON.parse(files.get('config.json')?.toString('utf8') ?? '{}').siteURL
+  if (siteURL) {
+    const site = new URL(siteURL)
+    if (site.protocol !== 'https:' || site.pathname !== '/' || site.search || site.hash || site.username || site.password) throw Error('siteURL must be an https origin')
+    if (entry.includes('arya-support-url') || entry.split('<head>\n').length !== 2) throw Error('Unexpected browser-local head')
+    const supportURL = new URL('/support/?channel=web-beta', site).href
+    entry = entry.replace('<head>\n', `<head>\n  <meta name="arya-support-url" content="${supportURL}">\n`)
+    const entryBytes = Buffer.from(entry)
+    files.set('editor/index.html', entryBytes)
+    Object.assign(inventory.find(row => row.target === 'editor/index.html'), { bytes: entryBytes.length, sha256: sha(entryBytes), transform: 'support-link-meta' })
+  }
   const hashes = [...entry.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].filter(match => !/\bsrc\s*=/.test(match[1]) && match[2].trim()).map(match => `'sha256-${createHash('sha256').update(match[2]).digest('base64')}'`)
   const structuredHashes = [...files].filter(([name]) => name.endsWith('.html')).flatMap(([, bytes]) => [...bytes.toString('utf8').matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(match => `'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`));
   const marketing = `default-src 'self'; script-src 'self' ${[...new Set(structuredHashes)].join(' ')}; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`

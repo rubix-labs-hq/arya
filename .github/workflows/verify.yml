@@ -97,6 +97,8 @@ jobs:
           NODE="$(command -v node)" swift test --package-path native/ReelKit \
             --skip 'AudioPreviewTests.testBackendPreviewProducesOnlyRequestedRangeWithSharedVerifiedLimiter' \
             --skip 'NativeVideoQualityTests.testVideoDenoiseRouteProcessesRealEncodedSourceAndUndo'
+      - name: Verify project metadata on macOS and Mac Catalyst
+        run: python3 native/scripts/test-project-metadata.py
       - name: Verify native assistant change receipts
         run: sh native/scripts/test-change-receipts.sh
       - name: Verify native viewer coordinates and output sizing
@@ -145,12 +147,18 @@ jobs:
           python3 native/scripts/test-transcript-preview.py
           python3 native/scripts/test-native-responsive.py
           python3 native/scripts/test-import-outcomes.py
+          python3 native/scripts/test-native-support-purchases.py
+          python3 native/scripts/test-support-channels.py
           python3 native/scripts/test-mobile-track-delete.py
           node native/scripts/test-mobile-track-delete.mjs . .
       - name: Build macOS app
         run: xcodebuild -project native/Reel.xcodeproj -scheme Reel -configuration Debug -destination 'generic/platform=macOS' -derivedDataPath build/ci-mac CODE_SIGNING_ALLOWED=NO build
       - name: Build iPhone and iPad app
         run: xcodebuild -project native/Reel.xcodeproj -scheme 'Reel iOS' -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ci-ios CODE_SIGNING_ALLOWED=NO build
+      - name: Build Mac App Store edition
+        run: |
+          xcodebuild -project native/Reel.xcodeproj -scheme 'Reel Mac App Store' -configuration Debug -destination 'generic/platform=macOS,variant=Mac Catalyst' -derivedDataPath build/ci-catalyst CODE_SIGNING_ALLOWED=NO build
+          python3 native/scripts/validate-app-store.py build/ci-catalyst/Build/Products/Debug-maccatalyst/Arya.app --unsigned
       - name: Verify runtime and installer boundaries
         run: |
           python3 native/scripts/test-node-runtime.py

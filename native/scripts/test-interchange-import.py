@@ -385,6 +385,11 @@ console.log('Passed post-import production editBatch request through shared appl
         number_row = block(controls, 'struct NativeNumberRow: View {')
         padding = block(controls, 'extension View {')
         ui_source = 'import Foundation\nimport CryptoKit\nimport Darwin\nimport SwiftUI\nimport UniformTypeIdentifiers\n' + json_source + '\n' + folder + '\n' + projections + '\n' + dictionary + '\n' + selection + '\n' + ui_fixture + '\n' + implementation + '\n' + style + '\n' + toolbar + '\nfunc nativeTimecode(_ time: Double, fps: Double) -> String { String(time) }\n' + block(deliver, 'struct NativeInterchangeImportSheet: View {') + '\n' + number_row + '\n' + padding + '\n' + mobile_fixture + '\n' + block(deliver, 'enum NativeExportDimensions {') + '\n' + block(deliver, 'struct NativeInterchangeSheetDestination: Identifiable {') + '\n' + block(deliver, 'private struct NativeDeliveryHistoryView: View {') + '\n' + block(deliver, 'struct NativeDeliverPanel: View {')
+        # The iOS Deliver panel presents the production Support sheet. Include its
+        # real store and state machine so this standalone check covers that dependency.
+        support_core = (repo / 'native/ReelKit/Sources/ReelKit/SupportPurchases.swift').read_text()
+        support_ui = (repo / 'native/App/iOS/NativeSupport.swift').read_text().replace('import ReelKit\n', '')
+        ui_source += '\n#if os(iOS)\n' + support_core + '\n' + support_ui + '\n#endif\n'
         ui_source += '\n' + (editor / 'NativeRenderQueue.swift').read_text()
         swift.write_text(ui_source)
         for sdk,target in [('macosx','arm64-apple-macos14.0'),('iphonesimulator','arm64-apple-ios17.0-simulator')]:
