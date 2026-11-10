@@ -150,7 +150,7 @@ test('hosted assistant explains the limit with working destinations and no compo
   assert.equal(walk(tree).some(node => node.type === 'textarea'), false)
   assert.equal(find(tree, 'assistant-composer-card'), undefined)
   assert.deepEqual(walk(tree).filter(node => node.type === 'a').map(node => node.props.href), [
-    'https://arya-beta-delta.vercel.app/download/#mac', 'https://arya-beta-delta.vercel.app/install/#accounts',
+    'https://editwitharya.app/download/#mac', 'https://editwitharya.app/install/#accounts',
   ])
 })
 

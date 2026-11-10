@@ -60,6 +60,17 @@ test('configured release, contact, source and social metadata survive static gen
   assert.ok(!pages.download.includes('id="access-form"'));
 });
 
+test('public canonical links use the owner domain on every generated page', async () => {
+  const { result, pages } = await buildFixture(shipped);
+  assert.equal(result.status, 0, result.stderr);
+  for (const [route, html] of Object.entries(pages)) {
+    const path = route === 'home' ? '/' : `/${route}/`;
+    assert.ok(html.includes(`rel="canonical" href="https://editwitharya.app${path}"`), route);
+    assert.ok(html.includes('content="https://editwitharya.app/assets/brand/social.png"'), route);
+    assert.ok(!html.includes('https://arya-beta-delta.vercel.app'), route);
+  }
+});
+
 test('partial release configuration cannot generate a download', async () => {
   for (const release of [{ ...ready.release, notarized: false }, { ...ready.release, sha256: null }, { ...ready.release, allowedHosts: [] }]) {
     const { result } = await buildFixture({ ...defaults, release });

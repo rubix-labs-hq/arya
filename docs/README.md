@@ -4,8 +4,8 @@ Arya was called Reel during development. Some documents still use that name, and
 
 ## Using Arya
 
-- [Install and first steps](https://arya-beta-delta.vercel.app/install/): download, project folders, permissions and assistant sign-in.
-- [Your data](https://arya-beta-delta.vercel.app/privacy/): what stays on your device and what the optional connections send.
+- [Install and first steps](https://editwitharya.app/install/): download, project folders, permissions and assistant sign-in.
+- [Your data](https://editwitharya.app/privacy/): what stays on your device and what the optional connections send.
 - [Figma account connection](figma-account-setup.md): import frames with your own access token.
 - [Where each feature runs](../README.md#where-each-feature-runs): Mac app, local browser editor and hosted browser editor.
 

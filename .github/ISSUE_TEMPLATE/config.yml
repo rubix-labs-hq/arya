@@ -7,5 +7,5 @@ contact_links:
     url: https://github.com/rubix-labs-hq/arya/security/advisories/new
     about: Report security problems privately. Do not open a public issue.
   - name: Arya website
-    url: https://arya-beta-delta.vercel.app
+    url: https://editwitharya.app
     about: Downloads, the hosted browser editor and the data guide.
