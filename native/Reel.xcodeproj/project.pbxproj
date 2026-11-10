@@ -58,6 +58,8 @@
 		3835AA21A8D3A4724040119A /* NativeTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17184F86021CFD97548FFB5 /* NativeTimeline.swift */; };
 		3877DAA5F9C3E94F20817B01 /* NativeMobileExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89D8E7C0A90492AE40E4EDB4 /* NativeMobileExport.swift */; };
 		390855FC7690FF9E81526203 /* ReelIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99306BDCBD307A4EB82A3149 /* ReelIOSApp.swift */; };
+		E4B1C7A25D9F3E8061A2B3C4 /* NativeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B1C7A25D9F3E8061A2B3C5 /* NativeSupport.swift */; };
+		E4B1C7A25D9F3E8061A2B3C6 /* NativeSupportLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4B1C7A25D9F3E8061A2B3C7 /* NativeSupportLink.swift */; };
 		3D069BF602A5EB4C58AC9DA7 /* NativeAssistant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC0BCDDA920BDFF38180093 /* NativeAssistant.swift */; };
 		3F8934404C1A6AB153EBAB57 /* ProjectBookmarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5CF06B533252F245B0BC11 /* ProjectBookmarks.swift */; };
 		44843478257502989FFAB4A3 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72A18C86D783F423F13F020 /* EditorView.swift */; };
@@ -166,6 +168,8 @@
 		8C5CF06B533252F245B0BC11 /* ProjectBookmarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectBookmarks.swift; sourceTree = "<group>"; };
 		8DA9AF46CC7BF96461AD3FEB /* NativeInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInspector.swift; sourceTree = "<group>"; };
 		99306BDCBD307A4EB82A3149 /* ReelIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReelIOSApp.swift; sourceTree = "<group>"; };
+		E4B1C7A25D9F3E8061A2B3C5 /* NativeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSupport.swift; sourceTree = "<group>"; };
+		E4B1C7A25D9F3E8061A2B3C7 /* NativeSupportLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSupportLink.swift; sourceTree = "<group>"; };
 		A6AE8D8A8ABF15F404B22411 /* NativeProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeProject.swift; sourceTree = "<group>"; };
 		AB3C4F3D26B076C3CCF2C140 /* ReelWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReelWebView.swift; sourceTree = "<group>"; };
 		AB7FC61C12FFE44D207F7FAC /* Reel-Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Reel-Debug.entitlements"; sourceTree = "<group>"; };
@@ -277,6 +281,7 @@
 			isa = PBXGroup;
 			children = (
 				12064E37E22B66D80383083C /* Info.plist */,
+				E4B1C7A25D9F3E8061A2B3C7 /* NativeSupportLink.swift */,
 				AB7FC61C12FFE44D207F7FAC /* Reel-Debug.entitlements */,
 				0A61C9855282FCC9FE2FF2EA /* Reel.entitlements */,
 				0FC995B00801806B27A0029C /* ReelMacApp.swift */,
@@ -328,6 +333,7 @@
 			children = (
 				8A9694237B5BAB682A859893 /* Info.plist */,
 				31ADE9CDA8D880C2CE565713 /* Reel.entitlements */,
+				E4B1C7A25D9F3E8061A2B3C5 /* NativeSupport.swift */,
 				99306BDCBD307A4EB82A3149 /* ReelIOSApp.swift */,
 			);
 			path = iOS;
@@ -538,6 +544,7 @@
 				093A962B4C9D556185782F87 /* NativeViewer.swift in Sources */,
 				DC3E407A1F72685A3D19C752 /* ProjectBookmarks.swift in Sources */,
 				390855FC7690FF9E81526203 /* ReelIOSApp.swift in Sources */,
+				E4B1C7A25D9F3E8061A2B3C4 /* NativeSupport.swift in Sources */,
 				2064D59BFCA9624E62688B7C /* SchemeHandler.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -592,6 +599,7 @@
 				B0CAECCEDA555B4A2B5D4D44 /* NativeProject.swift in Sources */,
 				D7F29F52A51F5884DC21601B /* NativeProjectDocument.swift in Sources */,
 				717396DD54BB8E68095EC7AD /* NativeScopes.swift in Sources */,
+				E4B1C7A25D9F3E8061A2B3C6 /* NativeSupportLink.swift in Sources */,
 				3835AA21A8D3A4724040119A /* NativeTimeline.swift in Sources */,
 				6154FA7B2AE0A9EF95A478D6 /* NativeTranscriptPanel.swift in Sources */,
 				8F0B3533A9803A41E0640CAF /* NativeViewer.swift in Sources */,
@@ -619,6 +627,10 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.reel.ios;
+                SUPPORTS_MACCATALYST = YES;
+                DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+                SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+                "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "App/macOS/Reel-AppStore.entitlements";
 				PRODUCT_NAME = Arya;
 				SWIFT_MODULE_NAME = Reel;
 				SDKROOT = iphoneos;
@@ -643,6 +655,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.reel.Reel;
 				PRODUCT_NAME = Arya;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ARYA_DIRECT_DISTRIBUTION";
 				SWIFT_MODULE_NAME = Reel;
 				SDKROOT = macosx;
 			};
@@ -705,7 +718,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.7;
+				MARKETING_VERSION = 1.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -730,6 +743,10 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.reel.ios;
+                SUPPORTS_MACCATALYST = YES;
+                DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+                SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+                "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "App/macOS/Reel-AppStore.entitlements";
 				PRODUCT_NAME = Arya;
 				SWIFT_MODULE_NAME = Reel;
 				SDKROOT = iphoneos;
@@ -788,7 +805,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.7;
+				MARKETING_VERSION = 1.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -815,6 +832,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.reel.Reel;
 				PRODUCT_NAME = Arya;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ARYA_DIRECT_DISTRIBUTION";
 				SWIFT_MODULE_NAME = Reel;
 				SDKROOT = macosx;
 			};

@@ -27,6 +27,7 @@ struct ContentView: View {
     var newProject: () -> Void
     #if os(iOS)
     var openAssistantSettings: (() -> Void)? = nil
+    var openSupport: (() -> Void)? = nil
     #endif
 
     var body: some View {
@@ -49,7 +50,7 @@ struct ContentView: View {
             } else {
                 #if os(iOS)
                 StartView(session: session, openFolder: openFolder, newProject: newProject,
-                          openAssistantSettings: openAssistantSettings)
+                          openAssistantSettings: openAssistantSettings, openSupport: openSupport)
                 #else
                 StartView(session: session, openFolder: openFolder, newProject: newProject)
                 #endif
@@ -222,6 +223,7 @@ struct StartView: View {
     var newProject: () -> Void
     #if os(iOS)
     var openAssistantSettings: (() -> Void)? = nil
+    var openSupport: (() -> Void)? = nil
     #endif
 
     private var visibleRecents: [ProjectBookmarks.Recent] {
@@ -321,6 +323,15 @@ struct StartView: View {
                             }
                             .accessibilityHint("Connect accounts and choose assistant models before opening a project.")
                             .accessibilityIdentifier("welcome.assistantSettings")
+                        }
+                        if let openSupport {
+                            Button(action: openSupport) {
+                                Label("Support Arya", systemImage: "heart")
+                                    .frame(minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .accessibilityHint("Optional tips. Every feature stays free.")
+                            .accessibilityIdentifier("welcome.support")
                         }
                         #endif
                     }

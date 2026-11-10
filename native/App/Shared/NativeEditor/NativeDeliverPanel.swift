@@ -36,6 +36,9 @@ private struct NativeDeliveryHistoryView: View {
     @State private var error = ""
     @State private var loading = true
     @State private var share: ShareSelection?
+    #if os(iOS)
+    @State private var supportVisible = false
+    #endif
     private struct ShareSelection: Identifiable {
         let id = UUID()
         let url: URL
@@ -67,6 +70,7 @@ private struct NativeDeliveryHistoryView: View {
                     }
                 }.padding(8).background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
             }
+            if rows.contains(where: { $0.string("provenance") == "completed" }) { supportLink }
         }
         .task(id: sessionKey) { rows = []; warnings = []; actions = []; error = ""; share = nil; await refresh() }
         .onChange(of: completedExportKey) { _, _ in Task { await refresh() } }
@@ -80,6 +84,28 @@ private struct NativeDeliveryHistoryView: View {
             }.padding(24)
         }
     }
+    // BEGIN SUPPORT EXPORT LINK
+    /// One quiet, optional link once a completed export exists. It never opens by itself and
+    /// never blocks an export. iOS uses App Store tips; only direct-download Mac builds link out.
+    @ViewBuilder private var supportLink: some View {
+        #if os(iOS)
+        Button { supportVisible = true } label: { Label("Support Arya", systemImage: "heart") }
+            .font(.caption)
+            .accessibilityHint("Optional tips. Every feature stays free.")
+            .accessibilityIdentifier("deliver.support")
+            .sheet(isPresented: $supportVisible) {
+                NavigationStack {
+                    NativeSupportView(store: .shared).toolbar { Button("Done") { supportVisible = false } }
+                }
+            }
+        #elseif ARYA_DIRECT_DISTRIBUTION
+        Button { NativeSupportLink.open() } label: { Label("Support Arya…", systemImage: "heart") }
+            .font(.caption)
+            .accessibilityHint("Opens the Arya website. Every feature stays free.")
+            .accessibilityIdentifier("deliver.support")
+        #endif
+    }
+    // END SUPPORT EXPORT LINK
     @ViewBuilder private func buttons(_ row: [String: Any]) -> some View {
         ForEach(actions, id: \.self) { action in
             Button(action == "share" ? "Share export" : action == "open" ? "Open" : "Show in Finder") { Task { await access(row, action: action) } }

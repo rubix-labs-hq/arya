@@ -38,6 +38,9 @@ struct ReelMacApp: App {
                 NativeAssistantSettings(assistant: session.assistant).tabItem { Label("Assistant", systemImage: "text.bubble") }
                 NativeFigmaSettings(figma: session.figma).tabItem { Label("Figma", systemImage: "square.stack") }
                 NavigationStack { NativeGettingStartedView() }.tabItem { Label("Getting started", systemImage: "questionmark.circle") }
+                #if ARYA_DIRECT_DISTRIBUTION
+                NativeSupportLinkView().tabItem { Label("Support Arya", systemImage: "heart") }
+                #endif
             }.frame(width: 560, height: 460)
             // The accent is a light gold. Keep Settings dark like the editor so its text stays readable.
             .preferredColorScheme(.dark)
@@ -48,6 +51,9 @@ struct ReelMacApp: App {
     @CommandsBuilder private var commands: some Commands {
         CommandGroup(replacing: .help) {
             Button("Arya Getting started") { openWindow(id: "getting-started") }
+            #if ARYA_DIRECT_DISTRIBUTION
+            Button("Support Arya…") { NativeSupportLink.open() }
+            #endif
         }
         CommandGroup(replacing: .newItem) {
             Button("New Project…", action: newProject).keyboardShortcut("n")

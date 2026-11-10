@@ -12,7 +12,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.0.7"
+    MARKETING_VERSION: "1.1.0"
     CURRENT_PROJECT_VERSION: "1"
     # The build phase reads editor/ outside the project folder.
     ENABLE_USER_SCRIPT_SANDBOXING: NO
@@ -66,6 +66,9 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         COMBINE_HIDPI_IMAGES: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-macOS
+        # Direct download only: compiles the website support link. A Mac App Store target
+        # must not set this and must offer tips through In-App Purchase instead.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) ARYA_DIRECT_DISTRIBUTION
       configs:
         Debug:
           CODE_SIGN_ENTITLEMENTS: App/macOS/Reel-Debug.entitlements
@@ -92,6 +95,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         NSHumanReadableCopyright: "Copyright © 2026 Rubix Labs"
+        ITSAppUsesNonExemptEncryption: false
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UIRequiresFullScreen: false
@@ -111,6 +115,10 @@ targets:
         PRODUCT_NAME: Arya
         SWIFT_MODULE_NAME: Reel
         PRODUCT_BUNDLE_IDENTIFIER: app.reel.ios
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/macOS/Reel-AppStore.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-iOS
         CODE_SIGN_ENTITLEMENTS: App/iOS/Reel.entitlements
@@ -136,5 +144,8 @@ schemes:
         Reel iOS: all
     run:
       config: Debug
+      # Local tips for development and App Review only. It is not in any target, so its
+      # prices never ship; live prices come from App Store Connect.
+      storeKitConfiguration: StoreKit/AryaSupport.storekit
     archive:
       config: Release

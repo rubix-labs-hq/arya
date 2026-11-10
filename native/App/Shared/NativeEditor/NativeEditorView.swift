@@ -1461,6 +1461,9 @@ private struct NativeEditorPreferences: View {
     @Environment(\.dismiss) private var dismiss
     @State private var section = "assistant"
     @State private var gettingStartedVisible = false
+    #if os(iOS)
+    @State private var supportVisible = false
+    #endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1483,6 +1486,22 @@ private struct NativeEditorPreferences: View {
             }
             .padding(.horizontal, 18)
             .accessibilityIdentifier("settings.gettingStarted")
+            #if os(iOS)
+            Button { supportVisible = true } label: {
+                Label("Support Arya", systemImage: "heart")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .padding(.horizontal, 18)
+            .accessibilityHint("Optional tips. Every feature stays free.")
+            .accessibilityIdentifier("settings.support")
+            .sheet(isPresented: $supportVisible) {
+                NavigationStack {
+                    NativeSupportView(store: .shared)
+                        .toolbar { Button("Done") { supportVisible = false } }
+                }
+            }
+            #endif
             Rectangle().fill(NativeEditorStyle.line).frame(height: 1)
             if section == "assistant" { NativeAssistantSettings(assistant: session.assistant) }
             else if section == "figma" { NativeFigmaSettings(figma: session.figma) }

@@ -38,23 +38,36 @@ final class NativeMobileExport: ObservableObject {
         request = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(Request.self, from: $0) }
         pending = request != nil
         if pending { message = "An interrupted export can be resumed from Deliver." }
+        #if !targetEnvironment(macCatalyst)
         backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.suspendForegroundGPU() }
         }
+        #endif
     }
 
     var supportsGPU: Bool {
         #if DEBUG
         if forceForegroundForTesting { return false }
         #endif
+        #if !targetEnvironment(macCatalyst)
         if #available(iOS 26, *) { return BGTaskScheduler.supportedResources.contains(.gpu) }
+        #endif
         return false
+    }
+    private var canRunExport: Bool {
+        #if targetEnvironment(macCatalyst)
+        // Mac exports continue while another window or application has focus.
+        return true
+        #else
+        return UIApplication.shared.applicationState == .active
+        #endif
     }
     var canResume: Bool { pending && !starting && !running && worker == nil && fallbackJobs.isEmpty }
 
     func attach(_ session: EditorSession) { self.session = session }
 
     static func registerPreflight() {
+        #if !targetEnvironment(macCatalyst)
         BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: .main) { task in
             Task { @MainActor in shared.preflight(task) }
         }
@@ -63,18 +76,20 @@ final class NativeMobileExport: ObservableObject {
             catch { BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: request.id); shared.message = "Background continuation is unavailable. Resume this export from Deliver." }
         }
         if shared.pending { shared.schedulePreflight() }
+            #endif
     }
 
     func start(session: EditorSession, body: [String: Any]) async throws -> [String: Any] {
         guard !starting, !pending else { throw ReelBackend.APIError("Finish or discard the pending export before starting another.") }
         starting = true; defer { starting = false }
-        guard UIApplication.shared.applicationState == .active else { throw ReelBackend.APIError("Return to Arya before starting a GPU export on this device.") }
+        guard canRunExport else { throw ReelBackend.APIError("Return to Arya before starting a GPU export on this device.") }
         guard !pending, let backend = session.backend, let folder = session.folder,
               let project = await backend.currentProject() else { throw ReelBackend.APIError("Finish or discard the pending export before starting another.") }
-        guard session.backend === backend, UIApplication.shared.applicationState == .active else { throw CancellationError() }
+        guard session.backend === backend, canRunExport else { throw CancellationError() }
         self.session = session
+        #if !targetEnvironment(macCatalyst)
         if #available(iOS 26, *), supportsGPU {
-            let request = Request(id: Self.identifier + "." + UUID().uuidString, bookmark: try folder.bookmarkData(), project: project, body: JSON(any: body).text)
+            let request = Request(id: Self.identifier + "." + UUID().uuidString, bookmark: try ProjectBookmarks.makeBookmark(folder), project: project, body: JSON(any: body).text)
             try store(request)
             let task = BGContinuedProcessingTaskRequest(identifier: request.id, title: "Export Arya composition", subtitle: body.string("name", "Arya export"))
             task.requiredResources = .gpu; task.strategy = .queue
@@ -88,14 +103,17 @@ final class NativeMobileExport: ObservableObject {
                 message = "Background GPU scheduling is unavailable. Keep Arya active while exporting."
             }
         } else { message = "Keep Arya active while exporting on this device." }
-        let fallback = Request(id: Self.identifier + "." + UUID().uuidString, bookmark: try folder.bookmarkData(), project: project, body: JSON(any: body).text)
+        #else
+        message = "Exporting in Arya."
+        #endif
+        let fallback = Request(id: Self.identifier + "." + UUID().uuidString, bookmark: try ProjectBookmarks.makeBookmark(folder), project: project, body: JSON(any: body).text)
         try store(fallback)
         var spec = body; spec["expectedProject"] = project
         let result: JSON
         do { result = try await backend.handle(method: "POST", path: "/api/export", body: JSON(any: spec).text) }
         catch { if request?.id == fallback.id { clear() }; throw error }
         let fields = try JSON.parse(result.text) as? [String: Any] ?? [:]
-        guard session.backend === backend, UIApplication.shared.applicationState == .active else {
+        guard session.backend === backend, canRunExport else {
             _ = try? await backend.handle(method: "POST", path: "/api/jobs/cancel", body: JSON(any: ["id": fields.string("id")]).text)
             message = "Return to Arya to resume the export."; throw CancellationError()
         }
@@ -106,7 +124,7 @@ final class NativeMobileExport: ObservableObject {
 
     func resume() {
         guard canResume, let request else { return }
-        guard UIApplication.shared.applicationState == .active else { message = "Return to Arya to resume the export."; return }
+        guard canRunExport else { message = "Return to Arya to resume the export."; return }
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: request.id)
         running = true; worker = Task { await run(request, task: nil) }
     }
@@ -137,9 +155,9 @@ final class NativeMobileExport: ObservableObject {
         workerUsesGPU = task != nil
         defer { worker = nil; workerUsesGPU = false; running = false; task?.setTaskCompleted(success: success); if let jobID { fallbackJobs[jobID] = nil } }
         do {
-            if task == nil, UIApplication.shared.applicationState != .active { throw ReelBackend.APIError("Return to Arya to resume a GPU export.") }
+            if task == nil, !canRunExport { throw ReelBackend.APIError("Return to Arya to resume a GPU export.") }
             var stale = false
-            let folder = try URL(resolvingBookmarkData: request.bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
+            let folder = try ProjectBookmarks.resolveBookmark(request.bookmark, stale: &stale)
             if folder.startAccessingSecurityScopedResource() { scoped = folder }
             let core = session?.editor.coreScript ?? Bundle.main.url(forResource: "editor", withExtension: nil)!.appendingPathComponent("reel-core.js")
             if let current = session?.backend, session?.folder?.standardizedFileURL == folder.standardizedFileURL { backend = current }
@@ -152,14 +170,14 @@ final class NativeMobileExport: ObservableObject {
             }
             try Task.checkCancellation()
             guard let backend, let current = await backend.currentProject(), Self.sameProject(current, request.project) else { throw ReelBackend.APIError("The queued project changed. Discard this export and start it again with the current timeline.") }
-            if task == nil, UIApplication.shared.applicationState != .active { throw CancellationError() }
+            if task == nil, !canRunExport { throw CancellationError() }
             var spec = try JSON.parse(request.body) as? [String: Any] ?? [:]; spec["expectedProject"] = request.project
             let result = try await backend.handle(method: "POST", path: "/api/export", body: JSON(any: spec).text)
             let started = try JSON.parse(result.text) as? [String: Any] ?? [:]
             jobID = started.string("id")
             if session?.backend === backend { session?.nativeEditor.registerExportFeedback(started) }
             guard let jobID, !jobID.isEmpty else { throw ReelBackend.APIError("The export did not return a job.") }
-            if task == nil, UIApplication.shared.applicationState != .active { throw CancellationError() }
+            if task == nil, !canRunExport { throw CancellationError() }
             if task == nil { fallbackJobs[jobID] = backend }
             message = "Exporting in Arya"
             for _ in 0..<1800 {
@@ -181,11 +199,13 @@ final class NativeMobileExport: ObservableObject {
     }
 
     private func updateProgress(_ json: String, requestID: String, task: BGTask?) {
+        #if !targetEnvironment(macCatalyst)
         guard request?.id == requestID, let fields = try? JSON.parse(json) as? [String: Any] else { return }
         if #available(iOS 26, *), let task = task as? BGContinuedProcessingTask {
             task.progress.totalUnitCount = 1000
             task.progress.completedUnitCount = Int64(min(1, max(0, fields.number("progress"))) * 1000)
         }
+            #endif
     }
 
     private func preflight(_ task: BGTask) {
@@ -195,7 +215,7 @@ final class NativeMobileExport: ObservableObject {
             defer { task.setTaskCompleted(success: success) }
             do {
                 var stale = false
-                let folder = try URL(resolvingBookmarkData: request.bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
+                let folder = try ProjectBookmarks.resolveBookmark(request.bookmark, stale: &stale)
                 if folder.startAccessingSecurityScopedResource() { scoped = folder }
                 guard let root = Bundle.main.url(forResource: "editor", withExtension: nil) else { throw ReelBackend.APIError("Missing editor resources.") }
                 let fresh = try ReelBackend(folder: ProjectFolder(root: folder), coreScript: root.appendingPathComponent("reel-core.js")) { _, _ in }
@@ -216,12 +236,14 @@ final class NativeMobileExport: ObservableObject {
         guard !id.isEmpty else { return }
         fallbackJobs[id] = backend
         running = true
+        #if !targetEnvironment(macCatalyst)
         leases[id] = UIApplication.shared.beginBackgroundTask(withName: "Arya export") {
             Task { @MainActor in
                 _ = try? await backend.handle(method: "POST", path: "/api/jobs/cancel", body: JSON(any: ["id": id]).text)
                 self.endLease(id); self.message = "Background time expired. Start the export again while Arya is active."
             }
         }
+        #endif
         Task {
             var completed = false
             for _ in 0..<1800 {
@@ -252,11 +274,13 @@ final class NativeMobileExport: ObservableObject {
 
     private func endLease(_ id: String) { if let lease = leases.removeValue(forKey: id), lease != .invalid { UIApplication.shared.endBackgroundTask(lease) } }
     private func schedulePreflight() {
+        #if !targetEnvironment(macCatalyst)
         guard pending else { return }
         let task = BGProcessingTaskRequest(identifier: Self.identifier)
         task.requiresExternalPower = true; task.requiresNetworkConnectivity = false
         task.earliestBeginDate = Date(timeIntervalSinceNow: 60)
         try? BGTaskScheduler.shared.submit(task)
+            #endif
     }
     private func store(_ value: Request) throws {
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
