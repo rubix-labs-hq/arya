@@ -205,7 +205,7 @@ export function ChatPanel() {
     ...s.receipts.map(receipt => ({ type: 'receipt', receipt, at: receipt.at })),
   ].sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
 
-  if (hosted) return html`<div class="panel chat"><div class="chat-head"><b>Assistant</b><span class="grow"></span><button class="ghost tiny" aria-label="Close assistant" onClick=${() => set({ chatOpen: false })}><${Icon} name="close" /></button></div><div class="assistant-setup"><b>Not available in the browser beta</b><p>The assistant can edit clips, titles and audio using your own Claude Code or Codex account. Use the Arya Mac app or run the editor locally to connect.</p><a class="button primary" href="https://arya-beta-delta.vercel.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a><a class="settings-link" href="https://arya-beta-delta.vercel.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run locally</a></div></div>`
+  if (hosted) return html`<div class="panel chat"><div class="chat-head"><b>Assistant</b><span class="grow"></span><button class="ghost tiny" aria-label="Close assistant" onClick=${() => set({ chatOpen: false })}><${Icon} name="close" /></button></div><div class="assistant-setup"><b>Not available in the browser beta</b><p>The assistant can edit clips, titles and audio using your own Claude Code or Codex account. Use the Arya Mac app or run the editor locally to connect.</p><a class="button primary" href="https://editwitharya.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a><a class="settings-link" href="https://editwitharya.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run locally</a></div></div>`
 
   return html`
     <div class="panel chat">

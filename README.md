@@ -15,9 +15,9 @@
 </p>
 
 <p align="center">
-  <a href="https://arya-beta-delta.vercel.app">Website</a> ·
+  <a href="https://editwitharya.app">Website</a> ·
   <a href="https://github.com/rubix-labs-hq/arya/releases/latest">Download for Mac</a> ·
-  <a href="https://arya-beta-delta.vercel.app/editor/">Browser editor</a> ·
+  <a href="https://editwitharya.app/editor/">Browser editor</a> ·
   <a href="docs/README.md">Docs</a>
 </p>
 
@@ -113,15 +113,19 @@ The Mac app and the local browser editor share the same project format and editi
 | Option | Status |
 | --- | --- |
 | **Mac app** | Download the notarized DMG from [GitHub Releases](https://github.com/rubix-labs-hq/arya/releases/latest). Requires macOS 14 or newer, Apple silicon or Intel. Free. |
-| **Browser editor** | Try the hosted editor at [arya-beta-delta.vercel.app/editor](https://arya-beta-delta.vercel.app/editor/) in current Chrome or Edge. It has no assistant, transcription, captions, Figma or interchange (see [Where each feature runs](#where-each-feature-runs)). For everything, run it locally (see below). |
+| **Browser editor** | Try the hosted editor at [arya-beta-delta.vercel.app/editor](https://editwitharya.app/editor/) in current Chrome or Edge. It has no assistant, transcription, captions, Figma or interchange (see [Where each feature runs](#where-each-feature-runs)). For everything, run it locally (see below). |
 | **iPhone, iPad and Mac App Store** | Coming later. |
 | **Build from source** | See [Quick start for developers](#quick-start-for-developers). |
 
-Arya is free. Optional contributions are being set up on the [support page](https://arya-beta-delta.vercel.app/support/).
+Arya is free. Optional contributions are being set up on the [support page](https://editwitharya.app/support/).
 
 ## Quick start for developers
 
 Arya was called Reel during development. The Claude Code command (`/reel`), the project file (`reel.project.json`), the `ReelKit` module, the Xcode project and the bundle identifiers keep that name until a tested migration exists.
+
+### Moving browser projects to the new domain
+
+The official website is https://editwitharya.app. Browser projects are stored per site address. Projects created at https://arya-beta-delta.vercel.app/editor/ stay at that address; opening the new domain does not move them. Keep the old editor open long enough to export your project backup, then import the backup at https://editwitharya.app/editor/. The old editor remains accessible for this migration.
 
 ### Prerequisites
 
@@ -251,7 +255,7 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 - [Support](SUPPORT.md): use [GitHub Issues](https://github.com/rubix-labs-hq/arya/issues) for bugs and questions.
 - [Security policy](SECURITY.md): report vulnerabilities privately through [GitHub](https://github.com/rubix-labs-hq/arya/security/advisories/new).
 - [Code of conduct](CODE_OF_CONDUCT.md)
-- [Data guide](https://arya-beta-delta.vercel.app/privacy/)
+- [Data guide](https://editwitharya.app/privacy/)
 
 ## License
 
