@@ -48,7 +48,7 @@ final class ProjectRecoveryTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: original), originalBytes)
         XCTAssertEqual(try Data(contentsOf: staged), stagedBytes)
     }
-    #if os(macOS)
+    #if os(macOS) || targetEnvironment(macCatalyst)
     func testNewStageQuarantineIsRetainedWithoutRelaxingOriginalMetadata() throws {
         let root = try Support.tempFolder("recovery-new-quarantine")
         defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
