@@ -261,8 +261,6 @@ final class ProjectCopiedMediaRecoveryTests: XCTestCase {
         _ = try await b.handle(method: "POST", path: "/api/new", body: "{\"name\":\"Keep\"}")
         let url = try file(root), media = root.appendingPathComponent("media")
         let replacement = root.appendingPathComponent("replacement-media"), kept = root.appendingPathComponent("kept-media")
-        try FileManager.default.createDirectory(at: replacement, withIntermediateDirectories: false)
-        try FileManager.default.linkItem(at: url, to: replacement.appendingPathComponent(url.lastPathComponent))
         let version = await b.currentVersion(), saved = try Data(contentsOf: root.appendingPathComponent("reel.project.json"))
         let (paths, identities, _, recoveryID) = try copies(try await b.recoveryMediaCandidates(expectedVersion: version))
         let registration = Task {
@@ -275,6 +273,11 @@ final class ProjectCopiedMediaRecoveryTests: XCTestCase {
             await b.stop(); return
         }
         do {
+            // Link the file into the replacement folder only once the probe is running. A second hard
+            // link made earlier lets F_GETPATH report either name, so registration could stop at its
+            // path check before the probe and the test would fail at random.
+            try FileManager.default.createDirectory(at: replacement, withIntermediateDirectories: false)
+            try FileManager.default.linkItem(at: url, to: replacement.appendingPathComponent(url.lastPathComponent))
             try FileManager.default.moveItem(at: media, to: kept)
             try FileManager.default.moveItem(at: replacement, to: media)
         } catch { registration.cancel(); await pause.release(); _ = try? await registration.value; throw error }
