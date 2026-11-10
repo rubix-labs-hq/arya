@@ -491,7 +491,8 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
       const cut = to - c.start
       tail.start = to
       tail.dur = round(end - to)
-      if (tail.in !== undefined) tail.in = round((c.in ?? 0) + cut * (c.speed ?? 1))
+      if (c.in !== undefined && c.reverse) c.in = round(c.in + (end - from) * (c.speed ?? 1))
+      else if (tail.in !== undefined) tail.in = round((c.in ?? 0) + cut * (c.speed ?? 1))
       shiftKeys(tail, -cut)
       delete tail.fadeIn
       delete tail.transitionIn
@@ -504,6 +505,7 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
       continue
     }
     if (c.start < from) {
+      if (c.in !== undefined && c.reverse) c.in = round(c.in + (end - from) * (c.speed ?? 1))
       c.dur = round(from - c.start)
       boundCaptionWords(c)
       out.push(c)
@@ -511,7 +513,7 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
     }
     if (end > to) {
       const cut = to - c.start
-      if (c.in !== undefined) c.in = round((c.in ?? 0) + cut * (c.speed ?? 1))
+      if (c.in !== undefined && !c.reverse) c.in = round((c.in ?? 0) + cut * (c.speed ?? 1))
       shiftKeys(c, -cut)
       c.start = to
       c.dur = round(end - to)
@@ -537,12 +539,14 @@ function edgeBounds(p, track, clip, edge, moving, minDur) {
   let lo = -Infinity, hi = Infinity
   if (edge === 'right') {
     lo = minDur - clip.dur
-    if (clip.in !== undefined && Number.isFinite(len)) hi = Math.min(hi, (len - clip.in) / speed - clip.dur)
+    if (clip.in !== undefined && clip.reverse) hi = Math.min(hi, clip.in / speed)
+    else if (clip.in !== undefined && Number.isFinite(len)) hi = Math.min(hi, (len - clip.in) / speed - clip.dur)
     const next = track.clips.filter(c => c !== clip && !moving.has(c) && c.start >= clipEnd(clip) - EDGE_EPS).reduce((m, c) => Math.min(m, c.start), Infinity)
     hi = Math.min(hi, next - clipEnd(clip))
   } else {
     hi = clip.dur - minDur
-    if (clip.in !== undefined) lo = Math.max(lo, -clip.in / speed)
+    if (clip.in !== undefined && clip.reverse) { if (Number.isFinite(len)) lo = Math.max(lo, -((len - clip.in) / speed - clip.dur)) }
+    else if (clip.in !== undefined) lo = Math.max(lo, -clip.in / speed)
     const prev = track.clips.filter(c => c !== clip && !moving.has(c) && clipEnd(c) <= clip.start + EDGE_EPS).reduce((m, c) => Math.max(m, clipEnd(c)), 0)
     lo = Math.max(lo, prev - clip.start)
   }
@@ -558,9 +562,12 @@ function moveBounds(track, clip, moving) {
 }
 
 function moveEdge(clip, edge, d) {
-  if (edge === 'right') clip.dur = round(clip.dur + d)
-  else {
-    if (clip.in !== undefined) clip.in = round(clip.in + d * (clip.speed ?? 1))
+  // A reversed clip reads its source from the end, so its right edge owns `in`.
+  if (edge === 'right') {
+    if (clip.in !== undefined && clip.reverse) clip.in = round(clip.in - d * (clip.speed ?? 1))
+    clip.dur = round(clip.dur + d)
+  } else {
+    if (clip.in !== undefined && !clip.reverse) clip.in = round(clip.in + d * (clip.speed ?? 1))
     shiftKeys(clip, -d)
     clip.start = round(clip.start + d)
     clip.dur = round(clip.dur - d)
@@ -655,10 +662,10 @@ export function applyOps(source, ops) {
 
     return found
   }
-  const withLinked = (id, fn) => {
+  const withLinked = (id, fn, unlinked = false) => {
     const found = clipOf(id)
     fn(found)
-    for (const other of linkedOf(p, found.clip)) if (!other.track.locked) fn(other)
+    if (!unlinked) for (const other of linkedOf(p, found.clip)) if (!other.track.locked) fn(other)
   }
 
   // A batch that slides or rolls each linked clip itself (the native timeline plans one op per
@@ -804,7 +811,7 @@ export function applyOps(source, ops) {
       case 'move': {
         const { track, clip } = clipOf(op.id)
         const delta = snapToFrame(Math.max(0, op.start), p.fps) - clip.start
-        const movers = [{ track, clip }, ...(op.unlinked ? [] : linkedOf(p, clip))]
+        const movers = [{ track, clip }, ...(op.unlinked ? [] : linkedOf(p, clip).filter(o => !o.track.locked))]
         for (const m of movers) m.clip.start = round(Math.max(0, m.clip.start + delta))
         if (op.track && op.track !== track.id) {
           const target = trackOf(p, op.track)
@@ -843,21 +850,25 @@ export function applyOps(source, ops) {
         const apply = ({ track, clip }, to) => {
           const speed = clip.speed ?? 1
           const end = clipEnd(clip)
+          // A reversed clip reads its source backwards: its left edge is the source out point
+          // and its right edge is the source in point.
           if (op.edge === 'left') {
             let start = Math.min(to, end - minDur)
-            if (clip.in !== undefined && clip.in + (start - clip.start) * speed < 0) start = clip.start - clip.in / speed
+            if (clip.reverse) start = Math.max(start, end - (sourceLength(p, clip) - (clip.in ?? 0)) / speed)
+            else if (clip.in !== undefined && clip.in + (start - clip.start) * speed < 0) start = clip.start - clip.in / speed
             if (!op.ripple) start = Math.max(0, start)
             const shift = start - clip.start
-            if (clip.in !== undefined) clip.in = round(clip.in + shift * speed)
+            if (clip.in !== undefined && !clip.reverse) clip.in = round(clip.in + shift * speed)
             shiftKeys(clip, -shift)
             const originalStart = clip.start
             clip.start = round(op.ripple ? originalStart : start)
             clip.dur = round(end - start)
             if (op.ripple) shiftAfter(track, end, -shift, clip)
           } else {
-            const maxDur = (sourceLength(p, clip) - (clip.in ?? 0)) / speed
+            const maxDur = clip.reverse ? clip.dur + (clip.in ?? 0) / speed : (sourceLength(p, clip) - (clip.in ?? 0)) / speed
             const nextDur = round(Math.max(minDur, Math.min(to - clip.start, maxDur)))
             const change = nextDur - clip.dur
+            if (clip.reverse && clip.in !== undefined) clip.in = round(Math.max(0, clip.in - change * speed))
             clip.dur = nextDur
             if (op.ripple) shiftAfter(track, end, change, clip)
           }
@@ -894,7 +905,7 @@ export function applyOps(source, ops) {
           const len = sourceLength(p, clip)
           const span = clip.dur * (clip.speed ?? 1)
           clip.in = round(Math.max(0, Math.min(len - span, clip.in + op.delta)))
-        })
+        }, op.unlinked)
         log.push(`slipped ${op.id} by ${round(op.delta, 3)}s`)
         break
       }
@@ -936,7 +947,7 @@ export function applyOps(source, ops) {
       case 'blade': {
         const at = snapToFrame(op.at, p.fps)
         const targets = op.id
-          ? [clipOf(op.id), ...linkedOf(p, clipOf(op.id).clip)]
+          ? [clipOf(op.id), ...(op.unlinked ? [] : linkedOf(p, clipOf(op.id).clip).filter(o => !o.track.locked))]
           : p.tracks.filter(t => !t.locked && (!op.tracks || op.tracks.includes(t.id))).flatMap(track => track.clips.filter(c => c.start < at - 1e-6 && clipEnd(c) > at + 1e-6).map(clip => ({ track, clip })))
         const newLinks = new Map()
         for (const { track, clip } of targets) {
@@ -947,7 +958,9 @@ export function applyOps(source, ops) {
           tail.id = id
           tail.start = at
           tail.dur = round(clip.dur - head)
-          if (tail.in !== undefined) tail.in = round((clip.in ?? 0) + head * (clip.speed ?? 1))
+          // A reversed clip plays its source backwards, so its head holds the later footage.
+          if (clip.in !== undefined && clip.reverse) clip.in = round(clip.in + tail.dur * (clip.speed ?? 1))
+          else if (tail.in !== undefined) tail.in = round((clip.in ?? 0) + head * (clip.speed ?? 1))
           shiftKeys(tail, -head)
           delete tail.fadeIn
           delete tail.transitionIn
@@ -976,7 +989,8 @@ export function applyOps(source, ops) {
         for (const id of ids) {
           const found = clipOf(id)
           gone.add(found.clip)
-          if (!op.unlinked) for (const l of linkedOf(p, found.clip)) gone.add(l.clip)
+          // A locked track keeps its clips even when a linked partner is deleted.
+          if (!op.unlinked) for (const l of linkedOf(p, found.clip)) if (!l.track.locked) gone.add(l.clip)
         }
         for (const track of p.tracks) {
           const removed = track.clips.filter(c => gone.has(c)).sort((a, b) => b.start - a.start)
@@ -1276,7 +1290,7 @@ export const OPS_DOC = [
   '  Nested fields require nested objects: set:{title:{text:"New title"}}. Dotted update.set keys are rejected. Use keyframe/expression prop for animated property paths.',
   '    grade {exposure, contrast, pivot, saturation, hue, temperature, tint, lift:[r,g,b], gamma:[r,g,b], gain:[r,g,b], offset:[r,g,b], curves:{master|r|g|b:[[x,y],...]}, lut (path to .cube), lutMix, look: none|mono|warm|cool|punch|film|fade|teal-orange|bleach|noir}, key {color, similarity, smoothness, spill}; null deletes a field',
   '    Grade ranges (neutral first): exposure 0 in stops; contrast 1 and saturation 1 multiply; pivot 0.435; hue 0 degrees; temperature 0 and tint 0, each -1..1. lift, gamma, gain, offset, shadowTint and highlightTint are additive per channel with neutral 0, usually within -0.5..0.5: gain multiplies by 1+gain, lift raises blacks, gamma bends mids, offset adds. These are not Resolve units: Resolve Gain 1.00 is 0 here and 1.10 is 0.1, Resolve Offset 25 is 0. Ops refuse a gain mean of 0.95 or more and any wheel value beyond 2.',
-  '- move {id, start, track?, overwrite?, unlinked?}  - trim {id, edge:left|right, to, ripple?, unlinked?}  - roll {a, b, to, unlinked?}  - slip {id, delta}  - slide {id, delta, unlinked?}',
+  '- move {id, start, track?, overwrite?, unlinked?}  - trim {id, edge:left|right, to, ripple?, unlinked?}  - roll {a, b, to, unlinked?}  - slip {id, delta, unlinked?}  - slide {id, delta, unlinked?}',
   '  Linked video and audio trim, roll and slide together; unlinked:true edits one side only (for a J or L cut, roll the audio edit with unlinked). Edit a linked clip once: a separate call for its partner moves the pair twice. A trim without ripple stops at the neighbouring clip.',
   '- blade|split {at, id?, tracks?}  - delete|lift {id|ids} (leaves a gap)  - ripple_delete {id|ids}  - delete_range {from, to, tracks?, ripple?}  - duplicate {id, start?, track?, unlinked?} (copies linked audio too; without start it lands after the clip without covering another)  - paste {at, clips:[{track, clip, offset}]} places copies of clip objects at timeline seconds at',
   '- speed {id, speed, reverse?, ripple?} (a slower clip pushes later clips; ripple:true also closes the gap a faster clip leaves; ripple:false stops at the next clip)  - freeze {id, at, dur?}  - detach_audio {id}  - link {ids}',

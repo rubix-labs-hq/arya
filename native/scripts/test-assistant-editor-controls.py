@@ -144,7 +144,7 @@ def keyboard():
 import SwiftUI
 struct Proposal { var finished: Bool }
 final class Assistant { var configured = true, isWorking = false; var applyingProposal: Proposal?; var inputCharacterLimit = 20 }
-final class Model { var assistantDraft = "Make a title" }
+final class Model { var assistantDraft = "Make a title", assistantInputKind = "prompt" }
 struct Press { var modifiers: EventModifiers }
 final class Composer {
     let assistant = Assistant(), model = Model()
@@ -153,7 +153,7 @@ final class Composer {
 ''' + block(panel, '    private var canSendDraft: Bool') + '\nfunc press(_ press: Press) -> KeyPress.Result {\n' + body + '\n}\n}\n' + checks + '''
 let composer = Composer()
 check(composer.press(Press(modifiers: [])) == .handled && composer.sent == 1, "Unmodified hardware Return sends once")
-for modifier: EventModifiers in [.shift, .command, .option, .control, [.shift, .command]] {
+for modifier: EventModifiers in [.shift, .option, .control, [.shift, .command]] {
     check(composer.press(Press(modifiers: modifier)) == .ignored && composer.sent == 1, "Modified Return keeps normal text editing")
 }
 for blocked in 0..<6 {
@@ -168,8 +168,15 @@ for blocked in 0..<6 {
     }
     check(composer.press(Press(modifiers: [])) == (blocked == 0 ? .handled : .ignored) && composer.sent == 0, "Unavailable, busy, blank and oversized drafts must not send")
 }
+for kind in ["script", "screenplay"] {
+    let writer = Composer(); writer.model.assistantInputKind = kind
+    check(writer.press(Press(modifiers: [])) == .ignored && writer.sent == 0, "Return adds a line while writing a script")
+    check(writer.press(Press(modifiers: .command)) == .handled && writer.sent == 1, "Command-Return sends a script")
+}
+check(composer.press(Press(modifiers: .command)) == .handled && composer.sent == 2, "Command-Return also sends a prompt")
+check(composer.press(Press(modifiers: .capsLock)) == .handled && composer.sent == 3, "Caps Lock does not block Return")
 composer.assistant.applyingProposal = Proposal(finished: true)
-check(composer.press(Press(modifiers: [])) == .handled && composer.sent == 2, "A finished preview permits another request")
+check(composer.press(Press(modifiers: [])) == .handled && composer.sent == 4, "A finished preview permits another request")
 print("Passed \\(checks) assistant keyboard checks.")
 '''
     run(source, 'keyboard')

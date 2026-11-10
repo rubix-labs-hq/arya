@@ -258,7 +258,9 @@ export function ChatPanel() {
           onKeyDown=${e => {
             e.stopPropagation()
             if (composing.current || e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) return
-            if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+            // As in the Mac Assistant: ⌘Return always sends; Return sends a prompt but adds a line in a
+            // script or screenplay. Shift-Return adds a line.
+            if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && (e.metaKey || draft.inputKind === 'prompt')) {
               e.preventDefault()
               if (canSend) send()
               else if (text.trim() && !working) { toast('Connect an assistant to send. Your draft is kept.'); list.current?.parentElement.querySelector('.assistant-setup button:last-child')?.focus() }
@@ -284,7 +286,7 @@ export function ChatPanel() {
       <${AssistantControls} status=${connection} active=${working || Boolean(sharingReview)} text=${text} selectionCount=${s.selection.length} />
       <details class="assistant-input-help"><summary>Input tips</summary>
         <p class="assistant-composer-hint">⌥-click a clip, keyframe, track, marker or inspector field to attach it.</p>
-        <p class="assistant-composer-hint">Press / anywhere to type here · Enter to send · Shift+Enter for a new line · ${inputLimit.toLocaleString()} character limit.</p>
+        <p class="assistant-composer-hint">Press / anywhere to type here · ${draft.inputKind === 'prompt' ? 'Return to send · Shift+Return for a new line' : '⌘Return to send · Return for a new line'} · ${inputLimit.toLocaleString()} character limit.</p>
         <p class="assistant-composer-hint">Import UTF-8 text up to 512 KiB. Files stay in the draft until you send.</p>
         <p class="assistant-composer-hint">If the assistant asks a question, type your choice and the edit you want here, then send a new request.</p>
       </details>

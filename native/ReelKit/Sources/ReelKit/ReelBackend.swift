@@ -1180,6 +1180,8 @@ public actor ReelBackend {
                 ("captionStyles", ["plain", "boxed", "karaoke", "word"]),
                 ("chrome", false),
                 ("presets", .array(Self.nativePresets.map { .string($0) })),
+                // The Web Editor page renders through WebCodecs, which accepts only these.
+                ("webPresets", .array(Self.inPagePresets.map { .string($0) })),
                 ("export", .object([("renderer", "metal"), ("presets", .array(Self.nativePresets.map { .string($0) })), ("still", true), ("hdr", .object([("available", true), ("transfers", .array(["pq", "hlg"])), ("presets", .array(["hevc", "prores-422", "prores-422hq", "prores-4444"])), ("workingSpace", "linear-rec2020"), ("bitDepth", 10)])), ("audioMemoryLimitMB", .number(Double(NativeAudioMixer.memoryLimitBytes)/1048576)), ("maxDurationSeconds", 3600)])),
                 ("interchange", .object([("available", true)])),
                 ("proxy", .object([("available", true), ("maxWidth", 640), ("maxHeight", 480)])),

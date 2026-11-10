@@ -24,6 +24,19 @@ function sel() {
   return store.selection.filter(id => !id.startsWith('tr:'))
 }
 
+// Linked selection also picks up partners on locked tracks. The core rejects an edit that names
+// a locked clip, so one locked partner would cancel the whole edit.
+function editable(p) {
+  const locked = new Set(p.tracks.filter(t => t.locked).flatMap(t => t.clips.map(c => c.id)))
+  return sel().filter(id => !locked.has(id))
+}
+
+const unlinked = () => (store.linked ? {} : { unlinked: true })
+
+function unlockedUnderPlayhead(p) {
+  return p.tracks.filter(t => !t.locked).flatMap(t => t.clips.filter(c => c.start < time.t && clipEnd(c) > time.t)).map(c => c.id)
+}
+
 function clipsUnderPlayhead(p) {
   return p.tracks.flatMap(t => t.clips.filter(c => c.start < time.t && clipEnd(c) > time.t))
 }
@@ -43,36 +56,46 @@ export function runEditorCommand(command) {
     case 'nextFrame': player.step(1); break
     case 'split': {
       const selected = sel()
-      const ids = selected.filter(id => {
+      const ids = editable(p).filter(id => {
         const c = p.tracks.flatMap(t => t.clips).find(clip => clip.id === id)
         return c && c.start < time.t && clipEnd(c) > time.t
       })
-      if (ids.length) edit(ids.map(id => ({ op: 'blade', at: time.t, id })))
+      if (ids.length) edit(ids.map(id => ({ op: 'blade', at: time.t, id, ...unlinked() })))
       else if (!selected.length) edit([{ op: 'blade', at: time.t }])
-      else toast('Place the playhead inside a selected clip before splitting.')
+      else toast('Place the playhead inside a selected clip on an unlocked track before splitting.')
       break
     }
     case 'delete':
     case 'rippleDelete': {
-      const ids = sel()
+      const ids = editable(p)
       const transition = store.selection.find(id => id.startsWith('tr:'))
       if (transition) edit({ op: 'transition', id: transition.slice(3), type: 'none' })
       else if (store.selMarker) {
         edit({ op: 'delete_marker', id: store.selMarker })
         set({ selMarker: null })
       } else if (ids.length) {
-        edit({ op: command === 'rippleDelete' ? 'ripple_delete' : 'lift', ids })
+        edit({ op: command === 'rippleDelete' ? 'ripple_delete' : 'lift', ids, ...unlinked() })
         set({ selection: [] })
-      } else if (p.range) edit({ op: 'delete_range', from: p.range.in, to: p.range.out, ripple: command === 'rippleDelete' })
+      } else if (sel().length) toast('The selected clips are on locked tracks.')
+      else if (p.range) edit({ op: 'delete_range', from: p.range.in, to: p.range.out, ripple: command === 'rippleDelete' })
       break
     }
-    case 'duplicate': if (sel().length) edit(sel().map(id => ({ op: 'duplicate', id }))); break
+    case 'duplicate':
+      if (editable(p).length) edit(editable(p).map(id => ({ op: 'duplicate', id, ...unlinked() })))
+      else if (sel().length) toast('The selected clips are on locked tracks.')
+      break
     case 'export': set({ page: 'deliver' }); break
     case 'copy': copySelection(p); break
-    case 'cut':
-      copySelection(p)
-      if (sel().length) edit({ op: 'ripple_delete', ids: sel() })
+    case 'cut': {
+      // Copy only what is removed, so Paste never brings back a locked clip that stayed put.
+      const ids = editable(p)
+      if (ids.length) {
+        copySelection(p, ids)
+        edit({ op: 'ripple_delete', ids, ...unlinked() })
+        set({ selection: [] })
+      } else if (sel().length) toast('The selected clips are on locked tracks.')
       break
+    }
     case 'paste':
       if (store.clipboard) edit({ op: 'paste', at: time.t, clips: store.clipboard })
       break
@@ -140,9 +163,10 @@ export function installKeys() {
           set({ selection: p.tracks.flatMap(t => t.clips.map(c => c.id)) })
           break
         case 't': {
-          const ids = sel().length ? sel() : clipsUnderPlayhead(p).map(c => c.id)
-          const targets = ids.length ? ids : p.tracks.flatMap(t => t.clips.filter(c => Math.abs(c.start - time.t) < 0.5 && c.start > 0)).map(c => c.id)
+          const nearCut = () => p.tracks.filter(t => !t.locked).flatMap(t => t.clips.filter(c => Math.abs(c.start - time.t) < 0.5 && c.start > 0)).map(c => c.id)
+          const targets = sel().length ? editable(p) : unlockedUnderPlayhead(p).length ? unlockedUnderPlayhead(p) : nearCut()
           if (targets.length) edit(targets.map(id => ({ op: 'transition', id, type: 'crossDissolve', dur: 1 })))
+          else if (sel().length) toast('The selected clips are on locked tracks.')
           else toast('Select a clip or park the playhead on a cut')
           break
         }
@@ -256,36 +280,53 @@ export function installKeys() {
           const seen = new Set()
           const all = p.tracks.flatMap(t => t.clips)
           // The core trims linked partners, so send one trim per link group.
-          const ids = (sel().length ? sel() : clipsUnderPlayhead(p).map(c => c.id)).filter(id => {
+          const ids = (sel().length ? editable(p) : unlockedUnderPlayhead(p)).filter(id => {
             const link = all.find(c => c.id === id)?.link
             if (!link || !store.linked) return true
             if (seen.has(link)) return false
             seen.add(link)
             return true
           })
-          edit(ids.map(id => ({ op: 'trim', id, edge: right ? 'right' : 'left', to: time.t, ripple: e.altKey, ...(store.linked ? {} : { unlinked: true }) })))
+          if (ids.length) edit(ids.map(id => ({ op: 'trim', id, edge: right ? 'right' : 'left', to: time.t, ripple: e.altKey, ...(store.linked ? {} : { unlinked: true }) })))
+          else if (sel().length) toast('The selected clips are on locked tracks.')
           break
         }
         case ',':
         case '.':
         case '<':
         case '>': {
-          const d = ((k === ',' || k === '<') ? -1 : 1) * (e.shiftKey ? 10 : 1) / fps
           const all = p.tracks.flatMap(t => t.clips)
-          edit(sel().map(id => ({ op: 'move', id, start: Math.max(0, (all.find(c => c.id === id)?.start ?? 0) + d), unlinked: true })))
+          const starts = editable(p).map(id => all.find(c => c.id === id)?.start ?? 0)
+          // One shared delta, stopped at zero by the earliest clip that moves, keeps the spacing
+          // between clips. With Linked selection on that includes unlocked partners left out of
+          // the selection, such as the audio of a J cut.
+          const lockedIds = new Set(p.tracks.filter(t => t.locked).flatMap(t => t.clips.map(c => c.id)))
+          const links = new Set(store.linked ? editable(p).map(id => all.find(c => c.id === id)?.link).filter(Boolean) : [])
+          const moving = all.filter(c => !lockedIds.has(c.id) && (editable(p).includes(c.id) || links.has(c.link)))
+          const d = Math.max(((k === ',' || k === '<') ? -1 : 1) * (e.shiftKey ? 10 : 1) / fps, -Math.min(...moving.map(c => c.start)))
+          // With Linked selection on, each link group moves once and brings its unlocked partners,
+          // even one left out of the selection; off, each selected clip moves alone.
+          const seen = new Set()
+          const movers = editable(p).map((id, i) => ({ id, start: starts[i], link: all.find(c => c.id === id)?.link }))
+            .filter(m => !store.linked || !m.link || (!seen.has(m.link) && seen.add(m.link)))
+          // A clip already at zero simply stays put; only an all-locked selection is explained.
+          if (!movers.length) { if (sel().length) toast('The selected clips are on locked tracks.') }
+          else if (d !== 0) edit(movers.map(m => ({ op: 'move', id: m.id, start: m.start + d, ...unlinked() })))
           break
         }
         case 'v':
-          if (sel().length) {
-            const first = p.tracks.flatMap(t => t.clips).find(c => c.id === sel()[0])
-            edit({ op: 'update', ids: sel(), set: { enabled: first?.enabled === false ? null : false } })
-          }
+          if (editable(p).length) {
+            const first = p.tracks.flatMap(t => t.clips).find(c => c.id === editable(p)[0])
+            edit({ op: 'update', ids: editable(p), set: { enabled: first?.enabled === false ? null : false } })
+          } else if (sel().length) toast('The selected clips are on locked tracks.')
           break
         case 'ƒ': // ⌥F
         case 'f': {
           if (e.altKey || k === 'ƒ') {
-            const c = sel().length ? p.tracks.flatMap(t => t.clips).find(cc => cc.id === sel()[0]) : clipsUnderPlayhead(p).filter(cc => cc.kind === 'video').at(-1)
+            const unlocked = p.tracks.filter(t => !t.locked).flatMap(t => t.clips)
+            const c = sel().length ? unlocked.find(cc => editable(p).includes(cc.id) && cc.kind === 'video') : clipsUnderPlayhead(p).filter(cc => cc.kind === 'video' && unlocked.includes(cc)).at(-1)
             if (c) edit({ op: 'freeze', id: c.id, at: time.t, dur: 2 })
+            else if (sel().length) toast('Select a video clip on an unlocked track to freeze a frame.')
           } else handled = runEditorCommand('matchFrame') === 'handled'
           break
         }

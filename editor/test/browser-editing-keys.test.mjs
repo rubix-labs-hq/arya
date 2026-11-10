@@ -37,7 +37,7 @@ function keyboard({ nested = false, project = fixture(nested), selection = [], a
     state.project = core.applyOps(state.project, scoped(Array.isArray(op) ? op : [op])).project
   }
   const document = { activeElement: null, querySelector: selector => selector === '.tl-canvas' ? { clientWidth: 900 } : null }
-  const keys = keysFactory({ ...core, player: { toggle: () => playerCalls.push(['toggle']), step: n => playerCalls.push(['step', n]) }, api: (route, body) => { apiCalls.push({ route, body }); return Promise.resolve({ project: state.project, version: state.version }) }, edit, set, store: state, time, toast: text => notices.push(text), viewProject, copySelection: () => {}, sourcePlacementPlan,
+  const keys = keysFactory({ ...core, player: { toggle: () => playerCalls.push(['toggle']), step: n => playerCalls.push(['step', n]) }, api: (route, body) => { apiCalls.push({ route, body }); return Promise.resolve({ project: state.project, version: state.version }) }, edit, set, store: state, time, toast: text => notices.push(text), viewProject, copySelection: (_p, ids = state.selection) => { state.copied = ids }, sourcePlacementPlan,
     window: { addEventListener: (name, fn) => { assert.equal(name, 'keydown'); handlers.push(fn) } }, Element: class {}, getComputedStyle: () => ({}), document })
   keys.installKeys()
   assert.equal(handlers.length, 1)
@@ -220,4 +220,178 @@ test('ScrollTabs arrow and endpoint keys keep its own selection and focus behavi
     assert.equal(event.stopped, true)
   }
   assert.deepEqual(c.playerCalls, [])
+})
+
+test('Delete with Linked selection off removes only the selected clip', () => {
+  const c = keyboard({ selection: ['c2'] })
+  c.state.linked = false
+  c.keys.runEditorCommand('delete')
+  const ids = c.state.project.tracks.flatMap(t => t.clips.map(clip => clip.id))
+  assert.equal(c.calls[0].unlinked, true)
+  assert.equal(ids.includes('c2'), false)
+  assert.equal(ids.includes('c2a'), true, 'the linked audio stays when linking is off')
+})
+
+test('Deleting or blading a clip never changes its linked partner on a locked track', () => {
+  const p = fixture()
+  p.tracks[1].locked = true
+  for (const op of ['lift', 'ripple_delete', 'delete']) {
+    const after = core.applyOps(p, [{ op, ids: ['c2'] }]).project
+    assert.deepEqual(after.tracks[1].clips, p.tracks[1].clips, `${op} keeps locked audio`)
+    assert.equal(after.tracks[0].clips.some(c => c.id === 'c2'), false)
+  }
+  const bladed = core.applyOps(p, [{ op: 'blade', id: 'c2', at: 6 }]).project
+  assert.deepEqual(bladed.tracks[1].clips, p.tracks[1].clips, 'blade keeps locked audio whole')
+  assert.equal(bladed.tracks[0].clips.length, 4)
+})
+
+test('a locked linked partner in the selection does not cancel Delete, Cut or Cmd-B', () => {
+  for (const command of ['delete', 'rippleDelete', 'cut', 'split']) {
+    const p = fixture()
+    p.tracks[1].locked = true
+    const c = keyboard({ project: p, selection: ['c2', 'c2a'], at: 6 })
+    c.keys.runEditorCommand(command)
+    const video = c.state.project.tracks[0].clips, audio = c.state.project.tracks[1].clips
+    assert.deepEqual(audio, p.tracks[1].clips, `${command} leaves the locked audio alone`)
+    if (command === 'split') assert.equal(video.length, 4, 'the unlocked video is cut')
+    else assert.equal(video.some(clip => clip.id === 'c2'), false, `${command} removes the unlocked video`)
+  }
+  const p = fixture()
+  p.tracks[0].locked = true
+  p.tracks[1].locked = true
+  const c = keyboard({ project: p, selection: ['c2', 'c2a'] })
+  c.keys.runEditorCommand('delete')
+  assert.equal(c.calls.length, 0)
+  assert.match(c.notices.at(-1), /locked/)
+})
+
+test('with Linked selection off, Cmd-B cuts only the selected audio', () => {
+  const c = keyboard({ selection: ['c2a'], at: 6 })
+  c.state.linked = false
+  c.keys.runEditorCommand('split')
+  assert.equal(c.calls[0][0].unlinked, true)
+  assert.equal(c.state.project.tracks[1].clips.length, 4)
+  assert.equal(c.state.project.tracks[0].clips.length, 3, 'the linked picture stays whole')
+})
+
+test('moving, nudging or disabling a clip leaves its linked partner on a locked track alone', () => {
+  const p = fixture()
+  p.tracks[1].locked = true
+  const moved = core.applyOps(p, [{ op: 'move', id: 'c2', start: 6 }]).project
+  assert.equal(moved.tracks[0].clips.find(c => c.id === 'c2').start, 6)
+  assert.deepEqual(moved.tracks[1].clips, p.tracks[1].clips, 'move keeps locked audio in place')
+  const c = keyboard({ project: p, selection: ['c2', 'c2a'] })
+  c.dispatch('.')
+  assert.ok(Math.abs(c.state.project.tracks[0].clips.find(clip => clip.id === 'c2').start - (4 + 1 / 30)) < 1e-3, 'period nudges the video a frame')
+  c.dispatch('v')
+  assert.equal(c.state.project.tracks[0].clips.find(clip => clip.id === 'c2').enabled, false)
+  assert.deepEqual(c.state.project.tracks[1].clips, p.tracks[1].clips)
+})
+
+test('Duplicate and freeze skip locked clips and respect Linked selection', () => {
+  const off = keyboard({ selection: ['c2'] })
+  off.state.linked = false
+  off.keys.runEditorCommand('duplicate')
+  assert.equal(off.calls[0][0].unlinked, true)
+  assert.equal(off.state.project.tracks[1].clips.length, 3, 'the linked audio is not duplicated')
+
+  const p = fixture()
+  p.tracks[0].locked = true
+  const dup = keyboard({ project: p, selection: ['c2'] })
+  dup.keys.runEditorCommand('duplicate')
+  assert.equal(dup.calls.length, 0)
+  assert.match(dup.notices.at(-1), /locked/)
+
+  const frozen = keyboard({ project: p, selection: ['c2', 'c2a'], at: 5 })
+  frozen.dispatch('f', { altKey: true })
+  assert.equal(frozen.calls.length, 0, 'no freeze on a locked video clip')
+  assert.match(frozen.notices.at(-1), /unlocked track/)
+})
+
+test('Cut copies only the clips it removes, and Cmd-T never falls back past a locked selection', () => {
+  const p = fixture()
+  p.tracks[1].locked = true
+  const cut = keyboard({ project: p, selection: ['c2', 'c2a'] })
+  cut.keys.runEditorCommand('cut')
+  assert.deepEqual(cut.state.copied, ['c2'], 'the locked audio is not put on the clipboard')
+
+  const t = keyboard({ project: p, selection: ['c2a'], at: 8.2 })
+  t.dispatch('t', { metaKey: true })
+  assert.equal(t.calls.length, 0, 'no transition on a nearby clip when the selection is locked')
+  assert.match(t.notices.at(-1), /locked/)
+})
+
+test('nudge and trim to playhead explain when every selected clip is locked', () => {
+  for (const [key, options] of [['.', {}], [',', {}], ['[', { altKey: true }]]) {
+    const p = fixture()
+    p.tracks[0].locked = true
+    p.tracks[1].locked = true
+    const c = keyboard({ project: p, selection: ['c2', 'c2a'], at: 5 })
+    c.dispatch(key, options)
+    assert.equal(c.calls.length, 0, key)
+    assert.match(c.notices.at(-1) ?? '', /locked/, key)
+  }
+})
+
+test('nudging left near zero moves every selected clip by the same amount', () => {
+  const c = keyboard({ selection: ['c1', 'c2'] })
+  c.state.linked = false
+  c.dispatch(',')
+  const starts = ['c1', 'c2'].map(id => c.state.project.tracks[0].clips.find(clip => clip.id === id).start)
+  assert.deepEqual(starts, [0, 4], 'the clip at zero stops the whole group')
+})
+
+test('the browser Assistant sends a prompt on Return, and anything on Command-Return, never on Shift-Return', () => {
+  // composer-refinement.test.mjs drives the keys; this pins the rule to the Mac Assistant's.
+  const chat = fs.readFileSync(new URL('web/ui/chat.js', editor), 'utf8')
+  assert.match(chat, /e\.key === 'Enter' && !e\.shiftKey && !e\.altKey && !e\.ctrlKey && \(e\.metaKey \|\| draft\.inputKind === 'prompt'\)\)/)
+})
+
+test('nudge follows the Linked toggle', () => {
+  const on = keyboard({ selection: ['c2'] })
+  on.dispatch('.')
+  assert.deepEqual(on.calls[0].map(op => [op.id, op.unlinked]), [['c2', undefined]])
+  assert.ok(Math.abs(on.state.project.tracks[1].clips.find(c => c.id === 'c2a').start - (4 + 1 / 30)) < 1e-3, 'the linked audio moves too')
+  const pair = keyboard({ selection: ['c2', 'c2a'] })
+  pair.dispatch('.')
+  assert.equal(pair.calls[0].length, 1, 'one move per linked group')
+  const off = keyboard({ selection: ['c2'] })
+  off.state.linked = false
+  off.dispatch('.')
+  assert.deepEqual(off.calls[0].map(op => [op.id, op.unlinked]), [['c2', true]])
+  assert.equal(off.state.project.tracks[1].clips.find(c => c.id === 'c2a').start, 4, 'the audio stays when linking is off')
+})
+
+test('nudging a clip already at zero to the left does nothing and says nothing', () => {
+  const c = keyboard({ selection: ['c1', 'c1a'] })
+  c.dispatch(',')
+  assert.equal(c.calls.length, 0)
+  assert.deepEqual(c.notices, [])
+})
+
+test('Cut clears the selection, as Delete does, so later keys do not name removed clips', () => {
+  const c = keyboard({ selection: ['c2', 'c2a'] })
+  c.keys.runEditorCommand('cut')
+  assert.deepEqual(c.state.selection, [])
+  c.dispatch('v')
+  assert.deepEqual(c.notices, [])
+})
+
+test('the Inspector hides the Audio tab on a video whose audio was detached', () => {
+  const source = fs.readFileSync(new URL('../web/ui/inspector.js', import.meta.url), 'utf8')
+  assert.match(source, /clip\.kind === 'video' && !clip\.link && !clip\.audioDetached && p\.assets\[clip\.src\]\?\.hasAudio\) \? \['audio', 'Audio'\]/)
+})
+
+test('with Linked selection on, an unselected partner nearer zero stops the nudge, so the pair stays in sync', () => {
+  const p = fixture()
+  // A J cut: the audio leads the video by 4.1 s and starts at 0; only the video is selected.
+  p.tracks[0].clips.find(c => c.id === 'c2').start = 4.1
+  p.tracks[0].clips = p.tracks[0].clips.filter(c => c.id !== 'c1')
+  p.tracks[1].clips = p.tracks[1].clips.filter(c => c.id !== 'c1a')
+  for (const c of p.tracks.flatMap(t => t.clips)) if (c.id !== 'c2') c.start -= 4
+  const c = keyboard({ project: p, selection: ['c2'] })
+  c.dispatch(',', { shiftKey: true })
+  const after = id => c.state.project.tracks.flatMap(t => t.clips).find(x => x.id === id).start
+  assert.ok(Math.abs(after('c2') - after('c2a') - 4.1) < 1e-6, 'the offset between video and audio is kept')
+  assert.equal(after('c2a'), 0)
 })

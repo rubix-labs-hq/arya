@@ -56,12 +56,16 @@ export const store = {
   openComp: null, // composition shown in the viewer and timeline (null = main timeline)
 }
 
+// One view object per project and composition. The viewer restarts playback when this
+// object changes, so a fresh copy on every store update would restart it forever.
+let cachedView = { project: null, comp: null, view: null }
 /** The timeline being edited: the main one, or the open composition as a project-shaped view. */
 export function viewProject() {
   const p = store.project
   if (!p || !store.openComp || !p.comps?.[store.openComp]) return p
+  if (cachedView.project !== p || cachedView.comp !== store.openComp) cachedView = { project: p, comp: store.openComp, view: compView(p, store.openComp) }
 
-  return compView(p, store.openComp)
+  return cachedView.view
 }
 
 /** Ops from the UI act inside the open composition unless they name a clip (which scopes itself). */

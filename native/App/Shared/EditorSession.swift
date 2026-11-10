@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Darwin
 import os
@@ -304,6 +305,14 @@ struct NativeProjectRecoveryRequest: Identifiable {
     let failedOpen: Bool
 }
 
+/// The native editor state the Timeline menu needs to enable its items.
+struct NativeMenuAvailability: Equatable {
+    var hasSelection = false
+    var canCopy = false
+    var canPaste = false
+    var canMatchFrame = false
+}
+
 @MainActor
 final class EditorSession: ObservableObject {
     @Published private(set) var folder: URL?
@@ -347,7 +356,34 @@ final class EditorSession: ObservableObject {
     private lazy var delegate = WebViewDelegate()
     lazy var assistant = NativeAssistant(session: self)
     lazy var figma = NativeFigma(session: self)
-    lazy var nativeEditor = NativeEditorModel(session: self)
+    lazy var nativeEditor: NativeEditorModel = {
+        let model = NativeEditorModel(session: self)
+        // The menu bar observes the session, not the editor, so it would keep the enabled state
+        // it had when the project opened. A disabled item still claims its key, which left Delete
+        // doing nothing after a clip was selected.
+        nativeMenuWatch = model.objectWillChange.sink { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.nativeMenuRefreshQueued else { return }
+                self.nativeMenuRefreshQueued = true
+                // objectWillChange fires before the new value lands, so read it on the next turn.
+                DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.refreshNativeMenu() } }
+            }
+        }
+        return model
+    }()
+    /// What the Timeline menu can do in the native editor. Changes only when one of these flips.
+    @Published private(set) var nativeMenu = NativeMenuAvailability()
+    private var nativeMenuWatch: AnyCancellable?
+    private var nativeMenuRefreshQueued = false
+
+    private func refreshNativeMenu() {
+        nativeMenuRefreshQueued = false
+        let model = nativeEditor
+        let next = NativeMenuAvailability(hasSelection: !model.selectedIDs.isEmpty,
+                                          canCopy: model.canCopyTimelineSelection, canPaste: model.canPasteTimelineClipboard,
+                                          canMatchFrame: model.canRequestMatchFrame)
+        if next != nativeMenu { nativeMenu = next }
+    }
 
     init(platform: ReelPlatform?) {
         self.platform = platform

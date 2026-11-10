@@ -520,7 +520,8 @@ export function Inspector() {
     clip.kind !== 'audio' ? ['video', 'Video'] : null,
     clip.kind === 'title' ? ['title', 'Text'] : null,
     clip.kind === 'shape' ? ['shape', 'Shape'] : null,
-    clip.kind === 'audio' || (clip.kind === 'video' && !clip.link && p.assets[clip.src]?.hasAudio) ? ['audio', 'Audio'] : null,
+    // A video whose audio was detached is silent; its sound is edited on the detached audio clip.
+    clip.kind === 'audio' || (clip.kind === 'video' && !clip.link && !clip.audioDetached && p.assets[clip.src]?.hasAudio) ? ['audio', 'Audio'] : null,
     clip.kind !== 'audio' ? ['effects', 'Effects'] : null,
     ...registry.inspectors.filter(sec => sec.when?.(clip, track) ?? true).map(sec => [sec.id, sec.label]),
     ['info', 'Info'],

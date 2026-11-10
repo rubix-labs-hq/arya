@@ -238,6 +238,9 @@ console.log(`Passed ${records.length} native plans against production web planne
         ui_source = 'import SwiftUI\n' + dictionary + '\n' + planner + '\n' + context + '\n' + fixture + '\n' + retry + '\n'
         for text, marker in [(controls, 'enum NativeEditorStyle {'), (controls, 'enum NativeType {'), (controls, 'enum NativeRadius {'), (controls, 'struct NativeToolbarButtonStyle: ButtonStyle'), (controls, 'struct NativeNumberRow: View'), (color, 'struct NativeGestureNumberRow: View'), (color, 'private struct NativeColorNodeGraph: View')]:
             ui_source += block(text, marker) + '\n'
+        # The graph tells the Mac Timeline menu that it owns bare Delete and arrow keys while focused.
+        for marker in ['struct NativePanelOwnsEditingKeys: FocusedValueKey', 'extension FocusedValues {']:
+            ui_source += block(color, marker) + '\n'
         # iOS panel interaction policy and the context environment values the production graph view reads.
         ui_source += '#if os(iOS)\n' + color.split('// BEGIN PANEL INTERACTION POLICY\n', 1)[1].split('// END PANEL INTERACTION POLICY', 1)[0]
         for marker in ['private struct NativeContextInteractionsEnabledKey: EnvironmentKey', 'struct NativeContextInteractionLayout: Equatable', 'private struct NativeContextInteractionLayoutKey: EnvironmentKey', 'extension EnvironmentValues {']:

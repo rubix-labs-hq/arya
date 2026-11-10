@@ -8,6 +8,7 @@ struct ReelMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var session = EditorSession(platform: MacPlatform())
     @Environment(\.openWindow) private var openWindow
+    @FocusedValue(\.panelOwnsEditingKeys) private var panelOwnsEditingKeys
 
     var body: some Scene {
         Window("Arya", id: "main") {
@@ -89,26 +90,26 @@ struct ReelMacApp: App {
             Group {
                 Button("Play or Pause") { performEditorCommand(.playPause) }.keyboardShortcut(editorShortcut(.space, modifiers: []))
                 Button("Split at Playhead") { performEditorCommand(.split) }.keyboardShortcut(editorShortcut("b", modifiers: [.command]))
-                Button("Delete Selected Clip") { performEditorCommand(.delete) }.keyboardShortcut(editorShortcut(.delete, modifiers: []))
-                    .disabled(!session.useWebEditor && session.nativeEditor.selectedID == nil)
-                Button("Ripple Delete") { performEditorCommand(.rippleDelete) }.keyboardShortcut(editorShortcut(.delete, modifiers: [.shift]))
-                    .disabled(!session.useWebEditor && session.nativeEditor.selectedID == nil)
-                Button("Previous Frame") { performEditorCommand(.previousFrame) }.keyboardShortcut(editorShortcut(.leftArrow, modifiers: []))
-                Button("Next Frame") { performEditorCommand(.nextFrame) }.keyboardShortcut(editorShortcut(.rightArrow, modifiers: []))
+                Button("Delete Selected Clip") { performEditorCommand(.delete) }.keyboardShortcut(timelineKeyShortcut(.delete, modifiers: []))
+                    .disabled(!session.useWebEditor && !session.nativeMenu.hasSelection)
+                Button("Ripple Delete") { performEditorCommand(.rippleDelete) }.keyboardShortcut(timelineKeyShortcut(.delete, modifiers: [.shift]))
+                    .disabled(!session.useWebEditor && !session.nativeMenu.hasSelection)
+                Button("Previous Frame") { performEditorCommand(.previousFrame) }.keyboardShortcut(timelineKeyShortcut(.leftArrow, modifiers: []))
+                Button("Next Frame") { performEditorCommand(.nextFrame) }.keyboardShortcut(timelineKeyShortcut(.rightArrow, modifiers: []))
                 Divider()
                 Button("Duplicate Selected Clips") { performEditorCommand(.duplicate) }.keyboardShortcut(editorShortcut("d", modifiers: [.command]))
-                    .disabled(!session.useWebEditor && session.nativeEditor.selectedIDs.isEmpty)
+                    .disabled(!session.useWebEditor && !session.nativeMenu.hasSelection)
                 Button("Export…") { performEditorCommand(.export) }.keyboardShortcut(editorShortcut("e", modifiers: [.command]))
                 Divider()
                 // The standard Edit menu and its Cmd-C/X/V shortcuts remain responder-owned.
                 Button("Copy Timeline Selection") { performEditorCommand(.copy) }
-                    .disabled(!session.useWebEditor && !session.nativeEditor.canCopyTimelineSelection)
+                    .disabled(!session.useWebEditor && !session.nativeMenu.canCopy)
                 Button("Cut Timeline Selection") { performEditorCommand(.cut) }
-                    .disabled(!session.useWebEditor && !session.nativeEditor.canCopyTimelineSelection)
+                    .disabled(!session.useWebEditor && !session.nativeMenu.canCopy)
                 Button("Paste Timeline Clips") { performEditorCommand(.paste) }
-                    .disabled(!session.useWebEditor && !session.nativeEditor.canPasteTimelineClipboard)
+                    .disabled(!session.useWebEditor && !session.nativeMenu.canPaste)
                 Button("Match Frame") { performEditorCommand(.matchFrame) }
-                    .disabled(!session.useWebEditor && !session.nativeEditor.canRequestMatchFrame)
+                    .disabled(!session.useWebEditor && !session.nativeMenu.canMatchFrame)
             }
             .disabled(session.folder == nil)
         }
@@ -117,6 +118,12 @@ struct ReelMacApp: App {
     private func editorShortcut(_ key: KeyEquivalent, modifiers: EventModifiers) -> KeyboardShortcut? {
         // WebKit receives real key events, including text editing and browser selection.
         session.useWebEditor ? nil : KeyboardShortcut(key, modifiers: modifiers)
+    }
+
+    /// Menu shortcuts run before the focused view sees a key. Bare Delete and arrows stay with
+    /// a panel that handles them, so Delete in the Color graph unlinks a node, not a clip.
+    private func timelineKeyShortcut(_ key: KeyEquivalent, modifiers: EventModifiers) -> KeyboardShortcut? {
+        panelOwnsEditingKeys == true ? nil : editorShortcut(key, modifiers: modifiers)
     }
 
     private func performEditorCommand(_ command: MacEditorCommand) {
@@ -138,7 +145,7 @@ struct ReelMacApp: App {
         case .previousFrame: session.nativeEditor.step(-1)
         case .nextFrame: session.nativeEditor.step(1)
         case .duplicate:
-            session.nativeEditor.editBatch(session.nativeEditor.selectedIDs.sorted().map { ["op": "duplicate", "id": $0] }, expectedVersion: session.nativeEditor.version)
+            session.nativeEditor.duplicate()
         case .export: session.nativeEditor.panel = .deliver
         case .copy, .cut, .paste:
             guard let capture = session.nativeEditor.clipboardActionCapture() else { return }

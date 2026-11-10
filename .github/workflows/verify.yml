@@ -115,6 +115,7 @@ jobs:
           python3 native/scripts/test-motion-graph.py
           python3 native/scripts/test-motion-drafts.py
           python3 native/scripts/test-color-node-graph.py
+          python3 native/scripts/test-mac-menu-state.py
       - name: Verify native processing and import controls
         run: |
           sh native/scripts/test-inspector-workflows.sh

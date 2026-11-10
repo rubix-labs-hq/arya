@@ -130,11 +130,36 @@ test('suggestions follow the selection, sit before the text box and set a draft 
   assert.equal(nodes(fixture({ claude: { state: 'working' }, selection: ['c1'], project: { assets: {}, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} } }).draw()).find(node => node.props?.class === 'assistant-suggestion').props.disabled, true)
 })
 
-for (const flags of [{ isComposing: true }, { nativeEvent: { isComposing: true } }, { keyCode: 229 }, { altKey: true }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true }]) test(`Enter preserves composition or newline for ${JSON.stringify(flags)}`, async () => {
+for (const flags of [{ isComposing: true }, { nativeEvent: { isComposing: true } }, { keyCode: 229 }, { altKey: true }, { ctrlKey: true }, { shiftKey: true }]) test(`Enter preserves composition or newline for ${JSON.stringify(flags)}`, async () => {
   const f = fixture(), e = event(flags)
   input(f.draw()).props.onKeyDown(e)
   await tick()
   assert.equal(e.prevented, 0); assert.equal(e.stopped, 1); assert.deepEqual(f.calls, []); assert.deepEqual(f.drafts, [])
+})
+
+test('Command-Return sends like Return, as in the Mac Assistant', async () => {
+  const f = fixture(), e = event({ metaKey: true })
+  input(f.draw()).props.onKeyDown(e)
+  await tick()
+  assert.equal(e.prevented, 1)
+  assert.ok(f.calls.some(call => call.route === '/api/bridge/send'))
+})
+
+test('in a script or screenplay, Return adds a line and Command-Return sends', async () => {
+  for (const inputKind of ['script', 'screenplay']) {
+    const f = fixture({ assistantDraft: { root: '/fixture', text: 'INT. ROOM - DAY', inputKind } })
+    const plain = event()
+    input(f.draw()).props.onKeyDown(plain)
+    await tick()
+    assert.equal(plain.prevented, 0, `${inputKind}: Return keeps the newline`)
+    assert.deepEqual(f.calls, [])
+    assert.match(text(f.draw()), /⌘Return to send · Return for a new line/)
+    const command = event({ metaKey: true })
+    input(f.draw()).props.onKeyDown(command)
+    await tick()
+    assert.equal(command.prevented, 1)
+    assert.ok(f.calls.some(call => call.route === '/api/bridge/send'), `${inputKind}: Command-Return sends`)
+  }
 })
 
 test('composition lifecycle prevents dispatch until composition ends', async () => {
