@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import XCTest
 @testable import ReelKit
@@ -52,6 +53,29 @@ final class ProjectCopiedMediaRecoveryTests: XCTestCase {
         XCTAssertTrue(after.0.isEmpty); XCTAssertTrue(after.1.isEmpty)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("media").path), ["café take.png"])
         XCTAssertEqual(try Data(contentsOf: url), bytes)
+        await b.stop()
+    }
+    func testHardLinkedCopyWithAliasOutsideMediaRegisters() async throws {
+        let root = try Support.tempFolder("copied-recovery-hardlink"), outside = try Support.tempFolder("copied-recovery-hardlink-alias")
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: outside) }
+        let alias = outside.appendingPathComponent("library copy.png")
+        // Looking up the other link during the probe makes Darwin's F_GETPATH report it for
+        // the held descriptor, as Spotlight or a photo library can do in production.
+        let b = try ReelBackend(folder: ProjectFolder(root: root), coreScript: Support.core(), probe: { url in
+            var info = Darwin.stat(); _ = lstat(alias.path, &info)
+            return .object([("size", .int(try Data(contentsOf: url).count)), ("width", 1), ("height", 1), ("still", true), ("hasVideo", false), ("hasAudio", false)])
+        }) { _, _ in }
+        try await b.start()
+        _ = try await b.handle(method: "POST", path: "/api/new", body: "{\"name\":\"Linked\"}")
+        let url = try file(root)
+        try FileManager.default.linkItem(at: url, to: alias)
+        let version = await b.currentVersion()
+        let (paths, identities, _, recoveryID) = try copies(try await b.recoveryMediaCandidates(expectedVersion: version))
+        XCTAssertEqual(paths, ["media/café take.png"])
+        let receipt = try parse(try await b.registerRecoveryMedia(paths, recoveryID: recoveryID, expectedVersion: version, retainedCopyIdentities: identities))
+        XCTAssertEqual(Set((receipt["assets"] as? [String: Any] ?? [:]).keys), Set(paths))
+        XCTAssertEqual(try Data(contentsOf: url), Data(repeating: 0x61, count: 100))
+        XCTAssertEqual(try Data(contentsOf: alias), Data(repeating: 0x61, count: 100))
         await b.stop()
     }
     func testStaleAdmissionAndChangedProjectRejectBeforeRegistering() async throws {

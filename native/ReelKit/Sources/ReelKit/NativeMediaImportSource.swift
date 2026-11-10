@@ -345,10 +345,30 @@ enum NativeMediaImportSource {
     }
     private static func requirePath(_ fd: Int32, url: URL) throws {
         var path = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-        guard path.withUnsafeMutableBufferPointer({ fcntl(fd, F_GETPATH, $0.baseAddress!) }) == 0,
-              normalized(URL(fileURLWithPath: String(cString: path))).path == normalized(url).path else {
-            throw ReelBackend.APIError("The selected or copied media path changed or uses a symbolic link. Select its original path to retry.")
+        guard path.withUnsafeMutableBufferPointer({ fcntl(fd, F_GETPATH, $0.baseAddress!) }) == 0 else { throw pathChanged }
+        if normalized(URL(fileURLWithPath: String(cString: path))).path == normalized(url).path { return }
+        // F_GETPATH names one link of a file, often the one looked up last, so a regular
+        // file with other hard links can report another name. Accept it only when the
+        // selected path itself names this file and no part of that path is a symbolic link.
+        var held = Darwin.stat()
+        guard fstat(fd, &held) == 0, held.st_mode & S_IFMT == S_IFREG, held.st_nlink > 1,
+              namesWithoutSymlinks(normalized(url), device: held.st_dev, inode: held.st_ino) else { throw pathChanged }
+    }
+    private static var pathChanged: ReelBackend.APIError {
+        ReelBackend.APIError("The selected or copied media path changed or uses a symbolic link. Select its original path to retry.")
+    }
+    /// Every ancestor of `url` is a real directory and its final name is this regular file.
+    /// Uses metadata only, because a file picker does not grant read access to parents.
+    private static func namesWithoutSymlinks(_ url: URL, device: Int32, inode: UInt64) -> Bool {
+        let components = url.pathComponents
+        guard components.count > 1, components.first == "/" else { return false }
+        var info = Darwin.stat(), prefix = ""
+        for component in components.dropFirst().dropLast() {
+            prefix += "/" + component
+            guard lstat(prefix, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { return false }
         }
+        guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { return false }
+        return info.st_dev == device && info.st_ino == inode
     }
     private static func openDirectory(_ url: URL, checkCancellation: Bool = true) throws -> Int32 {
         if checkCancellation { try Task.checkCancellation() }
