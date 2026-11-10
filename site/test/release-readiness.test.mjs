@@ -11,7 +11,7 @@ import { safeDestination, contributionAmount, releaseDestination, checkoutDestin
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const shipped = JSON.parse(await readFile(join(root, 'config.json'), 'utf8'));
 // The unreleased state, independent of the release the committed config ships.
-const defaults = { ...shipped, release: { ...shipped.release, ready: false, notarized: false, version: null, macURL: null, sha256: null, size: null } };
+const defaults = { ...shipped, contributions: { ...shipped.contributions, checkoutURLs: {} }, release: { ...shipped.release, ready: false, notarized: false, version: null, macURL: null, sha256: null, size: null } };
 const ready = { ...defaults, release: { ...defaults.release, ready: true, notarized: true, version: '0.3.0', sha256: 'a'.repeat(64), size: '150 MB', macURL: 'https://example.com/Arya.dmg', allowedHosts: ['example.com'] } };
 const publicConfig = { ...ready, siteURL: 'https://example.com/', contactURL: 'https://example.com/help', publicSourceURL: 'https://github.com/example/arya', externalHosts: ['example.com', 'github.com'] };
 
@@ -283,7 +283,7 @@ test('support events reject invalid and stale amounts without offering checkout'
 test('static pages offer gallery links and keep forms inert until handlers exist', async () => {
   const home = await readFile(join(root, 'index.html'), 'utf8');
   assert.equal([...home.matchAll(/<a class="workspace-tab" href="\/assets\/product\//g)].length, 4);
-  const support = await readFile(join(root, 'support/index.html'), 'utf8');
+  const support = (await buildFixture(defaults)).pages.support;
   assert.ok(!support.includes('id="custom-amount"'), 'no amounts are offered before a checkout is configured');
   const configured = { ...defaults, contributions: { ...defaults.contributions, allowedHosts: ['example.com'], checkoutURLs: { ...defaults.contributions.checkoutURLs, '15': 'https://example.com/support-fifteen' } } };
   const { result, pages } = await buildFixture(configured);

@@ -1,0 +1,37 @@
+# Arya
+
+> Arya is an open-source video and motion editor. Projects remain editable; core editing and export are free. Optional tips support development.
+
+## Availability
+
+- Mac: version 1.0.7, macOS 14 or later, Apple silicon and Intel. Signed and notarized download: https://github.com/rubix-labs-hq/arya/releases/download/v1.0.7/Arya-1.0.7.dmg. SHA-256: 80273dbea2072e5ada80967daa26f760af358b1b2bafdf2148f244fad5ffd0ff.
+- iPhone and iPad: version 1.0.5, available on the App Store: https://apps.apple.com/us/app/arya-video-editor/id6826357116.
+- Browser editor: https://editwitharya.app/editor/. Browser storage is local to this origin. Use exported backups; this is not cloud storage.
+
+## Editing
+
+Arya supports timeline editing, titles and shapes, color adjustments, motion keyframes and audio mixing. Native and local browser projects use the same project format. The native interface and browser interface differ; use the edition comparison on the website for current coverage.
+
+## Hosted browser limits
+
+The hosted editor has no assistant, Figma import, speech transcription, captions, denoise, voice cleanup or FCPXML/OTIO interchange. Hosted exports are limited to H.264, HEVC, WAV and AAC and five minutes. Projects created at the previous arya-beta-delta.vercel.app origin stay there; export a .arya backup before moving them to this domain.
+
+## Optional connections
+
+AI assistance requires a user-owned supported provider account or API connection. Provider charges and limits are separate. iPhone/iPad CLI connections require a trusted HTTPS Mac companion. Figma personal access token and pasted MCP import are supported; public Figma OAuth is not configured. Do not describe hosted AI credits, cloud project sync or Figma OAuth as included.
+
+## Cost and privacy
+
+Core editing and export are free. Tips are voluntary one-time payments and unlock no features. Website tips use Stripe checkout for REVRNT (Pulsar Campaigns); App Store purchases use Apple. Prices are displayed at checkout and may vary by storefront. There is no required Arya subscription. Project media stays local unless the user explicitly chooses an external service. Payment providers process their own payment data.
+
+## Official pages
+
+- [Website](https://editwitharya.app/): Official product information and edition comparison.
+- [Downloads](https://editwitharya.app/download/): Current verified releases and checksums.
+- [Installation and setup](https://editwitharya.app/install/): Installation, optional assistant connections, updates and rollback.
+- [Project status](https://editwitharya.app/project/): Supported features, limits and source links.
+- [Support and tips](https://editwitharya.app/support/): Contact options and optional one-time support.
+- [Privacy](https://editwitharya.app/privacy/): Local storage, optional services and payment processing.
+
+Source code: https://github.com/rubix-labs-hq/arya
+License: MIT. Product facts and availability should be checked against the download and project-status pages before recommending an edition.

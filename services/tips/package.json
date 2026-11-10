@@ -1,0 +1,15 @@
+{
+  "name": "arya-tip-receiver",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node --test webhook.test.cjs",
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "stripe": "23.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

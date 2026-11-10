@@ -25,7 +25,7 @@ test('a release cannot offer a URL without reviewed readiness, notarization and 
   for(const key of ['ready','notarized','version','sha256','allowedHosts'])assert.equal(releaseDestination({release:{...ready.release,[key]:null}}),null,key);
 });
 test('checkout keeps preset URLs exact and custom amounts explicitly provider-selected',()=>{
-  assert.equal(checkoutDestination(config,15).url,null);
+  assert.equal(checkoutDestination({...config, contributions:{...config.contributions, checkoutURLs:{}}},15).url,null);
   const configured={contributions:{minimum:5,allowedHosts:['example.com'],checkoutURLs:{'15':'https://example.com/preset?sku=fifteen',custom:'https://example.com/custom'}}};
   assert.deepEqual(checkoutDestination(configured,15),{cents:1500,dollars:'15.00',url:'https://example.com/preset?sku=fifteen',custom:false});
   assert.equal(checkoutDestination(configured,16).custom,true);
@@ -87,4 +87,18 @@ test('font distributions include their actual licenses',async()=>{
     const text=await readFile(join(root,'assets/fonts',`${family}-OFL.txt`),'utf8');assert.ok(text.includes('SIL OPEN FONT LICENSE'));
     const font=await stat(join(root,'assets/fonts',`${family}${family==='newsreader'?'-italic':''}.ttf`));assert.ok(font.size>100000);
   }
+});
+
+test('configured tips expose only reviewed HTTPS checkout links and keep downloads free', async () => {
+  for (const amount of [5, 15, 30, 17]) {
+    const result = checkoutDestination(config, amount);
+    assert.equal(new URL(result.url).hostname, 'buy.stripe.com');
+    assert.equal(result.custom, amount === 17);
+  }
+  const support = await readFile(join(root, 'support/index.html'), 'utf8');
+  assert.match(support, /REVRNT \(Pulsar Campaigns\)/);
+  assert.match(support, /one-time contribution/);
+  assert.match(support, /does not include an AI provider subscription/);
+  const download = await readFile(join(root, 'download/index.html'), 'utf8');
+  assert.ok(download.includes(config.release.macURL));
 });

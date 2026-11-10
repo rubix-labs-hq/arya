@@ -13,7 +13,9 @@ npm test
 
 No package install is needed. Serve this directory as the document root with any local static server. All links use root paths, so opening the HTML directly as a file is not the supported preview method.
 
-The generated HTML is checked in. Edit `scripts/build.mjs`, then regenerate it. CSS and browser behavior live in `assets/`. The site has no card form, visitor tracking or publishing command. The beta access form is an unconnected placeholder; see below.
+The generated HTML is checked in. Edit `scripts/build.mjs`, then regenerate it. CSS and browser behavior live in `assets/`. The site has no card form or visitor tracking. Optional tips open Stripe-hosted checkout; the server-only receiver lives in `../services/tips`. The beta access form is an unconnected placeholder used only when no release is available.
+
+For deployment, install the locked editor and tip-receiver dependencies, prepare the editor persistence writer, and run `node site/scripts/prepare-public.mjs` from the repository root. It writes a new `build/web-public` directory containing the allowlisted website, browser editor and bundled signature-verification endpoint, plus a hashed receipt. Deploy that prepared directory using Vercel's prebuilt-output support after the release checks pass. Keep payment signing secrets in sensitive server environment variables.
 
 ## Configuration and release gates
 
@@ -29,7 +31,7 @@ Contribution URLs have a separate allowlist. A preset checkout URL must represen
 
 Beta access: until a form service is chosen, `requestAccessURL` stays `null` and the download page shows a placeholder form marked "Placeholder. This form is not connected yet." Its controls start disabled, it has no `action`, and its handler validates the email in the browser, sends nothing and says so. Until then, primary buttons read "Beta access" and no page asks visitors to request access. After a release is approved, every primary button reads "Download Arya" and goes to `/download/#mac`. To connect the form, put the hosted form's HTTPS URL in `requestAccessURL` and its host in `externalHosts`; the build then replaces the placeholder with a link to that form. Update the data guide in the same change to name the service.
 
-Search indexing follows `indexing` in `config.json`. It is `true` now, so `robots.txt` allows every page except `/editor/` and the build writes `sitemap.xml`. With `indexing` false or no `siteURL`, `robots.txt` blocks everything and no sitemap is written. Before changing `siteURL`, confirm the canonical metadata, the raster social preview and the dated privacy policy still match. The included SVG social artwork has outlined type and a 1200 by 630 PNG export. The identity board, app-icon concept and installer artwork live beside it in `assets/brand/`. Do not claim it is a validated preview for every social platform.
+Search indexing follows `indexing` in `config.json`. It is `true` now, so `robots.txt` excludes `/editor/` and `/api/` and the build writes `sitemap.xml`. With `indexing` false or no `siteURL`, `robots.txt` blocks everything and no sitemap is written. Before changing `siteURL`, confirm the canonical metadata, the raster social preview and the dated privacy policy still match. The included SVG social artwork has outlined type and a 1200 by 630 PNG export. The identity board, app-icon concept and installer artwork live beside it in `assets/brand/`. Do not claim it is a validated preview for every social platform.
 
 `_headers` provides a static-host header template. Confirm that the selected host actually applies it. Keep scripts, fonts and configuration on the same origin. No HSTS policy is supplied before a real HTTPS domain exists.
 
@@ -66,3 +68,7 @@ The release-readiness fixture suite builds disposable copies with configured and
 If configuration loading fails, the enhanced download page removes its download action and reports that release status could not be checked. Reload the page to try again. Support submission preserves the load error. When another contribution amount has a destination, a missing checkout for the chosen amount is reported separately from closed contributions. Runtime configuration must retain literal release booleans and the reviewed USD, $5 minimum and $15 suggestion. These checks do not verify the actual release or payment provider.
 
 The navigation disclosure closes when keyboard focus leaves its header. Escape returns focus to Menu when focus is inside navigation and preserves focus elsewhere. The Afterlight controls start disabled and enable after their handlers are installed; its local no-script explanation keeps the static artwork understandable. Guide illustration status follows the configured release and public-source state. Check these behaviors with a real keyboard, VoiceOver and browser zoom after changes.
+
+## Search and AI discovery
+
+The build derives JSON-LD application records, `llms.txt` and `llms-full.txt` from the same release configuration as the download buttons. Unavailable editions are not advertised as released. Keep edition limits, current version numbers, privacy disclosures and the 1200 × 630 social preview accurate when updating a release.

@@ -9,6 +9,7 @@ import { mobileReleaseDestination } from '../assets/config.mjs';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const shipped = JSON.parse(await readFile(join(root, 'config.json'), 'utf8'));
+const pending = { ...shipped, mobileRelease: { ...shipped.mobileRelease, ready: false, appStoreURL: null } };
 
 const validLiveConfig = {
   ...shipped,
@@ -105,12 +106,12 @@ test('mobile release destination helper enforces literal ready boolean, non-empt
   assert.equal(mobileReleaseDestination({ mobileRelease: { ...live, appStoreURL: 'http://apps.apple.com/app/id6826357116' } }), null);
 
   // Pending config has no destination link
-  assert.equal(mobileReleaseDestination(shipped), null);
+  assert.equal(mobileReleaseDestination(pending), null);
   assert.equal(mobileReleaseDestination({ mobileRelease: { ...live, ready: false } }), null);
 });
 
 test('pending mobile release renders plain review status and provides no active download link', async () => {
-  const { result, pages } = await buildFixture(shipped);
+  const { result, pages } = await buildFixture(pending);
   assert.equal(result.status, 0, result.stderr);
 
   const download = pages.download;
@@ -140,6 +141,8 @@ test('validated live mobile release enables the conditional App Store CTA and up
   const { result, pages } = await buildFixture(validLiveConfig);
   assert.equal(result.status, 0, result.stderr);
 
+  assert.ok(pages.home.includes('Download on the App Store'));
+  assert.ok(!pages.home.includes('iPhone and iPad builds are coming later.'));
   const download = pages.download;
   assert.ok(download.includes('Version 1.0.5 is available as a free download worldwide on the App Store.'));
   assert.ok(download.includes('<div id="mobile-action"><a class="button " href="https://apps.apple.com/app/id6826357116">Download on the App Store</a></div>'));

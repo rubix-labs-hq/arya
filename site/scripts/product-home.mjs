@@ -8,7 +8,7 @@ export function primaryAction(releaseReady, accessURL) {
   return { href: '/download/#access', label: accessURL ? 'Request beta access' : 'Beta access', short: accessURL ? 'Request access' : 'Beta access' };
 }
 
-export function productHome({ button, link, faq, stage, shots, figures, releaseReady = false, publicSource = null, accessURL = null, browserEditor = null, version = '1.0.0', size = '104 MB', minimumOS = 'macOS 14' }) {
+export function productHome({ button, link, faq, stage, shots, figures, releaseReady = false, publicSource = null, accessURL = null, browserEditor = null, mobileURL = null, mobileVersion = null, version = '1.0.0', size = '104 MB', minimumOS = 'macOS 14' }) {
   if (!Array.isArray(shots) || shots.length !== 4 || shots[0].id !== 'edit') throw new Error('The home gallery needs four verified captures, starting with Edit');
   const action = primaryAction(releaseReady, accessURL);
   const figure = id => {
@@ -45,7 +45,7 @@ export function productHome({ button, link, faq, stage, shots, figures, releaseR
     ['Opus Clip', 'Passage suggestions quote the transcript they come from. Each short stays an editable composition.', 'Suggestion scores rank structure only. They do not predict views.'],
   ].map(([from, carries, missing]) => `<tr><th scope="row">${from}</th><td data-label="Carries over">${carries}</td><td data-label="Not yet">${missing}</td></tr>`).join('');
   const downloadAnswer = releaseReady
-    ? `Yes. Arya ${version} for Mac is on the download page with its version, requirements and SHA-256 checksum. It is free, signed, notarized and licensed under MIT. iPhone and iPad builds are coming later.`
+    ? `Yes. Arya ${version} for Mac is on the download page with its version, requirements and SHA-256 checksum. It is free, signed, notarized and licensed under MIT. ${mobileURL ? `Arya ${mobileVersion} is also available on the App Store for iPhone and iPad.` : 'iPhone and iPad builds are coming later.'}`
     : `Not yet. Arya is in a private beta by invitation. The Mac app needs final interface checks, a signed package and Apple notarization before a public download. ${accessURL ? 'You can request beta access on the download page.' : betaRequestsClosed}`;
   return `<section class="hero">
 <div class="wrap hero-copy">
@@ -54,6 +54,7 @@ export function productHome({ button, link, faq, stage, shots, figures, releaseR
 <p class="lead">Work by hand on a timeline, or say what should change. Every change is an ordinary edit you can adjust and undo.</p>
 <div class="actions hero-actions">
 <div class="action-item">${button(action.href, action.label)}<span class="action-note">${releaseLine}</span></div>
+${mobileURL ? `<div class="action-item action-ios">${button(mobileURL, 'Download on the App Store')}<span class="action-note">iPhone and iPad · Free core editor</span></div>` : ''}
 ${browserEditor ? `<div class="action-item">${button(browserEditor, 'Try in your browser <span class="button-badge">Limited</span>', 'secondary')}<span class="action-note">No AI assistant, Figma import or transcription</span></div>` : ''}
 </div>
 </div>

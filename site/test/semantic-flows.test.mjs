@@ -11,7 +11,7 @@ import { contributionAmount, checkoutDestination, releaseDestination, safeDestin
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const shipped = JSON.parse(await readFile(join(root, 'config.json'), 'utf8'));
 // The unreleased state, independent of the release the committed config ships.
-const defaults = { ...shipped, release: { ...shipped.release, ready: false, notarized: false, version: null, macURL: null, sha256: null, size: null } };
+const defaults = { ...shipped, contributions: { ...shipped.contributions, checkoutURLs: {} }, release: { ...shipped.release, ready: false, notarized: false, version: null, macURL: null, sha256: null, size: null } };
 const source = (await readFile(join(root, 'assets/site.mjs'), 'utf8')).replace(/^import[^\n]+\n/, '');
 
 class Element {

@@ -6,7 +6,7 @@ import { contributionAmount, checkoutDestination, releaseDestination, safeDestin
 
 const shipped = JSON.parse(await readFile(new URL('../config.json', import.meta.url), 'utf8'));
 // The unreleased state, independent of the release the committed config ships.
-const defaults = { ...shipped, release: { ...shipped.release, ready: false, notarized: false, version: null, macURL: null, sha256: null, size: null } };
+const defaults = { ...shipped, contributions: { ...shipped.contributions, checkoutURLs: {} }, release: { ...shipped.release, ready: false, notarized: false, version: null, macURL: null, sha256: null, size: null } };
 const source = (await readFile(new URL('../assets/site.mjs', import.meta.url), 'utf8')).replace(/^import[^\n]+\n/, '');
 const ready = { ...defaults, release: { ...defaults.release, ready: true, notarized: true, version: '0.3.0', sha256: 'a'.repeat(64), macURL: 'https://example.com/Arya.dmg', allowedHosts: ['example.com'] } };
 

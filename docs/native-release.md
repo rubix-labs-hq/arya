@@ -16,7 +16,7 @@ The Xcode bundle phase generates `reel-core.js` and `arya-music.js`, copies the 
 
 Browser save/edit tests need a prepared persistence helper. From the repository root, run `npm run --prefix editor prepare:persistence` and `npm run --prefix editor check:persistence` before that suite. These steps use the Mac compiler tools and an ad hoc signature. Run them in your own checkout, not while another build is using it.
 
-The website has no install step. Run `npm run build --prefix site` and `npm test --prefix site` with the same source snapshot. Plugin type checks separately require the Claude Code API declarations under `.claude/types` (run `/plugin-types` in a Claude Code session to write them) and an available TypeScript compiler; the repository does not provide a root npm lockfile for that environment.
+The static website has no install step. Before website tests or deployment packaging, run `npm ci --prefix services/tips` to install the locked server-only payment receiver dependencies. Then run `npm test --prefix services/tips`, `npm run build --prefix site` and `npm test --prefix site` with the same source snapshot. The native app bundles do not include the payment receiver. Plugin type checks separately require the Claude Code API declarations under `.claude/types` (run `/plugin-types` in a Claude Code session to write them) and an available TypeScript compiler; the repository does not provide a root npm lockfile for that environment.
 
 A source-only dependency install, deterministic generator comparison or site test does not establish a fresh Mac/iOS build. Keep both app-target builds, native package tests, exact bundled-resource notices, runtime, device and signed distribution results with the final source freeze.
 
