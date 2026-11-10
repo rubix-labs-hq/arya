@@ -46,7 +46,7 @@ const mobileRoadmapStatus = mobileReady
   : 'Shared project format is in testing on devices. Public iPhone and iPad builds are coming later.';
 const link = (href, label) => `<a class="text-link" href="${href}">${label}<span aria-hidden="true"> →</span></a>`;
 const faq = entries => `<div class="faq-list">${entries.map(([title, text]) => `<details><summary>${title}</summary><p>${text}</p></details>`).join('')}</div>`;
-const pageHero = (eyebrow, title, description, kind) => `<section class="page-hero"><div class="wrap page-hero-grid"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="lead">${description}</p></div>${pageVignette(kind, { releaseReady, version: config.release.version, publicSource: Boolean(publicSource), contributionsConfigured })}</div></section>`;
+const pageHero = (eyebrow, title, description, kind) => `<section class="page-hero"><div class="wrap page-hero-grid"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="lead">${description}</p></div>${pageVignette(kind, { releaseReady, version: config.release.version, mobileReady, publicSource: Boolean(publicSource), contributionsConfigured })}</div></section>`;
 const article = (nav, content) => `<div class="reading-surface"><div class="wrap article-layout"><nav class="article-aside" aria-label="On this page"><span class="contents-label">On this page</span>${nav.map(([id, label]) => `<a href="#${id}">${label}</a>`).join('')}</nav><article class="article">${content}</article></div></div>`;
 const publicSource = safeDestination(config.publicSourceURL, config.externalHosts);
 const publicContact = safeDestination(config.contactURL, config.externalHosts);
