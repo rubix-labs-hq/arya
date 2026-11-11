@@ -1676,13 +1676,23 @@ final class NativeEditorModel: ObservableObject {
         }
     }
 
-    func releasePreview() {
+    /// Frees the viewer frame and renderer caches. With `redraw`, the current frame is drawn again once the
+    /// caches are gone. A memory warning needs that: on the Mac App Store edition the scene stays active, so no
+    /// scene change asks for a new frame and the viewer would show "Rendering frame" until the next edit or step.
+    func releasePreview(redraw: Bool = false) {
         discardRenderPreview(redraw: false); projectRevision = UUID()
         previewOwnershipID = nil
         viewerComparison = nil
         clearSource()
         pause(); renderTask?.cancel(); renderTask = nil; pendingFrame = nil; renderWorkerID = UUID(); renderGeneration = UUID(); rendering = false; frame = nil; metalFrame = nil; clearScopes(); displayedTime = nil; displayedPreviewID = nil; displayedVersion = nil; displayedRevision = nil; displayedComposition = nil; displayedFolder = nil; displayedGeneration = nil; scrubbing = false
-        if let renderer { Task { await renderer.releaseCaches() } }
+        guard let renderer else { return }
+        // Each release sets a new projectRevision, so a later release (for example the scene going inactive) cancels this redraw.
+        let released = (generation, projectRevision)
+        Task {
+            await renderer.releaseCaches()
+            // Redraw only if nothing else has released, drawn or started a frame for the same project meanwhile.
+            if redraw, generation == released.0, projectRevision == released.1, self.renderer === renderer, metalFrame == nil, renderTask == nil { requestFrame() }
+        }
     }
 
     /// Called when the project becomes writable again, for example after Files finishes opening it.

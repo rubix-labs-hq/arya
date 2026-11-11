@@ -107,6 +107,7 @@ jobs:
         run: |
           sh native/scripts/test-ui-geometry.sh
           python3 native/scripts/test-displayed-frame.py
+          python3 native/scripts/test-viewer-memory-warning.py
           python3 native/scripts/test-viewer-geometry.py
           python3 native/scripts/test-vector-editing.py
       - name: Verify native gesture targets and stale edits

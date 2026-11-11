@@ -477,7 +477,7 @@ struct NativeEditorView: View {
         .onChange(of: session.projectReadOnlyReason) { old, next in if old != nil && next == nil { model.projectWritable() } }
         .onDisappear { model.discardRenderPreview(); model.pause(); model.pauseSource() }
         #if os(iOS)
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in model.releasePreview() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in model.releasePreview(redraw: scenePhase == .active) }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in model.pause() }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { _ in model.pause() }
         #endif
