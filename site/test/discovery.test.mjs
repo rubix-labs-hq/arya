@@ -11,7 +11,7 @@ test('generated share metadata and structured data identify the canonical page',
     const html = await readFile(new URL(`${route}index.html`, root), 'utf8');
     const canonical = new URL(route, config.siteURL + '/').href;
     assert.ok(html.includes(`rel="canonical" href="${canonical}"`));
-    assert.match(html, /name="twitter:image" content="https:\/\/editwitharya.app\/assets\/brand\/social.png"/);
+    assert.match(html, /name="twitter:image" content="https:\/\/editwitharya.app\/assets\/brand\/link-preview\.png"/);
     assert.match(html, /property="og:image:width" content="1200"/);
     assert.match(html, /property="og:image:height" content="630"/);
     const data = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);

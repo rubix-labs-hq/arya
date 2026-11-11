@@ -20,7 +20,7 @@ Where to be bold: Give actual Arya development captures most of the first page. 
 
 Never: Invented testimonials, customer counts, benchmark claims, fake payment success, dead download buttons, urgency tactics, decorative AI sparkles, private client footage, or claims about a release, platform or feature before it ships.
 
-The remembered detail: The last ferry is a specific sample project, with a traveler on a wet quay and an approaching ferry at blue hour. Visitors see the scene and the real editor that holds its image, titles and project edits. The secondary Afterlight illustration remains available to explain independent layers.
+The remembered detail: After the Tide is a specific sample project, with a traveler on a wet quay and an approaching ferry at blue hour. Visitors see the scene and the real editor that holds its image, titles and project edits. The secondary Afterlight illustration remains available to explain independent layers.
 
 Good means: A visitor can explain Arya's purpose, find the real release state and understand that their agent subscription is separate from the editor.
 
@@ -85,7 +85,7 @@ Agent subscriptions and usage remain separate. A contribution to Arya does not i
 
 ## Release honesty
 
-Arya 1.0 for Mac is public: a free, signed and notarized DMG on GitHub Releases, and the source is public under the MIT license. iPad and iPhone builds are not on the App Store yet. Public Figma sign-in hosting remains deferred. The hosted browser editor leaves out the assistant, transcription, Figma and interchange, and pages that link to it must say so.
+Arya for Mac is public: a free, signed and notarized DMG on GitHub Releases, and the source is public under the MIT license. Arya for iPhone and iPad is on the App Store. `site/config.json` holds the version each page states, and the release owner changes it when a version is live. A capture of a newer build than the public one names its build in the caption. Public Figma sign-in hosting remains deferred. The hosted browser editor leaves out the assistant, transcription, Figma and interchange, and pages that link to it must say so.
 
 The site should be visually complete while displaying these limits. Unconfigured release, payment, contact and repository destinations must produce an explicit explanation instead of a broken link. A website build does not establish product release readiness.
 
@@ -106,19 +106,22 @@ The system should still be recognizable when the home-page headline is absent. U
 - `mark.svg` is the color mark. `mark-mono.svg` and `mark-ink.svg` provide paper and ink versions.
 - `wordmark.svg` and `wordmark-ink.svg` are outlined logo lockups. Use the artwork rather than retyping the name in navigation, packaging or marketing.
 - `icon.svg` and `icon.png` are the app-icon source, with a 1024-pixel raster export. Native catalogs derive from this artwork; their build and installed-app checks belong to the application acceptance record.
-- `social.svg` and `social.png` provide a 1200 by 630 composition. Text is outlined, including the Newsreader accent. A public domain must be configured before social metadata can use its canonical URL.
+- `link-preview.png` is the 1200 by 630 image that link previews show. It sets the brand line beside a real capture of the Mac Color inspector, so a shared link shows the product. `link-preview.html` in this folder is its source and holds the rebuild command. A public domain must be configured before social metadata can use its canonical URL.
+- `social.svg` and `social.png` provide the earlier 1200 by 630 brand composition. Text is outlined, including the Newsreader accent. They stay published so cached previews still resolve.
 - `installer.svg` and `installer.png` provide packaging artwork. The artwork says the release is pending. It is not an installer or evidence of signing.
 - `identity-board.svg` and `identity-board.png` collect the mark, wordmark, app icon, social composition and typography in one review sheet.
 
-`site/scripts/generate-brand.py` builds the outlined SVG assets on macOS through `outline-type.swift` and CoreText. It uses the bundled licensed fonts. Raster files are exports of those SVGs. The ordinary website build has no Python, Swift or image-library dependency.
+`site/scripts/generate-brand.py` builds the outlined SVG assets on macOS through `outline-type.swift` and CoreText. It uses the bundled licensed fonts. Raster files are exports of those SVGs, except `link-preview.png`. The ordinary website build has no Python, Swift or image-library dependency.
+
+Store screenshots and marketing images follow `launch-campaign.md`. Device-specific gaps in the apps and in their marketing are listed in `device-ux-audit.md`.
 
 ## Website composition
 
-The first screen introduces Arya and presents a large actual development-build capture. A workspace gallery switches among the captures that have been inspected. Do not invent a capture or leave a broken image when a workspace has not been documented.
+The first screen introduces Arya beside three native captures: Edit on iPhone, Color on iPad and Color on Mac. Its caption names the build, the month and the sample projects, says that the picture in After the Tide is AI-generated, and says that the Mac screens of that project come from a Mac App Store build that is not public. Further down, a workspace gallery switches among the browser editor captures that have been inspected. Do not invent a capture or leave a broken image when a workspace has not been documented.
 
-The last ferry is original generated demo imagery. The site labels that source. Native titles, motion and cuts in the actual sample project remain separate editable elements. The site distinguishes the scene image from the editor captures and does not present generated imagery as camera footage.
+After the Tide is the cinematic sample project. Its still picture is original AI-generated demo imagery, and the site says so beside every image and clip that shows it. The title, subtitle, rule and camera move in the sample project remain separate editable layers. The site does not present generated imagery as camera footage.
 
-The next sections explain editing, motion, color and audio through the same project. Each workspace image needs a specific caption that states what is visible. The agent section explains connected accounts and project operations. It must not fabricate a successful prompt transcript.
+The next section follows the six pages of the app: Media, Edit, Motion, Color, Audio and Deliver. A chapter shows a native capture where one exists and a browser editor capture, labeled as such, where it does not. Each image needs a specific caption that states what is visible. Deliver plays the clip that the iPhone app exported. The agent section explains connected accounts and project operations. It must not fabricate a successful prompt transcript.
 
 The Afterlight artwork appears as an optional secondary layer study. Title selection reveals Position Y. Its action moves the title 40 pixels. Motion selection reveals rotation and rotates the orbital paths 30 degrees. Scenery selection separates the composition. Every action has a text receipt and restoration. The phone view keeps the selected property visible and places a dark backing beneath the title for contrast.
 

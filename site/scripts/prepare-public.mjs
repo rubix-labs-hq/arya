@@ -31,7 +31,7 @@ export async function preparePublicOutput({ repoRoot = defaultRoot, outputRoot =
   const pages = JSON.parse(await confinedRead(root, 'site/public-files.json'))
   if (!Array.isArray(pages) || !pages.length) throw Error('Website allowlist is empty')
   for (const name of pages) {
-    if (!relative(name) || !(/^(?:index|404)\.html$/.test(name) || /^(?:download|install|help|support|privacy|project)\/index\.html$/.test(name) || ['config.json', 'robots.txt', 'llms.txt', 'llms-full.txt'].includes(name) || /^assets\/[A-Za-z0-9._/-]+\.(?:mjs|css|svg|png|jpg|webp|ttf|woff2?|json|txt)$/.test(name))) throw Error(`Unexpected website file: ${name}`)
+    if (!relative(name) || !(/^(?:index|404)\.html$/.test(name) || /^(?:download|install|help|support|privacy|project)\/index\.html$/.test(name) || ['config.json', 'robots.txt', 'llms.txt', 'llms-full.txt'].includes(name) || /^assets\/[A-Za-z0-9._/-]+\.(?:mjs|css|svg|png|jpg|webp|mp4|ttf|woff2?|json|txt)$/.test(name))) throw Error(`Unexpected website file: ${name}`)
     await add(`site/${name}`, name)
   }
   const indexing = JSON.parse(files.get('config.json')?.toString('utf8') ?? '{}').indexing === true
@@ -56,7 +56,7 @@ export async function preparePublicOutput({ repoRoot = defaultRoot, outputRoot =
     if (!/\.(?:html|css)$/.test(target)) continue
     const source = bytes.toString('utf8')
     const assets = target.endsWith('.html')
-      ? [...source.matchAll(/<(?:script|link|img|source)\b[^>]*?\b(?:src|href|srcset)=["']([^"']+)["']/gi)].map(match => match[1])
+      ? [...source.matchAll(/<(?:script|link|img|source)\b[^>]*?\b(?:src|href|srcset)=["']([^"']+)["']/gi), ...source.matchAll(/<video\b[^>]*?\bposter=["']([^"']+)["']/gi)].map(match => match[1])
       : [...source.matchAll(/url\(\s*["']?([^"')\s]+)["']?\s*\)/gi)].map(match => match[1])
     for (const asset of assets) {
       if (/^(?:data:|https?:|blob:|#)/.test(asset)) continue

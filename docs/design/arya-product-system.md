@@ -66,7 +66,8 @@ The cut A is the primary small symbol. It has two ivory cuts and a separate ambe
 | `wordmark-ink.svg` | Light support or documentation surfaces |
 | `icon.svg`, `icon.png` | App-icon source and 1024-pixel concept export |
 | `installer.svg`, `installer.png` | Packaging artwork, currently labeled release pending |
-| `social.svg`, `social.png` | Public sharing artwork after canonical-site configuration |
+| `link-preview.png` | Link preview image after canonical-site configuration: the brand line beside a Mac Color inspector capture |
+| `social.svg`, `social.png` | Earlier sharing artwork, kept published for cached previews |
 | `identity-board.svg`, `identity-board.png` | Visual review of the complete system |
 
 Use the full wordmark where the product name matters. Inside the working editor, use a 20 to 24-pixel cut A in a 40-pixel desktop control or a 44-point touch control. The welcome screen can use a 180 to 230-pixel-wide wordmark. Give the mark clear space equal to the crossbar height.

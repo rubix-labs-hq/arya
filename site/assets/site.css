@@ -1,6 +1,6 @@
 @font-face{font-family:Manrope;src:url('./fonts/manrope-latin.woff2') format('woff2');font-weight:200 800;font-display:swap}
 @font-face{font-family:Newsreader;src:url('./fonts/newsreader-italic-latin.woff2') format('woff2');font-weight:400;font-style:italic;font-display:swap}
-:root{--ink:#151615;--raised:#20211f;--studio:#20271e;--paper:#f2f0e9;--muted:#b5b8ae;--amber:#efbc68;--amber-ink:#6b4a16;--sage:#9ba98d;--stroke:#44473f;--paper-stroke:#cfd2c6;--paper-muted:#586050;--font:Manrope,'Helvetica Neue',Arial,sans-serif;--display:Newsreader,Georgia,serif;--mono:ui-monospace,'SF Mono',Menlo,monospace;--gutter:clamp(20px,4.5vw,64px);--measure:1280px;--ease:cubic-bezier(.2,0,0,1)}
+:root{--ink:#151615;--raised:#20211f;--studio:#20271e;--paper:#f2f0e9;--muted:#b5b8ae;--amber:#efbc68;--amber-ink:#6b4a16;--sage:#9ba98d;--stroke:#44473f;--paper-stroke:#cfd2c6;--paper-muted:#586050;--paper-text:#3f453a;--soft:#cfd0c7;--line:#2e312b;--font:Manrope,'Helvetica Neue',Arial,sans-serif;--display:Newsreader,Georgia,serif;--mono:ui-monospace,'SF Mono',Menlo,monospace;--gutter:clamp(20px,4.5vw,64px);--measure:1280px;--ease:cubic-bezier(.2,0,0,1)}
 
 /* Base */
 *{box-sizing:border-box}
@@ -48,91 +48,166 @@ code{font-family:var(--mono);font-size:.88em;background:#ffffff14;padding:.1em .
 .eyebrow span{padding:4px 12px;border:1px solid #9ba98d59;border-radius:99px;background:#9ba98d12;font-weight:500;color:var(--paper)}
 .lead{font-size:clamp(18px,1.5vw,21px);line-height:1.5;color:#d6d7ce;max-width:42em}
 
-/* Home hero: centered single-column lead with large product capture above the fold */
-.hero{padding:clamp(24px,3.2vw,44px) 0 clamp(48px,6vw,84px);background:radial-gradient(ellipse 80% 45% at 50% 0%,#262d2280,transparent 70%)}
-.hero-copy{display:flex;flex-direction:column;align-items:center;text-align:center;max-width:860px;margin-inline:auto}
-.hero-copy .eyebrow{justify-content:center;margin-bottom:12px}
-.hero h1{font-size:clamp(36px,4.4vw,62px);letter-spacing:-.035em;line-height:1.05;margin-bottom:12px;max-width:17ch;margin-inline:auto;text-wrap:balance}
-.hero h1 em{display:block;margin-top:.12em}
-.hero .lead{max-width:38em;margin:0 auto 20px;color:#cfd0c7}
+/* Home hero: the headline beside the availability ledger, then the app on each device */
+.hero{padding:clamp(24px,3vw,44px) 0 clamp(44px,5.5vw,80px)}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,520px);gap:28px clamp(32px,5vw,80px);align-items:end}
+.hero h1{font-size:clamp(38px,4.9vw,70px);letter-spacing:-.04em;line-height:1.02}
+.hero h1 em{display:block;margin-top:.16em;font-size:1.07em;letter-spacing:-.015em}
+.hero .lead{margin:0 0 22px;color:var(--soft)}
 .actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px}
-.hero-actions{justify-content:center;align-items:flex-start;gap:16px 24px}
-.action-item{display:flex;flex-direction:column;align-items:center;gap:6px}
-.action-note{font-size:13px;line-height:1.35;color:var(--muted)}
-.workspace{margin-top:clamp(22px,2.8vw,34px)}
-.workspace-tabs{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-bottom:12px}
-.workspace-tab{display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border:1px solid #353830;border-radius:99px;background:#1b1c1a;font-size:14.5px;font-weight:600;color:var(--muted);text-decoration:none;transition:color .15s var(--ease),background .15s var(--ease),border-color .15s var(--ease)}
-.workspace-tab:hover{color:var(--paper);border-color:#6a6e62}
-.workspace-tab[aria-current=true]{color:var(--ink);background:var(--paper);border-color:var(--paper)}
-.workspace-frame{border:1px solid #383b33;border-radius:12px;overflow:hidden;background:#111311;box-shadow:0 28px 90px #0009,0 0 0 1px #ffffff08}
-.workspace-frame img{width:100%;aspect-ratio:8/5;object-fit:cover;background:#111311}
-.workspace-meta{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-top:12px}
-.workspace-caption{margin:0;font-size:14.5px;color:#d6d7ce;max-width:54em}
-.workspace-full{flex:none;display:inline-flex;align-items:center;min-height:44px;margin-top:-10px;font-size:14px;font-weight:600;color:var(--muted)}
-.credit{margin:4px 0 0;font-size:13px;color:var(--muted)}
+.ledger{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--stroke)}
+.ledger-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px;min-height:76px;padding:13px 0;border-bottom:1px solid var(--stroke)}
+.ledger-what{flex:1 1 210px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.ledger-what strong{font-size:16px;font-weight:600}
+.ledger-what span{font-size:14px;line-height:1.4;color:var(--muted)}
+.ledger .button{flex:0 0 262px;padding-inline:14px}
+.ledger-ios .button{background:var(--paper)}
+.ledger-ios .button:hover{background:#fff}
+
+/* The app on each device: real captures as offset layers, back to front */
+/* The stage is as tall as the Mac window. iPad and iPhone sit over the Mac's empty Media panel and end on the line where its viewer ends. */
+.family{margin:clamp(40px,3.8vw,56px) 0 0}
+.family-stage{position:relative;aspect-ratio:2/1;margin-bottom:clamp(30px,3vw,40px)}
+.family-stage:before,.family-stage:after{content:'';position:absolute;width:18px;height:18px;border:0 solid var(--amber);opacity:.75}
+.family-stage:before{left:0;top:0;border-width:1px 0 0 1px}
+.family-stage:after{left:0;bottom:0;border-width:0 0 1px 1px}
+.family-layer{position:absolute}
+.family-layer picture,.family-layer img{display:block;width:100%;height:auto}
+.family-layer img{box-shadow:0 0 0 1px #ffffff24,0 28px 70px #000000b3;background:#111311}
+.family-mac{right:0;top:0;width:80%}
+.family-mac img{border-radius:1%/1.6%}
+.family-ipad{left:8%;top:10%;width:24.5%;z-index:1}
+.family-ipad img{border-radius:2%/1.5%}
+.family-iphone{left:0;top:17.9%;width:13.2%;z-index:2}
+.family-iphone img{border-radius:14%/6.44%}
+.family-tag{position:absolute;left:2px;bottom:100%;display:inline-flex;align-items:center;min-height:30px;font-size:13px;font-weight:600;line-height:1.2;color:var(--muted);text-decoration:none;white-space:nowrap}
+.family-tag:hover{color:var(--paper);text-decoration:underline}
+.family-mac .family-tag{left:auto;right:2px}
+/* The Mac window starts 48.98% of the way across the iPad layer. On a narrow stage the iPad's tag (about 7.2em wide) slides left so it ends 10px short of that edge. */
+.family-ipad .family-tag{left:min(2px,calc(48.98% - 7.2em - 10px))}
+.family-iphone .family-tag{bottom:auto;top:calc(100% + 2px)}
+/* Touch screens that show the layered stage: each tag gets a 44px tap height and its text stays where it was */
+@media(pointer:coarse) and (min-width:761px){
+  .family-tag{min-height:44px;align-items:flex-end;padding-bottom:7px}
+  .family-iphone .family-tag{align-items:flex-start;padding:7px 0 0}
+}
+.family-solo .family-stage{aspect-ratio:auto;margin-bottom:16px}
+.family-solo .family-stage:before,.family-solo .family-stage:after{display:none}
+.family-solo .family-layer{position:relative;width:100%}
+.family-solo .family-tag{position:static;display:inline-flex;align-items:center;min-height:44px}
+.credit{margin:4px 0 0;font-size:13px;color:var(--muted);max-width:74em}
 .credit a{color:var(--muted)}
 
-/* Home sections: consistent rhythm, no double rule+huge padding */
-.section-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px 56px;align-items:end;margin-bottom:32px}
-.section-head h2,.craft-card h2,.assistant h2,.figma-card h2,.faq-section h2,.closing h2{font-size:clamp(28px,3.3vw,44px)}
-.section-head p{margin:0;color:#cfd0c7}
-.suite{padding:clamp(44px,5.5vw,76px) 0}
-.suite-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.suite-list li{padding:24px;border:1px solid #2c2f29;border-radius:12px;background:#1a1b19;transition:border-color .2s var(--ease),transform .2s var(--ease)}
-.suite-list li:hover{border-color:#44483f;transform:translateY(-2px)}
-.suite-card-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
-.suite-list h3{font-size:20px;margin:0}
-.edition-tag{padding:3px 9px;border-radius:99px;background:#262924;border:1px solid #3c4037;font-size:12px;font-weight:600;color:var(--sage);white-space:nowrap}
-.suite-list p{font-size:15.5px;color:#cfd0c7;margin:0}
+/* Home sections share one head: a large heading with its supporting line beside it */
+.section-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px 56px;align-items:end;margin-bottom:clamp(28px,3.6vw,48px)}
+.section-head h2,.faq-section h2{font-size:clamp(30px,3.7vw,52px);letter-spacing:-.035em}
+.section-head p{margin:0;color:var(--soft);max-width:36em}
+.where{margin:0 0 10px;font-size:13.5px;font-weight:600;color:var(--sage)}
+.chapter-copy p{color:var(--soft);font-size:16.5px}
+.chapter-copy h2{margin-bottom:14px}
 
-/* Assistant spotlight */
-.assistant{padding:clamp(24px,3.5vw,48px) 0}
-.assistant-card{padding:clamp(28px,4.5vw,56px);border-radius:16px;border:1px solid #333c30;background:linear-gradient(165deg,#21281f 0%,#181c17 100%);box-shadow:0 24px 64px #0006}
-.assistant-grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,4.5fr);gap:clamp(28px,5vw,72px);align-items:center}
+/* Six pages: a rail that mirrors the app's tabs beside one chapter per page */
+.pages{padding:clamp(56px,7vw,108px) 0 clamp(44px,5.5vw,80px);border-top:1px solid var(--line)}
+.pages-grid{display:grid;grid-template-columns:148px minmax(0,1fr);gap:clamp(28px,5vw,76px);align-items:start}
+.page-rail{position:sticky;top:96px;display:flex;flex-direction:column;border-top:1px solid var(--stroke)}
+.page-rail a{display:flex;align-items:center;min-height:44px;border-bottom:1px solid var(--line);font-size:15px;font-weight:600;color:var(--muted);text-decoration:none;transition:color .15s var(--ease)}
+.page-rail a:hover{color:var(--paper)}
+.page-rail a[aria-current=true]{color:var(--amber)}
+.chapter{display:grid;grid-template-columns:minmax(0,1fr);gap:clamp(24px,3.2vw,44px) clamp(28px,5vw,76px);padding:clamp(28px,3.8vw,52px) 0 clamp(40px,5vw,72px);border-top:1px solid var(--stroke)}
+.chapter:first-child{padding-top:0;border-top:0}
+.chapter:last-child{padding-bottom:0}
+.chapter-head{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:14px clamp(24px,4vw,64px);align-items:end}
+.chapter h3{font-size:clamp(23px,2.4vw,32px);line-height:1.12}
+.chapter h3 em{display:block;margin-bottom:.12em;font-family:var(--display);font-style:italic;font-weight:400;font-size:clamp(46px,5.4vw,78px);letter-spacing:-.02em;line-height:1}
+.chapter-head p{margin:0;font-size:16.5px;color:var(--soft);max-width:35em}
+.chapter-head p a{color:var(--paper)}
+/* plate: copy beside a native panel. duo adds a browser figure under the copy. side: copy beside a browser figure. */
+.chapter-plate,.chapter-duo{grid-template-columns:minmax(0,1fr) auto}
+.chapter-duo{grid-template-rows:auto 1fr}
+.chapter-side{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-items:end}
+.chapter-plate .chapter-head,.chapter-duo .chapter-head,.chapter-side .chapter-head{grid-template-columns:minmax(0,1fr);gap:18px}
+.chapter-plate .chapter-head{align-content:space-between}
+.chapter-plate .chapter-head p,.chapter-duo .chapter-head p{max-width:31em}
+.chapter-duo .plate{grid-column:2;grid-row:1/span 2}
+.chapter-duo .chapter-figure{grid-column:1;grid-row:2;align-self:end}
+.plate,.chapter-figure{margin:0}
+.plate img{display:block;width:100%;height:auto}
+.plate-frame{overflow:hidden;border-radius:10px;background:#111311;box-shadow:0 24px 60px #00000080}
+.plate figcaption,.chapter-figure figcaption{margin-top:12px;font-size:13.5px;line-height:1.45;color:var(--muted)}
+.plate-label{margin-right:4px;font-weight:600;color:var(--paper)}
+.plate-mac-color-inspector,.plate-mac-motion-inspector{width:401px;max-width:100%}
+.plate-mac-media-panel{display:grid;grid-template-columns:170px minmax(0,14em);gap:20px;align-items:end}
+.plate-mac-media-panel .plate-frame{border-radius:10px 10px 0 0}
+.plate-mac-media-panel figcaption{margin:0}
+.plate-iphone-deliver{width:302px;max-width:100%}
+.figure-clip video{display:block;width:100%;height:auto;border-radius:6px;background:#111311;box-shadow:0 0 0 1px #ffffff1f}
+.figure-link{display:block;overflow:hidden;border-radius:6px;background:#111311;box-shadow:0 0 0 1px #ffffff1f;transition:box-shadow .15s var(--ease)}
+.figure-link:hover{box-shadow:0 0 0 1px #ffffff52}
+.figure-link img{background:#111311}
+.pages-note{margin-top:clamp(28px,3.6vw,48px);padding-top:16px;border-top:1px solid var(--line)}
+
+/* A film in the timeline: the browser editor gallery on ivory */
+.film{padding:clamp(56px,7vw,108px) 0;background:var(--paper);color:var(--ink)}
+.film :focus-visible{outline-color:var(--amber-ink)}
+.film .section-head p{color:var(--paper-text)}
+.workspace-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.workspace-tab{display:inline-flex;align-items:center;min-height:44px;padding:0 18px;border:1px solid #b4b7a9;border-radius:99px;font-size:14.5px;font-weight:600;color:var(--paper-text);text-decoration:none;transition:color .15s var(--ease),background .15s var(--ease),border-color .15s var(--ease)}
+.workspace-tab:hover{color:var(--ink);border-color:var(--ink)}
+.workspace-tab[aria-current=true]{color:var(--paper);background:var(--ink);border-color:var(--ink)}
+.workspace-frame{overflow:hidden;border-radius:6px;background:#111311;box-shadow:0 0 0 1px var(--ink),0 30px 70px #15161547}
+.workspace-frame img{width:100%;aspect-ratio:8/5;object-fit:cover;background:#111311}
+.workspace-meta{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-top:14px}
+.workspace-caption{margin:0;font-size:15px;color:var(--paper-text);max-width:54em}
+.workspace-full{flex:none;display:inline-flex;align-items:center;min-height:44px;margin-top:-10px;font-size:14px;font-weight:600;color:var(--ink)}
+.film .credit,.film .credit a{color:var(--paper-muted)}
+
+/* Shorts and Figma: two tools outside the six pages */
+.extras{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:clamp(32px,5vw,80px);padding:clamp(56px,7vw,108px) 0}
+.extra h2{font-size:clamp(24px,2.5vw,34px)}
+.extra-shorts{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:clamp(20px,3vw,44px);align-items:end}
+.extra-shorts .chapter-copy p:last-child{margin-bottom:0}
+.figure-shorts .figure-link{border-radius:14px}
+.extra-figma{padding-left:clamp(24px,4vw,60px);border-left:1px solid var(--stroke)}
+.figma-limits{list-style:none;margin:20px 0 0;padding:0;border-top:1px solid var(--stroke)}
+.figma-limits li{padding:12px 0;border-bottom:1px solid var(--line);font-size:15px;color:var(--soft)}
+.figma-limits li:last-child{border-bottom:0;padding-bottom:0}
+.figma-limits strong{display:block;margin-bottom:2px;font-size:15.5px;color:var(--paper)}
+
+/* Assistant: a studio green band */
+.assistant{padding:clamp(56px,7vw,108px) 0;background:var(--studio);border-block:1px solid #303a2c}
+.assistant-grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,4.5fr);gap:clamp(28px,5vw,80px);align-items:center}
+.assistant h2{font-size:clamp(30px,3.7vw,52px);letter-spacing:-.035em}
+.assistant .chapter-copy>p{max-width:36em}
 .figure-assistant{width:min(100%,390px);justify-self:end}
-.points{list-style:none;padding:0;margin:20px 0}
-.points li{padding:12px 0;border-top:1px solid #ffffff1a;color:#d6d7ce;font-size:16px}
+.points{list-style:none;padding:0;margin:22px 0;max-width:40em}
+.points li{padding:12px 0;border-top:1px solid #ffffff1f;color:#d6d7ce;font-size:16px}
 .points strong{color:var(--paper);margin-right:6px}
 
-/* Craft 2x2 bento grid */
-.craft-section{padding:clamp(36px,4.5vw,64px) 0}
-.craft-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
-.craft-card{display:flex;flex-direction:column;justify-content:space-between;gap:24px;padding:clamp(24px,3.2vw,36px);border:1px solid #2d302a;border-radius:14px;background:var(--raised);transition:border-color .2s var(--ease)}
-.craft-card:hover{border-color:#464a40}
-.craft-card h2{font-size:clamp(24px,2.5vw,34px);margin-bottom:12px}
-.craft-card .chapter-copy p:last-child{margin-bottom:0}
-.chapter-copy p{color:#d6d7ce;font-size:16px}
-.chapter-copy .kicker{margin-bottom:10px}
-.chapter-figure{margin:0}
-.figure-link{display:block;border:1px solid #34372f;border-radius:10px;overflow:hidden;background:#111311}
-.figure-link img{background:#111311;transition:transform .35s var(--ease)}
-.figure-link:hover img{transform:scale(1.015)}
-.chapter-figure figcaption{margin-top:10px;font-size:13.5px;color:var(--muted)}
-.craft-card-shorts .figure-shorts{align-self:center;width:min(100%,260px)}
-.figure-shorts .figure-link{border-radius:18px;border:5px solid #2b2d29}
-
-/* Figma section */
-.figma-section{padding:clamp(20px,3vw,40px) 0 clamp(36px,4.5vw,64px)}
-.figma-card{padding:clamp(24px,3.5vw,40px);border:1px solid #2d302a;border-radius:14px;background:#1b1c1a}
-.figma-card .chapter-copy{max-width:46em;margin-bottom:24px}
-.figma-card .chapter-copy h2{margin-bottom:12px}
-.figma-card .chapter-copy p:last-child{margin-bottom:0}
-.figma-limits{list-style:none;margin:0;padding:20px 0 0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;border-top:1px solid var(--stroke)}
-.figma-limits li{color:#cfd0c7;font-size:15px}
-.figma-limits strong{display:block;color:var(--paper);font-size:16px;margin-bottom:4px}
+/* Platforms: one column per place Arya runs, separated by rules */
+.platforms{padding:clamp(56px,7vw,108px) 0 clamp(28px,3.6vw,48px)}
+.platform-list{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);border-top:1px solid var(--stroke)}
+.platform{display:flex;flex-direction:column;padding:24px clamp(20px,2.8vw,40px) 4px;border-left:1px solid var(--line)}
+.platform:first-child{padding-left:0;border-left:0}
+.platform:last-child{padding-right:0}
+.platform h3{font-size:23px;margin-bottom:8px}
+.platform-state{margin:0 0 14px;font-size:15.5px;color:var(--paper)}
+.platform ul{list-style:none;margin:0 0 8px;padding:0}
+.platform li{padding:10px 0;border-top:1px solid var(--line);font-size:15px;color:var(--soft)}
+.platform .text-link{margin-top:auto}
 
 /* Comparison tables: What works where & Switching */
-.editions-section,.switching{padding:clamp(40px,5vw,72px) 0;border-top:1px solid #262825}
-.table-wrap{overflow-x:auto;border:1px solid #2e312b;border-radius:12px;background:#1a1b19;padding:4px 20px}
+.editions-section,.switching{padding:clamp(40px,5vw,72px) 0}
+.table-wrap{overflow-x:auto;border-top:1px solid var(--stroke);border-bottom:1px solid var(--stroke)}
 table{width:100%;border-collapse:collapse;font-size:15.5px}
-th,td{text-align:left;vertical-align:top;padding:16px 20px 16px 0;border-bottom:1px solid #2e312b}
+th,td{text-align:left;vertical-align:top;padding:16px 24px 16px 0;border-bottom:1px solid var(--line)}
+th:last-child,td:last-child{padding-right:0}
 tr:last-child th,tr:last-child td{border-bottom:0}
 thead th{font-size:13.5px;font-weight:600;color:var(--sage);padding-top:14px;padding-bottom:14px}
 tbody th{font-weight:600;white-space:nowrap;color:var(--paper)}
-td{color:#cfd0c7}
+td{color:var(--soft)}
 
-/* FAQ and single closing CTA */
-.faq-section{padding:clamp(40px,5vw,72px) 0 36px;border-top:1px solid #262825}
+/* FAQ and the closing call to action */
+.faq-section{padding:clamp(40px,5vw,72px) 0 36px}
 .faq-section h2{margin-bottom:24px}
 .faq-list{border-top:1px solid var(--stroke)}
 .faq-list details{border-bottom:1px solid var(--stroke)}
@@ -140,11 +215,13 @@ td{color:#cfd0c7}
 .faq-list summary::-webkit-details-marker{display:none}
 .faq-list summary:after{content:'+';flex:none;font-size:24px;font-weight:400;color:var(--muted)}
 .faq-list details[open] summary:after{content:'−'}
-.faq-list details p{margin:0 0 20px;max-width:46em;color:#cfd0c7}
-.closing{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:24px;padding:clamp(32px,4.5vw,52px);margin:16px 0 clamp(56px,7vw,88px);border:1px solid #353b31;border-radius:16px;background:linear-gradient(160deg,#20271e 0%,#191b18 100%)}
-.closing-copy h2{margin-bottom:8px}
+.faq-list details p{margin:0 0 20px;max-width:46em;color:var(--soft)}
+.closing{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px 48px;align-items:end;padding-block:clamp(40px,5.5vw,76px) clamp(56px,7vw,96px)}
+.closing h2{margin-bottom:14px;font-size:clamp(34px,4.6vw,64px);letter-spacing:-.04em}
 .closing-meta{margin:0;font-size:15px;color:var(--muted)}
-.closing-actions{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center}
+.closing-actions{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:center;justify-content:flex-end}
+.closing-support{grid-column:1/-1;margin:4px 0 0;padding-top:18px;border-top:1px solid var(--line);font-size:14.5px;color:var(--muted)}
+.closing-support a{color:var(--paper)}
 
 /* Afterlight layer study: secondary brand illustration, kept collapsed */
 .layer-study-section{padding-bottom:24px}
@@ -284,20 +361,20 @@ td{color:#cfd0c7}
 .disclosure{font-size:14px;color:var(--muted)!important;margin-top:12px}
 .contribution .text-link{min-height:44px;font-size:14px;color:var(--paper);text-decoration-color:#f2f0e980}
 
-/* Subtle CSS-only motion when user has not requested reduced motion */
+/* One page-load moment: the device layers settle back to front. Nothing else moves by itself. */
 @media(prefers-reduced-motion:no-preference){
-  @keyframes hero-fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes workspace-rise{from{opacity:0;transform:translateY(18px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
-  @keyframes card-reveal{from{opacity:.35;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-  .hero-copy{animation:hero-fade .5s var(--ease) both}
-  .workspace{animation:workspace-rise .65s .08s var(--ease) both}
-  @supports(animation-timeline:view()){
-    .craft-card,.assistant-card,.figma-card,.editions-section .table-wrap,.switching .table-wrap{
-      animation:card-reveal linear both;
-      animation-timeline:view();
-      animation-range:entry 4% cover 22%;
-    }
-  }
+  @keyframes layer-in{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:none}}
+  .family-layer{animation:layer-in .7s var(--ease) both}
+  .family-ipad{animation-delay:.12s}
+  .family-iphone{animation-delay:.22s}
+}
+
+/* The hero and the page rail go to one column before their side columns get tight */
+@media(max-width:1100px){
+  .hero-grid,.pages-grid{grid-template-columns:minmax(0,1fr)}
+  .hero-grid{gap:24px}
+  .page-rail{position:static;flex-direction:row;border-bottom:1px solid var(--stroke)}
+  .page-rail a{flex:1 1 0;justify-content:center;min-width:44px;border-bottom:0}
 }
 
 /* Navigation collapses before the links crowd the header */
@@ -310,9 +387,12 @@ td{color:#cfd0c7}
   .has-navigation .nav.is-open{display:flex}
   .nav a:not(.button){justify-content:flex-start;font-size:17px;padding:0 4px}
   .nav .button{margin:8px 0 0}
-  .suite-list,.craft-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .craft-grid{grid-template-columns:minmax(0,1fr)}
-  .figma-limits{grid-template-columns:minmax(0,1fr);gap:16px}
+  .chapter-plate,.chapter-duo,.chapter-side,.chapter-head,.extras,.closing{grid-template-columns:minmax(0,1fr)}
+  .chapter-duo{grid-template-rows:none}
+  .chapter-duo .plate,.chapter-duo .chapter-figure{grid-column:auto;grid-row:auto}
+  .chapter-head{align-items:start}
+  .extra-figma{padding:clamp(32px,5vw,48px) 0 0;border-left:0;border-top:1px solid var(--stroke)}
+  .closing-actions{justify-content:flex-start}
   .assistant-grid,.page-hero-grid,.support-layout,.section-head,.article-layout{grid-template-columns:minmax(0,1fr)}
   .figure-assistant{justify-self:start}
   .article-aside{position:static;flex-direction:row;flex-wrap:wrap;gap:0 16px}
@@ -321,27 +401,49 @@ td{color:#cfd0c7}
   .footer-grid{grid-template-columns:1fr 1fr}
   .footer-brand{grid-column:1/-1}
 }
+
+/* Phones and small tablets: the device layers become one row to swipe, each a readable detail */
+@media(max-width:760px){
+  .family-stage{aspect-ratio:auto;display:flex;align-items:flex-start;gap:14px;margin:0 calc(-1*var(--gutter)) 10px;padding:0 var(--gutter) 8px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:var(--gutter);-webkit-overflow-scrolling:touch}
+  .family-stage:before,.family-stage:after{display:none}
+  .family-layer,.family-solo .family-layer{position:static;flex:none;width:auto;scroll-snap-align:start;animation:none}
+  .family-layer img{width:auto;height:min(112vw,460px);border-radius:8px}
+  .family-iphone img{border-radius:22px}
+  .family-tag,.family-mac .family-tag,.family-iphone .family-tag{position:static;display:inline-flex;align-items:center;min-height:44px}
+  .platform-list{grid-auto-flow:row}
+  .platform,.platform:first-child,.platform:last-child{padding:22px 0 8px;border-left:0;border-top:1px solid var(--line)}
+  .platform:first-child{border-top:0}
+}
 @media(max-width:650px){
   body{font-size:16px}
   .header-inner{min-height:64px}
   .nav{top:64px}
   .brand img{width:88px;height:41px}
   .hero{padding-top:24px}
-  .hero-copy{align-items:flex-start;text-align:left}
-  .hero-copy .eyebrow,.hero-actions{justify-content:flex-start}
-  .action-item{align-items:flex-start;width:100%}
-  .action-item .button{width:100%}
+  .hero h1{font-size:clamp(34px,10.4vw,44px)}
+  /* A phone visitor's download comes first */
+  .ledger-ios{order:-1}
+  .ledger-ios .button{background:var(--amber)}
+  .ledger-ios .button:hover{background:#f6cf8b}
+  .ledger-mac:has(~.ledger-ios) .button{background:var(--paper)}
+  .ledger .button{flex:1 1 100%}
+  .closing-actions .closing-ios{order:-1;background:var(--amber);color:var(--ink);border-color:transparent}
+  .closing-actions .closing-ios:hover{background:#f6cf8b}
+  .closing-actions:has(.closing-ios) .button:not(.secondary){background:var(--paper)}
   .eyebrow{font-size:13px}
+  .plate-mac-media-panel{grid-template-columns:150px minmax(0,1fr);gap:16px}
   .workspace-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
   .workspace-tab{justify-content:center;padding:0 6px;font-size:14px}
-  .workspace-frame{border-radius:8px}
   .workspace-meta{flex-direction:column;gap:4px}
   .workspace-full{margin-top:0}
-  .credit a,.chapter-figure figcaption a,.article p a:not(.button):not(.text-link),.article li a:not(.button):not(.text-link){display:inline-flex;align-items:center;min-height:44px;min-width:44px;vertical-align:middle}
-  .suite-list{grid-template-columns:minmax(0,1fr);gap:12px}
-  .suite-list li{padding:18px}
+  .extra-shorts{grid-template-columns:minmax(0,1fr)}
+  .figure-shorts{width:min(64%,240px)}
+  .article p a:not(.button):not(.text-link),.article li a:not(.button):not(.text-link){display:inline-flex;align-items:center;min-height:44px;min-width:44px;vertical-align:middle}
+  /* Links in running text on the home page get a 44px touch area from padding, which leaves the line spacing alone */
+  .credit a,.chapter-figure figcaption a,.chapter-head p a,.closing-support a,.pages-note a{padding-block:13px}
   table{font-size:15px}
   tbody th{white-space:normal}
+  .editions-section .table-wrap,.switching .table-wrap{border-bottom:0}
   .editions-section thead,.switching thead{display:none}
   .editions-section table,.editions-section tbody,.editions-section tr,.editions-section th,.editions-section td,.switching table,.switching tbody,.switching tr,.switching th,.switching td{display:block}
   .editions-section tr,.switching tr{padding:16px 0;border-bottom:1px solid var(--stroke)}
@@ -358,10 +460,7 @@ td{color:#cfd0c7}
   .mobile-property strong{color:var(--amber)}
   .release-meta{grid-template-columns:minmax(0,1fr)}
   .footer-grid{grid-template-columns:minmax(0,1fr)}
-  .closing{padding:24px;margin-bottom:48px}
   .closing-actions,.closing-actions .button{width:100%}
   .page-vignette{display:none}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}}
-
-@media(max-width:650px){.hero-actions .action-ios{order:-1}}

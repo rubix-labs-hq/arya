@@ -6,6 +6,7 @@
   "assets/brand/identity-board.svg",
   "assets/brand/installer.png",
   "assets/brand/installer.svg",
+  "assets/brand/link-preview.png",
   "assets/brand/mark-ink.svg",
   "assets/brand/mark-mono.svg",
   "assets/brand/mark.svg",
@@ -43,5 +44,17 @@
   "support/index.html",
   "llms.txt",
   "llms-full.txt",
-  "help/index.html"
+  "help/index.html",
+  "assets/product/native.json",
+  "assets/product/native-mac-color.webp",
+  "assets/product/native-mac-edit.webp",
+  "assets/product/native-ipad-color.webp",
+  "assets/product/native-iphone-edit.webp",
+  "assets/product/native-mac-color-inspector.webp",
+  "assets/product/native-mac-motion-inspector.webp",
+  "assets/product/native-mac-media-panel.webp",
+  "assets/product/native-ipad-color-inspector.webp",
+  "assets/product/native-iphone-deliver.webp",
+  "assets/product/after-the-tide.mp4",
+  "assets/product/after-the-tide-poster.webp"
 ]
