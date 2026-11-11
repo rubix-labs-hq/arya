@@ -1686,11 +1686,12 @@ final class NativeEditorModel: ObservableObject {
         clearSource()
         pause(); renderTask?.cancel(); renderTask = nil; pendingFrame = nil; renderWorkerID = UUID(); renderGeneration = UUID(); rendering = false; frame = nil; metalFrame = nil; clearScopes(); displayedTime = nil; displayedPreviewID = nil; displayedVersion = nil; displayedRevision = nil; displayedComposition = nil; displayedFolder = nil; displayedGeneration = nil; scrubbing = false
         guard let renderer else { return }
-        let released = generation
+        // Each release sets a new projectRevision, so a later release (for example the scene going inactive) cancels this redraw.
+        let released = (generation, projectRevision)
         Task {
             await renderer.releaseCaches()
-            // Redraw only if nothing else has drawn or started a frame for the same project meanwhile.
-            if redraw, generation == released, self.renderer === renderer, metalFrame == nil, renderTask == nil { requestFrame() }
+            // Redraw only if nothing else has released, drawn or started a frame for the same project meanwhile.
+            if redraw, generation == released.0, projectRevision == released.1, self.renderer === renderer, metalFrame == nil, renderTask == nil { requestFrame() }
         }
     }
 

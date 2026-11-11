@@ -85,6 +85,20 @@ source += '''
         await settle()
         check(model.requests == 0, "no redraw after the project changed")
 
+        // The scene went inactive before the caches were released: its release cancels the redraw.
+        model = Model()
+        model.releasePreview(redraw: true)
+        model.releasePreview()
+        await settle()
+        check(model.requests == 0 && model.metalFrame == nil, "a later background release cancels the redraw")
+
+        // Two warnings while active: the later one redraws, once.
+        model = Model()
+        model.releasePreview(redraw: true)
+        model.releasePreview(redraw: true)
+        await settle()
+        check(model.requests == 1 && model.metalFrame != nil, "repeated warnings redraw once")
+
         // A frame was drawn meanwhile, for example by an edit: no second request.
         model = Model()
         model.releasePreview(redraw: true)
