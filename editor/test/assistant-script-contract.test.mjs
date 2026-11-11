@@ -24,7 +24,7 @@ function fixture() {
     status: async () => { calls.push(['status']); return { configured: true } }, assertRun: () => {},
     companion: async () => { calls.push(['companion']); return owner }, catalogHost: { resolve: async (settings, request) => { calls.push(['resolve', request]); return route } },
     settings: { provider: 'codex', model: 'exact', mode: 'manual' }, sharingScopeForRoute, normalizeSharingEnvelope, sameSharingScope,
-    approvedScope: () => true, credentialDigest: () => 'fixture-digest', root: '/owned/project',
+    approvedScope: () => true, credentialBinding: () => ({ credentialDigest: 'fixture-digest', chatgptIdentity: null }), root: '/owned/project',
     request: async (...value) => { requests.push(value); return {} }, drive: async () => {}, cancelRemote: async () => {}, cancelJobs: async () => {}, state,
     redact: value => value,
   }

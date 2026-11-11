@@ -241,6 +241,7 @@ test('tokens refresh near expiry once across two editor processes, and rotation 
   const { fake, account, make } = await setup(t, { clock })
   await signIn(account)
   const first = await account.accessToken()
+  const approvedIdentity = account.sharingIdentity()
   assert.equal(fake.refreshGrants, 0)
   clock.now += 56 * 60 * 1000
   const other = make()
@@ -248,6 +249,9 @@ test('tokens refresh near expiry once across two editor processes, and rotation 
   assert.equal(fake.refreshGrants, 1)
   assert.equal(a.accessToken, b.accessToken)
   assert.notEqual(a.accessToken, first.accessToken)
+  assert.equal(a.identity, approvedIdentity)
+  assert.equal(b.identity, approvedIdentity)
+  assert.equal(other.sharingIdentity(), approvedIdentity)
   assert.deepEqual(tokenRequests(fake).at(-1).keys, ['client_id', 'grant_type', 'refresh_token', 'resource'])
   clock.now += 56 * 60 * 1000
   await account.accessToken()

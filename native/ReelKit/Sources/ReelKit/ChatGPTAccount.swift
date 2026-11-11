@@ -74,6 +74,7 @@ public struct ChatGPTStatus: Sendable, Equatable {
     public var storage: Storage = .unchecked
     public var signedIn = false
     public var planUsage = false
+    public var signOutCleanupRequired = false
     public var email = ""
     public var active: String?
     public var accounts: [Account] = []
@@ -87,7 +88,7 @@ public struct ChatGPTStatus: Sendable, Equatable {
     public init() {}
 
     public var json: JSON {
-        .object([("supported", true), ("storage", .string(storage.rawValue)), ("signedIn", .bool(signedIn)), ("planUsage", .bool(planUsage)),
+        .object([("supported", true), ("storage", .string(storage.rawValue)), ("signedIn", .bool(signedIn)), ("planUsage", .bool(planUsage)), ("signOutCleanupRequired", .bool(signOutCleanupRequired)),
                  ("email", .string(email)), ("active", active.map(JSON.string) ?? .null),
                  ("accounts", .array(accounts.map { .object([("id", .string($0.id)), ("email", .string($0.email)), ("signedIn", .bool($0.signedIn)), ("planUsage", .bool($0.planUsage)), ("active", .bool($0.active))]) })),
                  ("welcome", .bool(welcome)), ("usageURL", .string(ChatGPTAccountService.usageURL.absoluteString)),
@@ -167,6 +168,8 @@ public actor ChatGPTAccountService {
     private var refreshing: Task<ChatGPTCredential, Error>?
     private var generation = 0
     private var signingOut: Set<String> = []
+    private struct PendingSignOut { var refreshToken: String?; var revocationConfirmed: Bool }
+    private var pendingSignOuts: [String: PendingSignOut] = [:]
     private var keys: [String: SecKey] = [:]
     private var observers: [UUID: Observer] = [:]
     private var warning: String?
@@ -199,6 +202,7 @@ public actor ChatGPTAccountService {
         result.phase = attempt?.phase ?? lastPhase.0
         result.message = attempt?.message ?? lastPhase.1
         result.warning = storage == .unreadable ? "The saved ChatGPT connection is unreadable. Continue with ChatGPT to replace it." : warning
+        result.signOutCleanupRequired = !pendingSignOuts.isEmpty
         guard let vault else { return result }
         let active = vault.accounts.first { $0.clientID == vault.active }
         result.signedIn = active.map(hasSession) ?? false
@@ -246,6 +250,7 @@ public actor ChatGPTAccountService {
     /// Returns whether the system browser opened.
     @discardableResult
     public func signIn(account selected: String? = nil, newAccount: Bool = false, enablePlan: Bool = false) async throws -> Bool {
+        guard pendingSignOuts.isEmpty else { throw ChatGPTAccountError("Finish signing out after unlocking your Mac before connecting another ChatGPT account.", code: "chatgpt_storage") }
         if storage == .unchecked || storage == .unavailable { load(userInitiated: true) }
         guard storage == .ready || storage == .unreadable else {
             throw ChatGPTAccountError("Keychain could not be read. Unlock your Mac and try again; your saved ChatGPT connection was not changed.", code: "chatgpt_storage")
@@ -430,27 +435,40 @@ public actor ChatGPTAccountService {
     /// confirmed. The registration (client ID and identity) and the host ID stay for a later sign-in.
     public func signOut(account selected: String? = nil) async -> SignOutResult {
         finishAttempt(.cancelled, "ChatGPT sign-in was cancelled.", close: true)
-        guard storage == .ready, let saved = vault,
-              let record = selected.map({ id in saved.accounts.first { Self.publicID($0.clientID) == id } }) ?? saved.accounts.first(where: { $0.clientID == saved.active }),
-              record.accessToken != nil || record.refreshToken != nil else { return .init(signedOut: false, revocationConfirmed: true) }
+        guard storage == .ready, let saved = vault else { return .init(signedOut: false, revocationConfirmed: true) }
+        let selectedRecord: ChatGPTRecord?
+        if let selected { selectedRecord = saved.accounts.first { Self.publicID($0.clientID) == selected } }
+        else { selectedRecord = saved.accounts.first { pendingSignOuts[$0.clientID] != nil } ?? saved.accounts.first { $0.clientID == saved.active } }
+        guard let record = selectedRecord,
+              record.accessToken != nil || record.refreshToken != nil || pendingSignOuts[record.clientID] != nil else { return .init(signedOut: false, revocationConfirmed: true) }
         let clientID = record.clientID
+        guard !signingOut.contains(clientID) else { return .init(signedOut: false, revocationConfirmed: false) }
+        var pending = pendingSignOuts[clientID] ?? PendingSignOut(refreshToken: record.refreshToken, revocationConfirmed: record.refreshToken == nil)
+        pendingSignOuts[clientID] = pending
         generation += 1
         refreshing = nil
         signingOut.insert(clientID)
         notify()
-        var confirmed = true
-        if let refresh = record.refreshToken { confirmed = await revoke(refresh, client: clientID) }
+        if !pending.revocationConfirmed, let refresh = pending.refreshToken {
+            pending.revocationConfirmed = await revoke(refresh, client: clientID)
+            if pending.revocationConfirmed { pending.refreshToken = nil }
+        }
         signingOut.remove(clientID)
         if var latest = vault, let index = latest.accounts.firstIndex(where: { $0.clientID == clientID }) {
             Self.clearSession(&latest.accounts[index], keepHint: false)
-            do { try persist(latest) } catch {
+            do {
+                try persist(latest)
+                pendingSignOuts.removeValue(forKey: clientID)
+                if pendingSignOuts.isEmpty { warning = nil }
+            } catch {
                 vault = latest
-                warning = "Keychain could not remove the saved ChatGPT tokens. Arya stopped using them; remove them again after unlocking your Mac."
+                pendingSignOuts[clientID] = pending
+                warning = "Keychain could not remove the saved ChatGPT tokens. Arya stopped using them. Unlock your Mac, then choose Finish signing out."
             }
         }
         generation += 1
         notify()
-        return .init(signedOut: true, revocationConfirmed: confirmed)
+        return .init(signedOut: true, revocationConfirmed: pending.revocationConfirmed)
     }
 
     func revoke(_ token: String, client: String) async -> Bool {

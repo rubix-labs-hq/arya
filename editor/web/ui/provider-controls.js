@@ -126,7 +126,7 @@ export function AssistantControls({ status, active = false, text = '', selection
     </div>
     ${prefs.mode === 'manual' && supported ? html`<label class="assistant-manual-model"><span class="sr-only">Manual model</span><select value=${prefs.model} disabled=${active || busy} onChange=${event => {
       if (event.target.value && !manualModelChoices(status, prefs.provider).choices.some(model => model.id === event.target.value && !model.disabled)) return
-      return update({ model: event.target.value, effort: '', catalogBound: Boolean(event.target.value) })
+      return update({ model: event.target.value, effort: '', catalogBound: prefs.provider !== 'chatgpt' && Boolean(event.target.value) })
     }}><option value="">Provider default</option>${manual.choices.map(model => html`<option value=${model.id} disabled=${model.disabled}>${model.name} · ${model.id}${model.disabled ? ' · unavailable' : ''}</option>`)}${manual.missing ? html`<option value=${prefs.model} disabled>${prefs.model} · saved selection</option>` : null}</select></label>${ready && manual.reason ? html`<p class="assistant-route-preview">${manual.reason}<small>Your saved choice is preserved. Manage exact model IDs in Accounts.</small></p>` : null}` : null}
     ${prefs.mode === 'manual' && supported && (efforts.length || prefs.effort) ? html`<label class="assistant-manual-model"><span class="sr-only">Manual reasoning effort</span><select value=${prefs.effort} disabled=${active || busy} onChange=${event => {
       if (event.target.value && !manualModelChoices(status, prefs.provider, prefs.model).model?.reasoningEfforts.includes(event.target.value)) return

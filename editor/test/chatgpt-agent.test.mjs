@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { startBridge } from '../agent/bridge.mjs'
-import { outputEvent } from '../agent/adapters.mjs'
+import { outputEvent, prepareAdapter as realPrepareAdapter } from '../agent/adapters.mjs'
 import { createChatGPTAccount } from '../agent/chatgpt-account.mjs'
 import { fixtureSharing } from './fixtures/sharing-fixture.mjs'
 import { startChatGPTFake, DOC_MODEL } from './fixtures/chatgpt-fake.mjs'
@@ -13,6 +13,7 @@ import { startChatGPTFake, DOC_MODEL } from './fixtures/chatgpt-fake.mjs'
 // The bridge spawns the real agent/chatgpt-agent.mjs. OpenAI is the doc-oracle fake.
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const PNG = 'iVBORw0KGgo='
+const bridgeAccounts = new WeakMap()
 
 async function settle(account) {
   const deadline = Date.now() + 5000
@@ -33,8 +34,9 @@ async function setup(t, { signIn = true, consent, prepareAdapter } = {}) {
   if (consent) fake.consent.push(consent)
   if (signIn) assert.equal((await account.signIn().then(() => settle(account))).attempt.state, 'done')
   const bridge = await startBridge({ chatgpt: account, catalogOptions: { providerStatus: async () => [] }, ...(prepareAdapter ? { prepareAdapter } : {}) })
+  bridgeAccounts.set(bridge, account)
   t.after(async () => { await bridge.close(); account.close(); await fake.close(); fs.rmSync(root, { recursive: true, force: true }) })
-  return { fake, account, bridge, clock }
+  return { fake, account, bridge, clock, directory: path.join(root, 'chatgpt') }
 }
 
 async function call(bridge, method, route, body, auth = bridge.token) {
@@ -44,7 +46,7 @@ async function call(bridge, method, route, body, auth = bridge.token) {
 
 function start(bridge, { text = 'Add a title that says Hello', model } = {}) {
   const id = randomUUID()
-  const body = { id, provider: 'chatgpt', text, ...(model ? { model } : {}), context: { selection: [] }, outline: { version: 1 }, sharing: fixtureSharing(bridge.endpoint, [{ provider: 'chatgpt', model: model ?? '' }]) }
+  const body = { id, provider: 'chatgpt', chatgptIdentity: bridgeAccounts.get(bridge).sharingIdentity() ?? '0'.repeat(64), text, ...(model ? { model } : {}), context: { selection: [] }, outline: { version: 1 }, sharing: fixtureSharing(bridge.endpoint, [{ provider: 'chatgpt', model: model ?? '' }]) }
   return call(bridge, 'POST', '/v1/runs', body).then(started => { assert.equal(started.status, 201, JSON.stringify(started.body)); return id })
 }
 
@@ -70,6 +72,25 @@ async function run(bridge, options = {}) {
 
 const completed = (output = []) => ({ type: 'response.completed', response: { status: 'completed', output } })
 const secrets = fake => [...fake.access.keys(), ...fake.refresh.keys()]
+
+test('an account switch before the first credential request cannot send project data', async t => {
+  let release, entered
+  const held = new Promise(resolve => { release = resolve })
+  const reached = new Promise(resolve => { entered = resolve })
+  const { fake, bridge, directory } = await setup(t, { prepareAdapter: async (...args) => { entered(); await held; return realPrepareAdapter(...args) } })
+  t.after(() => release())
+  const result = run(bridge)
+  await reached
+  const other = createChatGPTAccount({ directory, endpoints: fake.endpoints, retryDelays: [1, 1, 1], openURL: async url => { await fake.browser(url); return true } })
+  t.after(() => other.close())
+  fake.consent.push({ subject: 'other-account', email: 'other@example.com' })
+  await other.signIn({ newAccount: true }); await settle(other)
+  release()
+  const stopped = await result
+  assert.equal(stopped.final.type, 'error')
+  assert.match(stopped.final.message, /account changed/i)
+  assert.equal(fake.responseBodies.length, 0)
+})
 
 test('a ChatGPT run uses the plan, runs Arya tools and replays every output item in order', async t => {
   const { fake, bridge } = await setup(t)

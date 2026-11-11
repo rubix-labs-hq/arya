@@ -243,7 +243,7 @@ export function createChatGPTAccount(options = {}) {
       if (existing && existing.subject !== claims.sub) throw failure('ChatGPT returned a registration that belongs to another account. Arya kept your saved connections.', 409, 'chatgpt_account_mismatch')
       // A replaced registration for this account (after OpenAI rejected the old client) goes away.
       saved.accounts = saved.accounts.filter(item => item.client_id !== clientID && !(item.invalid && item.subject === claims.sub))
-      saved.accounts.push({ client_id: clientID, subject: claims.sub, email: typeof claims.email === 'string' ? claims.email.slice(0, 320) : '', issuer: endpoints.issuer, id_token: body.id_token, ...tokens })
+      saved.accounts.push({ client_id: clientID, subject: claims.sub, session: claims.sid ?? randomUUID(), email: typeof claims.email === 'string' ? claims.email.slice(0, 320) : '', issuer: endpoints.issuer, id_token: body.id_token, ...tokens })
       saved.accounts = saved.accounts.slice(-32)
       saved.active = clientID
       first = tokens.scopes.includes(CHATGPT_PLAN_SCOPE) && saved.welcomed !== true
@@ -354,7 +354,12 @@ export function createChatGPTAccount(options = {}) {
   }
 
   const fresh = account => account.expires_at - now() > REFRESH_MARGIN_MS || account.earliest_refresh_at > now() && account.expires_at - now() > 60000
-  const credential = account => ({ accessToken: account.access_token, expiresAt: account.expires_at, planUsage: (account.scopes ?? []).includes(CHATGPT_PLAN_SCOPE), account: accountID(account.client_id) })
+  const identityFor = account => createHash('sha256').update(JSON.stringify(['chatgpt', account.client_id, account.subject, account.session ?? account.id_token ?? ''])).digest('hex')
+  const sharingIdentity = () => {
+    const saved = load(), account = byClient(saved, saved.active)
+    return planUsage(account) ? identityFor(account) : null
+  }
+  const credential = account => ({ accessToken: account.access_token, expiresAt: account.expires_at, planUsage: (account.scopes ?? []).includes(CHATGPT_PLAN_SCOPE), account: accountID(account.client_id), identity: identityFor(account) })
   const signInRequired = message => failure(message, 401, 'chatgpt_sign_in_required')
 
   async function renew() {
@@ -436,7 +441,7 @@ export function createChatGPTAccount(options = {}) {
 
   return {
     apiBase: endpoints.api,
-    status, signIn, cancelSignIn, signOut, accessToken, models, acknowledgeWelcome,
+    status, signIn, cancelSignIn, signOut, accessToken, models, acknowledgeWelcome, sharingIdentity,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
     close() { closed = true; if (attempt) finishAttempt(attempt, 'cancelled', 'The editor closed before sign-in finished.', { force: true }) },
   }

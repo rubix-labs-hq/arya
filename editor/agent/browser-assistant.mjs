@@ -155,6 +155,7 @@ export function createBrowserAssistant(options) {
     if (active !== run || run.cancelled || run.terminal) throw failure('This assistant run is no longer active.', 410)
     if (run.sharingGeneration !== sharingGeneration) throw failure('Sharing permission changed. Review assistant sharing before sending.', 403)
     if (options.getIdentity() !== run.identity) throw failure('The project changed. Start a new assistant request.', 409)
+    if (run.chatgptIdentity && options.chatgpt?.sharingIdentity() !== run.chatgptIdentity) throw failure('The ChatGPT account changed. Review assistant sharing before sending.', 403)
   }
   const registerJob = (run, job) => {
     assertRun(run)
@@ -330,14 +331,21 @@ export function createBrowserAssistant(options) {
     if (closed) { await value.close(); throw failure('The browser assistant has closed.', 410) }
     return value
   }
-  const credentialDigest = owner => createHash('sha256').update(owner.token).digest('hex')
+  const credentialBinding = (owner, scope) => {
+    const chatgptIdentity = scope.providers.includes('chatgpt') ? options.chatgpt?.sharingIdentity() : null
+    if (scope.providers.includes('chatgpt') && !/^[a-f0-9]{64}$/.test(chatgptIdentity ?? '')) throw failure('Sign in to ChatGPT and review sharing before sending.', 403)
+    const digest = createHash('sha256').update(owner.token)
+    if (chatgptIdentity) digest.update('\0chatgpt\0' + chatgptIdentity)
+    return { credentialDigest: digest.digest('hex'), chatgptIdentity }
+  }
   const currentSharing = async () => {
     const generation = sharingGeneration, identity = options.getIdentity(), configuration = JSON.stringify(settings)
     const owner = await companion()
     const route = await catalogHost.resolve(settings, { requiresImage: true })
     assertOpen()
     if (generation !== sharingGeneration || identity !== options.getIdentity() || configuration !== JSON.stringify(settings)) throw failure('The project or assistant settings changed during sharing review. Review again.', 409)
-    return { scope: sharingScopeForRoute(route, canonicalCompanion(owner.endpoint)), credentialDigest: credentialDigest(owner), generation, identity, configuration }
+    const scope = sharingScopeForRoute(route, canonicalCompanion(owner.endpoint))
+    return { scope, ...credentialBinding(owner, scope), generation, identity, configuration }
   }
   const approvedScope = value => !!grantRecord && grantRecord.credentialDigest === value.credentialDigest && sameSharingScope(grantRecord.sharing.scope, value.scope)
   const reviewResponse = (value, reviewID) => {
@@ -545,14 +553,16 @@ export function createBrowserAssistant(options) {
       const route = await catalogHost.resolve(settings, { text: body.text, selectionCount: selection.length, inputKind, requiresImage: true })
       assertRun(run)
       const scope = sharingScopeForRoute(route, owner.endpoint), envelope = normalizeSharingEnvelope(body.sharing)
-      if (!sameSharingScope(envelope.scope, scope) || !approvedScope({ scope, credentialDigest: credentialDigest(owner) })) throw failure('Sharing permission is required for the current recipients. Review assistant sharing before sending.', 403)
+      const binding = credentialBinding(owner, scope)
+      if (!sameSharingScope(envelope.scope, scope) || !approvedScope({ scope, ...binding })) throw failure('Sharing permission is required for the current recipients. Review assistant sharing before sending.', 403)
+      run.chatgptIdentity = binding.chatgptIdentity
       options.onPrompt?.(body.text, refs)
       assertRun(run)
       const outline = bounded(options.getOutline({ selection, comp: body.comp ?? null, playhead: body.playhead ?? 0 }), 512 * 1024, 'The project outline exceeded 512 KiB.')
       assertRun(run)
       run.initialVersion = outline.version
       const context = { inputKind, projectRoot: root, projectID: String(run.identity), projectEpoch: run.identity, version: outline.version, selection, selectedTransitions: selection.filter(id => id.startsWith('tr:')).map(id => ({ id, clip: id.slice(3) })), ...(body.comp ? { comp: body.comp } : {}), playhead: body.playhead ?? 0, refs, ...(run.review ? { review: true } : {}) }
-      const requestBody = { id: run.id, sharing: envelope, provider: settings.provider, ...(settings.mode === 'auto' || settings.effort || settings.catalogBound ? { routing: settings.mode === 'auto' ? { ...settings, enabledModels: envelope.scope.models } : settings } : {}), text: body.text, context, outline, ...(settings.model ? { model: settings.model } : {}), ...(settings.agent ? { agent: settings.agent } : {}) }
+      const requestBody = { id: run.id, sharing: envelope, provider: settings.provider, ...(run.chatgptIdentity ? { chatgptIdentity: run.chatgptIdentity } : {}), ...(settings.mode === 'auto' || settings.effort || settings.catalogBound ? { routing: settings.mode === 'auto' ? { ...settings, enabledModels: envelope.scope.models } : settings } : {}), text: body.text, context, outline, ...(settings.model ? { model: settings.model } : {}), ...(settings.agent ? { agent: settings.agent } : {}) }
       run.submission = request(owner, 'POST', '/v1/runs', requestBody)
       await run.submission
       assertRun(run)

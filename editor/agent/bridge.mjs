@@ -171,6 +171,7 @@ export async function startBridge(options = {}) {
         const body = await readBody(request, 1024 * 1024)
         if (closed) throw failure('Bridge has stopped', 410)
         if (!UUID.test(body.id ?? '') || !providers.includes(body.provider) || typeof body.text !== 'string' || !body.text.trim() || body.text.length > 128000) throw failure('Run requires a UUID id, supported provider and nonempty text')
+        if (body.provider === 'chatgpt' && !/^[a-f0-9]{64}$/.test(body.chatgptIdentity ?? '')) throw failure('Review sharing for the current ChatGPT account before sending.', 403)
         for (const value of [body.model, body.agent]) if (value !== undefined && (typeof value !== 'string' || !value || value.length > 128 || /[\0\r\n]/.test(value))) throw failure('Invalid model or agent')
         body.sharing = normalizeSharingEnvelope(body.sharing)
         if (![sharingCompanion, canonicalCompanion(endpoint)].includes(body.sharing.scope.companion)) throw failure('This sharing permission names a different companion. Review the current companion destination.', 403)
@@ -208,8 +209,7 @@ export async function startBridge(options = {}) {
         if (run.terminal) throw failure('Run has finished', 410)
         if (!current.planUsage) return reply(403, { error: 'ChatGPT plan usage is off for this sign-in. Turn it on in Assistant settings.', code: 'chatgpt_plan_disabled' })
         // Sharing was approved for one signed-in account; a switch mid-run stops the run.
-        run.chatgptAccount ??= current.account
-        if (run.chatgptAccount !== current.account) return reply(409, { error: 'The ChatGPT account changed during this request. Review sharing and send it again.', code: 'chatgpt_account_changed' })
+        if (run.request.chatgptIdentity !== current.identity) return reply(409, { error: 'The ChatGPT account changed during this request. Review sharing and send it again.', code: 'chatgpt_account_changed' })
         return reply(200, { accessToken: current.accessToken, api: chatgpt.apiBase })
       }
       if (request.method === 'POST' && match[2] === 'cancel') { await readBody(request, 1024); stop(run); return reply(200, { id: match[1], cancelled: true }) }

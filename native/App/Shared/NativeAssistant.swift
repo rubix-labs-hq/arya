@@ -1801,6 +1801,9 @@ struct NativeChatGPTSettings: View {
         if let warning = status.warning {
             Text(warning).font(.caption).fixedSize(horizontal: false, vertical: true)
         }
+        if status.signOutCleanupRequired {
+            Button("Finish signing out") { signOut() }.frame(minHeight: 44).disabled(blocked)
+        }
         if status.welcome && status.signedIn {
             VStack(alignment: .leading, spacing: 4) {
                 Text("You’re using your ChatGPT plan").font(.subheadline.weight(.semibold))
@@ -1909,9 +1912,9 @@ struct NativeChatGPTSettings: View {
 
     private func signOut() {
         run {
-            let result = await assistant.signOutChatGPT(account: status.active)
+            let result = await assistant.signOutChatGPT(account: status.signOutCleanupRequired ? nil : status.active)
             guard result.signedOut else { notice = "No ChatGPT sign-in was saved."; return }
-            notice = result.revocationConfirmed
+            notice = status.signOutCleanupRequired ? "Unlock your Mac, then choose Finish signing out to remove the saved tokens." : result.revocationConfirmed
                 ? "Signed out of ChatGPT. Arya removed the sign-in from this Mac."
                 : "Signed out on this Mac, but OpenAI did not confirm the revocation. An unused sign-in expires within 30 days."
         }

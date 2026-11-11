@@ -26,7 +26,7 @@ async function setup(t, { chatgpt = true, clock } = {}) {
   const service = createBrowserAssistant({ root: project, platform: 'darwin', providerStatus: statuses, getIdentity: () => 1, getOutline: () => ({ version: 1 }), dispatch: async () => ({ ok: true }),
     renderFrame: async () => ({ path: path.join(project, 'frame.png') }), chatgpt: account, bridgeOptions: { catalogOptions: { providerStatus: statuses } } })
   t.after(async () => { await service.close(); account?.close(); await fake.close(); fs.rmSync(root, { recursive: true, force: true }) })
-  return { fake, account, service, project }
+  return { fake, account, service, project, accountDirectory: path.join(root, 'account') }
 }
 async function signIn(service, body = {}) {
   const started = await service.chatgptSignIn(body)
@@ -34,6 +34,32 @@ async function signIn(service, body = {}) {
   return waitFor(async () => { const value = (await service.status()).chatgpt; return ['done', 'failed', 'cancelled', 'expired'].includes(value.attempt.state) && value })
 }
 const finished = service => waitFor(() => ['done', 'error', 'cancelled'].includes(service.snapshot().state) && service.snapshot())
+
+test('sharing follows the saved account and session across editor processes', async t => {
+  const { fake, account, service, accountDirectory } = await setup(t)
+  await signIn(service)
+  await waitFor(async () => (await service.status()).provider === 'chatgpt')
+  await service.status({ wait: true, refresh: true })
+  await approveFixture(service)
+  const stale = await service.sharing()
+  const initialIdentity = account.sharingIdentity()
+  const other = createChatGPTAccount({ directory: accountDirectory, endpoints: fake.endpoints, retryDelays: [1, 1, 1], openURL: async url => { await fake.browser(url); return true } })
+  t.after(() => other.close())
+  fake.consent.push({ subject: 'second-account', email: 'second@example.com' })
+  await other.signIn({ newAccount: true })
+  await waitFor(() => other.status().attempt.state === 'done')
+  assert.notEqual(account.sharingIdentity(), initialIdentity)
+  assert.equal((await service.sharing()).approved, false)
+  await assert.rejects(service.grantSharing({ reviewID: stale.reviewID, sharing: { version: 1, approved: true, scope: stale.scope } }), /changed|review/i)
+  await assert.rejects(service.send({ text: 'Must not send through the other account' }), /sharing/i)
+  assert.equal(fake.responseBodies.length, 0)
+  await approveFixture(service)
+  assert.equal((await service.sharing()).approved, true)
+  const selectedIdentity = account.sharingIdentity()
+  await other.signIn()
+  await waitFor(() => other.status().attempt.state === 'done' && account.sharingIdentity() !== selectedIdentity)
+  assert.equal((await service.sharing()).approved, false, 'reauthorizing the same account also needs a new review')
+})
 
 test('an editor without a ChatGPT host offers no ChatGPT sign-in', async t => {
   const { service } = await setup(t, { chatgpt: false })

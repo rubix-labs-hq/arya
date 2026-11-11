@@ -532,6 +532,32 @@ final class ChatGPTAccountTests: XCTestCase {
 
     // MARK: Revocation and models
 
+    func testFailedKeychainSignOutCanBeRetriedAfterUnlocking() async throws {
+        let service = service()
+        _ = try await signIn(service)
+        store.failWrite = true
+        openai.set { $0.revokeStatuses = [500, 500, 500, 500] }
+        let first = await service.signOut()
+        XCTAssertTrue(first.signedOut)
+        XCTAssertFalse(first.revocationConfirmed)
+        XCTAssertTrue(store.text.contains("rt-"), "failed storage still holds the old token")
+        let stopped = await service.status()
+        XCTAssertFalse(stopped.signedIn)
+        XCTAssertTrue(stopped.signOutCleanupRequired)
+        do { _ = try await service.credential(expecting: nil); XCTFail("signed-out session must not be usable") } catch {}
+        store.failWrite = false
+        let retried = await service.signOut()
+        XCTAssertTrue(retried.signedOut, "cleanup remains retryable without an in-memory access token")
+        XCTAssertTrue(retried.revocationConfirmed)
+        XCTAssertFalse(store.text.contains("rt-"))
+        XCTAssertFalse(store.text.contains("at-"))
+        let reopened = ChatGPTAccountService(store: store, opener: { _ in false })
+        let loaded = await reopened.load(userInitiated: false)
+        XCTAssertFalse(loaded.signedIn)
+        let cleaned = await service.status()
+        XCTAssertFalse(cleaned.signOutCleanupRequired)
+    }
+
     func testRevocationRetriesOnlyNetworkAndServerFailures() async throws {
         let service = service()
         openai.set { $0.revokeStatuses = [503, 0, 200] }

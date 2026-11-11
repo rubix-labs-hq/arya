@@ -159,8 +159,8 @@ export function Settings() {
     if (mounted.current) setNotice('ChatGPT sign-in cancelled. Manual editing still works without an account.')
   })
   const chatgptSignOut = () => run('chatgpt', async () => {
-    const result = await chatgptAccountAction('sign-out', chatgptCurrent ? { account: chatgptCurrent.id } : {})
-    if (mounted.current) setNotice(result.revocationConfirmed ? 'Signed out of ChatGPT. Arya removed the sign-in from this computer.' : 'Signed out on this computer, but OpenAI did not confirm the revocation. An unused sign-in expires within 30 days.')
+    const result = await chatgptAccountAction('sign-out', !chatgpt.signOutCleanupRequired && chatgptCurrent ? { account: chatgptCurrent.id } : {})
+    if (mounted.current) setNotice(result.chatgpt?.signOutCleanupRequired ? 'Unlock your Mac, then choose Finish signing out to remove the saved tokens.' : result.revocationConfirmed ? 'Signed out of ChatGPT. Arya removed the sign-in from this computer.' : 'Signed out on this computer, but OpenAI did not confirm the revocation. An unused sign-in expires within 30 days.')
   })
   const chooseChatGPT = () => {
     if (busy || saving.current) return
@@ -172,6 +172,7 @@ export function Settings() {
     <h3 class="settings-heading settings-step" id="chatgpt-card-title">Use your ChatGPT plan</h3>
     <p class="settings-note">Complete eligible AI requests in this app with usage included in your ChatGPT plan or credits balance. Arya adds no charge for AI requests.</p>
     ${chatgpt.error ? html`<p class="settings-error" role="alert">${chatgpt.error}</p>` : null}
+    ${chatgpt.signOutCleanupRequired ? html`<button class="ghost" disabled=${Boolean(busy)} onClick=${chatgptSignOut}>Finish signing out</button>` : null}
     ${chatgpt.welcome ? chatgptWelcome() : null}
     ${chatgptWaiting ? html`<div class="provider-status" aria-live="polite"><span class="provider-status-dot"></span><div><b>${chatgptAttempt.state === 'exchanging' ? 'Finishing sign-in…' : 'Waiting for ChatGPT sign-in'}</b><p>${chatgptAttempt.state === 'exchanging' ? 'Arya is confirming the sign-in with OpenAI.' : 'Finish signing in on the ChatGPT page in your browser. Arya never sees your password.'}</p></div></div>
     <div class="settings-actions">${chatgptAttempt.startURL ? html`<a class="button ghost" href=${chatgptAttempt.startURL} target="_blank" rel="noopener noreferrer">Open the sign-in page ↗</a>` : null}<button class="ghost" disabled=${busy === 'chatgpt'} onClick=${chatgptCancel}>Cancel sign-in</button></div>` : !chatgpt.signedIn ? html`${['failed', 'cancelled', 'expired'].includes(chatgptAttempt.state) && chatgptAttempt.message ? html`<p class="settings-note" role="status">${chatgptAttempt.message}</p>` : null}
@@ -226,7 +227,7 @@ export function Settings() {
             ${routingSupported && routing.mode === 'auto' ? html`<div class="settings-actions"><button class="primary" disabled=${Boolean(busy) || active || s.connected === false || !renderedStatus || !setupPool.usableModels.length || setupPool.bulk.length === setupPool.enabled.size || setupPool.bulk.length > 256} onClick=${enableAndSave}>Enable eligible models and save</button></div><p class="settings-note">Adds ${setupPool.bulk.length - setupPool.enabled.size} eligible models and saves the preferences shown here.</p>${active ? html`<p class="settings-note">Wait for the current assistant request to finish or stop before saving Auto setup.</p>` : null}` : null}
             ${routingSupported && routing.mode === 'manual' ? html`<label class="settings-field"><span>Manual model</span><select value=${model} disabled=${Boolean(busy)} onChange=${event => {
               if (event.target.value && !manualModelChoices(s.assistantStatus, provider).choices.some(row => row.id === event.target.value && !row.disabled)) return
-              markEdited(); setModel(event.target.value); editRouting({ effort: '', catalogBound: Boolean(event.target.value) })
+              markEdited(); setModel(event.target.value); editRouting({ effort: '', catalogBound: provider !== 'chatgpt' && Boolean(event.target.value) })
             }}><option value="">Provider default</option>${manual.choices.map(row => html`<option value=${row.id} disabled=${row.disabled}>${row.name} · ${row.id}${row.disabled ? ' · unavailable' : ''}</option>`)}${manual.missing ? html`<option value=${model} disabled>${model} · saved selection</option>` : null}</select></label>${manual.reason ? html`<p class="settings-note">${manual.reason} Your saved choice is preserved.</p>` : !manual.choices.length ? html`<p class="settings-note">${provider === 'claude-code' ? 'Claude Code uses your account’s default model. Its CLI does not report a model list. To ask for another model, enter a Claude Code model alias such as sonnet or opus under Model and agent preferences.' : 'No verified model choices yet. Refresh status after sign-in. Provider default remains available; an exact unverified model ID can be entered in advanced preferences.'}</p>` : null}` : null}
             <details class="settings-advanced"><summary>Model and agent preferences</summary>
               <label class="settings-field"><span>Custom model ID <small>advanced · availability unverified</small></span><input value=${model} maxLength="128" placeholder="Provider default" disabled=${Boolean(busy)} onInput=${event => { markEdited(); setModel(event.target.value); editRouting({ effort: '', catalogBound: false }) }} /></label>

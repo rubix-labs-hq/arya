@@ -218,3 +218,12 @@ test('Auto never routes to ChatGPT plan models', () => {
   assert.ok(route.blocked.some(item => item.provider === 'chatgpt' && /Manual selection only/.test(item.reason)))
   assert.equal(controls.routingCapabilities(null).autoProviders.includes('chatgpt'), false)
 })
+
+test('native sign-out cleanup remains available while the session is signed out', async () => {
+  const current = account({ signedIn: false, planUsage: false, signOutCleanupRequired: true, error: 'Unlock your Mac, then finish signing out.' })
+  const { tree, calls } = settings(baseStatus({ provider: 'chatgpt', chatgpt: current }))
+  const retry = button(tree, 'Finish signing out')
+  assert.ok(retry)
+  await retry.props.onClick()
+  assert.deepEqual(calls[0], { route: '/api/assistant/chatgpt/sign-out', body: {} })
+})
