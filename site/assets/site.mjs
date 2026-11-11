@@ -183,3 +183,19 @@ accessForm?.addEventListener('submit',event=>{
   accessState.textContent='Access requests are not connected yet. Nothing you typed left this page.';
 });
 if (accessForm) accessForm.querySelectorAll('input, select, textarea, [type=submit]').forEach(control => { control.disabled=false; });
+
+// The six-page rail marks the chapter on screen. Without this script the links still work.
+const railLinks = [...document.querySelectorAll('.page-rail a')];
+if (railLinks.length && typeof IntersectionObserver === 'function') {
+  const onScreen = new Set();
+  const watcher = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) onScreen.add(entry.target.id); else onScreen.delete(entry.target.id);
+    }
+    const current = railLinks.find(item => onScreen.has(item.hash.slice(1)));
+    for (const item of railLinks) {
+      if (item === current) item.setAttribute('aria-current', 'true'); else item.removeAttribute('aria-current');
+    }
+  }, { rootMargin: '-35% 0px -55% 0px' });
+  document.querySelectorAll('[data-chapter]').forEach(chapter => watcher.observe(chapter));
+}

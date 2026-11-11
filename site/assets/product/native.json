@@ -1,0 +1,135 @@
+{
+  "version": "1.1",
+  "captured": "November 2026",
+  "projects": {
+    "Motion Study": "",
+    "After the Tide": "The still picture in After the Tide was AI-generated for this demo. Its title, subtitle, rule and camera move are editable Arya layers."
+  },
+  "stills": {
+    "After the Tide": "The still picture in After the Tide was AI-generated for this demo."
+  },
+  "editions": {
+    "Mac App Store": "The After the Tide screens on Mac come from a Mac App Store build of Arya 1.1.0 that is not public. Screens in the direct Mac build can differ."
+  },
+  "images": {
+    "mac-color": {
+      "src": "/assets/product/native-mac-color.webp",
+      "width": 2560,
+      "height": 1600,
+      "device": "Mac",
+      "page": "Color",
+      "project": "After the Tide",
+      "edition": "Mac App Store",
+      "still": true,
+      "label": "Color on Mac",
+      "alt": "Arya on Mac, Color page. The viewer shows a coastal scene at dusk under the title After the Tide. Beside it, a Color inspector with a waveform scope and Lift, Gamma, Gain and Offset wheels. Below, a timeline with a Subtitle track and a Titles track."
+    },
+    "mac-edit": {
+      "src": "/assets/product/native-mac-edit.webp",
+      "width": 2560,
+      "height": 1600,
+      "device": "Mac",
+      "page": "Edit",
+      "project": "After the Tide",
+      "edition": "Mac App Store",
+      "still": true,
+      "label": "Edit on Mac",
+      "alt": "Arya on Mac, Edit page. A Media panel with one image, the viewer showing a coastal scene at dusk under the title After the Tide, a Project inspector set to 1,920 by 1,080 at 30 frames per second, and a timeline with Subtitle, Titles, Design and Picture tracks.",
+      "caption": "The Edit page on Mac. Media, viewer, Project inspector and timeline share one window, with the six pages as tabs along the top."
+    },
+    "ipad-color": {
+      "src": "/assets/product/native-ipad-color.webp",
+      "width": 1032,
+      "height": 1376,
+      "device": "iPad",
+      "page": "Color",
+      "project": "After the Tide",
+      "still": true,
+      "label": "Color on iPad",
+      "alt": "Arya on iPad, Color page. The viewer shows a coastal scene at dusk under the title After the Tide, beside a Color inspector with Exposure at 0.2, Temperature at 0.35, a Lift wheel and rows for nodes, scopes and LUTs. Below, a four-track timeline and a tab bar for the six pages."
+    },
+    "iphone-edit": {
+      "src": "/assets/product/native-iphone-edit.webp",
+      "width": 660,
+      "height": 1434,
+      "device": "iPhone",
+      "page": "Edit",
+      "project": "After the Tide",
+      "label": "Edit on iPhone",
+      "alt": "Arya on iPhone, Edit page. The viewer shows a coastal scene at dusk with the title After the Tide selected. Below it, a timeline with a Subtitle track and a Titles track, and a tab bar for Media, Edit, Motion, Color, Audio and Deliver.",
+      "still": true
+    },
+    "mac-color-inspector": {
+      "src": "/assets/product/native-mac-color-inspector.webp",
+      "width": 802,
+      "height": 904,
+      "device": "Mac",
+      "page": "Color",
+      "project": "After the Tide",
+      "edition": "Mac App Store",
+      "label": "Color inspector on Mac",
+      "alt": "Color inspector on Mac for the clip Coastal arrival. A primary grade with a waveform scope in IRE and Lift, Gamma, Gain and Offset wheels.",
+      "caption": "The Color inspector on Mac, at the size it has on screen: a waveform scope of the picture above the Lift, Gamma, Gain and Offset wheels."
+    },
+    "mac-motion-inspector": {
+      "src": "/assets/product/native-mac-motion-inspector.webp",
+      "width": 802,
+      "height": 912,
+      "device": "Mac",
+      "page": "Motion",
+      "project": "Motion Study",
+      "label": "Motion inspector on Mac",
+      "alt": "Motion inspector on Mac. A shape layer named Golden hour, a Position X key value of 1,640, Set key at playhead, Previous and Next, a Smooth easing menu, and rows for all keys, the motion graph and property key lanes.",
+      "caption": "The Motion inspector on Mac, at the size it has on screen: a Position X key on a shape layer, with easing, the motion graph and key lanes below."
+    },
+    "mac-media-panel": {
+      "src": "/assets/product/native-mac-media-panel.webp",
+      "width": 340,
+      "height": 692,
+      "device": "Mac",
+      "page": "Media",
+      "project": "After the Tide",
+      "edition": "Mac App Store",
+      "still": true,
+      "label": "Media panel on Mac",
+      "alt": "Media panel on Mac. A search field, a filter set to All, a folder named media and one image, coastal-arrival.png, with a thumbnail of a coastal scene at dusk.",
+      "caption": "The Media panel on Mac, at the size it has on screen, holding the one image this project uses."
+    },
+    "ipad-color-inspector": {
+      "src": "/assets/product/native-ipad-color-inspector.webp",
+      "width": 720,
+      "height": 1130,
+      "device": "iPad",
+      "page": "Color",
+      "project": "After the Tide",
+      "label": "Color on iPad",
+      "alt": "Color inspector on iPad for the clip Coastal arrival. Curves for a primary grade, with Y, R, G and B buttons, an S-shaped luma curve through four points, and Add point and Remove point."
+    },
+    "iphone-deliver": {
+      "src": "/assets/product/native-iphone-deliver.webp",
+      "width": 603,
+      "height": 723,
+      "device": "iPhone",
+      "page": "Deliver",
+      "project": "After the Tide",
+      "label": "Deliver on iPhone",
+      "alt": "Deliver sheet on iPhone. An export range of 00:00:00:00 to 00:00:12:00 at 1,920 by 1,080 and 30 frames per second, an Export video button, the line Export saved to renders/Export.mp4, a completed H.264 High quality Export.mp4 in the render queue and a saved export with a Share export button.",
+      "caption": "The Deliver sheet on iPhone after this export finished: twelve seconds of H.264 at 1,920 × 1,080 and 30 fps, saved to the project’s renders folder and ready to share."
+    }
+  },
+  "clips": {
+    "after-the-tide": {
+      "src": "/assets/product/after-the-tide.mp4",
+      "poster": "/assets/product/after-the-tide-poster.webp",
+      "width": 1280,
+      "height": 720,
+      "seconds": 12,
+      "device": "iPhone",
+      "page": "Deliver",
+      "project": "After the Tide",
+      "label": "Exported on iPhone",
+      "description": "A 12 second clip without sound. A slow push in on a coastal scene at dusk: a figure in an orange raincoat on a pier watches a ferry, under the title After the Tide.",
+      "caption": "The file that export produced, shown here as a 720p copy without sound. Arya on iPhone rendered it at 1,920 × 1,080 in H.264."
+    }
+  }
+}

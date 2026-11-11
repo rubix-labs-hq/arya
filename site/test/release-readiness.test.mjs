@@ -47,7 +47,7 @@ test('configured release, contact, source and social metadata survive static gen
   assert.ok(!pages.install.includes('The public installer has not shipped.'));
   for (const html of Object.values(pages)) {
     assert.ok(html.includes('href="https://example.com/help"'));
-    assert.ok(html.includes('content="https://example.com/assets/brand/social.png"'));
+    assert.ok(html.includes('content="https://example.com/assets/brand/link-preview.png"'));
     assert.ok(html.includes('name="twitter:card"'));
   }
   assert.ok(pages.support.includes('No payment will be taken here.'));
@@ -66,7 +66,7 @@ test('public canonical links use the owner domain on every generated page', asyn
   for (const [route, html] of Object.entries(pages)) {
     const path = route === 'home' ? '/' : `/${route}/`;
     assert.ok(html.includes(`rel="canonical" href="https://editwitharya.app${path}"`), route);
-    assert.ok(html.includes('content="https://editwitharya.app/assets/brand/social.png"'), route);
+    assert.ok(html.includes('content="https://editwitharya.app/assets/brand/link-preview.png"'), route);
     assert.ok(!html.includes('https://arya-beta-delta.vercel.app'), route);
   }
 });
