@@ -149,6 +149,23 @@ private struct NativeDeliveryHistoryView: View {
     }
 }
 
+/// Drops a second Export tap that repeats the same request moments later, such as a quick double tap.
+/// The same export started again after the window, or with any setting changed, still goes to the queue.
+struct NativeExportRepeatGuard {
+    static let window: TimeInterval = 2
+    private(set) var last: (signature: String, at: Date)?
+    static func signature(_ request: [String: Any], version: Int) -> String {
+        request.keys.sorted().map { "\($0)=\(request[$0].map { String(describing: $0) } ?? "")" }.joined(separator: "&") + "#\(version)"
+    }
+    func isRepeat(_ signature: String, at now: Date) -> Bool {
+        guard let last, last.signature == signature else { return false }
+        let elapsed = now.timeIntervalSince(last.at)
+        return elapsed >= 0 && elapsed < Self.window
+    }
+    mutating func record(_ signature: String, at now: Date) { last = (signature, now) }
+    mutating func forget(_ signature: String) { if last?.signature == signature { last = nil } }
+}
+
 struct NativeDeliverPanel: View {
     @ObservedObject var model: NativeEditorModel
     @ObservedObject var session: EditorSession
@@ -156,6 +173,7 @@ struct NativeDeliverPanel: View {
     @State private var transfer = "sdr"
     @State private var name = "Export"
     @State private var starting = false
+    @State private var repeatGuard = NativeExportRepeatGuard()
     @State private var importSheet: NativeInterchangeSheetDestination?
     @State private var interchange = "otio"
     @State private var edlTrack = ""
@@ -278,21 +296,31 @@ struct NativeDeliverPanel: View {
         if exportScope == "range", let range = activeRange { body["from"] = range.lowerBound; body["to"] = range.upperBound }
         let request = body
         let backend = session.backend, version = model.version, composition = model.composition
+        // A tap that lands while the first is starting, or repeats it within moments, is the same export.
+        let signature = NativeExportRepeatGuard.signature(request, version: version)
+        guard !starting, !repeatGuard.isRepeat(signature, at: Date()) else { return }
+        repeatGuard.record(signature, at: Date())
         starting = true
         model.perform {
             defer { starting = false }
-            guard session.backend === backend, version == model.version, composition == model.composition else {
-                throw ReelBackend.APIError("The project changed. Review the export settings and try again.")
+            do {
+                guard session.backend === backend, version == model.version, composition == model.composition else {
+                    throw ReelBackend.APIError("The project changed. Review the export settings and try again.")
+                }
+                #if os(iOS)
+                _ = try await mobileExport.start(session: session, body: request)
+                #else
+                var capturedRequest = request
+                capturedRequest["expectedVersion"] = version
+                let job = try await model.call("/api/export", capturedRequest)
+                model.registerExportFeedback(job)
+                #endif
+            } catch {
+                // A failed start can be retried at once.
+                repeatGuard.forget(signature)
+                throw error
             }
-            #if os(iOS)
-            _ = try await mobileExport.start(session: session, body: request)
-            #else
-            var capturedRequest = request
-            capturedRequest["expectedVersion"] = version
-            let job = try await model.call("/api/export", capturedRequest)
-            model.registerExportFeedback(job)
-            #endif
-            model.status = "Export started"
+            model.status = "Export started."
         }
     }
     private func still() {

@@ -132,6 +132,20 @@ enum NativeViewerGeometry {
     }
 
     enum Target: Equatable { case move, scale(Int), rotate }
+
+    /// How a touch on the viewer turns into an edit. A quick swipe over the picture is not a move:
+    /// moving a layer's body needs a short hold first, as on the timeline. Handles and pinches stay direct.
+    enum TouchIntent: Equatable { case undecided, edit, ignore }
+    static let touchHoldDuration = 0.25
+    static let touchSlop = 3.0
+    static func touchIntent(target: Target?, held: Double, moved: Double) -> TouchIntent {
+        guard moved.isFinite, held.isFinite, moved >= touchSlop else { return .undecided }
+        switch target {
+        case nil: return .ignore
+        case .move?: return held >= touchHoldDuration ? .edit : .ignore
+        case .scale?, .rotate?: return .edit
+        }
+    }
     struct Drag {
         let layer: Layer
         let target: Target
@@ -213,6 +227,8 @@ struct NativeViewer: View {
     @State private var gesture: GestureSource?
     @State private var attempted = false
     @State private var activeInput: String?
+    @State private var touchDown: Date?
+    @State private var touchIgnored = false
     @State private var multipleSelection = false
     @State private var queuedCommit: GestureSource?
     @State private var viewerLayout: NativeViewerGeometry.Layout?
@@ -359,35 +375,89 @@ struct NativeViewer: View {
                 if !attempted {
                     attempted = true; activeInput = "pointer"
                     guard model.viewerGeometryIsCurrent() else { return }
-                    if let selected = selectedLayer(layers), let clip = model.selected, editable(clip),
-                       let target = NativeViewerGeometry.target(drag.startLocation, viewport: viewport, layer: selected, clip: clip.fields, hitSize: handleHitSize) {
-                        if extendingSelection && target == .move { model.select(id: selected.id, extending: true) }
-                        else { gesture = beginGesture(viewport: viewport, layer: selected, target: target, point: viewport.project(drag.startLocation)) }
-                    } else if let id = NativeViewerGeometry.pick(drag.startLocation, viewport: viewport, layers: layers), let layer = layers.first(where: { $0.id == id }) {
-                        model.select(id: id, extending: extendingSelection)
-                        if !extendingSelection { gesture = beginGesture(viewport: viewport, layer: layer, target: .move, point: viewport.project(drag.startLocation)) }
-                    }
+                    beginPointerDrag(at: drag.startLocation, viewport: viewport, layers: layers)
                 }
-                guard let source = gesture, source.input == "pointer" else { return }
-                guard gestureMatches(source, viewport: viewport) else { cancelGesture(resetAttempt: false); return }
-                do { _ = model.preview(try gestureOperations(source, point: drag.location), capture: source.capture) }
-                catch { cancelGesture(resetAttempt: false); model.status = error.localizedDescription }
+                updatePointerDrag(to: drag.location, viewport: viewport)
             }
             .onEnded { value in
                 switch value {
                 case .first(let drag):
-                    guard activeInput == "pointer" else { return }
-                    defer { gesture = nil; attempted = false; activeInput = nil }
-                    guard let source = gesture else { return }
-                    guard source.viewport.layout == viewport.layout else { model.discardRenderPreview(source.capture); return }
-                    do { endGesture(source, operations: try gestureOperations(source, point: drag.location), viewport: viewport) }
-                    catch { model.discardRenderPreview(source.capture); model.status = error.localizedDescription }
+                    finishPointerDrag(at: drag.location, viewport: viewport)
                 case .second(let value):
                     guard gesture == nil else { return }
                     attempted = false; activeInput = nil; tap(value.location, viewport: viewport, layers: layers)
                 }
             }
     }
+
+    /// The edit a drag starting here would make: a handle or body of the selected layer, or the body of a layer to pick.
+    private func pointerTarget(at start: CGPoint, viewport: NativeViewerGeometry.Viewport, layers: [NativeViewerGeometry.Layer]) -> NativeViewerGeometry.Target? {
+        if let selected = selectedLayer(layers), let clip = model.selected, editable(clip),
+           let target = NativeViewerGeometry.target(start, viewport: viewport, layer: selected, clip: clip.fields, hitSize: handleHitSize) { return target }
+        return NativeViewerGeometry.pick(start, viewport: viewport, layers: layers) == nil ? nil : .move
+    }
+
+    private func beginPointerDrag(at start: CGPoint, viewport: NativeViewerGeometry.Viewport, layers: [NativeViewerGeometry.Layer]) {
+        if let selected = selectedLayer(layers), let clip = model.selected, editable(clip),
+           let target = NativeViewerGeometry.target(start, viewport: viewport, layer: selected, clip: clip.fields, hitSize: handleHitSize) {
+            if extendingSelection && target == .move { model.select(id: selected.id, extending: true) }
+            else { gesture = beginGesture(viewport: viewport, layer: selected, target: target, point: viewport.project(start)) }
+        } else if let id = NativeViewerGeometry.pick(start, viewport: viewport, layers: layers), let layer = layers.first(where: { $0.id == id }) {
+            model.select(id: id, extending: extendingSelection)
+            if !extendingSelection { gesture = beginGesture(viewport: viewport, layer: layer, target: .move, point: viewport.project(start)) }
+        }
+    }
+
+    private func updatePointerDrag(to location: CGPoint, viewport: NativeViewerGeometry.Viewport) {
+        guard let source = gesture, source.input == "pointer" else { return }
+        guard gestureMatches(source, viewport: viewport) else { cancelGesture(resetAttempt: false); return }
+        do { _ = model.preview(try gestureOperations(source, point: location), capture: source.capture) }
+        catch { cancelGesture(resetAttempt: false); model.status = error.localizedDescription }
+    }
+
+    private func finishPointerDrag(at location: CGPoint, viewport: NativeViewerGeometry.Viewport) {
+        guard activeInput == "pointer" else { return }
+        defer { gesture = nil; attempted = false; activeInput = nil }
+        guard let source = gesture else { return }
+        guard source.viewport.layout == viewport.layout else { model.discardRenderPreview(source.capture); return }
+        do { endGesture(source, operations: try gestureOperations(source, point: location), viewport: viewport) }
+        catch { model.discardRenderPreview(source.capture); model.status = error.localizedDescription }
+    }
+
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    /// Touch version of `interaction`. A swipe over the picture does nothing; holding briefly on a layer, then
+    /// dragging, moves it. Handles respond at once. A touch that never moves is a tap.
+    private func touchInteraction(viewport: NativeViewerGeometry.Viewport, layers: [NativeViewerGeometry.Layer]) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { drag in
+                guard model.viewerColorPicker == nil, model.drawing == nil else { return }
+                guard let down = touchDown else { touchDown = drag.time; return }
+                if activeInput == "pinch" { touchIgnored = true }
+                guard !touchIgnored else { return }
+                if !attempted {
+                    let moved = hypot(drag.translation.width, drag.translation.height)
+                    let current = model.viewerGeometryIsCurrent()
+                    let intent = NativeViewerGeometry.touchIntent(target: current ? pointerTarget(at: drag.startLocation, viewport: viewport, layers: layers) : nil,
+                                                                  held: drag.time.timeIntervalSince(down), moved: moved)
+                    switch intent {
+                    case .undecided: return
+                    case .ignore: touchIgnored = true; return
+                    case .edit:
+                        attempted = true; activeInput = "pointer"
+                        beginPointerDrag(at: drag.startLocation, viewport: viewport, layers: layers)
+                    }
+                }
+                updatePointerDrag(to: drag.location, viewport: viewport)
+            }
+            .onEnded { drag in
+                let ignored = touchIgnored, moved = hypot(drag.translation.width, drag.translation.height)
+                touchDown = nil; touchIgnored = false
+                if activeInput == "pointer" { finishPointerDrag(at: drag.location, viewport: viewport); return }
+                guard !ignored, !attempted, activeInput == nil, gesture == nil, moved < NativeViewerGeometry.touchSlop else { return }
+                tap(drag.location, viewport: viewport, layers: layers)
+            }
+    }
+    #endif
 
     private func accessibleEdit(_ mode: String, amount: Double, vertical: Bool = false, viewport: NativeViewerGeometry.Viewport, layer: NativeViewerGeometry.Layer) {
         guard let point = layer.corners.first(where: { hypot($0.x - layer.anchor.x, $0.y - layer.anchor.y) > 1e-6 }),
@@ -420,7 +490,12 @@ struct NativeViewer: View {
                     }
                 }
             }.allowsHitTesting(false).accessibilityHidden(true)
-            Color.clear.contentShape(Rectangle()).gesture(interaction(viewport: viewport, layers: layers))
+            Color.clear.contentShape(Rectangle())
+                #if os(iOS) && !targetEnvironment(macCatalyst)
+                .gesture(touchInteraction(viewport: viewport, layers: layers))
+                #else
+                .gesture(interaction(viewport: viewport, layers: layers))
+                #endif
                 .simultaneousGesture(MagnifyGesture().onChanged { value in
                     if !attempted {
                         attempted = true; activeInput = "pinch"

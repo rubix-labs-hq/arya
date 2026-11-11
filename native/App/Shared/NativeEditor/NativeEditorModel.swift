@@ -14,6 +14,7 @@ import UIKit
 // BEGIN HAPTIC POLICY
 /// Feedback accompanies a visible, confirmed event; transport frames and optimistic requests stay silent.
 enum NativeHapticKind: Equatable { case selection, snap, commit, success }
+
 struct NativeHapticSignal: Equatable {
     var sequence: UInt64 = 0
     var kind: NativeHapticKind?
@@ -79,6 +80,115 @@ struct NativeHapticPolicy {
     mutating func reset() { activeSnapFrame = nil; pendingExports.removeAll(); consumedExports.removeAll(); consumedOrder.removeAll() }
 }
 // END HAPTIC POLICY
+
+/// Turns the shared core's activity log lines into editor status text without internal IDs.
+/// Edit confirmations read as plain sentences. Failures, warnings and unknown lines keep their detail.
+enum NativeStatusText {
+    static func activity(_ raw: String, who: String = "", project: [String: Any]?) -> String {
+        let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let names = self.names(project)
+        func file(_ path: String) -> String { (path.trimmingCharacters(in: .whitespaces) as NSString).lastPathComponent }
+        func capture(_ pattern: String) -> [String]? {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) else { return nil }
+            return (1..<match.numberOfRanges).map { Range(match.range(at: $0), in: line).map { String(line[$0]) } ?? "" }
+        }
+        switch line {
+        case "": return ""
+        case "undo": return "Undid the last change."
+        case "redo": return "Redid the change."
+        case "reel.project.json changed on disk": return "The project file changed outside Arya. Arya loaded the new version."
+        default: break
+        }
+        if let parts = capture(#"^job failed: (.+)$"#) { return "A background job failed: \(parts[0])" }
+        if let parts = capture(#"^exported (.+?)( in [0-9.]+s)?$"#) { return "Export finished: \(file(parts[0]))." }
+        if let parts = capture(#"^([A-Za-z ]+) finished: (.+)$"#) { return "\(sentence(parts[0]).dropLast()) finished: \(file(parts[1]))." }
+        if let parts = capture(#"^export queued: (.+)$"#) { return "Export queued: \(file(parts[0]))." }
+        if let parts = capture(#"^proxy ready for (.+)$"#) { return "Smooth playback is ready for \(file(parts[0]))." }
+        if let parts = capture(#"^making a playable proxy for (.+)$"#) { return "Preparing smooth playback for \(file(parts[0]))." }
+        if let parts = capture(#"^updated track (\S+): (.*)$"#) { return "Updated \(name(parts[0], names) ?? "a track")." }
+        if let parts = capture(#"^updated ([^:]+): (.*)$"#), !parts[0].contains(" ") || parts[0].contains(", ") {
+            let ids = parts[0].components(separatedBy: ", ").filter { !$0.isEmpty }
+            let subject = ids.count == 1 ? (name(ids[0], names) ?? "a clip") : "\(ids.count) clips"
+            var words: [String] = []
+            for key in parts[1].components(separatedBy: ", ") where !key.isEmpty {
+                let word = propertyWords[key] ?? "settings"
+                if !words.contains(word) { words.append(word) }
+            }
+            let what = words.isEmpty ? "settings" : ListFormatter.localizedString(byJoining: words)
+            return "Changed the \(what) of \(subject)."
+        }
+        // Commit lines from your own edits or the assistant. Other lines are warnings or errors, so keep them whole.
+        guard who == "you" || who == "agent" else { return line }
+        return sentence(replacingIDs(in: line, names))
+    }
+
+    private static let propertyWords: [String: String] = [
+        "grade": "color grade", "nodes": "color nodes", "x": "position", "y": "position", "scale": "size", "scaleX": "size", "scaleY": "size",
+        "rotation": "rotation", "opacity": "opacity", "anim": "animation", "expr": "expressions", "anchorX": "anchor point", "anchorY": "anchor point",
+        "volume": "level", "pan": "pan", "fadeIn": "fades", "fadeOut": "fades", "mute": "sound", "eq": "EQ", "fx": "effects", "label": "name",
+        "title": "text", "blend": "blend mode", "blurAmount": "blur", "speed": "speed", "crop": "crop", "masks": "masks", "transition": "transition"
+    ]
+
+    private static func names(_ project: [String: Any]?) -> [String: String] {
+        guard let project else { return [:] }
+        var result: [String: String] = [:]
+        func add(_ tracks: [[String: Any]]) {
+            for track in tracks {
+                let trackName = track.string("name")
+                if !trackName.isEmpty { result[track.string("id")] = trackName }
+                for clip in track.objects("clips") {
+                    let source = clip.string("src")
+                    let fallback = source.isEmpty ? clip.string("kind").capitalized : (source as NSString).lastPathComponent
+                    let label = clip.string("label", clip.dictionary("title").string("text", fallback))
+                    if !label.isEmpty { result[clip.string("id")] = label }
+                }
+            }
+        }
+        add(project.objects("tracks"))
+        for (id, value) in project.dictionary("comps") {
+            let comp = value as? [String: Any] ?? [:]
+            add(comp.objects("tracks"))
+            let compName = comp.string("name")
+            if !compName.isEmpty { result[id] = compName }
+        }
+        return result
+    }
+
+    private static func name(_ id: String, _ names: [String: String]) -> String? {
+        names[id].map { "“\($0)”" }
+    }
+
+    /// Replaces project IDs such as c12, c12a or V2 with names. IDs no longer in the project become plain nouns.
+    private static func replacingIDs(in line: String, _ names: [String: String]) -> String {
+        guard let regex = try? NSRegularExpression(pattern: #"\b([A-Za-z]{1,2})\d+[a-z]?\b"#) else { return line }
+        var result = line
+        for match in regex.matches(in: line, range: NSRange(line.startIndex..., in: line)).reversed() {
+            guard let range = Range(match.range, in: line), let prefixRange = Range(match.range(at: 1), in: line),
+                  let target = Range(match.range, in: result) else { continue }
+            let id = String(line[range])
+            let replacement: String
+            if let known = name(id, names) { replacement = known }
+            else {
+                switch String(line[prefixRange]) {
+                case "c", "Lc": replacement = "a clip"
+                case "V", "A": replacement = "a track"
+                case "k": replacement = "a composition"
+                case "m": replacement = "a marker"
+                default: continue
+                }
+            }
+            result.replaceSubrange(target, with: replacement)
+        }
+        return result
+    }
+
+    private static func sentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        let capitalized = first.uppercased() + text.dropFirst()
+        return capitalized.hasSuffix(".") || capitalized.hasSuffix("…") || capitalized.hasSuffix("?") ? capitalized : capitalized + "."
+    }
+}
 
 struct NativeEditorSelection: Equatable {
     private(set) var ids: Set<String> = []
@@ -526,6 +636,7 @@ final class NativeEditorModel: ObservableObject {
     private(set) var paintedFrames = 0
     @Published private(set) var capabilities: [String: Any] = [:]
     @Published private(set) var jobs: [[String: Any]] = []
+    // The status row keeps its line until the next message so switching workflows never resizes the editor.
     @Published var status = ""
     @Published var busy = false
     @Published var missingMediaRestoreRequest: NativeMissingMediaRestoreRequest?
@@ -545,6 +656,8 @@ final class NativeEditorModel: ObservableObject {
         }
     }
     @Published var mobilePanel: NativePanel?
+    /// The Motion page's selected property. Lives here so it survives workflow page changes.
+    @Published var motionProperty = "x"
     @Published var drawing: NativeDrawingMode?
     @Published var assistantDraft = ""
     @Published var assistantInputKind = "prompt"
@@ -863,7 +976,8 @@ final class NativeEditorModel: ObservableObject {
             let id = fields.string("id")
             jobs.removeAll { $0.string("id") == id }; jobs.append(fields)
             confirmExportFeedback(fields)
-        case "activity": status = fields.string("text", fields.string("summary"))
+        case "activity":
+            status = NativeStatusText.activity(fields.string("text", fields.string("summary")), who: fields.string("who"), project: project?.fields)
         default: break
         }
     }

@@ -613,6 +613,10 @@ struct NativeEditorView: View {
         .accessibilityLabel("Editing workspace")
     }
 
+    private var compactTaskPresented: Bool {
+        model.mobilePanel.map { !NativeCompactWorkspaceRouting.inlineWorkspaces.contains($0) } ?? false
+    }
+
     private var compactEditingPanel: NativePanel {
         if NativeCompactWorkspaceRouting.inlineWorkspaces.contains(model.panel) { return model.panel }
         return NativeCompactWorkspaceRouting.inlineWorkspaces.contains(lastEditingPanel) ? lastEditingPanel : .edit
@@ -623,7 +627,9 @@ struct NativeEditorView: View {
         GeometryReader { workspace in
             let size = workspace.size
             let divider = NativeResizeDivider.thickness
-            let expanded = compactToolsExpanded && model.drawing == nil && model.viewerColorPicker == nil
+            // On a phone a task sheet such as Deliver covers the tray. The tray steps aside, keeping its drafts,
+            // so the visible header never names the page behind the sheet.
+            let expanded = compactToolsExpanded && model.drawing == nil && model.viewerColorPicker == nil && !(compact && compactTaskPresented)
             let layout = NativeWorkspaceLayout.mobilePlacement(width: size.width, height: size.height, compact: compact,
                 expanded: expanded, accessibilityText: dynamicTypeSize.isAccessibilitySize, divider: divider,
                 media: compact ? mediaWidth : mediaSize.wrappedValue, inspector: inspectorSize.wrappedValue, assistant: assistantWidth, timeline: compact ? timelineHeight : timelineSize.wrappedValue,

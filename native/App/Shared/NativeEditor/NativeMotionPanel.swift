@@ -6,7 +6,11 @@ import AppKit
 struct NativeMotionPanel: View {
     @ObservedObject var model: NativeEditorModel
     var sharedContextHeader = false
-    @State private var property = "x"
+    /// Kept on the model so changing workflow page and coming back keeps the chosen property.
+    private var property: String {
+        get { model.motionProperty }
+        nonmutating set { model.motionProperty = newValue }
+    }
     @State private var newEase = "smooth"
     @State private var newValue = 0.0
     @State private var expression = ""
@@ -789,6 +793,15 @@ private enum NativeMotionOperations {
         return (removes + adds, selection)
     }
 }
+/// Touch graphs only drag from keys and handles, so a swipe across the graph scrolls the panel.
+enum NativeMotionGraphHint {
+    static let handleSize = 36.0
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    static let text = "Tap a key to reveal its handles, then drag a key or handle to edit it. Numeric key and Bezier controls are below the graph."
+    #else
+    static let text = "Select a key to reveal its handles. Numeric key and Bezier controls are below the graph."
+    #endif
+}
 // End production motion helpers.
 
 private struct NativeMotionDraft {
@@ -910,6 +923,20 @@ private struct NativeMotionGraphLayout {
     let lower: Double
     let upper: Double
     var flat: Double { (upper - lower) / 4 }
+    /// Value axis labels, top to bottom. Precision follows the grid step so neighbouring labels differ.
+    var valueLabels: [String] { Self.axisLabels(upper: upper, lower: lower, steps: 4) }
+    static func axisLabels(upper: Double, lower: Double, steps: Int) -> [String] {
+        guard steps > 0, upper.isFinite, lower.isFinite else { return [] }
+        let values = (0...steps).map { upper - (upper - lower) * Double($0) / Double(steps) }
+        let step = abs(upper - lower) / Double(steps)
+        var digits = step > 0 ? max(0, min(6, Int(ceil(-log10(step) - 1e-9)))) : 0
+        func text(_ value: Double) -> String {
+            let rounded = (value * pow(10, Double(digits))).rounded() / pow(10, Double(digits))
+            return (rounded == 0 ? 0 : rounded).formatted(.number.precision(.fractionLength(digits)))
+        }
+        while digits < 6, Set(values.map(text)).count < values.count { digits += 1 }
+        return values.map(text)
+    }
     init(keys: [NativeMotionKey], duration: Double, mode: NativeMotionGraphMode) {
         self.mode = mode
         timeStart = min(0, keys.first?.at ?? 0); timeEnd = max(duration, keys.last?.at ?? 0, 0.001)
@@ -1011,12 +1038,32 @@ private struct NativeMotionGraph: View {
             let shown = previewKeys
             Canvas { graphics, _ in draw(graphics: &graphics, rect: rect, layout: layout, shown: shown) }
                 .contentShape(Rectangle())
+                #if os(iOS) && !targetEnvironment(macCatalyst)
+                // On touch a swipe scrolls the panel. Tap to select a key or move the playhead; drag a key or handle to edit it.
+                .gesture(SpatialTapGesture().onEnded { value in
+                    changeGraphDrag(start: value.location, location: value.location, translation: .zero, rect: rect, layout: layout)
+                    finishGraphDrag()
+                })
+                .overlay(alignment: .topLeading) {
+                    ForEach(Array(touchTargets(rect: rect, layout: layout).enumerated()), id: \.offset) { _, point in
+                        Color.clear.frame(width: NativeMotionGraphHint.handleSize, height: NativeMotionGraphHint.handleSize).contentShape(Circle())
+                            .position(point)
+                            .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+                                changeGraphDrag(start: point, location: CGPoint(x: point.x + value.translation.width, y: point.y + value.translation.height), translation: value.translation, rect: rect, layout: layout)
+                            }.onEnded { value in
+                                changeGraphDrag(start: point, location: CGPoint(x: point.x + value.translation.width, y: point.y + value.translation.height), translation: value.translation, rect: rect, layout: layout)
+                                finishGraphDrag()
+                            })
+                    }
+                }
+                #else
                 .gesture(DragGesture(minimumDistance: 0).onChanged { value in
                     changeGraphDrag(start: value.startLocation, location: value.location, translation: value.translation, rect: rect, layout: layout)
                 }.onEnded { value in
                     changeGraphDrag(start: value.startLocation, location: value.location, translation: value.translation, rect: rect, layout: layout)
                     finishGraphDrag()
                 })
+                #endif
         }
         .frame(height: 210)
         .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 5))
@@ -1026,7 +1073,7 @@ private struct NativeMotionGraph: View {
             else if mode == .speed, keys.count == 1 { Text("Add another key to graph a segment's speed.").font(.system(size: 11)).foregroundStyle(NativeEditorStyle.muted).allowsHitTesting(false) }
         }
         .accessibilityLabel("\(property) \(mode.rawValue) graph")
-        .accessibilityHint("Select a key to reveal its handles. Numeric key and Bezier controls are below the graph.")
+        .accessibilityHint(NativeMotionGraphHint.text)
         .onDisappear { clear() }
     }
 
@@ -1116,6 +1163,11 @@ private struct NativeMotionGraph: View {
         return result
     }
 
+    /// Key and visible handle centers, the only places a touch drag can start.
+    private func touchTargets(rect: CGRect, layout: NativeMotionGraphLayout) -> [CGPoint] {
+        markers(keys, layout: layout).map { layout.position($0.1, in: rect) } + handles(keys, layout: layout).map { layout.position($0.point, in: rect) }
+    }
+
     private func start(at point: CGPoint, rect: CGRect, layout: NativeMotionGraphLayout) {
         attempted = true
         let points = markers(keys, layout: layout).map { ($0.0, layout.position($0.1, in: rect)) }
@@ -1136,12 +1188,13 @@ private struct NativeMotionGraph: View {
     }
 
     private func draw(graphics: inout GraphicsContext, rect: CGRect, layout: NativeMotionGraphLayout, shown: [NativeMotionKey]) {
+        let valueLabels = layout.valueLabels
         for step in 0...4 {
             let fraction = Double(step) / 4
             let y = rect.minY + rect.height * fraction, value = layout.upper - (layout.upper - layout.lower) * fraction
             var line = Path(); line.move(to: CGPoint(x: rect.minX, y: y)); line.addLine(to: CGPoint(x: rect.maxX, y: y))
             graphics.stroke(line, with: .color(NativeEditorStyle.line), lineWidth: 1)
-            let label = Text(value.formatted(.number.precision(.fractionLength(0...1)))).font(.system(size: 8).monospacedDigit()).foregroundStyle(NativeEditorStyle.muted)
+            let label = Text(valueLabels.indices.contains(step) ? valueLabels[step] : value.formatted()).font(.system(size: 8).monospacedDigit()).foregroundStyle(NativeEditorStyle.muted)
             graphics.draw(label, at: CGPoint(x: rect.minX - 5, y: y), anchor: .trailing)
             let x = rect.minX + rect.width * fraction
             let time = layout.timeStart + (layout.timeEnd - layout.timeStart) * fraction

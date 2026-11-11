@@ -130,6 +130,25 @@ private extension NativeAudioRequestCapture {
     }
 }
 
+/// Whether a clip has sound that clip audio controls can change. Mirrors the shared core's `hasAudio`,
+/// except that a muted clip still counts, so its Mute button stays reachable.
+enum NativeAudioPresence {
+    static func clipHasAudio(_ clip: [String: Any], project: [String: Any]) -> Bool {
+        let assets = project.dictionary("assets")
+        switch clip.string("kind") {
+        case "audio": return true
+        case "video": return !clip.flag("audioDetached") && assets.dictionary(clip.string("src")).flag("hasAudio")
+        case "multicam":
+            let angles = clip.objects("angles"), index = Int(clip.number("audioAngle"))
+            return angles.indices.contains(index) && assets.dictionary(angles[index].string("src")).flag("hasAudio")
+        case "comp":
+            return project.dictionary("comps").dictionary(clip.string("comp")).objects("tracks")
+                .contains { $0.string("kind") == "audio" && !$0.objects("clips").isEmpty }
+        default: return false
+        }
+    }
+}
+
 struct NativeAudioPanel: View {
     @ObservedObject var model: NativeEditorModel
     @StateObject private var work = NativeAudioWork()
@@ -361,7 +380,26 @@ struct NativeAudioPanel: View {
         }
     }
 
-    private func clipControls(_ clip: NativeClip, width: Double) -> some View {
+    @ViewBuilder private func clipControls(_ clip: NativeClip, width: Double) -> some View {
+        if NativeAudioPresence.clipHasAudio(clip.fields, project: model.project?.fields ?? [:]) {
+            audioClipControls(clip, width: width)
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                Divider().overlay(NativeEditorStyle.line)
+                #if os(iOS)
+                Text(clip.name).font(.headline).fixedSize(horizontal: false, vertical: true)
+                #else
+                Text(clip.name).font(.system(size: 12, weight: .medium)).lineLimit(2)
+                #endif
+                Label("This clip has no sound", systemImage: "speaker.slash")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(NativeEditorStyle.text)
+                Text("Level, pan, fades and EQ apply to audio clips and to video with sound. Select one in the timeline to adjust it.")
+                    .font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+            }.accessibilityElement(children: .combine)
+        }
+    }
+
+    private func audioClipControls(_ clip: NativeClip, width: Double) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Divider().overlay(NativeEditorStyle.line)
             HStack {

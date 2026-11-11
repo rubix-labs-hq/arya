@@ -1243,7 +1243,7 @@ struct NativeTimeline: View {
                 Image(systemName: "film.stack")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.selected?.name ?? "Select clip").lineLimit(1)
-                    Text(feedback.isEmpty ? preview?.detail ?? (model.selected == nil ? "Tap a clip; swipe to scroll" : [.trim, .ripple, .roll].contains(mode) ? "Hold an edge, then drag" : "Hold, then drag to \(mode.rawValue.lowercased())") : feedback)
+                    Text(feedback.isEmpty ? preview?.detail ?? (model.selected == nil ? NativeTimelineWords.selectHint : [.trim, .ripple, .roll].contains(mode) ? NativeTimelineWords.edgeHint : NativeTimelineWords.dragHint(mode.rawValue.lowercased())) : feedback)
                         .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -1626,9 +1626,8 @@ private struct NativeTimelineToolbar: View {
                         Label(item.rawValue, systemImage: item == mode ? "checkmark" : "cursorarrow.motionlines")
                     }
                 }
-                Section("Touch editing") {
-                    Text("Tap a clip to select it. Swipe to scroll the timeline.")
-                    Text("Hold a clip or its edge, then drag to edit. Pinch to zoom.")
+                Section(NativeTimelineWords.helpTitle) {
+                    ForEach(NativeTimelineWords.help, id: \.self) { Text($0) }
                     Text("The frame buttons make precise edits. Trim modes also provide Start and End controls for short clips.")
                 }
             } label: {
@@ -2150,7 +2149,7 @@ private struct NativeTimelineClip: View {
         #if os(iOS)
         return accessible
         .accessibilityValue(armedEditLabel.map { "\($0) armed" } ?? "")
-        .accessibilityHint(track.locked ? "Locked track. Unlock it from the track menu before editing." : "Swipe to scroll. Hold then drag to edit. Select this clip for Start and End precision controls.")
+        .accessibilityHint(track.locked ? "Locked track. Unlock it from the track menu before editing." : NativeTimelineWords.clipAccessibilityHint)
         .accessibilityAction(named: Text("Move earlier by one frame")) { precise(-1, nil, .move) }
         .accessibilityAction(named: Text("Move later by one frame")) { precise(1, nil, .move) }
         .accessibilityAction(named: Text("Trim start earlier by one frame")) { precise(-1, "left", .trim) }
@@ -2328,4 +2327,26 @@ private struct NativeTimelineClipMedia: View {
             }
         }.clipShape(RoundedRectangle(cornerRadius: 4)).allowsHitTesting(false)
     }
+}
+
+/// Timeline guidance in the words of the device: touch on iPhone and iPad, pointer on Mac.
+/// Mac Catalyst builds from the iOS target, so it needs its own branch.
+enum NativeTimelineWords {
+    #if targetEnvironment(macCatalyst) || os(macOS)
+    static let selectHint = "Click a clip; scroll to see more"
+    static let edgeHint = "Press and hold an edge, then drag"
+    static func dragHint(_ action: String) -> String { "Press and hold, then drag to \(action)" }
+    static let helpTitle = "Pointer editing"
+    static let help = ["Click a clip to select it. Scroll with the trackpad or mouse to move along the timeline.",
+                       "Press and hold a clip or its edge, then drag to edit. Pinch on the trackpad to zoom."]
+    static let clipAccessibilityHint = "Scroll to see more. Press and hold, then drag to edit. Select this clip for Start and End precision controls."
+    #else
+    static let selectHint = "Tap a clip; swipe to scroll"
+    static let edgeHint = "Hold an edge, then drag"
+    static func dragHint(_ action: String) -> String { "Hold, then drag to \(action)" }
+    static let helpTitle = "Touch editing"
+    static let help = ["Tap a clip to select it. Swipe to scroll the timeline.",
+                       "Hold a clip or its edge, then drag to edit. Pinch to zoom."]
+    static let clipAccessibilityHint = "Swipe to scroll. Hold then drag to edit. Select this clip for Start and End precision controls."
+    #endif
 }

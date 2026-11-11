@@ -285,7 +285,7 @@ struct NativeColorPanel: View {
                 }, preview: previewGradeDraft, end: discardGradePreview) { points, context in
                     commitGradePreview(points, context: context)
                 }.id("\(clip.id):\(nodeID):\(curveChannel)")
-                Text("Drag a point to shape the curve. Click the graph to add a point.")
+                Text(NativeColorCurveEditor.NativeCurveHit.hint)
                     .font(.system(size: 11)).foregroundStyle(NativeEditorStyle.muted)
             } else if canGrade && palette == "Look" {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 82), spacing: 6)], spacing: 6) {
@@ -1265,18 +1265,36 @@ private struct NativeGradeWheel: View {
                     Circle().stroke(Color.white.opacity(0.22), lineWidth: 1).frame(width: 9, height: 9)
                     Circle().fill(Color.white).frame(width: 11, height: 11)
                         .overlay { Circle().stroke(.black.opacity(0.9), lineWidth: 2) }
+                        #if os(iOS) && !targetEnvironment(macCatalyst)
+                        // On touch only the puck drags, so a swipe across the disc scrolls the panel.
+                        .frame(width: NativeColorCurveEditor.NativeCurveHit.handleSize, height: NativeColorCurveEditor.NativeCurveHit.handleSize)
+                        .contentShape(Circle())
+                        .gesture(tintDrag(radius: radius))
+                        #endif
                         .offset(x: CGFloat(position.x / length) * radius, y: CGFloat(-position.y / length) * radius)
                 }
                 .frame(width: side, height: side).frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Circle())
-                .gesture(DragGesture(minimumDistance: 0).onChanged { updateTint($0, radius: radius) }.onEnded { _ in
-                    finishWheelGesture()
-                })
+                #if !os(iOS) || targetEnvironment(macCatalyst)
+                .gesture(tintDrag(radius: radius))
+                #endif
                 .onTapGesture(count: 2) { resetWheel() }
                 .accessibilityLabel(Text(label + " color balance"))
                 .accessibilityValue(Text(accessibleValues))
-                .accessibilityHint("Drag to tint. Use RGB values below for numeric color control.")
+                .accessibilityHint(NativeGradeWheel.hint)
         }.frame(height: 112).frame(maxWidth: 128)
+    }
+
+    static var hint: String {
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        return "Drag the center dot to tint. Use RGB values below for numeric color control."
+        #else
+        return "Drag to tint. Use RGB values below for numeric color control."
+        #endif
+    }
+
+    private func tintDrag(radius: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0).onChanged { updateTint($0, radius: radius) }.onEnded { _ in finishWheelGesture() }
     }
 
     private func updateTint(_ gesture: DragGesture.Value, radius: CGFloat) {
@@ -1949,6 +1967,62 @@ private struct NativeColorCurveEditor: View {
     @State private var selected: Int?
     private var values: [[Double]] { draft ?? points.filter { $0.count == 2 && $0.allSatisfy(\.isFinite) }.sorted { $0[0] < $1[0] } }
     private var color: Color { ["r": .red, "g": .green, "b": .blue][channel] ?? NativeEditorStyle.text }
+    private var curveSpace: String { "nativeColorCurve.\(channel)" }
+
+    /// Where curve input lands. The graph is inset 10 points on every side.
+    enum NativeCurveHit {
+        static let inset = 10.0
+        /// Touch handle side. Smaller than a full button so a swipe through the graph rarely starts on one.
+        static let handleSize = 36.0
+        static var hint: String {
+            #if os(macOS) || targetEnvironment(macCatalyst)
+            return "Click the graph to add a point. Drag a point to move it."
+            #else
+            return "Tap the graph to add a point. Drag a point to move it."
+            #endif
+        }
+        static func chart(_ size: CGSize) -> CGSize { CGSize(width: max(1, size.width - inset * 2), height: max(1, size.height - inset * 2)) }
+        static func position(_ point: [Double], size: CGSize) -> CGPoint {
+            let chart = chart(size)
+            return CGPoint(x: inset + point[0] * chart.width, y: inset + (1 - point[1]) * chart.height)
+        }
+        static func value(at location: CGPoint, size: CGSize) -> [Double] {
+            let chart = chart(size)
+            return [min(1, max(0, (location.x - inset) / chart.width)), min(1, max(0, 1 - (location.y - inset) / chart.height))]
+        }
+        static func nearest(_ values: [[Double]], to location: CGPoint, size: CGSize, radius: Double) -> Int? {
+            let distances = values.map { let p = position($0, size: size); return hypot(p.x - location.x, p.y - location.y) }
+            guard let nearest = distances.min(), nearest <= radius else { return nil }
+            return distances.firstIndex(of: nearest)
+        }
+        /// A tap selects a nearby point, or adds one on the graph. Nil means the tap changes nothing.
+        enum Tap: Equatable { case select(Int), add([[Double]], Int) }
+        static func tap(_ values: [[Double]], at location: CGPoint, size: CGSize) -> Tap? {
+            if let index = nearest(values, to: location, size: size, radius: handleSize / 2) { return .select(index) }
+            guard values.count < 16 else { return nil }
+            let point = value(at: location, size: size)
+            guard values.allSatisfy({ abs($0[0] - point[0]) > 0.001 }) else { return nil }
+            let next = (values + [point]).sorted { $0[0] < $1[0] }
+            return next.firstIndex(of: point).map { .add(next, $0) }
+        }
+    }
+
+    private func moveDraggedPoint(to location: CGPoint, size: CGSize) {
+        guard let dragging, draft?.indices.contains(dragging) == true else { return }
+        draft?[dragging] = NativeCurveHit.value(at: location, size: size)
+        selected = dragging
+        if let draft, let gestureContext, let next = NativeColorDraftPreview.curve(draft) { preview(next, gestureContext) }
+    }
+
+    private func tapGraph(at location: CGPoint, size: CGSize) {
+        guard dragging == nil, let tap = NativeCurveHit.tap(values, at: location, size: size) else { return }
+        switch tap {
+        case .select(let index): selected = index
+        case .add(let next, let index):
+            guard let context = begin() else { return }
+            clearCurveGesture(); selected = index; commit(next, context)
+        }
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -1978,6 +2052,8 @@ private struct NativeColorCurveEditor: View {
                     }
                 }
                 .contentShape(Rectangle())
+                #if os(macOS)
+                // A Mac scroll wheel never produces a drag, so the pointer keeps press-and-drag to add.
                 .gesture(DragGesture(minimumDistance: 0).onChanged { gesture in
                     let width = max(1, geometry.size.width - 20), height = max(1, geometry.size.height - 20)
                     if dragging == nil {
@@ -1985,19 +2061,38 @@ private struct NativeColorCurveEditor: View {
                         gestureAttempted = true; gestureContext = begin()
                         guard gestureContext != nil else { return }
                         draft = values
-                        let distances = values.map { hypot(10 + $0[0] * width - gesture.startLocation.x, 10 + (1 - $0[1]) * height - gesture.startLocation.y) }
-                        if let nearest = distances.min(), nearest <= 22 { dragging = distances.firstIndex(of: nearest) }
+                        if let nearest = NativeCurveHit.nearest(values, to: gesture.startLocation, size: geometry.size, radius: 22) { dragging = nearest }
                         else if values.count < 16 { draft?.append([0, 0]); dragging = (draft?.count ?? 1) - 1 }
                     }
-                    guard let dragging else { return }
-                    draft?[dragging] = [min(1, max(0, (gesture.location.x - 10) / width)), min(1, max(0, 1 - (gesture.location.y - 10) / height))]
-                    selected = dragging
-                    if let draft, let gestureContext, let next = NativeColorDraftPreview.curve(draft) { preview(next, gestureContext) }
+                    moveDraggedPoint(to: gesture.location, size: geometry.size)
                 }.onEnded { _ in finishCurveGesture() })
+                #else
+                // Touch: a swipe that starts on the graph scrolls the panel. A tap adds or selects
+                // a point, and only a drag that starts on a point moves it.
+                .gesture(SpatialTapGesture().onEnded { tapGraph(at: $0.location, size: geometry.size) })
+                .overlay(alignment: .topLeading) {
+                    ForEach(Array(values.enumerated()), id: \.offset) { index, _ in
+                        Color.clear.frame(width: NativeCurveHit.handleSize, height: NativeCurveHit.handleSize).contentShape(Rectangle())
+                            .position(NativeCurveHit.position(values[index], size: geometry.size))
+                            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(curveSpace)).onChanged { gesture in
+                                if dragging == nil {
+                                    guard !gestureAttempted else { return }
+                                    gestureAttempted = true; gestureContext = begin()
+                                    guard gestureContext != nil else { return }
+                                    draft = values; dragging = index
+                                }
+                                moveDraggedPoint(to: gesture.location, size: geometry.size)
+                            }.onEnded { _ in finishCurveGesture() })
+                            .accessibilityHidden(true)
+                    }
+                }
+                .coordinateSpace(name: curveSpace)
+                #endif
             }.frame(height: 220)
                 .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 5))
                 .overlay { RoundedRectangle(cornerRadius: 5).stroke(NativeEditorStyle.line) }
                 .accessibilityLabel("\(channel == "master" ? "Master" : channel.uppercased()) color curve")
+                .accessibilityHint(NativeCurveHit.hint)
             Picker("Point", selection: Binding(get: { selected ?? -1 }, set: { selected = $0 < 0 ? nil : $0 })) {
                 Text("Select a point").tag(-1)
                 ForEach(Array(values.enumerated()), id: \.offset) { index, point in
