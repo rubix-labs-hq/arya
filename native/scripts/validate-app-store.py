@@ -9,7 +9,7 @@ from pathlib import Path
 p = argparse.ArgumentParser()
 p.add_argument('app', type=Path)
 p.add_argument('--unsigned', action='store_true', help='Allow an unsigned local development bundle')
-p.add_argument('--version', default='1.1.0')
+p.add_argument('--version', default='1.1.1')
 a = p.parse_args()
 app = a.app.resolve()
 mac = (app / 'Contents/Info.plist').is_file()
