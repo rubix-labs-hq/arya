@@ -1962,6 +1962,7 @@ private struct NativeColorCurveEditor: View {
     let commit: ([[Double]], NativePanelGestureContext) -> Void
     @State private var draft: [[Double]]?
     @State private var dragging: Int?
+    @State private var dragOrigin: [Double]?
     @State private var gestureContext: NativePanelGestureContext?
     @State private var gestureAttempted = false
     @State private var selected: Int?
@@ -1974,6 +1975,15 @@ private struct NativeColorCurveEditor: View {
         static let inset = 10.0
         /// Touch handle side. Smaller than a full button so a swipe through the graph rarely starts on one.
         static let handleSize = 36.0
+        /// A touch on a point has to travel this far before it moves the point. Less than that is a tap.
+        static let dragSlop = 4.0
+        static func dragStarts(_ translation: CGSize) -> Bool { hypot(translation.width, translation.height) >= dragSlop }
+        /// The point's value after a drag. The drag distance is applied to the point itself, so the
+        /// point does not jump to the finger when the touch lands off its centre.
+        static func dragged(_ point: [Double], by translation: CGSize, size: CGSize) -> [Double] {
+            let start = position(point, size: size)
+            return value(at: CGPoint(x: start.x + translation.width, y: start.y + translation.height), size: size)
+        }
         static var hint: String {
             #if os(macOS) || targetEnvironment(macCatalyst)
             return "Click the graph to add a point. Drag a point to move it."
@@ -2007,9 +2017,11 @@ private struct NativeColorCurveEditor: View {
         }
     }
 
-    private func moveDraggedPoint(to location: CGPoint, size: CGSize) {
+    private func moveDraggedPoint(to location: CGPoint, size: CGSize) { setDraggedPoint(NativeCurveHit.value(at: location, size: size)) }
+
+    private func setDraggedPoint(_ value: [Double]) {
         guard let dragging, draft?.indices.contains(dragging) == true else { return }
-        draft?[dragging] = NativeCurveHit.value(at: location, size: size)
+        draft?[dragging] = value
         selected = dragging
         if let draft, let gestureContext, let next = NativeColorDraftPreview.curve(draft) { preview(next, gestureContext) }
     }
@@ -2068,7 +2080,7 @@ private struct NativeColorCurveEditor: View {
                 }.onEnded { _ in finishCurveGesture() })
                 #else
                 // Touch: a swipe that starts on the graph scrolls the panel. A tap adds or selects
-                // a point, and only a drag that starts on a point moves it.
+                // a point, and only a drag that starts on a point and travels moves it.
                 .gesture(SpatialTapGesture().onEnded { tapGraph(at: $0.location, size: geometry.size) })
                 .overlay(alignment: .topLeading) {
                     ForEach(Array(values.enumerated()), id: \.offset) { index, _ in
@@ -2076,13 +2088,17 @@ private struct NativeColorCurveEditor: View {
                             .position(NativeCurveHit.position(values[index], size: geometry.size))
                             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(curveSpace)).onChanged { gesture in
                                 if dragging == nil {
-                                    guard !gestureAttempted else { return }
+                                    guard !gestureAttempted, NativeCurveHit.dragStarts(gesture.translation) else { return }
                                     gestureAttempted = true; gestureContext = begin()
-                                    guard gestureContext != nil else { return }
-                                    draft = values; dragging = index
+                                    guard gestureContext != nil, values.indices.contains(index) else { return }
+                                    draft = values; dragging = index; dragOrigin = values[index]
                                 }
-                                moveDraggedPoint(to: gesture.location, size: geometry.size)
-                            }.onEnded { _ in finishCurveGesture() })
+                                if let dragOrigin { setDraggedPoint(NativeCurveHit.dragged(dragOrigin, by: gesture.translation, size: geometry.size)) }
+                            }.onEnded { _ in
+                                // A touch that never travelled is a tap on the point: select it and change nothing.
+                                if !gestureAttempted { if dragging == nil, values.indices.contains(index) { selected = index }; return }
+                                finishCurveGesture()
+                            })
                             .accessibilityHidden(true)
                     }
                 }
@@ -2140,7 +2156,7 @@ private struct NativeColorCurveEditor: View {
         } else { selected = nil }
     }
 
-    private func clearCurveGesture() { if let gestureContext { end(gestureContext) }; draft = nil; dragging = nil; gestureContext = nil; gestureAttempted = false }
+    private func clearCurveGesture() { if let gestureContext { end(gestureContext) }; draft = nil; dragging = nil; dragOrigin = nil; gestureContext = nil; gestureAttempted = false }
 
     private func editPoint(_ index: Int, coordinate: Int, value: Double, context: NativePanelGestureContext) {
         guard let next = changedPoint(index, coordinate: coordinate, value: value) else { end(context); return }

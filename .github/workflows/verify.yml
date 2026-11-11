@@ -123,6 +123,7 @@ jobs:
           sh native/scripts/test-timeline-planning.sh
           python3 native/scripts/test-motion-graph.py
           python3 native/scripts/test-motion-drafts.py
+          python3 native/scripts/test-editor-input-and-status.py
           python3 native/scripts/test-color-node-graph.py
           python3 native/scripts/test-mac-menu-state.py
       - name: Verify native processing and import controls

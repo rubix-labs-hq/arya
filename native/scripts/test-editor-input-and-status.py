@@ -46,6 +46,16 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(NativeCurveHit.tap(Array(repeating: [0.5, 0.5], count: 16).enumerated().map { [Double($0.offset) / 16, 0.5] }, at: CGPoint(x: 155, y: 30), size: size) == nil, "A full curve ignores taps")
         require(NativeCurveHit.nearest(curve, to: CGPoint(x: 150, y: 110), size: size, radius: NativeCurveHit.handleSize / 2) == nil, "Empty graph space under a swipe has no point to drag")
         require(NativeCurveHit.handleSize <= 44, "Curve handles stay small enough for a swipe to pass between them")
+        // A touch on a point that does not travel is a tap. It must not move the point or commit.
+        require(!NativeCurveHit.dragStarts(.zero), "A touch that does not move is not a drag")
+        require(!NativeCurveHit.dragStarts(CGSize(width: 2, height: 2)), "A tiny wobble is not a drag")
+        require(NativeCurveHit.dragStarts(CGSize(width: 0, height: NativeCurveHit.dragSlop)), "Travel past the slop is a drag")
+        // A drag that starts 10 points off a point's centre moves it by the drag only, with no jump to the finger.
+        let middle: [Double] = [0.5, 0.5]
+        require(NativeCurveHit.dragged(middle, by: .zero, size: size) == middle, "A drag of zero leaves the point where it was")
+        let nudged = NativeCurveHit.dragged(middle, by: CGSize(width: 28, height: 0), size: size)
+        require(abs(nudged[0] - 0.6) < 1e-9 && abs(nudged[1] - 0.5) < 1e-9, "A 28 point drag on a 280 point chart moves the point by 0.1: \(nudged)")
+        require(NativeCurveHit.dragged(middle, by: CGSize(width: 900, height: -900), size: size) == [1, 1], "Dragged points stay inside the graph")
 
         // Viewer: a quick pan on a layer body scrolls; a held drag moves; handles edit at once.
         typealias G = NativeViewerGeometry
@@ -67,6 +77,21 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(around.contains("0.0") || around.contains("0.00") || around.contains("0"), "Zero shows without a minus sign: \(around)")
         require(!around.contains { $0.hasPrefix("-0") && Double($0) == 0 }, "Negative zero never shows: \(around)")
         require(NativeMotionGraphLayout.axisLabels(upper: 1, lower: 1, steps: 4).count == 5, "A flat range still gives one label per step")
+        // Huge but finite key values: the range between them overflows if subtracted directly.
+        let huge = NativeMotionGraphLayout.axisLabels(upper: 9.28e307, lower: -9.28e307, steps: 4)
+        require(huge.count == 5, "Huge finite bounds still give labels: \(huge)")
+        let hugeKeys = [NativeMotionKey(property: "x", index: 0, at: 0, value: -8e307, ease: nil), NativeMotionKey(property: "x", index: 1, at: 1, value: 8e307, ease: nil)]
+        let hugeLayout = NativeMotionGraphLayout(keys: hugeKeys, duration: 1, mode: .value)
+        require(hugeLayout.upper.isFinite && hugeLayout.lower.isFinite && (hugeLayout.upper - hugeLayout.lower).isFinite, "Huge keys give a finite graph range")
+        require(hugeLayout.valueLabels.count == 5, "Huge keys still give axis labels")
+        let flatHuge = NativeMotionGraphLayout(keys: [NativeMotionKey(property: "x", index: 0, at: 0, value: 1e300, ease: nil)], duration: 1, mode: .value)
+        require(flatHuge.upper > flatHuge.lower && flatHuge.valueLabels.count == 5, "A flat huge value still gives a range")
+
+        // Motion property kept from another clip.
+        let standard = ["x", "y", "scale"]
+        require(NativeMotionPropertyChoice.resolved("mask.mk1.feather", standard: standard, animated: []) == "x", "A custom property the clip lacks falls back to the first standard one")
+        require(NativeMotionPropertyChoice.resolved("mask.mk1.feather", standard: standard, animated: ["mask.mk1.feather"]) == "mask.mk1.feather", "A custom property the clip has stays")
+        require(NativeMotionPropertyChoice.resolved("scale", standard: standard, animated: []) == "scale", "A standard property stays")
 
         // Audio presence.
         let project: [String: Any] = [
@@ -95,6 +120,13 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(!guardrail.isRepeat(NativeExportRepeatGuard.signature(renamed, version: 4), at: start.addingTimeInterval(0.5)), "Changed settings start at once")
         require(!guardrail.isRepeat(NativeExportRepeatGuard.signature(request, version: 5), at: start.addingTimeInterval(0.5)), "A changed project starts at once")
         require(NativeExportRepeatGuard.signature(["b": 1, "a": 2], version: 1) == NativeExportRepeatGuard.signature(["a": 2, "b": 1], version: 1), "Signatures ignore key order")
+        require(!guardrail.isRepeat(signature, at: start.addingTimeInterval(0.5), ended: true), "An accepted export that failed or was cancelled can be retried at once")
+        guardrail.accept(signature, job: "j7")
+        require(guardrail.job == "j7", "The guard remembers which job the export became")
+        guardrail.accept("other", job: "j8")
+        require(guardrail.job == "j7", "Another export's job does not replace it")
+        require(NativeExportRepeatGuard.ended("failed") && NativeExportRepeatGuard.ended("cancelled"), "Failed and cancelled jobs are over")
+        require(!NativeExportRepeatGuard.ended("running") && !NativeExportRepeatGuard.ended(nil), "Running or unknown jobs are not over")
         guardrail.forget(signature)
         require(!guardrail.isRepeat(signature, at: start.addingTimeInterval(0.5)), "A failed start can be retried at once")
 
@@ -120,6 +152,19 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(!hasID(moved) && moved.contains("Coastal arrival") && moved.contains("Video 1"), "Commit lines replace IDs: \(moved)")
         require(!hasID(status("deleted c8, c9")), "Unknown IDs become plain nouns: \(status("deleted c8, c9"))")
         require(status("updated track V1: locked") == "Updated “Video 1”.", "Track edits use the track name")
+        // Lines written for people keep their paths and names exactly.
+        let cancelled = status("Media import cancelled. A partial copy was kept at media/c1.mov.")
+        require(cancelled == "Media import cancelled. A partial copy was kept at media/c1.mov.", "Paths in cancellation details stay whole: \(cancelled)")
+        require(status("moved c1 to 2.5s on V1 from media/c1.mov").contains("media/c1.mov"), "A path inside a commit line stays whole")
+        require(status("added title c1 \"c1 intro\"").contains("\"c1 intro\""), "Quoted text inside a commit line stays whole")
+        // Track IDs repeat across timelines. The edited timeline decides which name to use.
+        let nested: [String: Any] = [
+            "tracks": [["id": "V1", "name": "Main picture", "clips": []]],
+            "comps": ["k1": ["name": "Inset", "tracks": [["id": "V1", "name": "Inset picture", "clips": []]]]]
+        ]
+        require(NativeStatusText.activity("updated track V1: locked", who: "you", project: nested) == "Updated “Main picture”.", "The main timeline's V1 is the main track")
+        require(NativeStatusText.activity("updated track V1: locked", who: "you", project: nested, composition: "k1") == "Updated “Inset picture”.", "Inside a composition, V1 is that composition's track")
+        require(NativeStatusText.activity("updated track V1: locked", who: "you", project: nested, composition: "missing") == "Updated “Main picture”.", "An unknown composition falls back to the main timeline")
         require(status("", who: "reel").isEmpty, "Empty lines stay empty")
 
         // Device words.
@@ -161,7 +206,7 @@ def main():
         block(timeline, 'enum NativeTimelineWords {'),
     ])
     # NativeViewerGeometry and NativeMotionGraphLayout reference neighbours that the checks do not use.
-    for marker in ['struct NativeMotionKeyRef:', 'struct NativeMotionKey:', 'enum NativeMotionGraphMode', 'enum NativeMotionMath {']:
+    for marker in ['struct NativeMotionKeyRef:', 'struct NativeMotionKey:', 'enum NativeMotionGraphMode', 'enum NativeMotionMath {', 'enum NativeMotionPropertyChoice {']:
         if marker in motion and marker not in helpers:
             helpers += '\n' + block(motion, marker)
     with tempfile.TemporaryDirectory(prefix='editor-input-status-') as raw:

@@ -133,8 +133,8 @@ final class FixtureBackend {}
 '''
     for marker in ['    func beginRenderPreview(', '    func renderPreviewMatches(', '    func renderPreviewCommitMatches(', '    func viewerGeometryIsCurrent(', '    func preview(', '    func discardRenderPreview(']:
         source += block(model, marker) + '\n'
-    source += '}\n@MainActor final class ViewerGestureHarness {\nlet model:NativeEditorModel\nvar gesture:GestureSource?,queuedCommit:GestureSource?,viewerLayout:NativeViewerGeometry.Layout?,viewerModelID:ObjectIdentifier?,canvasZoom="Fit",attempted=false,activeInput:String?\ninit(model:NativeEditorModel) {self.model=model;viewerModelID=ObjectIdentifier(model)}\n'
-    for marker in ['    private struct GestureSource {', '    private func beginGesture(', '    private func gestureOperations(', '    private func gestureContextMatches(', '    private func gestureMatches(', '    private func queuedCommitMatches(', '    private func endGesture(', '    private func cancelGesture(', '    private func cancelInvalidGesture(', '    private func updateViewerLayout(']:
+    source += '}\n@MainActor final class ViewerGestureHarness {\nlet model:NativeEditorModel\nvar gesture:GestureSource?,queuedCommit:GestureSource?,viewerLayout:NativeViewerGeometry.Layout?,viewerModelID:ObjectIdentifier?,canvasZoom="Fit",attempted=false,activeInput:String?,touchDown:Date?,touchStart:CGPoint?,touchIgnored=false\ninit(model:NativeEditorModel) {self.model=model;viewerModelID=ObjectIdentifier(model)}\n'
+    for marker in ['    private struct GestureSource {', '    private func beginGesture(', '    private func gestureOperations(', '    private func gestureContextMatches(', '    private func gestureMatches(', '    private func queuedCommitMatches(', '    private func endGesture(', '    private func cancelGesture(', '    private func touchCancelled(', '    private func cancelInvalidGesture(', '    private func updateViewerLayout(']:
         source += block(viewer, marker).replace('private ', '') + '\n'
     source += '}\n'
     script = temp / 'Gestures.swift'

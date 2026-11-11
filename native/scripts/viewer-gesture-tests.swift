@@ -93,6 +93,20 @@ import CoreGraphics
         check(cancelled.gesture == nil && cancelled.attempted && cancelled.activeInput == "pointer")
         check(cancel.previewCapture == nil && cancel.batches.isEmpty)
         cancelled.cancelGesture(); check(!cancelled.attempted && cancelled.activeInput == nil)
+        // A cancelled edit while a touch is still down leaves that touch ignored, so it cannot start a second edit.
+        cancelled.touchDown = Date(); cancelled.touchStart = CGPoint(x: 5, y: 5); cancelled.cancelGesture()
+        check(cancelled.touchIgnored && cancelled.touchDown != nil)
+        // A touch the system took away clears its timing and ends the edit it began.
+        let (takenModel, taken, takenViewport, takenLayer) = fixture()
+        let takenSource = taken.beginGesture(viewport: takenViewport, layer: takenLayer, target: .move, point: .zero)!
+        taken.gesture = takenSource; taken.attempted = true; taken.activeInput = "pointer"
+        check(takenModel.preview([["op": "update", "id": "c1", "set": ["x": 110]]], capture: takenSource.capture))
+        taken.touchDown = Date(); taken.touchStart = CGPoint(x: 5, y: 5); taken.touchIgnored = true
+        taken.touchCancelled()
+        check(taken.touchDown == nil && taken.touchStart == nil && !taken.touchIgnored)
+        check(taken.gesture == nil && !taken.attempted && taken.activeInput == nil && takenModel.previewCapture == nil && takenModel.batches.isEmpty)
+        // With no touch down there is nothing to clear.
+        taken.attempted = true; taken.touchCancelled(); check(taken.attempted)
 
         let (rotationModel, rotationHarness, rv, rl) = fixture()
         let rotation = rotationHarness.beginGesture(viewport: rv, layer: rl, target: .rotate, point: CGPoint(x: 130, y: 100))!

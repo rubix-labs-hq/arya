@@ -86,7 +86,7 @@ enum ReelBackend { struct APIError:Error,LocalizedError {let errorDescription:St
     for marker in ['private func clearWheelGesture(', 'private func finishWheelGesture(']:
         fixture += block(color,marker) + '\n'
     fixture += '}\n'
-    fixture += '@MainActor final class Curve { var draft:[[Double]]?; var dragging:Int?; var gestureContext:NativePanelGestureContext?; var gestureAttempted=false; var selected:Int?; var points=[[0.0,0],[1,1]]; var end:(NativePanelGestureContext?)->Void={_ in}; var commit:([[Double]],NativePanelGestureContext)->Void={_,_ in}\n'
+    fixture += '@MainActor final class Curve { var draft:[[Double]]?; var dragging:Int?; var dragOrigin:[Double]?; var gestureContext:NativePanelGestureContext?; var gestureAttempted=false; var selected:Int?; var points=[[0.0,0],[1,1]]; var end:(NativePanelGestureContext?)->Void={_ in}; var commit:([[Double]],NativePanelGestureContext)->Void={_,_ in}\n'
     for marker in ['private func clearCurveGesture(', 'private func finishCurveGesture(']:
         fixture += block(color,marker) + '\n'
     fixture += '}\n'

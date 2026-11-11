@@ -228,7 +228,9 @@ struct NativeViewer: View {
     @State private var attempted = false
     @State private var activeInput: String?
     @State private var touchDown: Date?
+    @State private var touchStart: CGPoint?
     @State private var touchIgnored = false
+    @GestureState private var touchActive = false
     @State private var multipleSelection = false
     @State private var queuedCommit: GestureSource?
     @State private var viewerLayout: NativeViewerGeometry.Layout?
@@ -312,7 +314,20 @@ struct NativeViewer: View {
     private func cancelGesture(resetAttempt: Bool = true) {
         if let gesture { model.discardRenderPreview(gesture.capture) }
         gesture = nil; queuedCommit = nil
-        if resetAttempt { attempted = false; activeInput = nil }
+        if resetAttempt {
+            attempted = false; activeInput = nil
+            // A touch still on the glass must not start a second edit after its first one was cancelled.
+            if touchDown != nil { touchIgnored = true }
+        }
+    }
+
+    /// SwiftUI reports no end for a touch the system takes away, for example when Control Center opens.
+    /// Its start time must not carry into the next touch, and an edit it began must not stay open.
+    private func touchCancelled() {
+        guard touchDown != nil else { return }
+        let editing = activeInput == "pointer"
+        touchDown = nil; touchStart = nil; touchIgnored = false
+        if editing { cancelGesture() }
     }
 
     private func cancelInvalidGesture() {
@@ -429,9 +444,15 @@ struct NativeViewer: View {
     /// dragging, moves it. Handles respond at once. A touch that never moves is a tap.
     private func touchInteraction(viewport: NativeViewerGeometry.Viewport, layers: [NativeViewerGeometry.Layer]) -> some Gesture {
         DragGesture(minimumDistance: 0)
+            .updating($touchActive) { _, active, _ in active = true }
             .onChanged { drag in
                 guard model.viewerColorPicker == nil, model.drawing == nil else { return }
-                guard let down = touchDown else { touchDown = drag.time; return }
+                guard let down = touchDown, touchStart == drag.startLocation else {
+                    // A new touch. If the last one never ended, clear what it left behind first.
+                    touchCancelled()
+                    touchDown = drag.time; touchStart = drag.startLocation; touchIgnored = false
+                    return
+                }
                 if activeInput == "pinch" { touchIgnored = true }
                 guard !touchIgnored else { return }
                 if !attempted {
@@ -451,7 +472,7 @@ struct NativeViewer: View {
             }
             .onEnded { drag in
                 let ignored = touchIgnored, moved = hypot(drag.translation.width, drag.translation.height)
-                touchDown = nil; touchIgnored = false
+                touchDown = nil; touchStart = nil; touchIgnored = false
                 if activeInput == "pointer" { finishPointerDrag(at: drag.location, viewport: viewport); return }
                 guard !ignored, !attempted, activeInput == nil, gesture == nil, moved < NativeViewerGeometry.touchSlop else { return }
                 tap(drag.location, viewport: viewport, layers: layers)
@@ -967,6 +988,10 @@ struct NativeViewer: View {
         .onChange(of: model.panel) { _, _ in cancelInvalidGesture() }
         .onChange(of: model.playing) { _, _ in cancelInvalidGesture() }
         .onChange(of: model.showingSource) { _, _ in cancelGesture(); model.viewerColorWindow?.invalidateIfChanged() }
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        // A finished touch has already cleared its state in onEnded; this only acts on a cancelled one.
+        .onChange(of: touchActive) { _, active in if !active { touchCancelled() } }
+        #endif
         .onChange(of: model.drawing) { _, _ in cancelInvalidGesture() }
         .onChange(of: model.viewerColorPicker?.id) { _, _ in cancelInvalidGesture() }
         .onDisappear { cancelGesture(); model.viewerColorWindow?.updateViewport(nil); viewerLayout = nil }

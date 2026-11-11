@@ -93,7 +93,7 @@ struct NativeMotionPanel: View {
         .onChange(of: property) { _, _ in loadExpression(); invalidateMotionDraftIfStale() }
         .onChange(of: keySelection) { _, _ in invalidateMotionDraftIfStale() }
         .onChange(of: model.time) { _, _ in invalidateMotionDraftIfStale() }
-        .onChange(of: model.composition) { _, _ in invalidateMotionDraftIfStale() }
+        .onChange(of: model.composition) { _, _ in resetSelection() }
         .onChange(of: model.processingContextID) { _, _ in invalidateMotionDraftIfStale() }
         .onChange(of: model.playing) { _, _ in invalidateMotionDraftIfStale() }
         .onChange(of: model.scrubbing) { _, _ in invalidateMotionDraftIfStale() }
@@ -481,7 +481,12 @@ struct NativeMotionPanel: View {
     private func playheadInside(_ clip: NativeClip) -> Bool { model.time >= clip.start - 0.001 && model.time <= clip.end + 0.001 }
     private func chooseProperty(_ next: String) { property = next; selectedKeyTime = nil; if !extendSelection { keySelection = [] }; newValue = model.selected.map(baseValue) ?? 0 }
     private func loadExpression() { expressionCapture = nil; expression = model.selected?.fields.dictionary("expr").string(property) ?? "" }
-    private func resetSelection() { invalidateMotionDraft(); selectedKeyTime = nil; keySelection = []; expressionCapture = nil; loadExpression(); newValue = model.selected.map(baseValue) ?? 0 }
+    private func resetSelection() {
+        // The property is kept across pages and clips, so check it against the clip now selected.
+        let valid = NativeMotionPropertyChoice.resolved(property, standard: properties, animated: model.selected.map { Array($0.fields.dictionary("anim").keys) } ?? [])
+        if valid != property { property = valid }
+        invalidateMotionDraft(); selectedKeyTime = nil; keySelection = []; expressionCapture = nil; loadExpression(); newValue = model.selected.map(baseValue) ?? 0
+    }
     private func propertyLabel(_ prop: String) -> String {
         ["x": "Position X", "y": "Position Y", "scale": "Scale", "scaleX": "Scale X", "scaleY": "Scale Y", "rotation": "Rotation", "opacity": "Opacity", "anchorX": "Anchor X", "anchorY": "Anchor Y", "volume": "Volume", "pan": "Pan", "blur": "Blur"][prop] ?? prop
     }
@@ -652,6 +657,14 @@ struct NativeMotionPanel: View {
         }
     }
 
+}
+
+/// The panel edits one property of the selected clip. A custom property kept from another clip, such as
+/// one mask's feather, does not exist on this clip, so the choice falls back to the first standard property.
+enum NativeMotionPropertyChoice {
+    static func resolved(_ current: String, standard: [String], animated: [String]) -> String {
+        standard.contains(current) || animated.contains(current) ? current : standard.first ?? current
+    }
 }
 
 private struct NativeMotionLayer: Identifiable {
@@ -925,11 +938,14 @@ private struct NativeMotionGraphLayout {
     var flat: Double { (upper - lower) / 4 }
     /// Value axis labels, top to bottom. Precision follows the grid step so neighbouring labels differ.
     var valueLabels: [String] { Self.axisLabels(upper: upper, lower: lower, steps: 4) }
+    static let valueLimit = 1e300
     static func axisLabels(upper: Double, lower: Double, steps: Int) -> [String] {
         guard steps > 0, upper.isFinite, lower.isFinite else { return [] }
-        let values = (0...steps).map { upper - (upper - lower) * Double($0) / Double(steps) }
-        let step = abs(upper - lower) / Double(steps)
-        var digits = step > 0 ? max(0, min(6, Int(ceil(-log10(step) - 1e-9)))) : 0
+        // The difference of two finite bounds can overflow, so blend the ends and divide before subtracting.
+        let values = (0...steps).map { index -> Double in let t = Double(index) / Double(steps); return upper * (1 - t) + lower * t }
+        let step = abs(upper / Double(steps) - lower / Double(steps))
+        let wanted = step > 0 && step.isFinite ? ceil(-log10(step) - 1e-9) : 0
+        var digits = wanted.isFinite ? Int(max(0, min(6, wanted))) : 0
         func text(_ value: Double) -> String {
             let rounded = (value * pow(10, Double(digits))).rounded() / pow(10, Double(digits))
             return (rounded == 0 ? 0 : rounded).formatted(.number.precision(.fractionLength(digits)))
@@ -956,8 +972,10 @@ private struct NativeMotionGraphLayout {
             }
         }
         let finite = values.filter(\.isFinite)
-        var low = finite.min() ?? 0, high = finite.max() ?? 1
-        if high - low < 1e-6 { low -= 1; high += 1 }
+        // Bounds stay inside valueLimit so the range between them is always finite.
+        var low = max(-Self.valueLimit, min(Self.valueLimit, finite.min() ?? 0)), high = max(-Self.valueLimit, min(Self.valueLimit, finite.max() ?? 1))
+        // Widen a flat range by at least 1, or by enough to register at very large values.
+        if high - low < 1e-6 { let spread = max(1, abs(high).ulp * 4096); low -= spread; high += spread }
         let pad = (high - low) * 0.08
         lower = low - pad; upper = high + pad
     }

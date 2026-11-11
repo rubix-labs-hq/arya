@@ -153,16 +153,22 @@ private struct NativeDeliveryHistoryView: View {
 /// The same export started again after the window, or with any setting changed, still goes to the queue.
 struct NativeExportRepeatGuard {
     static let window: TimeInterval = 2
-    private(set) var last: (signature: String, at: Date)?
+    private(set) var last: (signature: String, at: Date, job: String?)?
+    /// The job the remembered export became, once it was accepted.
+    var job: String? { last?.job }
     static func signature(_ request: [String: Any], version: Int) -> String {
         request.keys.sorted().map { "\($0)=\(request[$0].map { String(describing: $0) } ?? "")" }.joined(separator: "&") + "#\(version)"
     }
-    func isRepeat(_ signature: String, at now: Date) -> Bool {
-        guard let last, last.signature == signature else { return false }
+    /// `ended` means the remembered export failed, was cancelled or was discarded. It no longer blocks a retry.
+    func isRepeat(_ signature: String, at now: Date, ended: Bool = false) -> Bool {
+        guard !ended, let last, last.signature == signature else { return false }
         let elapsed = now.timeIntervalSince(last.at)
         return elapsed >= 0 && elapsed < Self.window
     }
-    mutating func record(_ signature: String, at now: Date) { last = (signature, now) }
+    mutating func record(_ signature: String, at now: Date) { last = (signature, now, nil) }
+    mutating func accept(_ signature: String, job: String?) { if last?.signature == signature, let job, !job.isEmpty { last?.job = job } }
+    /// Whether a job in this state is over without a result.
+    static func ended(_ state: String?) -> Bool { state == "failed" || state == "cancelled" }
     mutating func forget(_ signature: String) { if last?.signature == signature { last = nil } }
 }
 
@@ -288,6 +294,17 @@ struct NativeDeliverPanel: View {
         .onChange(of: activeRange?.upperBound) { _, _ in if activeRange == nil { exportScope = "whole" } }
     }
 
+    /// The export the repeat guard remembers is over when its job failed or was cancelled. On iPhone and
+    /// iPad it is also over once nothing is queued or running, which covers a discarded queued export.
+    private var rememberedExportEnded: Bool {
+        if let job = repeatGuard.job, NativeExportRepeatGuard.ended(model.jobs.first { $0.string("id") == job }?.string("state")) { return true }
+        #if os(iOS)
+        return repeatGuard.last != nil && !mobileExport.starting && !mobileExport.pending && !mobileExport.running
+        #else
+        return false
+        #endif
+    }
+
     private func export() {
         guard outputError == nil, let size = outputSize else { model.status = outputError ?? "Choose a valid output size."; return }
         var body: [String: Any] = ["preset": preset, "name": name, "width": size.width, "height": size.height, "fps": outputOverrides ? outputFPS : model.fps, "from": 0, "to": model.duration]
@@ -298,7 +315,7 @@ struct NativeDeliverPanel: View {
         let backend = session.backend, version = model.version, composition = model.composition
         // A tap that lands while the first is starting, or repeats it within moments, is the same export.
         let signature = NativeExportRepeatGuard.signature(request, version: version)
-        guard !starting, !repeatGuard.isRepeat(signature, at: Date()) else { return }
+        guard !starting, !repeatGuard.isRepeat(signature, at: Date(), ended: rememberedExportEnded) else { return }
         repeatGuard.record(signature, at: Date())
         starting = true
         model.perform {
@@ -308,12 +325,14 @@ struct NativeDeliverPanel: View {
                     throw ReelBackend.APIError("The project changed. Review the export settings and try again.")
                 }
                 #if os(iOS)
-                _ = try await mobileExport.start(session: session, body: request)
+                let job = try await mobileExport.start(session: session, body: request)
+                repeatGuard.accept(signature, job: job["id"] as? String)
                 #else
                 var capturedRequest = request
                 capturedRequest["expectedVersion"] = version
                 let job = try await model.call("/api/export", capturedRequest)
                 model.registerExportFeedback(job)
+                repeatGuard.accept(signature, job: job["id"] as? String)
                 #endif
             } catch {
                 // A failed start can be retried at once.

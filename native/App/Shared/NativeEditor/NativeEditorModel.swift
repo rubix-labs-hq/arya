@@ -84,9 +84,10 @@ struct NativeHapticPolicy {
 /// Turns the shared core's activity log lines into editor status text without internal IDs.
 /// Edit confirmations read as plain sentences. Failures, warnings and unknown lines keep their detail.
 enum NativeStatusText {
-    static func activity(_ raw: String, who: String = "", project: [String: Any]?) -> String {
+    /// `composition` is the timeline being edited. Its track and clip IDs are read before any other timeline's.
+    static func activity(_ raw: String, who: String = "", project: [String: Any]?, composition: String? = nil) -> String {
         let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let names = self.names(project)
+        let names = self.names(project, composition: composition)
         func file(_ path: String) -> String { (path.trimmingCharacters(in: .whitespaces) as NSString).lastPathComponent }
         func capture(_ pattern: String) -> [String]? {
             guard let regex = try? NSRegularExpression(pattern: pattern),
@@ -120,6 +121,9 @@ enum NativeStatusText {
         }
         // Commit lines from your own edits or the assistant. Other lines are warnings or errors, so keep them whole.
         guard who == "you" || who == "agent" else { return line }
+        // The editor core writes commit lines in lower case, such as "moved c1 to 2s on V1". A line that
+        // starts with a capital was written for people, so its paths and names stay exactly as they are.
+        guard let first = line.unicodeScalars.first, CharacterSet.lowercaseLetters.contains(first) || CharacterSet.decimalDigits.contains(first) else { return sentence(line) }
         return sentence(replacingIDs(in: line, names))
     }
 
@@ -130,26 +134,37 @@ enum NativeStatusText {
         "title": "text", "blend": "blend mode", "blurAmount": "blur", "speed": "speed", "crop": "crop", "masks": "masks", "transition": "transition"
     ]
 
-    private static func names(_ project: [String: Any]?) -> [String: String] {
+    /// The main timeline and each composition number their tracks alike, so V1 can mean several tracks.
+    /// The timeline being edited decides. An ID that means different things elsewhere gets no name.
+    private static func names(_ project: [String: Any]?, composition: String?) -> [String: String] {
         guard let project else { return [:] }
-        var result: [String: String] = [:]
-        func add(_ tracks: [[String: Any]]) {
+        func scope(_ tracks: [[String: Any]]) -> [String: String] {
+            var found: [String: String] = [:]
             for track in tracks {
                 let trackName = track.string("name")
-                if !trackName.isEmpty { result[track.string("id")] = trackName }
+                if !trackName.isEmpty { found[track.string("id")] = trackName }
                 for clip in track.objects("clips") {
                     let source = clip.string("src")
                     let fallback = source.isEmpty ? clip.string("kind").capitalized : (source as NSString).lastPathComponent
                     let label = clip.string("label", clip.dictionary("title").string("text", fallback))
-                    if !label.isEmpty { result[clip.string("id")] = label }
+                    if !label.isEmpty { found[clip.string("id")] = label }
                 }
             }
+            return found
         }
-        add(project.objects("tracks"))
-        for (id, value) in project.dictionary("comps") {
-            let comp = value as? [String: Any] ?? [:]
-            add(comp.objects("tracks"))
-            let compName = comp.string("name")
+        let comps = project.dictionary("comps")
+        func tracks(_ id: String) -> [[String: Any]] { (comps[id] as? [String: Any] ?? [:]).objects("tracks") }
+        var result: [String: String] = [:], unclear = Set<String>()
+        for found in [scope(project.objects("tracks"))] + comps.keys.sorted().map({ scope(tracks($0)) }) {
+            for (id, name) in found {
+                if let known = result[id], known != name { unclear.insert(id) } else { result[id] = name }
+            }
+        }
+        for id in unclear { result[id] = nil }
+        let active = composition.flatMap { comps[$0] == nil ? nil : tracks($0) } ?? project.objects("tracks")
+        for (id, name) in scope(active) { result[id] = name }
+        for id in comps.keys.sorted() {
+            let compName = (comps[id] as? [String: Any] ?? [:]).string("name")
             if !compName.isEmpty { result[id] = compName }
         }
         return result
@@ -161,9 +176,22 @@ enum NativeStatusText {
 
     /// Replaces project IDs such as c12, c12a or V2 with names. IDs no longer in the project become plain nouns.
     private static func replacingIDs(in line: String, _ names: [String: String]) -> String {
-        guard let regex = try? NSRegularExpression(pattern: #"\b([A-Za-z]{1,2})\d+[a-z]?\b"#) else { return line }
+        guard let regex = try? NSRegularExpression(pattern: #"\b([A-Za-z]{1,2})\d+[a-z]?\b"#),
+              let fileEnding = try? NSRegularExpression(pattern: #"^\.[A-Za-z0-9]{1,5}(?![A-Za-z0-9\[])"#) else { return line }
+        let text = line as NSString
+        func character(_ index: Int) -> String { index >= 0 && index < text.length ? text.substring(with: NSRange(location: index, length: 1)) : "" }
+        /// An ID inside a path, a file name or quoted text is not a reference to a clip or track.
+        func isReference(_ range: NSRange) -> Bool {
+            let before = character(range.location - 1), after = character(NSMaxRange(range))
+            if ["/", "\\", ".", "-", "_"].contains(before) || ["/", "\\", "-", "_"].contains(after) { return false }
+            let rest = text.substring(from: NSMaxRange(range))
+            if fileEnding.firstMatch(in: rest, range: NSRange(location: 0, length: (rest as NSString).length)) != nil { return false }
+            let lead = text.substring(to: range.location)
+            if lead.filter({ $0 == "\"" }).count % 2 == 1 { return false }
+            return lead.filter({ $0 == "“" }).count <= lead.filter({ $0 == "”" }).count
+        }
         var result = line
-        for match in regex.matches(in: line, range: NSRange(line.startIndex..., in: line)).reversed() {
+        for match in regex.matches(in: line, range: NSRange(location: 0, length: text.length)).reversed() where isReference(match.range) {
             guard let range = Range(match.range, in: line), let prefixRange = Range(match.range(at: 1), in: line),
                   let target = Range(match.range, in: result) else { continue }
             let id = String(line[range])
@@ -977,7 +1005,7 @@ final class NativeEditorModel: ObservableObject {
             jobs.removeAll { $0.string("id") == id }; jobs.append(fields)
             confirmExportFeedback(fields)
         case "activity":
-            status = NativeStatusText.activity(fields.string("text", fields.string("summary")), who: fields.string("who"), project: project?.fields)
+            status = NativeStatusText.activity(fields.string("text", fields.string("summary")), who: fields.string("who"), project: project?.fields, composition: composition)
         default: break
         }
     }
