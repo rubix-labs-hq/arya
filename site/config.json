@@ -18,9 +18,9 @@
   },
   "release": {
     "ready": true,
-    "version": "1.1.0",
-    "macURL": "https://github.com/rubix-labs-hq/arya/releases/download/v1.1.0/Arya-1.1.0.dmg",
-    "sha256": "476f30003c8ac72e5d5289b1c9f18fe533e48f25022e1813a1f7ad4058e7a4b2",
+    "version": "1.1.1",
+    "macURL": "https://github.com/rubix-labs-hq/arya/releases/download/v1.1.1/Arya-1.1.1.dmg",
+    "sha256": "497d8db2ef27498310735a0676196dc6c2c0a3d4fa5709d437e6e7a68962817a",
     "size": "104 MB",
     "minimumOS": "macOS 14",
     "architectures": "Apple silicon and Intel",
