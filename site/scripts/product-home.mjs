@@ -32,6 +32,18 @@ export const assistantCopy = {
   faq: ['Do I need an AI subscription?', `No. Editing, grading, motion, audio and export all work without an assistant. Connecting your own ${assistantProviders} account is optional.`],
 };
 
+// The launch film. Its narration says Arya is free for Mac, on iPhone and iPad, and open source,
+// so the home page shows it only while all three are true. It shows app screens of build 1.1.0 (3),
+// one assistant request recorded in the browser editor built from source, and crops of the
+// AI-generated After the Tide still, and its caption says so.
+export const launchFilmCopy = {
+  heading: 'Why Arya exists.',
+  lead: 'A 75 second film with sound, from a single shot in 1895 to the edit you make today.',
+  description: 'The Arya launch film, 75 seconds with narration and music. The narration appears on screen as it is spoken.',
+  caption: 'The narration is a synthetic voice made with ElevenLabs, and the score is original. The history scenes use crops of the still from the After the Tide sample project, which was AI-generated for this demo. The app screens are unaltered captures of Arya 1.1.0 (build 3) on Mac, iPad and iPhone. The Mac screens come from a Mac App Store build that is not public, and screens in the current downloads can differ. The assistant scene is one real request recorded in Arya’s browser editor, built from source, with the wait for the reply cut out.',
+  width: 1920, height: 1080,
+};
+
 // The six pages of the app, in the order of its tab bar.
 export const pageNames = ['Media', 'Edit', 'Motion', 'Color', 'Audio', 'Deliver'];
 
@@ -60,7 +72,7 @@ export function nativeCaptureNote({ native, shown = null, releaseReady = false, 
   return `Captured from Arya ${native.version} on ${devices}, ${native.captured}, with the ${listed(projects)} sample project${projects.length > 1 ? 's' : ''}.${media ? ` ${media}` : ''}${current}`;
 }
 
-export function productHome({ button, link, faq, stage, shots, figures, native, releaseReady = false, publicSource = null, accessURL = null, browserEditor = null, mobileURL = null, mobileVersion = null, contributionsConfigured = false, version = '1.0.0', size = '104 MB', minimumOS = 'macOS 14', architectures = 'Apple silicon and Intel' }) {
+export function productHome({ button, link, faq, stage, shots, figures, native, film = null, releaseReady = false, publicSource = null, accessURL = null, browserEditor = null, mobileURL = null, mobileVersion = null, contributionsConfigured = false, version = '1.0.0', size = '104 MB', minimumOS = 'macOS 14', architectures = 'Apple silicon and Intel' }) {
   if (!Array.isArray(shots) || shots.length !== 4 || shots[0].id !== 'edit') throw new Error('The home gallery needs four verified captures, starting with Edit');
   const nativeIds = ['mac-color', 'mac-edit', 'ipad-color', 'iphone-edit', 'mac-color-inspector', 'mac-motion-inspector', 'mac-media-panel', 'ipad-color-inspector', 'iphone-deliver'];
   if (!native?.images || nativeIds.some(id => !native.images[id])) throw new Error('The home page needs every native capture listed in assets/product/native.json');
@@ -93,6 +105,15 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
     const clip = native.clips[id];
     return `<figure class="chapter-figure figure-clip"><video controls playsinline preload="none" poster="${clip.poster}" width="${clip.width}" height="${clip.height}" aria-label="${clip.description}"><source src="${clip.src}" type="video/mp4"><a href="${clip.src}">Open the exported clip</a></video><figcaption><span class="plate-label">${clip.label}</span> ${clip.caption} ${native.projects?.[clip.project] || ''}</figcaption></figure>`;
   };
+  const launchFilm = film && releaseReady && mobileURL && publicSource
+    ? `<section class="launch-film" id="film" aria-labelledby="launch-film-heading">
+<div class="wrap">
+<div class="section-head"><h2 id="launch-film-heading">${launchFilmCopy.heading}</h2><p>${launchFilmCopy.lead}</p></div>
+<figure class="launch-film-figure"><video controls playsinline preload="none" poster="${film.poster}" width="${launchFilmCopy.width}" height="${launchFilmCopy.height}" aria-label="${launchFilmCopy.description}"><source src="${film.src}" type="video/mp4"><a href="${film.src}">Download the launch film</a></video><figcaption class="credit">${launchFilmCopy.caption}</figcaption></figure>
+</div>
+</section>
+`
+    : '';
   const gallery = shots.map((item, index) => `<a class="workspace-tab" href="${item.src}" data-workspace="${item.id}" data-src="${item.src}" data-alt="${item.alt}" data-caption="${item.caption}" aria-current="${index === 0}" aria-controls="workspace-image workspace-caption">${item.label}</a>`).join('');
 
   const releaseLine = releaseReady
@@ -202,7 +223,7 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
 </div>
 <div class="wrap">${family}</div>
 </section>
-<section class="pages" id="suite" aria-labelledby="suite-heading">
+${launchFilm}<section class="pages" id="suite" aria-labelledby="suite-heading">
 <div class="wrap">
 <div class="section-head"><h2 id="suite-heading">Six pages. One project.</h2><p>Cut, grade, animate, mix and deliver without round trips. Every workspace edits the same project file, so a grade, a title or a short stays live and editable.</p></div>
 <div class="pages-grid">
