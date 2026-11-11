@@ -14,6 +14,7 @@ import UIKit
 // BEGIN HAPTIC POLICY
 /// Feedback accompanies a visible, confirmed event; transport frames and optimistic requests stay silent.
 enum NativeHapticKind: Equatable { case selection, snap, commit, success }
+
 struct NativeHapticSignal: Equatable {
     var sequence: UInt64 = 0
     var kind: NativeHapticKind?
@@ -79,6 +80,155 @@ struct NativeHapticPolicy {
     mutating func reset() { activeSnapFrame = nil; pendingExports.removeAll(); consumedExports.removeAll(); consumedOrder.removeAll() }
 }
 // END HAPTIC POLICY
+
+/// Turns the shared core's activity log lines into editor status text without internal IDs.
+/// Edit confirmations read as plain sentences. Failures, warnings and unknown lines keep their detail.
+enum NativeStatusText {
+    static func activity(_ raw: String, who: String = "", project: [String: Any]?) -> String {
+        let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let names = self.names(project)
+        func file(_ path: String) -> String { (path.trimmingCharacters(in: .whitespaces) as NSString).lastPathComponent }
+        func capture(_ pattern: String) -> [String]? {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) else { return nil }
+            return (1..<match.numberOfRanges).map { Range(match.range(at: $0), in: line).map { String(line[$0]) } ?? "" }
+        }
+        switch line {
+        case "": return ""
+        case "undo": return "Undid the last change."
+        case "redo": return "Redid the change."
+        case "reel.project.json changed on disk": return "The project file changed outside Arya. Arya loaded the new version."
+        default: break
+        }
+        if let parts = capture(#"^job failed: (.+)$"#) { return "A background job failed: \(parts[0])" }
+        if let parts = capture(#"^exported (.+?)( in [0-9.]+s)?$"#) { return "Export finished: \(file(parts[0]))." }
+        if let parts = capture(#"^([A-Za-z ]+) finished: (.+)$"#) { return "\(sentence(parts[0]).dropLast()) finished: \(file(parts[1]))." }
+        if let parts = capture(#"^export queued: (.+)$"#) { return "Export queued: \(file(parts[0]))." }
+        if let parts = capture(#"^proxy ready for (.+)$"#) { return "Smooth playback is ready for \(file(parts[0]))." }
+        if let parts = capture(#"^making a playable proxy for (.+)$"#) { return "Preparing smooth playback for \(file(parts[0]))." }
+        func subject(_ list: String) -> String {
+            let ids = list.components(separatedBy: ", ").filter { !$0.isEmpty }
+            return ids.count == 1 ? (name(ids[0], names) ?? "a clip") : "\(ids.count) clips"
+        }
+        func property(_ key: String) -> String { key.isEmpty ? "" : "\(propertyWords[key] ?? "animated") " }
+        if let parts = capture(#"^cleared keyframes on ([A-Za-z0-9]+)(?:\.([A-Za-z0-9.]+))?$"#) {
+            return "Cleared the \(property(parts[1]))keyframes of \(subject(parts[0]))."
+        }
+        if let parts = capture(#"^(removed )?expression on ((?:[A-Za-z0-9]+, )*[A-Za-z0-9]+)\.([A-Za-z0-9.]+)(?:: .*)?$"#) {
+            let what = propertyWords[parts[2]] ?? "property"
+            return parts[0].isEmpty ? "Set an expression on the \(what) of \(subject(parts[1]))." : "Removed the expression on the \(what) of \(subject(parts[1]))."
+        }
+        if let parts = capture(#"^updated track (\S+): (.*)$"#) { return "Updated \(name(parts[0], names) ?? "a track")." }
+        if let parts = capture(#"^updated ([^:]+): (.*)$"#), !parts[0].contains(" ") || parts[0].contains(", ") {
+            let target = subject(parts[0])
+            var words: [String] = []
+            for key in parts[1].components(separatedBy: ", ") where !key.isEmpty {
+                let word = propertyWords[key] ?? "settings"
+                if !words.contains(word) { words.append(word) }
+            }
+            let what = words.isEmpty ? "settings" : ListFormatter.localizedString(byJoining: words)
+            return "Changed the \(what) of \(target)."
+        }
+        // Commit lines from your own edits or the assistant. Other lines are warnings or errors, so keep them whole.
+        guard who == "you" || who == "agent" else { return line }
+        // The one backend line written for people that names a track by ID.
+        if let parts = capture(#"^Placed original music on (\S+)$"#) { return "Placed original music on \(name(parts[0], names) ?? "a track")." }
+        // The editor core writes commit lines in lower case, such as "moved c1 to 2s on V1". A line that
+        // starts with a capital was written for people, so its paths and names stay exactly as they are.
+        guard let first = line.unicodeScalars.first, CharacterSet.lowercaseLetters.contains(first) || CharacterSet.decimalDigits.contains(first) else { return sentence(line) }
+        return sentence(replacingIDs(in: line, names))
+    }
+
+    private static let propertyWords: [String: String] = [
+        "grade": "color grade", "nodes": "color nodes", "x": "position", "y": "position", "scale": "size", "scaleX": "size", "scaleY": "size",
+        "rotation": "rotation", "opacity": "opacity", "anim": "animation", "expr": "expressions", "anchorX": "anchor point", "anchorY": "anchor point",
+        "volume": "level", "pan": "pan", "fadeIn": "fades", "fadeOut": "fades", "mute": "sound", "eq": "EQ", "fx": "effects", "label": "name",
+        "title": "text", "blend": "blend mode", "blurAmount": "blur", "speed": "speed", "crop": "crop", "masks": "masks", "transition": "transition"
+    ]
+
+    /// The main timeline and each composition number their tracks alike, so V1 can mean several tracks.
+    /// Activity lines do not say which timeline they edited, so an ID that means different things in
+    /// different timelines, or has no name in one of them, gets no name.
+    private static func names(_ project: [String: Any]?) -> [String: String] {
+        guard let project else { return [:] }
+        /// Every track and clip ID in a timeline. An empty name means the ID exists but has no name.
+        func scope(_ tracks: [[String: Any]]) -> [String: String] {
+            var found: [String: String] = [:]
+            for track in tracks {
+                found[track.string("id")] = track.string("name")
+                for clip in track.objects("clips") {
+                    let source = clip.string("src")
+                    let fallback = source.isEmpty ? clip.string("kind").capitalized : (source as NSString).lastPathComponent
+                    found[clip.string("id")] = clip.string("label", clip.dictionary("title").string("text", fallback))
+                }
+            }
+            found[""] = nil
+            return found
+        }
+        let comps = project.dictionary("comps")
+        var seen: [String: Set<String>] = [:]
+        for found in [scope(project.objects("tracks"))] + comps.keys.sorted().map({ scope((comps[$0] as? [String: Any] ?? [:]).objects("tracks")) }) {
+            for (id, name) in found { seen[id, default: []].insert(name) }
+        }
+        var result: [String: String] = [:]
+        for (id, names) in seen where names.count == 1 { if let name = names.first, !name.isEmpty { result[id] = name } }
+        for id in comps.keys.sorted() {
+            let compName = (comps[id] as? [String: Any] ?? [:]).string("name")
+            if !compName.isEmpty { result[id] = compName }
+        }
+        return result
+    }
+
+    private static func name(_ id: String, _ names: [String: String]) -> String? {
+        names[id].map { "“\($0)”" }
+    }
+
+    /// File types an ID can be part of, as in c1.mov. Property suffixes such as c1.x or c1.scale are not files.
+    private static let fileTypes = "mov|mp4|m4v|mkv|avi|webm|mxf|mts|m2ts|mpe?g|3gp|wmv|braw|r3d|wav|mp3|m4a|aac|aif|aiff|flac|ogg|opus|caf|png|jpe?g|heic|heif|avif|gif|tiff?|webp|bmp|svg|psd|exr|dpx|dng|cube|3dl|srt|vtt|json|xml|fcpxml|edl|otio|txt|pdf|zip"
+
+    /// Replaces project IDs such as c12, c12a or V2 with names. IDs no longer in the project become plain nouns.
+    private static func replacingIDs(in line: String, _ names: [String: String]) -> String {
+        guard let regex = try? NSRegularExpression(pattern: #"\b([A-Za-z]{1,2})\d+[a-z]?\b"#),
+              let fileEnding = try? NSRegularExpression(pattern: #"^\.(?:\#(fileTypes))(?![A-Za-z0-9\[])"#, options: .caseInsensitive) else { return line }
+        let text = line as NSString
+        func character(_ index: Int) -> String { index >= 0 && index < text.length ? text.substring(with: NSRange(location: index, length: 1)) : "" }
+        /// An ID inside a path, a file name or quoted text is not a reference to a clip or track.
+        func isReference(_ range: NSRange) -> Bool {
+            let before = character(range.location - 1), after = character(NSMaxRange(range))
+            if ["/", "\\", ".", "-", "_"].contains(before) || ["/", "\\", "-", "_"].contains(after) { return false }
+            let rest = text.substring(from: NSMaxRange(range))
+            if fileEnding.firstMatch(in: rest, range: NSRange(location: 0, length: (rest as NSString).length)) != nil { return false }
+            let lead = text.substring(to: range.location)
+            if lead.filter({ $0 == "\"" }).count % 2 == 1 { return false }
+            return lead.filter({ $0 == "“" }).count <= lead.filter({ $0 == "”" }).count
+        }
+        var result = line
+        for match in regex.matches(in: line, range: NSRange(location: 0, length: text.length)).reversed() where isReference(match.range) {
+            guard let range = Range(match.range, in: line), let prefixRange = Range(match.range(at: 1), in: line),
+                  let target = Range(match.range, in: result) else { continue }
+            let id = String(line[range])
+            let replacement: String
+            if let known = name(id, names) { replacement = known }
+            else {
+                switch String(line[prefixRange]) {
+                case "c", "Lc": replacement = "a clip"
+                case "V", "A": replacement = "a track"
+                case "k": replacement = "a composition"
+                case "m": replacement = "a marker"
+                default: continue
+                }
+            }
+            result.replaceSubrange(target, with: replacement)
+        }
+        return result
+    }
+
+    private static func sentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        let capitalized = first.uppercased() + text.dropFirst()
+        return capitalized.hasSuffix(".") || capitalized.hasSuffix("…") || capitalized.hasSuffix("?") ? capitalized : capitalized + "."
+    }
+}
 
 struct NativeEditorSelection: Equatable {
     private(set) var ids: Set<String> = []
@@ -526,6 +676,7 @@ final class NativeEditorModel: ObservableObject {
     private(set) var paintedFrames = 0
     @Published private(set) var capabilities: [String: Any] = [:]
     @Published private(set) var jobs: [[String: Any]] = []
+    // The status row keeps its line until the next message so switching workflows never resizes the editor.
     @Published var status = ""
     @Published var busy = false
     @Published var missingMediaRestoreRequest: NativeMissingMediaRestoreRequest?
@@ -545,6 +696,8 @@ final class NativeEditorModel: ObservableObject {
         }
     }
     @Published var mobilePanel: NativePanel?
+    /// The Motion page's selected property. Lives here so it survives workflow page changes.
+    @Published var motionProperty = "x"
     @Published var drawing: NativeDrawingMode?
     @Published var assistantDraft = ""
     @Published var assistantInputKind = "prompt"
@@ -863,7 +1016,8 @@ final class NativeEditorModel: ObservableObject {
             let id = fields.string("id")
             jobs.removeAll { $0.string("id") == id }; jobs.append(fields)
             confirmExportFeedback(fields)
-        case "activity": status = fields.string("text", fields.string("summary"))
+        case "activity":
+            status = NativeStatusText.activity(fields.string("text", fields.string("summary")), who: fields.string("who"), project: project?.fields)
         default: break
         }
     }

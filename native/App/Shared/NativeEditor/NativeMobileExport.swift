@@ -80,7 +80,12 @@ final class NativeMobileExport: ObservableObject {
     }
 
     func start(session: EditorSession, body: [String: Any]) async throws -> [String: Any] {
-        guard !starting, !pending else { throw ReelBackend.APIError("Finish or discard the pending export before starting another.") }
+        guard !starting, !pending else {
+            // A running export also counts as pending here; only an interrupted one needs Resume or Discard.
+            throw ReelBackend.APIError(starting || running || worker != nil || !fallbackJobs.isEmpty
+                ? "An export is already running. Start the next one when it finishes."
+                : "Finish or discard the pending export before starting another.")
+        }
         starting = true; defer { starting = false }
         guard canRunExport else { throw ReelBackend.APIError("Return to Arya before starting a GPU export on this device.") }
         guard !pending, let backend = session.backend, let folder = session.folder,

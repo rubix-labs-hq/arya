@@ -273,10 +273,19 @@ def main():
     graph_methods='\n'.join(declaration(marker,graph_start) for marker in ['private func markers(', 'private func handles(', 'private func start(at point:', 'private func changeGraphDrag(', 'private func finishGraphDrag(', 'private func clear(cancelled:'])
     assert 'if cancelled, let drag' in declaration('private func clear(cancelled:',graph_start)
     graph_body=text[graph_start:text.index('    private func changeGraphDrag(',graph_start)]
-    changed,ended=graph_body.split('}.onEnded { value in',1)
+    touch,pointer=graph_body.split('#else',1) if '#else' in graph_body else ('',graph_body)
+    changed,ended=pointer.split('}.onEnded { value in',1)
     assert 'changeGraphDrag(start: value.startLocation, location: value.location, translation: value.translation, rect: rect, layout: layout)' in changed
     assert 'changeGraphDrag(start: value.startLocation, location: value.location, translation: value.translation, rect: rect, layout: layout)' in ended
     assert ended.index('changeGraphDrag(') < ended.index('finishGraphDrag()')
+    if touch:
+        # Touch graphs leave swipes to the scroll view: taps go through SpatialTapGesture and drags start only on keys or handles.
+        assert 'SpatialTapGesture()' in touch and 'touchTargets(rect: rect, layout: layout)' in touch
+        drag=touch.split('.gesture(DragGesture(minimumDistance: 0)',1)[1]
+        changed,ended=drag.split('}.onEnded { value in',1)
+        call='changeGraphDrag(start: point, location: CGPoint(x: point.x + value.translation.width, y: point.y + value.translation.height), translation: value.translation, rect: rect, layout: layout)'
+        assert call in changed and call in ended
+        assert ended.index('changeGraphDrag(') < ended.index('finishGraphDrag()')
     guards='\n'.join(declaration(marker) for marker in ['private func captureMotion(', 'private func matchesMotion(', 'private func commitMotion('])
     fixture=r"""
 struct MotionClip { let id:String; let start:Double; var duration:Double { 4 } }
