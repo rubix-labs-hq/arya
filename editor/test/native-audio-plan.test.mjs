@@ -43,3 +43,31 @@ test('native plan preserves recursive source mapping, mute and master', () => {
   assert.equal(native.master.limiter.params.ceiling, -2)
   assert.equal(native.master.chain[0].type, 'compressor')
 })
+
+test('native plan reads a reversed clip backwards from the source second the browser plays', () => {
+  const p = newProject('Reverse')
+  p.assets = { 'a.wav': { duration: 30, hasAudio: true } }
+  p.tracks.find(t => t.id === 'A1').clips.push({ id: 'rev', kind: 'audio', src: 'a.wav', in: 2, start: 1, dur: 4, speed: 1.5, reverse: true })
+  for (const from of [0, 2.5]) {
+    const browser = planLeaves(planAudio(p, from, 8)).find(i => i.clip.id === 'rev')
+    const leaf = audioPlan(p, from, 8).buses.flatMap(b => b.items).find(i => i.id === 'rev')
+    assert.equal(leaf.reverse, true)
+    assert.equal(leaf.from, browser.from)
+    assert.equal(leaf.to, browser.to)
+    assert.equal(leaf.speed, browser.speed / browser.B)
+    // The browser's reversed clip plays source second in + (dur - local) * speed.
+    const local = t => (t - browser.A) / browser.B - browser.clip.start
+    const source = t => browser.srcIn + (browser.clip.dur - local(t)) * browser.speed
+    assert.ok(Math.abs(leaf.sourceIn - source(leaf.from)) < 1e-12)
+    assert.ok(Math.abs(leaf.sourceIn - leaf.speed * (leaf.to - leaf.from) - source(leaf.to)) < 1e-12)
+  }
+  // A negative angle offset ends a reversed leaf where its source reaches second zero.
+  p.tracks.find(t => t.id === 'A1').clips.push({ id: 'multi', kind: 'multicam', start: 10, dur: 2, in: 0, reverse: true, audioAngle: 0, angles: [{ src: 'a.wav', offset: -0.5 }] })
+  const multi = audioPlan(p, 0, 14).buses.flatMap(b => b.items).find(i => i.id === 'multi')
+  assert.equal(multi.reverse, true)
+  assert.ok(Math.abs(multi.sourceIn - 1.5) < 1e-12)
+  assert.ok(Math.abs(multi.to - 11.5) < 1e-12)
+  assert.ok(Math.abs(multi.sourceIn - multi.speed * (multi.to - multi.from)) < 1e-12)
+  const forward = audioPlan({ ...p, tracks: p.tracks.map(t => ({ ...t, clips: t.clips.map(c => ({ ...c, reverse: false })) })) }, 0, 8)
+  assert.equal(forward.buses.flatMap(b => b.items).find(i => i.id === 'rev').reverse, undefined)
+})

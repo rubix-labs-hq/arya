@@ -31,7 +31,7 @@ public enum NativeAudioMixer {
             depth=max(depth,level)
             for bus in buses { effects(bus["chain"] as? [[String:Any]] ?? []); for item in bus["items"] as? [[String:Any]] ?? [] {
                 effects(item["chain"] as? [[String:Any]] ?? [])
-                if let src=item["src"] as? String { let a=max(0,item["sourceIn"] as? Double ?? 0),b=a+max(0,(item["to"] as? Double ?? to)-(item["from"] as? Double ?? from))*(item["speed"] as? Double ?? 1)+2/Double(rate),old=ranges[src]; ranges[src]=(min(old?.0 ?? a,a),max(old?.1 ?? b,b)) }
+                if let src=item["src"] as? String { let (a,b)=sourceSpan(item,from:from,to:to,rate:rate),old=ranges[src]; ranges[src]=(min(old?.0 ?? a,a),max(old?.1 ?? b,b)) }
                 try walk(item["buses"] as? [[String:Any]] ?? [],level:level+1)
             } }
         }
@@ -43,6 +43,15 @@ public enum NativeAudioMixer {
         let estimate=(frames*Double(5+2*depth)*8+sourceFrames*8+effectBytes)*1.25 + Double(additionalBytes)
         guard estimate.isFinite, estimate >= 0, estimate < Double(UInt64.max) else { throw ReelBackend.APIError("The audio working set exceeds its supported size.") }
         return UInt64(ceil(estimate))
+    }
+
+    /// The source seconds a leaf reads, padded for interpolation. A reversed leaf reads backwards from `sourceIn`.
+    static func sourceSpan(_ item: [String: Any], from: Double, to: Double, rate: Int) -> (Double, Double) {
+        let sourceIn = item["sourceIn"] as? Double ?? 0, speed = item["speed"] as? Double ?? 1
+        let read = max(0, (item["to"] as? Double ?? to) - (item["from"] as? Double ?? from)) * speed, pad = 2/Double(rate)
+        if item["reverse"] as? Bool == true { return (max(0, sourceIn - read - pad), max(0, sourceIn + pad)) }
+        let begin = max(0, sourceIn)
+        return (begin, begin + read + pad)
     }
 
     /// Validate bounded effect curves before decoding sources or allocating DSP buffers.
@@ -91,8 +100,7 @@ public enum NativeAudioMixer {
         func collect(_ buses: [[String: Any]], into out: inout [String: (Double, Double)]) {
             for bus in buses { for item in bus["items"] as? [[String: Any]] ?? [] {
                 if let src = item["src"] as? String {
-                    let begin=max(0,item["sourceIn"] as? Double ?? 0), speed=item["speed"] as? Double ?? 1, span=max(0,(item["to"] as? Double ?? to)-(item["from"] as? Double ?? from))
-                    let end=begin+span*speed+2/Double(rate), old=out[src]
+                    let (begin,end)=sourceSpan(item,from:from,to:to,rate:rate), old=out[src]
                     out[src]=(min(old?.0 ?? begin,begin),max(old?.1 ?? end,end))
                 }
                 collect(item["buses"] as? [[String: Any]] ?? [],into:&out)
@@ -200,7 +208,8 @@ private struct MixContext {
                     signal = zero()
                     guard let src = item["src"] as? String, let source = sources[src] else { continue }
                     let start = item["from"] as? Double ?? from, end = item["to"] as? Double ?? from
-                    let sourceIn = item["sourceIn"] as? Double ?? 0, speed = item["speed"] as? Double ?? 1
+                    // A reversed leaf starts at its latest source second and reads backwards.
+                    let sourceIn = item["sourceIn"] as? Double ?? 0, speed = (item["speed"] as? Double ?? 1) * (item["reverse"] as? Bool == true ? -1 : 1)
                     let a = max(0, Int(ceil((start-from)*Double(rate)))), b = min(count, Int(ceil((end-from)*Double(rate))))
                     if b > a { for i in a..<b {
                         if i % 8192 == 0 { try Task.checkCancellation() }

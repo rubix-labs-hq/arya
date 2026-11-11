@@ -32,7 +32,7 @@ function scope(p, A, B, from, to, depth) {
     for (const c of track.clips) {
       if (c.enabled === false || c.mute) continue
       let f = Math.max(from, A + B * c.start)
-      const end = Math.min(to, A + B * clipEnd(c))
+      let end = Math.min(to, A + B * clipEnd(c))
       if (!(end > f)) continue
       const item = { id: c.id, from: f, to: end, chain: [] }
       const speed = c.speed > 0 ? c.speed : 1
@@ -46,12 +46,20 @@ function scope(p, A, B, from, to, depth) {
         item.src = angle?.src ?? c.src
         if (!item.src) continue
         const sourceIn = (c.in ?? 0) + (angle?.offset ?? 0)
-        if (sourceIn < 0) f = Math.max(f, A + B * (c.start - sourceIn / speed))
+        // A reversed clip plays source second in + (dur - local) * speed, as the browser does.
+        // Its leaf starts at the latest source second and reads backwards at `speed`.
+        if (sourceIn < 0) {
+          if (c.reverse) end = Math.min(end, A + B * (clipEnd(c) + sourceIn / speed))
+          else f = Math.max(f, A + B * (c.start - sourceIn / speed))
+        }
         if (!(end > f)) continue
         item.from = f
+        item.to = end
         item.kind = 'leaf'
-        item.sourceIn = sourceIn + ((f - A) / B - c.start) * speed
+        const local = (f - A) / B - c.start
+        item.sourceIn = sourceIn + (c.reverse ? c.dur - local : local) * speed
         item.speed = speed / B
+        if (c.reverse) item.reverse = true
       }
       const legacy = legacyEqBands(c.eq)
       if (legacy.length) item.chain.push({ type: 'eq', params: { bands: legacy }, curves: {} })

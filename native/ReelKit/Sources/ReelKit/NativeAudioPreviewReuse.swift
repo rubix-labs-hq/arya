@@ -130,7 +130,7 @@ enum NativeAudioPreviewReuse {
             var items: [Leaf] = []
             for item in bus["items"] as? [[String: Any]] ?? [] {
                 totalItems += 1
-                guard totalItems <= 256, item["kind"] as? String == "leaf", item["buses"] == nil,
+                guard totalItems <= 256, item["kind"] as? String == "leaf", item["buses"] == nil, item["reverse"] == nil,
                       (item["chain"] as? [[String: Any]] ?? []).isEmpty,
                       let id = item["id"] as? String, id.utf8.count <= 1024,
                       let source = item["src"] as? String, !source.isEmpty, source.utf8.count <= 4096,
