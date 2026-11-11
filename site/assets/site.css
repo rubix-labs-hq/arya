@@ -140,6 +140,11 @@ code{font-family:var(--mono);font-size:.88em;background:#ffffff14;padding:.1em .
 .plate-mac-media-panel .plate-frame{border-radius:10px 10px 0 0}
 .plate-mac-media-panel figcaption{margin:0}
 .plate-iphone-deliver{width:302px;max-width:100%}
+/* The launch film: one wide player under the hero. It plays only when the visitor starts it */
+.launch-film{padding:clamp(48px,6vw,96px) 0;border-top:1px solid var(--line)}
+.launch-film-figure{margin:0}
+.launch-film video{display:block;width:100%;height:auto;aspect-ratio:16/9;border-radius:6px;background:#151615;box-shadow:0 0 0 1px #ffffff1f}
+.launch-film figcaption{margin-top:12px}
 .figure-clip video{display:block;width:100%;height:auto;border-radius:6px;background:#111311;box-shadow:0 0 0 1px #ffffff1f}
 .figure-link{display:block;overflow:hidden;border-radius:6px;background:#111311;box-shadow:0 0 0 1px #ffffff1f;transition:box-shadow .15s var(--ease)}
 .figure-link:hover{box-shadow:0 0 0 1px #ffffff52}
