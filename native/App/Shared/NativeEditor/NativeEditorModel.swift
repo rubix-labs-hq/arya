@@ -107,26 +107,36 @@ enum NativeStatusText {
         if let parts = capture(#"^export queued: (.+)$"#) { return "Export queued: \(file(parts[0]))." }
         if let parts = capture(#"^proxy ready for (.+)$"#) { return "Smooth playback is ready for \(file(parts[0]))." }
         if let parts = capture(#"^making a playable proxy for (.+)$"#) { return "Preparing smooth playback for \(file(parts[0]))." }
+        func subject(_ list: String) -> String {
+            let ids = list.components(separatedBy: ", ").filter { !$0.isEmpty }
+            return ids.count == 1 ? (name(ids[0], names) ?? "a clip") : "\(ids.count) clips"
+        }
+        func property(_ key: String) -> String { key.isEmpty ? "" : "\(propertyWords[key] ?? "animated") " }
+        if let parts = capture(#"^cleared keyframes on ([A-Za-z0-9]+)(?:\.([A-Za-z0-9.]+))?$"#) {
+            return "Cleared the \(property(parts[1]))keyframes of \(subject(parts[0]))."
+        }
+        if let parts = capture(#"^(removed )?expression on ((?:[A-Za-z0-9]+, )*[A-Za-z0-9]+)\.([A-Za-z0-9.]+)(?:: .*)?$"#) {
+            let what = propertyWords[parts[2]] ?? "property"
+            return parts[0].isEmpty ? "Set an expression on the \(what) of \(subject(parts[1]))." : "Removed the expression on the \(what) of \(subject(parts[1]))."
+        }
         if let parts = capture(#"^updated track (\S+): (.*)$"#) { return "Updated \(name(parts[0], names) ?? "a track")." }
         if let parts = capture(#"^updated ([^:]+): (.*)$"#), !parts[0].contains(" ") || parts[0].contains(", ") {
-            let ids = parts[0].components(separatedBy: ", ").filter { !$0.isEmpty }
-            let subject = ids.count == 1 ? (name(ids[0], names) ?? "a clip") : "\(ids.count) clips"
+            let target = subject(parts[0])
             var words: [String] = []
             for key in parts[1].components(separatedBy: ", ") where !key.isEmpty {
                 let word = propertyWords[key] ?? "settings"
                 if !words.contains(word) { words.append(word) }
             }
             let what = words.isEmpty ? "settings" : ListFormatter.localizedString(byJoining: words)
-            return "Changed the \(what) of \(subject)."
+            return "Changed the \(what) of \(target)."
         }
         // Commit lines from your own edits or the assistant. Other lines are warnings or errors, so keep them whole.
         guard who == "you" || who == "agent" else { return line }
+        // The one backend line written for people that names a track by ID.
+        if let parts = capture(#"^Placed original music on (\S+)$"#) { return "Placed original music on \(name(parts[0], names) ?? "a track")." }
         // The editor core writes commit lines in lower case, such as "moved c1 to 2s on V1". A line that
-        // starts with a capital was written for people. It only gets names for IDs the project knows, and
-        // a line that mentions a path keeps every word as written.
-        guard let first = line.unicodeScalars.first, CharacterSet.lowercaseLetters.contains(first) || CharacterSet.decimalDigits.contains(first) else {
-            return sentence(line.contains("/") || line.contains("\\") ? line : replacingIDs(in: line, names, knownOnly: true))
-        }
+        // starts with a capital was written for people, so its paths and names stay exactly as they are.
+        guard let first = line.unicodeScalars.first, CharacterSet.lowercaseLetters.contains(first) || CharacterSet.decimalDigits.contains(first) else { return sentence(line) }
         return sentence(replacingIDs(in: line, names))
     }
 
@@ -179,11 +189,10 @@ enum NativeStatusText {
     }
 
     /// File types an ID can be part of, as in c1.mov. Property suffixes such as c1.x or c1.scale are not files.
-    private static let fileTypes = "mov|mp4|m4v|mkv|avi|webm|mxf|mts|m2ts|braw|r3d|wav|mp3|m4a|aac|aif|aiff|flac|ogg|opus|caf|png|jpe?g|heic|heif|gif|tiff?|webp|bmp|svg|psd|exr|dpx|dng|cube|3dl|srt|vtt|json|xml|fcpxml|edl|otio|txt|pdf|zip"
+    private static let fileTypes = "mov|mp4|m4v|mkv|avi|webm|mxf|mts|m2ts|mpe?g|3gp|wmv|braw|r3d|wav|mp3|m4a|aac|aif|aiff|flac|ogg|opus|caf|png|jpe?g|heic|heif|avif|gif|tiff?|webp|bmp|svg|psd|exr|dpx|dng|cube|3dl|srt|vtt|json|xml|fcpxml|edl|otio|txt|pdf|zip"
 
-    /// Replaces project IDs such as c12, c12a or V2 with names. IDs no longer in the project become plain
-    /// nouns, unless `knownOnly` asks to leave them as written.
-    private static func replacingIDs(in line: String, _ names: [String: String], knownOnly: Bool = false) -> String {
+    /// Replaces project IDs such as c12, c12a or V2 with names. IDs no longer in the project become plain nouns.
+    private static func replacingIDs(in line: String, _ names: [String: String]) -> String {
         guard let regex = try? NSRegularExpression(pattern: #"\b([A-Za-z]{1,2})\d+[a-z]?\b"#),
               let fileEnding = try? NSRegularExpression(pattern: #"^\.(?:\#(fileTypes))(?![A-Za-z0-9\[])"#, options: .caseInsensitive) else { return line }
         let text = line as NSString
@@ -205,7 +214,6 @@ enum NativeStatusText {
             let id = String(line[range])
             let replacement: String
             if let known = name(id, names) { replacement = known }
-            else if knownOnly { continue }
             else {
                 switch String(line[prefixRange]) {
                 case "c", "Lc": replacement = "a clip"

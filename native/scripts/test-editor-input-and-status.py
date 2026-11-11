@@ -173,14 +173,19 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(status("added title c1 \"c1 intro\"").contains("\"c1 intro\""), "Quoted text inside a commit line stays whole")
         // Property suffixes are not file names, so the clip still gets its name.
         let keyframes = status("cleared keyframes on c1.x")
-        require(keyframes.contains("Coastal arrival") && !hasID(keyframes), "A property suffix does not hide the clip name: \(keyframes)")
+        require(keyframes == "Cleared the position keyframes of “Coastal arrival”.", "Keyframe lines name the clip and property: \(keyframes)")
+        require(status("cleared keyframes on c1") == "Cleared the keyframes of “Coastal arrival”.", "Keyframe lines without a property read plainly")
         let expression = status("expression on c1.x: time")
-        require(expression.contains("Coastal arrival") && !hasID(expression), "Expression lines name the clip: \(expression)")
+        require(expression == "Set an expression on the position of “Coastal arrival”.", "Expression lines name the clip and property: \(expression)")
+        require(status("removed expression on c1, c44.opacity") == "Removed the expression on the opacity of 2 clips.", "Removed expressions count clips")
+        require(!hasID(status("moved c1 to 2s from media/c1.mpg on V1").replacingOccurrences(of: "c1.mpg", with: "")) && status("moved c1 to 2s from media/c1.mpg on V1").contains("c1.mpg"), "Older video types still count as file names")
         require(status("relinked c1 to c1.MOV").hasSuffix("c1.MOV."), "A real file name stays whole in any case")
-        // Lines written for people get names for known IDs, and keep unknown ones and paths as written.
+        // The backend's music placement line names its track. Other lines written for people stay whole.
         let music = status("Placed original music on A1")
-        require(music == "Placed original music on “Music”.", "Backend lines name known tracks: \(music)")
-        require(status("Placed original music on A9") == "Placed original music on A9.", "Unknown IDs in backend lines stay as written")
+        require(music == "Placed original music on “Music”.", "Music placement names the track: \(music)")
+        require(status("Placed original music on A9") == "Placed original music on a track.", "A missing track becomes a plain noun")
+        let restored = status("Restored missing original Promo V1 final.mov. Project edits and Undo history were preserved.")
+        require(restored == "Restored missing original Promo V1 final.mov. Project edits and Undo history were preserved.", "File names in backend lines stay whole: \(restored)")
         // Track IDs repeat across timelines. The edited timeline decides which name to use.
         let nested: [String: Any] = [
             "tracks": [["id": "V1", "name": "Main picture", "clips": []]],
