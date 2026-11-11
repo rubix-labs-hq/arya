@@ -28,7 +28,7 @@ test('composer exposes direct provider, exact model and actual effort controls; 
     assert.ok(selects.every(node => node.props.disabled === active))
     assert.ok(all.some(node => node.type === 'option' && node.props.value === 'swift'))
     assert.ok(all.some(node => node.type === 'option' && node.props.value === 'low'))
-    assert.ok(all.some(node => node.type === 'option' && text(node).includes('Claude Code · Suggested')))
+    assert.ok(all.some(node => node.type === 'option' && text(node) === 'Claude Code'))
   }
 })
 

@@ -13,6 +13,11 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- Sign in with ChatGPT returns to a one-time listener on 127.0.0.1, as OpenAI requires
+	     for open-source apps. It accepts loopback connections only and closes after one
+	     callback. The Mac App Store build does not request this entitlement. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
 	<!-- The assistant helper runs outside the sandbox in Terminal. Arya asks Terminal to
 	     start it with Apple Events, because macOS will not open a script a sandboxed app wrote. -->
 	<key>com.apple.security.automation.apple-events</key>

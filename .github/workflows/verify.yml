@@ -100,7 +100,9 @@ jobs:
       - name: Verify project metadata on macOS and Mac Catalyst
         run: python3 native/scripts/test-project-metadata.py
       - name: Verify native assistant change receipts
-        run: sh native/scripts/test-change-receipts.sh
+        run: |
+          sh native/scripts/test-change-receipts.sh
+          python3 native/scripts/test-native-chatgpt-model-refresh.py
       - name: Verify native viewer coordinates and output sizing
         run: |
           sh native/scripts/test-ui-geometry.sh

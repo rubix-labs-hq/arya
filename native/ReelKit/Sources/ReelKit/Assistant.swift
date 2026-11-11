@@ -15,7 +15,7 @@ public struct AssistantSharingScope: Equatable, Sendable {
 
     public init(models: [Model], companion: URL) throws {
         guard !models.isEmpty, models.count <= 256,
-              models.allSatisfy({ ["claude-code", "codex", "antigravity", "gemini-cli", "anthropic"].contains($0.provider) && $0.model.count <= 128 && !$0.model.contains("\0") && !$0.model.contains("\n") && !$0.model.contains("\r") }) else { throw Assistant.Failure.sharingRequired }
+              models.allSatisfy({ ["claude-code", "codex", "antigravity", "gemini-cli", "anthropic", "chatgpt"].contains($0.provider) && $0.model.count <= 128 && !$0.model.contains("\0") && !$0.model.contains("\n") && !$0.model.contains("\r") }) else { throw Assistant.Failure.sharingRequired }
         var unique: [Model] = []
         for model in models where !unique.contains(model) { unique.append(model) }
         self.models = unique.sorted { $0.provider == $1.provider ? $0.model < $1.model : $0.provider < $1.provider }
@@ -320,6 +320,8 @@ public actor Assistant {
         ([instructions] + (focus ? [focusGuide] : []) + (review ? [reviewGuide] : [])).joined(separator: "\n")
     }
 
+    /// The tool definitions, for routes that adapt them to another provider's shape.
+    static var toolDefinitions: JSON { tools }
     private static let tools: JSON = .raw(#"[{"name":"reel_api","description":"Read or edit the open native Arya project. GET /api/outline supplies current IDs, editor state and the exact operation reference. POST /api/ops accepts {ops:[...],who:\"agent\",summary:\"...\"}; related edits apply atomically with undo. Read /api/caps before processing or export. Tools cannot launch applications, configure accounts or access external URLs. Refresh project data before using IDs from an old selection.","input_schema":{"type":"object","properties":{"method":{"type":"string","enum":["GET","POST"]},"path":{"type":"string"},"body":{"type":"object"}},"required":["method","path"]}},{"name":"reel_frame","description":"Inspect a real native Metal frame of the open project or named composition. at is timeline seconds, or local composition seconds when comp is supplied. Use src alone to inspect a reference image inside the project. Verify framing, text, motion and grades after an edit. This tool does not analyze sound.","input_schema":{"type":"object","properties":{"at":{"type":"number","minimum":0},"width":{"type":"integer","minimum":320,"maximum":1920},"comp":{"type":"string"},"src":{"type":"string","description":"A project-relative reference image path. Use instead of at to inspect an imported reference image."}},"anyOf":[{"required":["at"]},{"required":["src"]}]}}]"#)
 
     private static let liveTransport: Transport = { request in

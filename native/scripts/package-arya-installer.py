@@ -13,7 +13,7 @@ import sys
 import tempfile
 import types
 
-RELEASE_SOURCE_SHA256 = "56c57a3dbea27568728241f0e4bbbac33ae9fde8243248fdfcb04086d15b355a"
+RELEASE_SOURCE_SHA256 = "7c22d69e1931702da13f2b2c2cd36df514b73a37f6500020774a375a5dd452f3"
 NODE_RUNTIME_SOURCE_SHA256 = "6e423d71465f905b8d7052b6bbec5d7b86d12de84f61c70405f2a29cfab6548f"
 
 
@@ -85,7 +85,12 @@ from the restored app's Assistant settings if you use it.
 
 The editor works without an AI account. Open Getting started on the start screen
 or in the Help menu for project, editing and optional assistant instructions.
-AI-assisted editing requires a supported provider account. Install Claude Code
+AI-assisted editing requires a supported provider account. For ChatGPT, choose
+Continue with ChatGPT in Settings > Assistant accounts. Sign in in your browser,
+then choose an available model in Arya. This connection needs no CLI or companion.
+Eligible requests use your ChatGPT plan or credits balance and its usage limits.
+
+Other connections use provider command-line apps. Install Claude Code
 or Codex using the provider's official instructions, then use its sign-in flow.
 Arya supplies a separate companion, started from Assistant settings. Check its
 connection and account status before Send. Arya does not include an AI plan and

@@ -1000,3 +1000,16 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .settings-actions a.button, .assistant-setup a.button { display:inline-flex; align-items:center; min-height:36px; padding:7px 12px; border:1px solid var(--line); border-radius:6px; text-decoration:none; color:var(--text); background:var(--panel-2); }
 .settings-actions a.button.primary, .assistant-setup a.button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
 .assistant-setup > a { margin-right:10px; margin-top:6px; }
+.assistant-setup > button { margin:6px 8px 0 0; }
+/* Sign in with ChatGPT: the primary way to connect when this editor offers it. */
+.chatgpt-card { margin:14px 0 4px; padding:2px 14px 14px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); }
+.chatgpt-card .provider-status { padding:12px 0 8px; }
+.chatgpt-card .chatgpt-welcome { margin:12px 0 0; padding:10px 12px; border:1px solid var(--accent); border-radius:6px; }
+.chatgpt-welcome h4 { margin:0; font-size:13px; font-weight:500; }
+.chatgpt-card .chatgpt-welcome p { font-size:12px; line-height:1.5; color:var(--muted); margin:6px 0 10px; }
+.assistant-plan-note { font-size:11px; color:var(--muted); }
+.assistant-plan-note a { color:inherit; }
+.assistant-plan-error { display:grid; gap:6px; justify-items:start; margin-top:8px; }
+.assistant-plan-error b { font-size:12px; font-weight:500; }
+.assistant-plan-error p { margin:0; }
+.assistant-plan-error a.button { display:inline-flex; align-items:center; min-height:32px; padding:6px 12px; border-radius:6px; text-decoration:none; background:var(--accent); color:var(--accent-ink); }

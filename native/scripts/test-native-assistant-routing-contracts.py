@@ -11,6 +11,8 @@ panel = (root / "native/App/Shared/NativeEditor/NativeAssistantPanel.swift").rea
 bridge = (root / "native/ReelKit/Sources/ReelKit/AgentBridge.swift").read_text()
 
 assert "NativeAssistantRoutingPolicy.availableModels(providers:" in controller
+assert "NativeAssistantRoutingPolicy.initialProvider(" in controller
+assert "chatGPTSupported: NativeChatGPT.supported" in controller
 assert "NativeAssistantRoutingPolicy.eligibleAutoModels(modelOptions, agent: agent)" in controller
 assert "NativeAssistantRoutingPolicy.eligibleAutoModels(options, agent: nextAgent)" in controller
 assert "savedModelReferences(keys: enabledModelKeys, defaultModels: eligibleAutoModels)" in controller
@@ -31,4 +33,4 @@ assert 'refresh ? "/v1/status?refresh=1" : "/v1/status"' in bridge
 assert "guard statusID == id, connectionGeneration == generation, !Task.isCancelled else { return }" in controller
 assert 'let selectedProvider = provider, selectedModel = routingMode == "manual" ? sharing.scope.models[0].model : model, selectedAgent = agent' in controller
 assert "accountStatusVerified = false; sharingConsentVersion = 0; routingSupported = false; providers = []; catalogs = []" in controller
-print("PASS: 21 app-only source contracts. Foundation policy and transport XCTest cases are unexecuted until the root compiler gate.")
+print("PASS: 23 app-only source contracts. Foundation policy and transport XCTest cases are unexecuted until the root compiler gate.")

@@ -15,7 +15,8 @@ import { SHARING_VERSION, normalizeSharingEnvelope, sharingScopeForRoute, sameSh
 import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
 
 const exec = promisify(execFile)
-const names = { 'claude-code': 'Claude Code', codex: 'Codex', antigravity: 'Google Antigravity', 'gemini-cli': 'Gemini CLI · retired', custom: 'Custom agent' }
+const names = { chatgpt: 'ChatGPT', 'claude-code': 'Claude Code', codex: 'Codex', antigravity: 'Google Antigravity', 'gemini-cli': 'Gemini CLI · retired', custom: 'Custom agent' }
+const CHATGPT_USAGE_URL = 'https://chatgpt.com/settings/usage'
 const installs = { 'claude-code': 'https://code.claude.com/docs/en/setup', codex: 'https://developers.openai.com/codex/cli/', antigravity: 'https://antigravity.google/download', 'gemini-cli': 'https://geminicli.com/docs/get-started/installation/' }
 const loginArgs = { 'claude-code': ['auth', 'login', '--claudeai'], codex: ['login'], antigravity: [] }
 const apiOverrides = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_API_KEY', 'CODEX_ACCESS_TOKEN', 'OPENAI_FEDERATION_RULE_ID', 'OPENAI_IDENTITY_TOKEN_FILE', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'AGY_GATEWAY_API_KEY', 'AGY_GATEWAY_URL', 'AGY_ADC_AUTH', 'GOOGLE_GENAI_USE_VERTEXAI', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT']
@@ -34,10 +35,10 @@ const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, millise
 const object = value => value && typeof value === 'object' && !Array.isArray(value)
 const bounded = (value, bytes, message) => { if (Buffer.byteLength(JSON.stringify(value)) > bytes) throw failure(message); return value }
 
-function preferences(value) {
+function preferences(value, providers = PROVIDERS) {
   if (!object(value) || Object.keys(value).some(key => !['provider', 'model', 'agent', 'effort', 'mode', 'priority', 'enabledModels', 'allowAdditionalSpend', 'allowAPIBilling', 'catalogBound'].includes(key))) throw failure('Use only provider, model, agent and routing preferences.')
   bounded(value, 64 * 1024, 'Assistant preferences exceeded 64 KiB.')
-  if (value.provider !== undefined && !PROVIDERS.includes(value.provider)) throw failure('Choose a supported agent provider.')
+  if (value.provider !== undefined && !providers.includes(value.provider)) throw failure('Choose a supported agent provider.')
   if (value.provider !== undefined && value.provider !== 'claude-code' && value.agent) throw failure('The Agent selector is supported by Claude Code. Leave it empty for this provider.')
   return validateRoutingPreferences(value)
 }
@@ -105,6 +106,8 @@ export function createBrowserAssistant(options) {
   const ownerClosures = new WeakMap()
   let sharingGeneration = 0, grantRecord = null
   const reviews = new Map()
+  // ChatGPT is offered only when the host injects its Sign in with ChatGPT account.
+  const providerIDs = options.chatgpt ? ['chatgpt', ...PROVIDERS] : PROVIDERS
   let settings = preferences({}), bridge = null, bridgePromise = null, closed = false, active = null
   let configurationRevision = 0
   let providerCache = null, providerCheckedAt = null, statusPromise = null, explicitStatusPromise = null, catalogCache = []
@@ -113,13 +116,13 @@ export function createBrowserAssistant(options) {
   const platform = options.platform ?? process.platform
   const statusProvider = options.providerStatus ?? providerStatus
   const resolveExecutable = options.executable ?? executable
-  const catalogHost = createAssistantCatalog({ custom: options.custom, providerStatus: statusProvider, executable: resolveExecutable, ...(options.catalogOptions ?? {}) })
+  const catalogHost = createAssistantCatalog({ custom: options.custom, chatgpt: options.chatgpt, providerStatus: statusProvider, executable: resolveExecutable, ...(options.catalogOptions ?? {}) })
   const launchLogin = options.launchLogin ?? ((command, args, env) => exec(command, args, { env, timeout: 10000, maxBuffer: 64 * 1024 }))
   try {
     const file = guardedOutput(root, settingsFile)
     if (fs.existsSync(file)) {
       if (fs.statSync(file).size > 64 * 1024) throw failure('Saved assistant preferences exceeded 64 KiB.')
-      settings = preferences(JSON.parse(fs.readFileSync(file, 'utf8')))
+      settings = preferences(JSON.parse(fs.readFileSync(file, 'utf8')), providerIDs)
     }
   } catch (error) { options.diagnostic?.(redact(error.message)) }
   try {
@@ -199,12 +202,12 @@ export function createBrowserAssistant(options) {
     if ((wait || refresh) && pending) await pending
     assertOpen()
     const raw = providerCache ?? []
-    const providers = PROVIDERS.map(id => {
+    const providers = providerIDs.map(id => {
       const item = raw.find(value => value.id === id) ?? { id, installed: null, authenticated: null }
       const custom = id === 'custom', installed = item.installed === true
       const available = !custom && installed && item.available !== false && item.authenticated === true
       return { id, name: names[id], available, installed: item.installed ?? null, authenticated: custom ? null : item.authenticated ?? null,
-        modelSelectionSupported: item.modelSelectionSupported === true, billingMode: item.billingMode ?? 'unknown', adapterManaged: item.adapterManaged === true, adapterSupported: custom ? false : item.adapterSupported ?? ['claude-code', 'codex', 'antigravity'].includes(id), catalogReason: item.catalogReason ?? null, productLoginApproval: item.productLoginApproval ?? 'unknown',
+        modelSelectionSupported: item.modelSelectionSupported === true, billingMode: item.billingMode ?? 'unknown', adapterManaged: item.adapterManaged === true, adapterSupported: custom ? false : item.adapterSupported ?? ['claude-code', 'codex', 'antigravity', 'chatgpt'].includes(id), catalogReason: item.catalogReason ?? null, productLoginApproval: item.productLoginApproval ?? 'unknown',
         reason: custom ? options.custom ? 'Custom editing is unavailable on this host. Choose Claude Code or Codex. Your custom preferences are saved.' : 'Custom editing is unavailable on this host. Choose Claude Code or Codex.' : String(item.reason ?? (statusPromise ? 'Checking the installed CLI account status.' : 'Provider account status is unavailable.')).slice(0, 500),
         installURL: installs[id] ?? null, loginCommand: id === 'antigravity' ? 'Use Sign in to open Arya’s separate Antigravity profile.' : loginArgs[id] ? `${id === 'claude-code' ? 'claude' : 'codex'} ${loginArgs[id].join(' ')}` : null,
         canLogin: platform === 'darwin' && installed && !!loginArgs[id] }
@@ -214,13 +217,13 @@ export function createBrowserAssistant(options) {
     const manualPreview = settings.mode === 'manual' && (settings.catalogBound || settings.effort) ? selectRoute({ preferences: settings, catalogs: catalogCache, providers: raw, now: options.now?.() ?? Date.now() }) : null
     const currentRoute = autoPreview ?? manualPreview
     publicStatus = { available: currentRoute ? currentRoute.ok : selected.available, configured: currentRoute ? currentRoute.ok : selected.available, ...settings, providerName: settings.mode === 'auto' ? 'Auto' : names[settings.provider], reason: currentRoute ? currentRoute.ok ? settings.mode === 'auto' ? 'Auto is ready to choose from your enabled verified models.' : 'Your verified Manual model is ready.' : currentRoute.reason : selected.reason,
-      routingSupported: true, sharingConsentVersion: SHARING_VERSION, catalogs: catalogCache, autoPreview, manualPreview, bridgeConnected: !!bridge, providers, sharing: { approved: !!grantRecord }, usage: null, loading: !!statusPromise || !!explicitStatusPromise, checkedAt: providerCheckedAt, ...state }
+      chatgpt: chatgptPublic(), routingSupported: true, sharingConsentVersion: SHARING_VERSION, catalogs: catalogCache, autoPreview, manualPreview, bridgeConnected: !!bridge, providers, sharing: { approved: !!grantRecord }, usage: null, loading: !!statusPromise || !!explicitStatusPromise, checkedAt: providerCheckedAt, ...state }
     return publicStatus
   }
   const configure = async body => {
     assertOpen()
     if (active) throw failure('Cancel or finish the current assistant request before changing providers.', 409)
-    const next = preferences(body)
+    const next = preferences(body, providerIDs)
     if (next.provider === 'custom' && !options.custom) throw failure('Custom agents must be configured when the server starts.')
     const currentConfigurationRevision = ++configurationRevision
     const addedModels = next.enabledModels.filter(item => !settings.enabledModels.some(previous => previous.provider === item.provider && previous.model === item.model))
@@ -275,9 +278,54 @@ export function createBrowserAssistant(options) {
     providerCache = null; providerCheckedAt = null; catalogHost.invalidate()
     return { started: true, provider, authenticated: false, reason: 'Complete the provider sign-in in Terminal, then refresh account status.' }
   }
+  // Sign in with ChatGPT. The account object owns OAuth and tokens; this host exposes only
+  // non-secret status, and every account change needs a fresh sharing review.
+  const chatgptPublic = () => {
+    if (!options.chatgpt) return { supported: false }
+    try { return options.chatgpt.status() } catch { return { supported: true, signedIn: false, planUsage: false, email: '', active: null, accounts: [], welcome: false, usageURL: CHATGPT_USAGE_URL, attempt: { state: 'idle', message: '', startURL: null }, error: 'ChatGPT sign-in status is unavailable.' } }
+  }
+  const chatgptAccount = () => {
+    assertOpen()
+    if (!options.chatgpt) throw failure('Sign in with ChatGPT is not available in this editor.', 404)
+    return options.chatgpt
+  }
+  const savedAccount = value => value === undefined || typeof value === 'string' && /^[A-Za-z0-9_-]{16}$/.test(value)
+  const chatgptSignIn = async (body = {}) => {
+    const account = chatgptAccount()
+    if (!object(body) || Object.keys(body).some(key => !['account', 'newAccount', 'enablePlan'].includes(key)) || !savedAccount(body.account) || ['newAccount', 'enablePlan'].some(key => body[key] !== undefined && typeof body[key] !== 'boolean')) throw failure('ChatGPT sign-in accepts only a saved account, newAccount and enablePlan.')
+    if (active) throw failure('Cancel or finish the current assistant request before changing ChatGPT accounts.', 409)
+    const result = await account.signIn({ account: body.account, newAccount: body.newAccount === true, enablePlan: body.enablePlan === true })
+    return { started: true, opened: result.opened, chatgpt: account.status() }
+  }
+  const chatgptCancel = async () => { const account = chatgptAccount(); return { ...account.cancelSignIn(), chatgpt: account.status() } }
+  const chatgptSignOut = async (body = {}) => {
+    const account = chatgptAccount()
+    if (!object(body) || Object.keys(body).some(key => key !== 'account') || !savedAccount(body.account)) throw failure('Sign-out accepts only a saved ChatGPT account.')
+    // Stop requests that use these tokens before they go away.
+    if (active && (settings.provider === 'chatgpt' || active.routing?.provider === 'chatgpt')) await cancel()
+    const result = await account.signOut({ account: body.account })
+    return { ...result, chatgpt: account.status() }
+  }
+  const chatgptWelcome = async () => { const account = chatgptAccount(); await account.acknowledgeWelcome(); return { chatgpt: account.status() } }
+  const grantsChatGPT = () => grantRecord?.sharing.scope.providers.includes('chatgpt') === true
+  const usesChatGPT = () => settings.provider === 'chatgpt' || active?.routing?.provider === 'chatgpt' || grantsChatGPT() || [...reviews.values()].some(review => review.scope?.providers?.includes('chatgpt'))
+  const unsubscribeChatGPT = options.chatgpt?.subscribe?.(change => {
+    if (closed) return
+    providerCache = null; providerCheckedAt = null; catalogHost.invalidate()
+    // Sharing was approved for one ChatGPT account, so a sign-in, sign-out or expiry needs a new
+    // review. Runs and permissions for other assistants are left alone.
+    if (usesChatGPT()) {
+      invalidateReviews()
+      if (grantsChatGPT()) { grantRecord = null; try { persistGrant() } catch (error) { options.diagnostic?.(redact(error.message)) } }
+    }
+    let chosen = true
+    try { chosen = fs.existsSync(guardedOutput(root, settingsFile)) } catch {}
+    // First-time setup: a new ChatGPT sign-in becomes the assistant only when none was chosen yet.
+    if (change.kind === 'signed-in' && change.planUsage && !active && !chosen) configure({ provider: 'chatgpt' }).catch(error => options.diagnostic?.(redact(error.message)))
+  })
   const companion = async () => {
     assertOpen()
-    if (!bridgePromise) bridgePromise = (options.startBridge ?? startBridge)({ custom: options.custom, ...(options.bridgeOptions ?? {}) }).then(value => { bridge = value; return value })
+    if (!bridgePromise) bridgePromise = (options.startBridge ?? startBridge)({ custom: options.custom, chatgpt: options.chatgpt, ...(options.bridgeOptions ?? {}) }).then(value => { bridge = value; return value })
     const value = await bridgePromise
     if (closed) { await value.close(); throw failure('The browser assistant has closed.', 410) }
     return value
@@ -453,7 +501,7 @@ export function createBrowserAssistant(options) {
             const failedJobs = [...run.jobs.values()].filter(job => ['failed', 'cancelled'].includes(options.jobState?.(job)))
             const currentVersion = options.getOutline().version
             const outcome = unresolvedToolOutcome(run.outcomes) ?? (failedJobs.length ? `${failedJobs.length} processing job${failedJobs.length === 1 ? '' : 's'} did not finish. Review any committed edits.` : run.review ? 'Preview mode was on. Proposed edits are applied only when you choose Apply.' : currentVersion !== run.initialVersion ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were applied during this request.')
-            publish({ state: event.type === 'done' && !unfinished ? 'done' : 'error', text: redact(final, [owner.token]).slice(0, 512 * 1024), outcome })
+            publish({ state: event.type === 'done' && !unfinished ? 'done' : 'error', text: redact(final, [owner.token]).slice(0, 512 * 1024), outcome, errorCode: event.type === 'error' && /^chatgpt_[a-z_]{1,48}$/.test(event.code ?? '') ? event.code : null })
             options.onReply?.(state.text, event.type === 'error' || unfinished)
             if (event.type === 'error' || unfinished) await cancelJobs(run)
             break
@@ -485,7 +533,7 @@ export function createBrowserAssistant(options) {
     if (active) throw failure('The assistant is still working.', 409)
     const run = { sharingGeneration, id: randomUUID(), identity: options.getIdentity(), cancelled: false, terminal: false, jobs: new Map(), outcomes: createToolOutcomes(), review: body.review === true }
     active = run
-    publish({ state: 'thinking', text: '', runId: run.id, phase: 'Connecting to your agent', startedAt: Date.now(), finishedAt: null, outcome: '', stopUnconfirmed: false, routing: null })
+    publish({ state: 'thinking', text: '', runId: run.id, phase: 'Connecting to your agent', startedAt: Date.now(), finishedAt: null, outcome: '', stopUnconfirmed: false, routing: null, errorCode: null })
     let owner
     try {
       const current = await status({ wait: true })
@@ -547,6 +595,7 @@ export function createBrowserAssistant(options) {
   const close = async () => {
     if (closed) return
     closed = true
+    unsubscribeChatGPT?.()
     invalidateReviews()
     catalogHost.close()
     if (active) { active.cancelled = true; await cancelJobs(active) }
@@ -554,5 +603,5 @@ export function createBrowserAssistant(options) {
     if (owner) await closeOwner(owner)
     active = null
   }
-  return { status, configure, login, sharing, grantSharing, revokeSharing, send, cancel, settlePreview, close, snapshot: () => ({ sharingConsentVersion: SHARING_VERSION, ...publicStatus, ...state, ...settings, providerName: settings.mode === 'auto' ? 'Auto' : names[settings.provider], bridgeConnected: !!bridge, sharing: { approved: !!grantRecord }, usage: null }) }
+  return { status, configure, login, chatgptSignIn, chatgptCancel, chatgptSignOut, chatgptWelcome, sharing, grantSharing, revokeSharing, send, cancel, settlePreview, close, snapshot: () => ({ sharingConsentVersion: SHARING_VERSION, ...publicStatus, ...state, ...settings, providerName: settings.mode === 'auto' ? 'Auto' : names[settings.provider], bridgeConnected: !!bridge, sharing: { approved: !!grantRecord }, usage: null }) }
 }

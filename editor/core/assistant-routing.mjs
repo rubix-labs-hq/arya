@@ -3,10 +3,10 @@
 export const ROUTING_POLICY_VERSION = 'provider-description-v1'
 export const CATALOG_MAX_AGE_MS = 5 * 60 * 1000
 export const PROVIDER_SETUP = Object.freeze([
-  { id: 'claude-code', name: 'Claude Code', suggested: true, executable: 'claude', account: 'Claude account',
+  { id: 'claude-code', name: 'Claude Code', executable: 'claude', account: 'Claude account',
     installURL: 'https://code.claude.com/docs/en/setup', signInCommand: 'claude auth login --claudeai',
     discovery: 'No standalone model-list command was exposed by the inspected CLI.',
-    productLoginApproval: 'unverified', externalInstructions: 'Sign in to your own Claude Code and connect the Arya MCP tools. Embedded consumer sign-in needs provider approval.' },
+    productLoginApproval: 'not-permitted-for-third-party-apps', externalInstructions: 'Anthropic does not let other apps offer Claude account sign-in. Install Claude Code and sign in to it yourself in Terminal. Arya never sees your Claude password or tokens.' },
   { id: 'codex', name: 'Codex', executable: 'codex', account: 'ChatGPT account',
     installURL: 'https://developers.openai.com/codex/cli/', signInCommand: 'codex login',
     discovery: 'Codex App Server model/list', productLoginApproval: 'documented-client-integration' },
@@ -22,7 +22,8 @@ export const PROVIDER_SETUP = Object.freeze([
     reason: 'Configure a host-side adapter and its model discovery. Arya does not assume its authentication or prices.' },
 ])
 
-const providerIDs = new Set([...PROVIDER_SETUP.map(item => item.id), 'anthropic'])
+// ChatGPT (Sign in with ChatGPT) and the Anthropic API are host-injected, not CLI setups.
+const providerIDs = new Set([...PROVIDER_SETUP.map(item => item.id), 'anthropic', 'chatgpt'])
 const kinds = new Set(['provider-cli', 'provider-sdk', 'provider-docs', 'verified-custom-adapter'])
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
 const cleanText = (value, size = 500) => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, size) : ''
@@ -146,7 +147,9 @@ export function selectRoute({ preferences = {}, catalogs = [], providers = [], r
     let reason = null
     const catalog = catalogs.find(item => item.provider === enabled.provider)
     const model = catalog?.models?.find(item => item.id === enabled.model)
-    if (!usableProvider(enabled.provider)) reason = cleanText(provider(enabled.provider)?.reason) || 'Provider authentication or editing adapter is unavailable.'
+    // OpenAI reports no image support or price for ChatGPT plan models, so Auto never spends that plan.
+    if (enabled.provider === 'chatgpt') reason = 'ChatGPT plan models are available in Manual selection only.'
+    else if (!usableProvider(enabled.provider)) reason = cleanText(provider(enabled.provider)?.reason) || 'Provider authentication or editing adapter is unavailable.'
     else if (provider(enabled.provider)?.modelSelectionSupported !== true) reason = 'This editing adapter cannot bind an exact requested model.'
     else if (provider(enabled.provider)?.billingMode !== 'subscription' && !['claude-code', 'codex'].includes(enabled.provider) && !prefs.allowAPIBilling) reason = 'This adapter has API or unverified billing. Opt in before including it in Auto.'
     else if (prefs.agent && enabled.provider !== 'claude-code') reason = 'Your named Claude agent requires Claude Code.'

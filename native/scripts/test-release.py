@@ -142,6 +142,26 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(entitlements["com.apple.security.temporary-exception.apple-events"], ["com.apple.Terminal"])
         info = plistlib.loads((release.REPO / "native/App/macOS/Info.plist").read_bytes())
         self.assertIn("Terminal", info["NSAppleEventsUsageDescription"])
+        # Regeneration must preserve the privacy purpose required by the direct app.
+        spec = (release.REPO / "native/project.yml").read_text()
+        self.assertIn("NSAppleEventsUsageDescription:", spec)
+
+    def testOnlyTheDirectBuildMayListenForTheChatGPTCallback(self):
+        direct = plistlib.loads(release.ENTITLEMENTS.read_bytes())
+        self.assertIs(direct["com.apple.security.network.server"], True)
+        store = plistlib.loads((release.REPO / "native/App/macOS/Reel-AppStore.entitlements").read_bytes())
+        self.assertNotIn("com.apple.security.network.server", store)
+        ios = plistlib.loads((release.REPO / "native/App/iOS/Reel.entitlements").read_bytes())
+        self.assertNotIn("com.apple.security.network.server", ios)
+        validator = (release.REPO / "native/scripts/validate-app-store.py").read_text()
+        self.assertIn("'com.apple.security.network.server'", validator)
+        entitlements = dict(direct)
+        del entitlements["com.apple.security.network.server"]
+        signature = "CodeDirectory flags=0x10000(runtime)\n"
+        with patch.object(release, "run", return_value=plistlib.dumps(entitlements).decode()), \
+             patch.object(release.subprocess, "run", return_value=SimpleNamespace(stderr=signature)):
+            with self.assertRaisesRegex(ValueError, "network.server"):
+                release.validate_bundle(self.app)
 
     def testSignedCandidateCannotClaimPublicationReadiness(self):
         entitlements = plistlib.loads(release.ENTITLEMENTS.read_bytes())

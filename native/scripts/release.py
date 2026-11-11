@@ -121,11 +121,12 @@ def validate_bundle(app, signed=False):
     for key in ("com.apple.security.app-sandbox",
                 "com.apple.security.files.user-selected.read-write",
                 "com.apple.security.files.bookmarks.app-scope",
-                "com.apple.security.network.client"):
+                "com.apple.security.network.client",
+                # Sign in with ChatGPT's one-time loopback callback (127.0.0.1 only). Direct builds only;
+                # validate-app-store.py still refuses this entitlement in the Store build.
+                "com.apple.security.network.server"):
         if entitlements.get(key) is not True:
             raise ValueError(f"The app is missing {key}.")
-    if entitlements.get("com.apple.security.network.server"):
-        raise ValueError("Arya must not request a network listener entitlement.")
     if signed and "Authority=Developer ID Application:" not in details:
         raise ValueError("Distribution requires a Developer ID Application signature.")
     runtime_report = load_runtime_dependency().validate(app, info) if signed else None
