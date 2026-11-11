@@ -1898,7 +1898,7 @@ struct NativeChatGPTSettings: View {
         run {
             guard !assistant.isWorking else { notice = "Cancel or finish the current assistant request before changing ChatGPT accounts."; return }
             let opened = try await account.signIn(account: id, newAccount: newAccount, enablePlan: enablePlan)
-            notice = opened ? "Finish signing in on the ChatGPT page in your browser." : "Arya could not open your browser. Use Open the sign-in page again."
+            notice = opened ? "" : "Arya could not open your browser. Use Open the sign-in page again."
         }
     }
 

@@ -15,6 +15,21 @@ final class NativeAssistantChatHistoryTests: XCTestCase {
     private func fields(_ value: JSON) throws -> [String: Any] { try XCTUnwrap(JSON.parse(value.text) as? [String: Any]) }
     private func file(_ folder: ProjectFolder) -> URL { folder.dotDir.appendingPathComponent("assistant-chat.json") }
 
+    func testChatGPTConversationPersistsAndReopensWithProviderIdentity() throws {
+        let folder = try folder(), history = NativeAssistantChatHistory(folder: folder)
+        for role in ["user", "assistant"] {
+            try history.append(.object([("role", .string(role)), ("text", "An editable title change"), ("at", 1), ("provider", "chatgpt")]))
+        }
+        let restored = NativeAssistantChatHistory(folder: folder)
+        XCTAssertEqual(restored.messages, history.messages)
+        XCTAssertEqual(restored.messages.count, 2)
+        XCTAssertEqual(try fields(restored.status)["savingAvailable"] as? Bool, true)
+        XCTAssertNil(try fields(restored.status)["warning"] as? String)
+        for row in restored.messages { XCTAssertEqual(try fields(row)["provider"] as? String, "chatgpt") }
+        XCTAssertThrowsError(try history.append(message("Invalid provider", provider: "unrecognized-provider")))
+        XCTAssertEqual(NativeAssistantChatHistory(folder: folder).messages, restored.messages)
+    }
+
     func testAssistantRoleAndLegacyClaudeRoleRoundTripWithProviderIdentity() throws {
         for role in ["assistant", "claude"] {
             let message = JSON.object([("role", .string(role)), ("text", "Provider reply"), ("at", 1), ("provider", "codex")])
