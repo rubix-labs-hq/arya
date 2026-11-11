@@ -115,6 +115,19 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(NativeAudioPresence.clipHasAudio(["kind": "audio", "src": "clip.mov", "mute": true], project: project), "A muted audio clip keeps its controls so it can be unmuted")
         require(NativeAudioPresence.clipHasAudio(["kind": "comp", "comp": "k1"], project: project), "A composition with audio keeps audio controls")
         require(!NativeAudioPresence.clipHasAudio(["kind": "comp", "comp": "k2"], project: project), "A composition without audio has none")
+        let layered: [String: Any] = [
+            "assets": ["clip.mov": ["hasAudio": true], "still.png": ["hasAudio": false]],
+            "comps": [
+                "k3": ["tracks": [["kind": "video", "clips": [["id": "c3", "kind": "video", "src": "clip.mov"]]]]],
+                "k4": ["tracks": [["kind": "video", "clips": [["id": "c4", "kind": "comp", "comp": "k3"]]]]],
+                "k5": ["tracks": [["kind": "video", "clips": [["id": "c5", "kind": "image", "src": "still.png"]]]]],
+                "k6": ["tracks": [["kind": "video", "clips": [["id": "c6", "kind": "comp", "comp": "k6"]]]]]
+            ]
+        ]
+        require(NativeAudioPresence.clipHasAudio(["kind": "comp", "comp": "k3"], project: layered), "A composition whose video carries sound has audio controls")
+        require(NativeAudioPresence.clipHasAudio(["kind": "comp", "comp": "k4"], project: layered), "Sound from a nested composition counts")
+        require(!NativeAudioPresence.clipHasAudio(["kind": "comp", "comp": "k5"], project: layered), "A composition of stills has no sound")
+        require(!NativeAudioPresence.clipHasAudio(["kind": "comp", "comp": "k6"], project: layered), "A composition that contains itself ends the search")
 
         // Export repeats.
         var guardrail = NativeExportRepeatGuard()
@@ -186,22 +199,18 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(status("Placed original music on A9") == "Placed original music on a track.", "A missing track becomes a plain noun")
         let restored = status("Restored missing original Promo V1 final.mov. Project edits and Undo history were preserved.")
         require(restored == "Restored missing original Promo V1 final.mov. Project edits and Undo history were preserved.", "File names in backend lines stay whole: \(restored)")
-        // Track IDs repeat across timelines. The edited timeline decides which name to use.
+        // Track IDs repeat across timelines, and activity lines do not say which one they edited.
         let nested: [String: Any] = [
-            "tracks": [["id": "V1", "name": "Main picture", "clips": []]],
+            "tracks": [["id": "V1", "name": "Main picture", "clips": []], ["id": "V2", "name": "Titles", "clips": []]],
             "comps": ["k1": ["name": "Inset", "tracks": [["id": "V1", "name": "Inset picture", "clips": []]]]]
         ]
-        require(NativeStatusText.activity("updated track V1: locked", who: "you", project: nested) == "Updated “Main picture”.", "The main timeline's V1 is the main track")
-        require(NativeStatusText.activity("updated track V1: locked", who: "you", project: nested, composition: "k1") == "Updated “Inset picture”.", "Inside a composition, V1 is that composition's track")
-        require(NativeStatusText.activity("updated track V1: locked", who: "you", project: nested, composition: "missing") == "Updated “Main picture”.", "An unknown composition falls back to the main timeline")
-        // A track with no name in the edited timeline does not borrow a nested timeline's name.
+        require(NativeStatusText.activity("updated track V1: muted", who: "agent", project: nested) == "Updated a track.", "A track ID shared by two timelines is not named after either")
+        require(NativeStatusText.activity("updated track V2: muted", who: "agent", project: nested) == "Updated “Titles”.", "A track ID in one timeline keeps its name")
         let unnamed: [String: Any] = [
             "tracks": [["id": "V1", "name": "", "clips": []]],
             "comps": ["k1": ["name": "Inset", "tracks": [["id": "V1", "name": "Inset picture", "clips": []]]]]
         ]
-        let cleared = NativeStatusText.activity("updated track V1: name", who: "you", project: unnamed)
-        require(cleared == "Updated a track.", "An unnamed main track is not called by the nested name: \(cleared)")
-        require(NativeStatusText.activity("updated track V1: name", who: "you", project: unnamed, composition: "k1") == "Updated “Inset picture”.", "The nested timeline still names its own track")
+        require(NativeStatusText.activity("updated track V1: name", who: "you", project: unnamed) == "Updated a track.", "An unnamed track does not borrow a nested timeline's name")
         require(status("", who: "reel").isEmpty, "Empty lines stay empty")
 
         // Device words.

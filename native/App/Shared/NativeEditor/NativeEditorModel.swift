@@ -84,10 +84,9 @@ struct NativeHapticPolicy {
 /// Turns the shared core's activity log lines into editor status text without internal IDs.
 /// Edit confirmations read as plain sentences. Failures, warnings and unknown lines keep their detail.
 enum NativeStatusText {
-    /// `composition` is the timeline being edited. Its track and clip IDs are read before any other timeline's.
-    static func activity(_ raw: String, who: String = "", project: [String: Any]?, composition: String? = nil) -> String {
+    static func activity(_ raw: String, who: String = "", project: [String: Any]?) -> String {
         let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let names = self.names(project, composition: composition)
+        let names = self.names(project)
         func file(_ path: String) -> String { (path.trimmingCharacters(in: .whitespaces) as NSString).lastPathComponent }
         func capture(_ pattern: String) -> [String]? {
             guard let regex = try? NSRegularExpression(pattern: pattern),
@@ -148,8 +147,9 @@ enum NativeStatusText {
     ]
 
     /// The main timeline and each composition number their tracks alike, so V1 can mean several tracks.
-    /// The timeline being edited decides. An ID that means different things elsewhere gets no name.
-    private static func names(_ project: [String: Any]?, composition: String?) -> [String: String] {
+    /// Activity lines do not say which timeline they edited, so an ID that means different things in
+    /// different timelines, or has no name in one of them, gets no name.
+    private static func names(_ project: [String: Any]?) -> [String: String] {
         guard let project else { return [:] }
         /// Every track and clip ID in a timeline. An empty name means the ID exists but has no name.
         func scope(_ tracks: [[String: Any]]) -> [String: String] {
@@ -166,17 +166,12 @@ enum NativeStatusText {
             return found
         }
         let comps = project.dictionary("comps")
-        func tracks(_ id: String) -> [[String: Any]] { (comps[id] as? [String: Any] ?? [:]).objects("tracks") }
-        var result: [String: String] = [:], unclear = Set<String>()
-        for found in [scope(project.objects("tracks"))] + comps.keys.sorted().map({ scope(tracks($0)) }) {
-            for (id, name) in found where !name.isEmpty {
-                if let known = result[id], known != name { unclear.insert(id) } else { result[id] = name }
-            }
+        var seen: [String: Set<String>] = [:]
+        for found in [scope(project.objects("tracks"))] + comps.keys.sorted().map({ scope((comps[$0] as? [String: Any] ?? [:]).objects("tracks")) }) {
+            for (id, name) in found { seen[id, default: []].insert(name) }
         }
-        for id in unclear { result[id] = nil }
-        // The edited timeline's own IDs always win, even when one has no name there.
-        let active = composition.flatMap { comps[$0] == nil ? nil : tracks($0) } ?? project.objects("tracks")
-        for (id, name) in scope(active) { result[id] = name.isEmpty ? nil : name }
+        var result: [String: String] = [:]
+        for (id, names) in seen where names.count == 1 { if let name = names.first, !name.isEmpty { result[id] = name } }
         for id in comps.keys.sorted() {
             let compName = (comps[id] as? [String: Any] ?? [:]).string("name")
             if !compName.isEmpty { result[id] = compName }
@@ -1022,7 +1017,7 @@ final class NativeEditorModel: ObservableObject {
             jobs.removeAll { $0.string("id") == id }; jobs.append(fields)
             confirmExportFeedback(fields)
         case "activity":
-            status = NativeStatusText.activity(fields.string("text", fields.string("summary")), who: fields.string("who"), project: project?.fields, composition: composition)
+            status = NativeStatusText.activity(fields.string("text", fields.string("summary")), who: fields.string("who"), project: project?.fields)
         default: break
         }
     }

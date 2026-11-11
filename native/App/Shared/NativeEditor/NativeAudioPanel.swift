@@ -133,7 +133,9 @@ private extension NativeAudioRequestCapture {
 /// Whether a clip has sound that clip audio controls can change. Mirrors the shared core's `hasAudio`,
 /// except that a muted clip still counts, so its Mute button stays reachable.
 enum NativeAudioPresence {
-    static func clipHasAudio(_ clip: [String: Any], project: [String: Any]) -> Bool {
+    /// Whether a clip makes sound when played. A composition is mixed from all its tracks, whatever their
+    /// kind, so it has sound when any clip inside it does, including clips in nested compositions.
+    static func clipHasAudio(_ clip: [String: Any], project: [String: Any], visiting: Set<String> = []) -> Bool {
         let assets = project.dictionary("assets")
         switch clip.string("kind") {
         case "audio": return true
@@ -142,8 +144,10 @@ enum NativeAudioPresence {
             let angles = clip.objects("angles"), index = Int(clip.number("audioAngle"))
             return angles.indices.contains(index) && assets.dictionary(angles[index].string("src")).flag("hasAudio")
         case "comp":
-            return project.dictionary("comps").dictionary(clip.string("comp")).objects("tracks")
-                .contains { $0.string("kind") == "audio" && !$0.objects("clips").isEmpty }
+            let id = clip.string("comp")
+            guard !id.isEmpty, !visiting.contains(id), visiting.count < 32 else { return false }
+            return project.dictionary("comps").dictionary(id).objects("tracks")
+                .contains { $0.objects("clips").contains { clipHasAudio($0, project: project, visiting: visiting.union([id])) } }
         default: return false
         }
     }
