@@ -10,9 +10,11 @@ const boundedDiscovery = async run => {
 
 const safeReason = value => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 500) : 'Model discovery is unavailable.'
 
+// Providers with a verified Arya editing adapter. ChatGPT appears only when the host injects its sign-in.
+const EDITING = ['claude-code', 'codex', 'antigravity', 'chatgpt']
 const canonicalProvider = (row, custom) => {
   const installed = typeof row.installed === 'boolean' ? row.installed : null
-  const adapterSupported = ['claude-code', 'codex', 'antigravity'].includes(row.id) && row.adapterSupported !== false
+  const adapterSupported = EDITING.includes(row.id) && row.adapterSupported !== false
   const adapterManaged = row.id === 'custom' && !!custom
   // Configuration is a host trust decision. Keep an unknown custom auth result
   // unknown; neither a configured executable nor a timeout verifies sign-in.
@@ -22,10 +24,18 @@ const canonicalProvider = (row, custom) => {
   const blocked = installed === false || authenticated === false || !adapterSupported || row.available === false || row.rateLimited === true
   const available = blocked ? false : installed === true && authenticated === true ? true : null
   return { ...row, installed, authenticated, available, adapterSupported,
-    modelSelectionSupported: ['claude-code', 'codex', 'antigravity'].includes(row.id),
-    billingMode: ['claude-code', 'codex', 'antigravity'].includes(row.id) ? 'subscription' : 'unknown',
+    modelSelectionSupported: EDITING.includes(row.id),
+    billingMode: EDITING.includes(row.id) ? 'subscription' : 'unknown',
     adapterManaged,
-    productLoginApproval: PROVIDER_SETUP.find(item => item.id === row.id)?.productLoginApproval ?? 'unknown' }
+    productLoginApproval: row.id === 'chatgpt' ? 'sign-in-with-chatgpt' : PROVIDER_SETUP.find(item => item.id === row.id)?.productLoginApproval ?? 'unknown' }
+}
+
+// The ChatGPT row comes from the host's own sign-in state; it never runs a CLI.
+export function chatgptProviderRow(account) {
+  const state = account.status()
+  const ready = state.signedIn && state.planUsage
+  return { id: 'chatgpt', installed: true, authenticated: ready, available: ready, adapterSupported: true, authentication: 'sign-in-with-chatgpt',
+    reason: ready ? 'Uses your ChatGPT plan through Sign in with ChatGPT.' : state.signedIn ? 'ChatGPT plan usage is off for this sign-in. Turn it on in Assistant settings.' : 'Continue with ChatGPT in Assistant settings to use your ChatGPT plan.' }
 }
 
 // Metadata and adapter readiness are host-owned. The browser supplies preferences,
@@ -44,7 +54,7 @@ export function createAssistantCatalog(options = {}) {
     if (pending) return pending
     const currentRevision = revision
     pending = (async () => {
-      const statuses = await accounts(options.custom)
+      const statuses = [...await accounts(options.custom), ...(options.chatgpt ? [chatgptProviderRow(options.chatgpt)] : [])]
       if (closed || revision !== currentRevision) return
       const providers = statuses.map(row => canonicalProvider(row, options.custom))
       const catalogs = [], reasons = new Map()
@@ -63,6 +73,10 @@ export function createAssistantCatalog(options = {}) {
             catalogs.push(await discover({ executable: command, env: subscriptionEnvironment(), timeoutMs: 15000 }))
           } else if (row.id === 'antigravity') {
             catalogs.push(normalizeCatalog({ provider: 'antigravity', records: row.models ?? [], checkedAt: now(), source: { kind: 'provider-cli', label: 'Antigravity CLI models, checked in Arya’s signed-in profile. Image capabilities and prices are not reported.' } }))
+          } else if (row.id === 'chatgpt' && options.chatgpt) {
+            const models = await options.chatgpt.models()
+            if (!models.length) throw new Error('OpenAI lists no models for this ChatGPT account.')
+            catalogs.push(normalizeCatalog({ provider: 'chatgpt', records: models.map((item, index) => ({ id: item.slug, displayName: item.display_name, isDefault: index === 0 })), checkedAt: now(), source: { kind: 'provider-sdk', label: 'Models OpenAI lists for your signed-in ChatGPT account, in OpenAI’s order. Image support and prices are not reported, so Auto does not choose them.' } }))
           } else if (row.id === 'custom' && options.custom?.discoverModels) {
             let records = await boundedDiscovery(() => options.custom.discoverModels())
             // Do not advertise effort that the configured executable never receives.

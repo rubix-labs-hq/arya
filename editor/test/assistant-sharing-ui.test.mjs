@@ -163,7 +163,7 @@ test('actual Settings withdrawal button calls the revocation endpoint and report
   const controlsSource = readFileSync(new URL('../web/ui/provider-controls.js', import.meta.url), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
   const { autoModelPool, routingPreferences } = new Function('h', 'htm', 'ASSISTANT_PROVIDERS', 'providerName', 'selectRoute', `${controlsSource}\nreturn { autoModelPool, routingPreferences }`)(h, htm, ASSISTANT_PROVIDERS, providerName, selectRoute)
   const { assistantActivity } = await import('../web/ui/assistant-activity.js')
-  const statusSource = readFileSync(new URL('../web/ui/assistant-status.js', import.meta.url), 'utf8').replace(/^import .*$/gm, '').replace('export async function refreshAssistantStatus', 'async function refreshAssistantStatus')
+  const statusSource = readFileSync(new URL('../web/ui/assistant-status.js', import.meta.url), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
   const source = readFileSync(new URL('../web/ui/settings.js', import.meta.url), 'utf8').replace(/^import .*$/gm, '').replaceAll('export async function ', 'async function ').replaceAll('export function ', 'function ').replace(/^export \{ refreshAssistantStatus \} from .*$/gm, '')
   for (const stopUnconfirmed of [false, true]) {
     const calls = [], notices = []

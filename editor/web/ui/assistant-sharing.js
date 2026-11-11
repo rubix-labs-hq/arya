@@ -17,7 +17,7 @@ export async function withdrawAssistantSharing(api) {
   if (attempt === withdrawalGeneration) withdrawalBlocked = false
   return result
 }
-const PROVIDERS = { 'claude-code': 'Anthropic · Claude Code', codex: 'OpenAI · Codex', 'gemini-cli': 'Google · Gemini CLI (beta)', anthropic: 'Anthropic API' }
+const PROVIDERS = { chatgpt: 'OpenAI · ChatGPT plan', 'claude-code': 'Anthropic · Claude Code', codex: 'OpenAI · Codex', antigravity: 'Google · Antigravity', 'gemini-cli': 'Google · Gemini CLI (beta)', anthropic: 'Anthropic API' }
 const CLASSES = {
   prompt: ['Your request', 'Message text, scripts or screenplays you ask the assistant to use.'],
   project_context: ['Project context', 'Project name, local paths, version, structure, selection, playhead and references.'],

@@ -25,7 +25,10 @@ export async function startBridge(options = {}) {
   if (advertisedEndpoint && !advertisedEndpoint.startsWith('https:')) throw failure('A public companion identity requires a credential-free HTTPS root address.')
   const token = randomBytes(32).toString('hex'), runs = new Map()
   let endpoint, sharingCompanion, retainedBytes = 0, closed = false, closePromise
-  const catalog = createAssistantCatalog({ custom: options.custom, ...(options.catalogOptions ?? {}) })
+  // Sign in with ChatGPT is host-injected. The standalone companion has no ChatGPT account.
+  const chatgpt = options.chatgpt ?? null
+  const providers = chatgpt ? [...PROVIDERS, 'chatgpt'] : PROVIDERS
+  const catalog = createAssistantCatalog({ custom: options.custom, chatgpt, ...(options.catalogOptions ?? {}) })
   const account = (run, size) => { run.retainedBytes += size; retainedBytes += size }
   const evictDelivered = (run, size) => {
     const candidates = [run, ...runs.values()].flatMap(owner => [...owner.calls.values()].filter(call => call.delivered && call.result).map(call => ({ owner, call })))
@@ -48,6 +51,7 @@ export async function startBridge(options = {}) {
     run.terminal = true; run.finished = Date.now(); clearTimeout(run.timer)
     const safe = { type: value.type, seq: ++run.seq }
     if (value.message) safe.message = redact(String(value.message).slice(0, 500), [token, run.token])
+    if (typeof value.code === 'string' && /^chatgpt_[a-z_]{1,48}$/.test(value.code)) safe.code = value.code
     if (value.text) safe.text = redact(value.text, [token, run.token])
     const size = Buffer.byteLength(JSON.stringify(safe))
     account(run, size); run.eventBytes += size; run.events.push(safe)
@@ -76,8 +80,11 @@ export async function startBridge(options = {}) {
       const route = await catalog.resolve(preferences, { text: run.request.text, selectionCount: Array.isArray(run.request.context?.selection) ? run.request.context.selection.length : 0, inputKind: run.request.context?.inputKind, requiresImage: true })
       if (run.terminal) return
       if (!route.ok) throw new Error(route.reason)
+      // A companion without a ChatGPT account never launches the ChatGPT agent.
+      if (!providers.includes(route.provider)) throw new Error('That assistant is not available on this companion.')
       run.sharing = assertSharingRoute(run.request.sharing, route, run.request.sharing.scope.companion)
       run.request = { ...run.request, provider: route.provider, ...(route.model ? { model: route.model } : {}), agent: route.agent, effort: route.effort }
+      run.provider = route.provider
       run.routingReceipt = route
       event(run, { type: 'route', routing: route })
       if (run.terminal) return
@@ -89,7 +96,7 @@ export async function startBridge(options = {}) {
       const output = createOutputStream(line => {
         const item = outputEvent(run.request.provider, line)
         // Claude streams deltas and then repeats them as an assistant message.
-        if (run.request.provider !== 'gemini-cli' && line.includes('text_delta')) partial = true
+        if (!['gemini-cli', 'chatgpt'].includes(run.request.provider) && line.includes('text_delta')) partial = true
         if (item && !(partial && line.includes('"assistant"'))) event(run, item)
         return !run.terminal
       })
@@ -143,11 +150,11 @@ export async function startBridge(options = {}) {
       }
       const url = new URL(request.url, endpoint)
       if (url.origin !== endpoint.slice(0, -1) || /%|\.\.|\\/.test(url.pathname)) throw failure('Invalid route')
-      const match = /^\/v1\/runs\/([^/]+)(?:\/(events|cancel|tools|calls)(?:\/([^/]+))?)?$/.exec(url.pathname)
+      const match = /^\/v1\/runs\/([^/]+)(?:\/(events|cancel|tools|calls|credential)(?:\/([^/]+))?)?$/.exec(url.pathname)
       const run = match && runs.get(match[1])
       const master = secretEqual((request.headers.authorization ?? '').replace(/^Bearer /, ''), token)
       const ownRun = run && secretEqual((request.headers.authorization ?? '').replace(/^Bearer /, ''), run.token)
-      if (!master && !(ownRun && match[2] === 'calls')) throw failure('Unauthorized', 401)
+      if (!master && !(ownRun && ['calls', 'credential'].includes(match[2]))) throw failure('Unauthorized', 401)
       if (request.method === 'POST' && url.pathname === '/v1/shutdown') {
         await readBody(request, 1024)
         if ([...runs.values()].some(run => !run.terminal || run.child && run.child.exitCode === null && run.child.signalCode === null)) throw failure('Wait for the active request to stop before restarting the helper.', 409)
@@ -163,11 +170,12 @@ export async function startBridge(options = {}) {
       if (request.method === 'POST' && url.pathname === '/v1/runs') {
         const body = await readBody(request, 1024 * 1024)
         if (closed) throw failure('Bridge has stopped', 410)
-        if (!UUID.test(body.id ?? '') || !PROVIDERS.includes(body.provider) || typeof body.text !== 'string' || !body.text.trim() || body.text.length > 128000) throw failure('Run requires a UUID id, supported provider and nonempty text')
+        if (!UUID.test(body.id ?? '') || !providers.includes(body.provider) || typeof body.text !== 'string' || !body.text.trim() || body.text.length > 128000) throw failure('Run requires a UUID id, supported provider and nonempty text')
+        if (body.provider === 'chatgpt' && !/^[a-f0-9]{64}$/.test(body.chatgptIdentity ?? '')) throw failure('Review sharing for the current ChatGPT account before sending.', 403)
         for (const value of [body.model, body.agent]) if (value !== undefined && (typeof value !== 'string' || !value || value.length > 128 || /[\0\r\n]/.test(value))) throw failure('Invalid model or agent')
         body.sharing = normalizeSharingEnvelope(body.sharing)
         if (![sharingCompanion, canonicalCompanion(endpoint)].includes(body.sharing.scope.companion)) throw failure('This sharing permission names a different companion. Review the current companion destination.', 403)
-        if (!['claude-code', 'codex', 'antigravity'].includes(body.provider) && body.routing?.mode !== 'auto') throw failure('This custom or unsupported agent has no verified AI recipient. Choose Claude Code, Codex or Google Antigravity before sharing.', 403)
+        if (!['claude-code', 'codex', 'antigravity', ...(chatgpt ? ['chatgpt'] : [])].includes(body.provider) && body.routing?.mode !== 'auto') throw failure(`This custom or unsupported agent has no verified AI recipient. Choose ${chatgpt ? 'ChatGPT, ' : ''}Claude Code, Codex or Google Antigravity before sharing.`, 403)
         if (body.routing !== undefined) body.routing = validateRoutingPreferences(body.routing)
         if (body.effort !== undefined) throw failure('Effort is chosen from the verified model catalog by Auto.')
         for (const value of [body.context, body.outline]) if (value !== undefined && (!value || typeof value !== 'object')) throw failure('Context and outline must be objects or arrays')
@@ -189,6 +197,20 @@ export async function startBridge(options = {}) {
         const after = Number(url.searchParams.get('after') ?? 0)
         if (!Number.isSafeInteger(after) || after < 0) throw failure('Invalid event cursor')
         return reply(200, { events: run.events.filter(item => item.seq > after).slice(0, 256) })
+      }
+      // The ChatGPT agent asks for a current access token before each OpenAI request, so a
+      // long run outlives the one-hour token. Only that run's own token can ask.
+      if (request.method === 'POST' && match[2] === 'credential' && !match[3]) {
+        if (!ownRun || !chatgpt || run.provider !== 'chatgpt') throw failure('Route not found', 404)
+        await readBody(request, 1024)
+        if (run.terminal) throw failure('Run has finished', 410)
+        let current
+        try { current = await chatgpt.accessToken() } catch (error) { return reply(error.status === 401 ? 401 : 503, { error: String(error.message).slice(0, 500), code: /^chatgpt_[a-z_]{1,48}$/.test(error.code ?? '') ? error.code : 'chatgpt_sign_in_required' }) }
+        if (run.terminal) throw failure('Run has finished', 410)
+        if (!current.planUsage) return reply(403, { error: 'ChatGPT plan usage is off for this sign-in. Turn it on in Assistant settings.', code: 'chatgpt_plan_disabled' })
+        // Sharing was approved for one signed-in account; a switch mid-run stops the run.
+        if (run.request.chatgptIdentity !== current.identity) return reply(409, { error: 'The ChatGPT account changed during this request. Review sharing and send it again.', code: 'chatgpt_account_changed' })
+        return reply(200, { accessToken: current.accessToken, api: chatgpt.apiBase })
       }
       if (request.method === 'POST' && match[2] === 'cancel') { await readBody(request, 1024); stop(run); return reply(200, { id: match[1], cancelled: true }) }
       if (request.method === 'POST' && match[2] === 'calls' && !match[3]) {

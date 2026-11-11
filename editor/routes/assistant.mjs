@@ -43,6 +43,12 @@ export default ctx => {
     'POST /api/assistant/config': body => ctx.assistant.configure(body),
     'POST /api/assistant/login': body => ctx.assistant.login(body),
     'POST /api/assistant/cancel': () => ctx.assistant.cancel(),
+    // Sign in with ChatGPT. The server opens the system browser and keeps the tokens; the page
+    // only sees account email, plan-usage state and an opaque account ID. Agents cannot call these.
+    'POST /api/assistant/chatgpt/sign-in': body => { userOnly(); return ctx.assistant.chatgptSignIn(body) },
+    'POST /api/assistant/chatgpt/cancel': () => { userOnly(); return ctx.assistant.chatgptCancel() },
+    'POST /api/assistant/chatgpt/sign-out': body => { userOnly(); return ctx.assistant.chatgptSignOut(body) },
+    'POST /api/assistant/chatgpt/welcome': () => { userOnly(); return ctx.assistant.chatgptWelcome() },
 
     // Clips, the layers at a time, or the editor focus, described as an editor reads the inspector.
     'GET /api/describe': (_, query) => {

@@ -45,6 +45,7 @@ export const store = {
   viewerMode: 'timeline',
   caps: {},
   settingsOpen: false,
+  settingsOtherWays: false, // the assistant panel's "Other ways to connect" opens that Settings section expanded
   assistantStatus: null,
   assistantStatusError: '',
   assistantReview: null, // { proposal, change } from the server: the pending preview and the latest assistant change

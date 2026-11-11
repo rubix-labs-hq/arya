@@ -7,6 +7,7 @@ const recipients = Object.freeze({
   antigravity: { name: 'Google · Antigravity', destination: 'Google Antigravity through Arya’s signed-in CLI profile; its selected model may be provided by Google, Anthropic or another listed model provider' },
   'gemini-cli': { name: 'Google · Gemini CLI (beta)', destination: 'Google through the signed-in Gemini CLI' },
   anthropic: { name: 'Anthropic API', destination: 'https://api.anthropic.com/' },
+  chatgpt: { name: 'OpenAI · ChatGPT plan', destination: 'OpenAI Responses API (https://api.openai.com/v1) with your Sign in with ChatGPT account' },
 })
 const descriptions = {
   prompt: ['Your request', 'Message text, scripts and screenplays.'],
@@ -34,7 +35,7 @@ export function canonicalCompanion(value) {
 
 export function normalizeSharingScope(value) {
   if (!exactKeys(value, ['providers', 'models', 'companion', 'classes'])) throw failure('Review the current assistant recipients and data categories before sending.')
-  if (!Array.isArray(value.providers) || !value.providers.length || value.providers.some(id => !Object.hasOwn(recipients, id)) || new Set(value.providers).size !== value.providers.length) throw failure('This assistant recipient is unknown. Choose Claude Code, Codex, Google Gemini or the Anthropic API before sharing.')
+  if (!Array.isArray(value.providers) || !value.providers.length || value.providers.some(id => !Object.hasOwn(recipients, id)) || new Set(value.providers).size !== value.providers.length) throw failure('This assistant recipient is unknown. Choose ChatGPT, Claude Code, Codex, Google Antigravity or the Anthropic API before sharing.')
   if (!Array.isArray(value.models) || !value.models.length || value.models.length > 256 || value.models.some(item => !exactKeys(item, ['provider', 'model']) || !value.providers.includes(item.provider) || typeof item.model !== 'string' || item.model.length > 128 || item.model && !/^[a-zA-Z0-9][a-zA-Z0-9._:/@+\[\]-]{0,127}$/.test(item.model))) throw failure('Review the exact assistant model pool before sharing.')
   const models = value.models.map(item => ({ provider: item.provider, model: item.model })).sort((a, b) => {
     const aKey = modelKey(a), bKey = modelKey(b)

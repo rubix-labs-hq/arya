@@ -28,7 +28,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Arya</string>
+	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -57,7 +57,7 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.video</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Arya opens Terminal to start the assistant helper and to sign in to Claude Code or Codex.</string>
+	<string>Arya opens Terminal when you choose an advanced assistant connection to start its helper or sign in to Claude Code or Codex.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Rubix Labs</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

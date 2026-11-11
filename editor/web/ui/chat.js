@@ -11,6 +11,7 @@ import { Icon } from './icons.js'
 import { receiptSelection } from './change-receipt.js'
 import { player } from './engine-host.js'
 import { refreshAssistantStatus } from './settings.js'
+import { startChatGPTSignIn, chatgptAccountAction, chooseChatGPTAssistant } from './assistant-status.js'
 import { createAssistantSharingGate } from './assistant-sharing.js'
 import { assistantDraft, updatedAssistantDraft, assistantDraftContext, assistantDraftIsCurrent, createAssistantScriptImport } from './assistant-script.js'
 import { assistantPanel } from './assistant-panel.js'
@@ -163,6 +164,14 @@ export function ChatPanel() {
   }
   const canSend = status.ready && s.connected && !working
   const name = connection?.providerName ?? providerName(connection?.provider)
+  // Sign in with ChatGPT appears only when this editor's server holds the account.
+  const chatgpt = connection?.chatgpt?.supported === true ? connection.chatgpt : null
+  const chatgptUsage = typeof chatgpt?.usageURL === 'string' && chatgpt.usageURL.startsWith('https://chatgpt.com/') ? chatgpt.usageURL : 'https://chatgpt.com/settings/usage'
+  const chatgptWaiting = ['waiting', 'exchanging'].includes(chatgpt?.attempt?.state)
+  const chatgptCurrent = chatgpt?.accounts?.find(item => item.active) ?? null
+  const chatgptPlan = Boolean(chatgpt?.planUsage) && connection?.provider === 'chatgpt' && connection?.mode !== 'auto'
+  const chatgptCode = typeof s.claude?.errorCode === 'string' && s.claude.errorCode.startsWith('chatgpt_') ? s.claude.errorCode : ''
+  const chatgptTask = action => async () => { try { await action() } catch (error) { toast(error.message, 'error') } }
   const transitions = s.selection.filter(id => id.startsWith('tr:')).length
   const context = s.selection.length ? transitions ? `${s.selection.length} selected items · ${transitions} ${transitions === 1 ? 'transition' : 'transitions'}` : `${s.selection.length} selected ${s.selection.length === 1 ? 'clip' : 'clips'}` : s.openComp ? s.project?.comps?.[s.openComp]?.name ?? 'Current composition' : 'Current timeline'
   const timeline = s.openComp ? s.project?.comps?.[s.openComp] : s.project
@@ -205,7 +214,7 @@ export function ChatPanel() {
     ...s.receipts.map(receipt => ({ type: 'receipt', receipt, at: receipt.at })),
   ].sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
 
-  if (hosted) return html`<div class="panel chat"><div class="chat-head"><b>Assistant</b><span class="grow"></span><button class="ghost tiny" aria-label="Close assistant" onClick=${() => set({ chatOpen: false })}><${Icon} name="close" /></button></div><div class="assistant-setup"><b>Not available in the browser beta</b><p>The assistant can edit clips, titles and audio using your own Claude Code or Codex account. Use the Arya Mac app or run the editor locally to connect.</p><a class="button primary" href="https://editwitharya.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a><a class="settings-link" href="https://editwitharya.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run locally</a></div></div>`
+  if (hosted) return html`<div class="panel chat"><div class="chat-head"><b>Assistant</b><span class="grow"></span><button class="ghost tiny" aria-label="Close assistant" onClick=${() => set({ chatOpen: false })}><${Icon} name="close" /></button></div><div class="assistant-setup"><b>Not available in the browser beta</b><p>The assistant can edit clips, titles and audio with your own AI account. That needs the Arya Mac app or the editor running on your computer.</p><a class="button primary" href="https://editwitharya.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a><a class="settings-link" href="https://editwitharya.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run locally</a></div></div>`
 
   return html`
     <div class="panel chat">
@@ -219,7 +228,8 @@ export function ChatPanel() {
         <button class="ghost tiny" aria-label="Close assistant" onClick=${() => { scriptImport.current.cancel(); set({ chatOpen: false }) }}><${Icon} name="close" /></button>
       </div>
       ${s.caps.assistant?.pluginSession ? html`<p class="assistant-plugin-note">Typing here starts a separate ${name} run. To use this Claude session, ask in the terminal.</p>` : null}
-      ${!status.ready ? html`<div class="assistant-setup"><b>${status.refreshRequired ? status.label : 'Connect your editing assistant'}</b><p>${status.refreshRequired ? status.reason : connection?.reason ?? (s.assistantStatusError || 'Connect Claude Code (Claude Pro/Max) or Codex (ChatGPT plan) in Settings.')}</p>${!status.refreshRequired ? html`<p>Connect Claude Code (Claude Pro/Max) or Codex (ChatGPT plan).</p>` : null}${status.refreshRequired ? html`<button disabled=${refreshing || connection?.loading || working || !s.connected} onClick=${refreshAvailability}>${refreshing || connection?.loading ? 'Refreshing…' : 'Refresh availability'}</button>` : null}<button onClick=${() => set({ settingsOpen: true })}>${status.refreshRequired ? 'Assistant settings' : 'Set up assistant'}</button></div>` : null}
+      ${!status.ready && !status.refreshRequired && chatgpt ? html`<div class="assistant-setup"><b>${chatgptWaiting ? 'Waiting for ChatGPT sign-in' : 'Connect your editing assistant'}</b><p>${chatgptWaiting ? 'Finish signing in on the ChatGPT page in your browser. Arya never sees your password.' : chatgpt.signedIn && !chatgpt.planUsage ? `Signed in to ChatGPT as ${chatgpt.email || 'your account'}, but plan usage is off for this sign-in.` : chatgpt.signedIn && connection.provider === 'chatgpt' && connection.mode !== 'auto' ? connection.reason ?? 'ChatGPT is not ready yet. Refresh status in Settings.' : chatgpt.signedIn ? `Signed in to ChatGPT as ${chatgpt.email || 'your account'}.` : 'Use your ChatGPT plan for eligible requests. Arya includes no AI credits, and editing works without an account.'}</p>${!chatgptWaiting && ['failed', 'cancelled', 'expired'].includes(chatgpt.attempt?.state) && chatgpt.attempt.message ? html`<p role="status">${chatgpt.attempt.message}</p>` : null}${chatgptWaiting ? html`${chatgpt.attempt?.startURL ? html`<a class="button" href=${chatgpt.attempt.startURL} target="_blank" rel="noopener noreferrer">Open the sign-in page ↗</a>` : null}<button onClick=${chatgptTask(() => chatgptAccountAction('cancel'))}>Cancel sign-in</button>` : !chatgpt.signedIn ? html`<button class="primary" disabled=${working} onClick=${chatgptTask(() => startChatGPTSignIn({}))}>Continue with ChatGPT</button>` : !chatgpt.planUsage ? html`<button class="primary" disabled=${working} onClick=${chatgptTask(() => startChatGPTSignIn({ ...(chatgptCurrent ? { account: chatgptCurrent.id } : {}), enablePlan: true }))}>Turn on ChatGPT plan usage</button>` : connection.provider !== 'chatgpt' || connection.mode === 'auto' ? html`<button class="primary" disabled=${working} onClick=${chatgptTask(() => chooseChatGPTAssistant(connection))}>Use ChatGPT</button>` : null}<button onClick=${() => set({ settingsOpen: true, settingsOtherWays: true })}>Other ways to connect</button></div>` : !status.ready ? html`<div class="assistant-setup"><b>${status.refreshRequired ? status.label : 'Connect your editing assistant'}</b><p>${status.refreshRequired ? status.reason : connection?.reason ?? (s.assistantStatusError || 'Choose an assistant in Settings.')}</p>${!status.refreshRequired ? html`<p>Arya includes no AI credits. Editing works without an account. Settings lists the assistants this editor can use.</p>` : null}${status.refreshRequired ? html`<button disabled=${refreshing || connection?.loading || working || !s.connected} onClick=${refreshAvailability}>${refreshing || connection?.loading ? 'Refreshing…' : 'Refresh availability'}</button>` : null}<button onClick=${() => set({ settingsOpen: true })}>${status.refreshRequired ? 'Assistant settings' : 'Set up assistant'}</button></div>` : null}
+      ${chatgpt?.welcome ? html`<section class="assistant-setup chatgpt-welcome" aria-labelledby="chatgpt-welcome-heading"><b id="chatgpt-welcome-heading">You’re using your ChatGPT plan</b><p>Eligible AI requests in Arya use your ChatGPT plan or credits balance. Check and manage usage in your ChatGPT settings.</p><button class="primary" onClick=${chatgptTask(() => chatgptAccountAction('welcome'))}>Got it</button><a class="button" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></section>` : null}
       <div class="chat-list" ref=${list}>
         ${feed.length === 0 ? html`<div class="chat-empty">
           <p>${native ? 'Describe the edit you want. Your assistant works with native clips, titles, audio and motion, with undo.' : 'Ask for an edit or a question about this project. With Preview changes on, you see what will change and apply it yourself.'}</p>
@@ -237,6 +247,8 @@ export function ChatPanel() {
         <div class="assistant-run-heading"><span class="assistant-run-symbol" aria-hidden="true">${!s.connected ? '↻' : working ? '◌' : activity.state === 'done' ? '↵' : activity.state === 'error' ? '!' : '■'}</span><b role="status">${activity.label}</b>${activity.elapsed ? html`<span class="assistant-run-time">${activity.elapsed}</span>` : null}</div>
         ${activity.detail ? html`<p>${activity.detail}</p>` : null}
         ${activity.connectionNotice ? html`<p>${activity.connectionNotice}</p>` : null}
+        ${!working && activity.state === 'error' && chatgptCode === 'chatgpt_usage_limit' ? html`<div class="assistant-plan-error"><b>Usage limit reached</b><p>ChatGPT account: ${chatgpt?.email || 'your signed-in account'}. Check your usage, then try again later.</p><a class="button primary" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></div>` : null}
+        ${!working && activity.state === 'error' && ['chatgpt_sign_in_required', 'chatgpt_not_authorized', 'chatgpt_plan_disabled', 'chatgpt_account_changed', 'chatgpt_not_eligible'].includes(chatgptCode) ? html`<div class="assistant-plan-error"><button class="ghost tiny" onClick=${() => set({ settingsOpen: true })}>Review ChatGPT sign-in</button></div>` : null}
         ${activity.state === 'error' && !working && lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title="Put the failed request back in the text box to edit or send again. Clear the current draft first." onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
       </div>` : null}
       ${(!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><small class="muted">${runActive ? 'Current request route' : 'Last request route'}</small><${RoutingReceipt} value=${s.claude.routing} /></div>` : null}
@@ -263,12 +275,13 @@ export function ChatPanel() {
             if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && (e.metaKey || draft.inputKind === 'prompt')) {
               e.preventDefault()
               if (canSend) send()
-              else if (text.trim() && !working) { toast('Connect an assistant to send. Your draft is kept.'); list.current?.parentElement.querySelector('.assistant-setup button:last-child')?.focus() }
+              else if (text.trim() && !working) { toast('Connect an assistant to send. Your draft is kept.'); list.current?.parentElement.querySelector('.assistant-setup button.primary, .assistant-setup button:last-child')?.focus() }
             }
           }}></textarea>
       </div>
       ${!canSend && !working ? html`<div class="assistant-send-reason"><span>${!s.connected ? 'Reconnect to send. Your draft is kept.' : status.refreshRequired ? 'Refresh model availability to send. Your draft is kept.' : 'Set up an assistant to send. Your draft is kept.'}</span><button class="ghost tiny" onClick=${status.refreshRequired ? refreshAvailability : () => set({ settingsOpen: true })}>${status.refreshRequired ? 'Refresh availability' : 'Set up assistant'}</button></div>` : null}
       <div class="assistant-composer-footer">
+        ${chatgptPlan && status.ready ? html`<span class="assistant-plan-note">Using ChatGPT plan · <a href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></span>` : null}
         ${native ? null : html`<label class="assistant-preview-toggle" title="Show the clips and settings a request will change, and apply them only when you choose"><input type="checkbox" checked=${preview} disabled=${working || Boolean(sharingReview)} onChange=${e => setPreview(e.target.checked)} /><span>Preview changes</span></label>`}
         <span class="grow"></span>
         <div class="assistant-primary-action">${working

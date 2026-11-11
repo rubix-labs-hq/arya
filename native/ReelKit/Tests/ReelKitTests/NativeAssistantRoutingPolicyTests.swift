@@ -3,6 +3,20 @@ import XCTest
 @testable import ReelKit
 
 final class NativeAssistantRoutingPolicyTests: XCTestCase {
+    func testFreshInstallOffersBuiltInSignInOnlyWhereSupported() {
+        XCTAssertEqual(NativeAssistantRoutingPolicy.initialProvider(savedProvider: nil, hasCompanionConnection: false, chatGPTSupported: true), "chatgpt")
+        XCTAssertEqual(NativeAssistantRoutingPolicy.initialProvider(savedProvider: nil, hasCompanionConnection: false, chatGPTSupported: false), "claude-code")
+    }
+
+    func testBuiltInSignInDoesNotReplaceExistingAssistantSetup() {
+        for provider in ["claude-code", "codex", "anthropic", "antigravity", "chatgpt"] {
+            for supported in [true, false] {
+                XCTAssertEqual(NativeAssistantRoutingPolicy.initialProvider(savedProvider: provider, hasCompanionConnection: false, chatGPTSupported: supported), provider)
+            }
+        }
+        XCTAssertEqual(NativeAssistantRoutingPolicy.initialProvider(savedProvider: nil, hasCompanionConnection: true, chatGPTSupported: true), "claude-code")
+    }
+
     private let now = 1_000_000.0
     private var providers: [[String: Any]] {
         ["claude-code", "codex"].map { ["id": $0, "installed": true, "authenticated": true, "available": true, "adapterSupported": true, "modelSelectionSupported": true, "billingMode": "subscription"] }
