@@ -56,6 +56,15 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         let nudged = NativeCurveHit.dragged(middle, by: CGSize(width: 28, height: 0), size: size)
         require(abs(nudged[0] - 0.6) < 1e-9 && abs(nudged[1] - 0.5) < 1e-9, "A 28 point drag on a 280 point chart moves the point by 0.1: \(nudged)")
         require(NativeCurveHit.dragged(middle, by: CGSize(width: 900, height: -900), size: size) == [1, 1], "Dragged points stay inside the graph")
+        // Mac pointer: a click on a point only selects it. Only travel past the slop moves it.
+        let beside = NativeCurveHit.position(middle, size: size)
+        let near = CGPoint(x: beside.x + 10, y: beside.y)
+        let three: [[Double]] = [[0, 0], middle, [1, 1]]
+        require(NativeCurveHit.press(three, at: near, translation: .zero, size: size) == .wait, "A click 10 points from a point waits instead of moving it")
+        require(NativeCurveHit.press(three, at: near, translation: CGSize(width: 2, height: 0), size: size) == .wait, "A wobble under the slop still waits")
+        require(NativeCurveHit.press(three, at: near, translation: CGSize(width: 6, height: 0), size: size) == .move(1), "A drag past the slop moves the nearest point")
+        require(NativeCurveHit.press(three, at: CGPoint(x: 80, y: 40), translation: .zero, size: size) == .add, "A press on empty graph space adds a point")
+        require(NativeCurveHit.press((0..<16).map { [Double($0) / 16, 0.5] }, at: CGPoint(x: 155, y: 30), translation: .zero, size: size) == nil, "A full curve ignores presses on empty space")
 
         // Viewer: a quick pan on a layer body scrolls; a held drag moves; handles edit at once.
         typealias G = NativeViewerGeometry
@@ -129,9 +138,14 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(!NativeExportRepeatGuard.ended("running") && !NativeExportRepeatGuard.ended(nil), "Running or unknown jobs are not over")
         guardrail.forget(signature)
         require(!guardrail.isRepeat(signature, at: start.addingTimeInterval(0.5)), "A failed start can be retried at once")
+        guardrail.record(signature, at: start)
+        guardrail.accept(signature, job: "j9")
+        require(guardrail.isRepeat(signature, at: start.addingTimeInterval(0.5)), "A running or finished export still blocks an exact repeat")
+        guardrail.reset()
+        require(!guardrail.isRepeat(signature, at: start.addingTimeInterval(0.5)) && guardrail.job == nil, "A discarded queued export can be started again at once")
 
         // Status text.
-        let named: [String: Any] = ["tracks": [["id": "V1", "name": "Video 1", "clips": [["id": "c1", "kind": "image", "src": "media/coastal-arrival.png", "label": "Coastal arrival"]]]]]
+        let named: [String: Any] = ["tracks": [["id": "V1", "name": "Video 1", "clips": [["id": "c1", "kind": "image", "src": "media/coastal-arrival.png", "label": "Coastal arrival"]]], ["id": "A1", "name": "Music", "clips": []]]]
         func status(_ line: String, who: String = "you") -> String { NativeStatusText.activity(line, who: who, project: named) }
         let idPattern = try! NSRegularExpression(pattern: #"\b[cVAkm]\d+[a-z]?\b"#)
         func hasID(_ text: String) -> Bool { idPattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil }
@@ -157,6 +171,16 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(cancelled == "Media import cancelled. A partial copy was kept at media/c1.mov.", "Paths in cancellation details stay whole: \(cancelled)")
         require(status("moved c1 to 2.5s on V1 from media/c1.mov").contains("media/c1.mov"), "A path inside a commit line stays whole")
         require(status("added title c1 \"c1 intro\"").contains("\"c1 intro\""), "Quoted text inside a commit line stays whole")
+        // Property suffixes are not file names, so the clip still gets its name.
+        let keyframes = status("cleared keyframes on c1.x")
+        require(keyframes.contains("Coastal arrival") && !hasID(keyframes), "A property suffix does not hide the clip name: \(keyframes)")
+        let expression = status("expression on c1.x: time")
+        require(expression.contains("Coastal arrival") && !hasID(expression), "Expression lines name the clip: \(expression)")
+        require(status("relinked c1 to c1.MOV").hasSuffix("c1.MOV."), "A real file name stays whole in any case")
+        // Lines written for people get names for known IDs, and keep unknown ones and paths as written.
+        let music = status("Placed original music on A1")
+        require(music == "Placed original music on “Music”.", "Backend lines name known tracks: \(music)")
+        require(status("Placed original music on A9") == "Placed original music on A9.", "Unknown IDs in backend lines stay as written")
         // Track IDs repeat across timelines. The edited timeline decides which name to use.
         let nested: [String: Any] = [
             "tracks": [["id": "V1", "name": "Main picture", "clips": []]],
@@ -165,6 +189,14 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(NativeStatusText.activity("updated track V1: locked", who: "you", project: nested) == "Updated “Main picture”.", "The main timeline's V1 is the main track")
         require(NativeStatusText.activity("updated track V1: locked", who: "you", project: nested, composition: "k1") == "Updated “Inset picture”.", "Inside a composition, V1 is that composition's track")
         require(NativeStatusText.activity("updated track V1: locked", who: "you", project: nested, composition: "missing") == "Updated “Main picture”.", "An unknown composition falls back to the main timeline")
+        // A track with no name in the edited timeline does not borrow a nested timeline's name.
+        let unnamed: [String: Any] = [
+            "tracks": [["id": "V1", "name": "", "clips": []]],
+            "comps": ["k1": ["name": "Inset", "tracks": [["id": "V1", "name": "Inset picture", "clips": []]]]]
+        ]
+        let cleared = NativeStatusText.activity("updated track V1: name", who: "you", project: unnamed)
+        require(cleared == "Updated a track.", "An unnamed main track is not called by the nested name: \(cleared)")
+        require(NativeStatusText.activity("updated track V1: name", who: "you", project: unnamed, composition: "k1") == "Updated “Inset picture”.", "The nested timeline still names its own track")
         require(status("", who: "reel").isEmpty, "Empty lines stay empty")
 
         // Device words.

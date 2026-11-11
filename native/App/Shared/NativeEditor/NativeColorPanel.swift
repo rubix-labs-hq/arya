@@ -1978,6 +1978,15 @@ private struct NativeColorCurveEditor: View {
         /// A touch on a point has to travel this far before it moves the point. Less than that is a tap.
         static let dragSlop = 4.0
         static func dragStarts(_ translation: CGSize) -> Bool { hypot(translation.width, translation.height) >= dragSlop }
+        /// How close a Mac pointer press must land to grab a point.
+        static let pointerRadius = 22.0
+        /// A Mac pointer press. On a point it waits for travel, so a click only selects the point.
+        /// Elsewhere it adds a point under the pointer, and dragging places it.
+        enum Press: Equatable { case wait, move(Int), add }
+        static func press(_ values: [[Double]], at start: CGPoint, translation: CGSize, size: CGSize) -> Press? {
+            if let index = nearest(values, to: start, size: size, radius: pointerRadius) { return dragStarts(translation) ? .move(index) : .wait }
+            return values.count < 16 ? .add : nil
+        }
         /// The point's value after a drag. The drag distance is applied to the point itself, so the
         /// point does not jump to the finger when the touch lands off its centre.
         static func dragged(_ point: [Double], by translation: CGSize, size: CGSize) -> [Double] {
@@ -2067,17 +2076,26 @@ private struct NativeColorCurveEditor: View {
                 #if os(macOS)
                 // A Mac scroll wheel never produces a drag, so the pointer keeps press-and-drag to add.
                 .gesture(DragGesture(minimumDistance: 0).onChanged { gesture in
-                    let width = max(1, geometry.size.width - 20), height = max(1, geometry.size.height - 20)
                     if dragging == nil {
-                        guard !gestureAttempted else { return }
+                        guard !gestureAttempted, let press = NativeCurveHit.press(values, at: gesture.startLocation, translation: gesture.translation, size: geometry.size),
+                              press != .wait else { return }
                         gestureAttempted = true; gestureContext = begin()
                         guard gestureContext != nil else { return }
                         draft = values
-                        if let nearest = NativeCurveHit.nearest(values, to: gesture.startLocation, size: geometry.size, radius: 22) { dragging = nearest }
-                        else if values.count < 16 { draft?.append([0, 0]); dragging = (draft?.count ?? 1) - 1 }
+                        if case .move(let index) = press, values.indices.contains(index) { dragging = index; dragOrigin = values[index] }
+                        else { draft?.append([0, 0]); dragging = (draft?.count ?? 1) - 1 }
                     }
-                    moveDraggedPoint(to: gesture.location, size: geometry.size)
-                }.onEnded { _ in finishCurveGesture() })
+                    // A grabbed point moves by the drag, so it does not jump to the pointer. A new point follows the pointer.
+                    if let dragOrigin { setDraggedPoint(NativeCurveHit.dragged(dragOrigin, by: gesture.translation, size: geometry.size)) }
+                    else { moveDraggedPoint(to: gesture.location, size: geometry.size) }
+                }.onEnded { gesture in
+                    // A click on a point that never travelled selects it and changes nothing.
+                    if !gestureAttempted {
+                        if let index = NativeCurveHit.nearest(values, to: gesture.startLocation, size: geometry.size, radius: NativeCurveHit.pointerRadius) { selected = index }
+                        return
+                    }
+                    finishCurveGesture()
+                })
                 #else
                 // Touch: a swipe that starts on the graph scrolls the panel. A tap adds or selects
                 // a point, and only a drag that starts on a point and travels moves it.

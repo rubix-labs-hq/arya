@@ -159,7 +159,7 @@ struct NativeExportRepeatGuard {
     static func signature(_ request: [String: Any], version: Int) -> String {
         request.keys.sorted().map { "\($0)=\(request[$0].map { String(describing: $0) } ?? "")" }.joined(separator: "&") + "#\(version)"
     }
-    /// `ended` means the remembered export failed, was cancelled or was discarded. It no longer blocks a retry.
+    /// `ended` means the remembered export failed or was cancelled. It no longer blocks a retry.
     func isRepeat(_ signature: String, at now: Date, ended: Bool = false) -> Bool {
         guard !ended, let last, last.signature == signature else { return false }
         let elapsed = now.timeIntervalSince(last.at)
@@ -170,6 +170,8 @@ struct NativeExportRepeatGuard {
     /// Whether a job in this state is over without a result.
     static func ended(_ state: String?) -> Bool { state == "failed" || state == "cancelled" }
     mutating func forget(_ signature: String) { if last?.signature == signature { last = nil } }
+    /// The person discarded the remembered export, so any export may start at once.
+    mutating func reset() { last = nil }
 }
 
 struct NativeDeliverPanel: View {
@@ -253,7 +255,7 @@ struct NativeDeliverPanel: View {
                 if !mobileExport.message.isEmpty { Text(mobileExport.message).font(.caption).foregroundStyle(.secondary) }
                 if mobileExport.pending {
                     Button("Resume queued export") { mobileExport.resume() }.disabled(!mobileExport.canResume)
-                    Button("Discard queued export", role: .destructive) { mobileExport.discard() }.disabled(!mobileExport.canResume)
+                    Button("Discard queued export", role: .destructive) { mobileExport.discard(); repeatGuard.reset() }.disabled(!mobileExport.canResume)
                 }
                 #endif
                 NativeRenderQueue(model: model)
@@ -294,15 +296,11 @@ struct NativeDeliverPanel: View {
         .onChange(of: activeRange?.upperBound) { _, _ in if activeRange == nil { exportScope = "whole" } }
     }
 
-    /// The export the repeat guard remembers is over when its job failed or was cancelled. On iPhone and
-    /// iPad it is also over once nothing is queued or running, which covers a discarded queued export.
+    /// The export the repeat guard remembers is over when its job failed or was cancelled. A finished
+    /// export still blocks an exact repeat for the guard's window. Discarding a queued export resets the guard.
     private var rememberedExportEnded: Bool {
-        if let job = repeatGuard.job, NativeExportRepeatGuard.ended(model.jobs.first { $0.string("id") == job }?.string("state")) { return true }
-        #if os(iOS)
-        return repeatGuard.last != nil && !mobileExport.starting && !mobileExport.pending && !mobileExport.running
-        #else
-        return false
-        #endif
+        guard let job = repeatGuard.job else { return false }
+        return NativeExportRepeatGuard.ended(model.jobs.first { $0.string("id") == job }?.string("state"))
     }
 
     private func export() {

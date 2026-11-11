@@ -122,8 +122,11 @@ enum NativeStatusText {
         // Commit lines from your own edits or the assistant. Other lines are warnings or errors, so keep them whole.
         guard who == "you" || who == "agent" else { return line }
         // The editor core writes commit lines in lower case, such as "moved c1 to 2s on V1". A line that
-        // starts with a capital was written for people, so its paths and names stay exactly as they are.
-        guard let first = line.unicodeScalars.first, CharacterSet.lowercaseLetters.contains(first) || CharacterSet.decimalDigits.contains(first) else { return sentence(line) }
+        // starts with a capital was written for people. It only gets names for IDs the project knows, and
+        // a line that mentions a path keeps every word as written.
+        guard let first = line.unicodeScalars.first, CharacterSet.lowercaseLetters.contains(first) || CharacterSet.decimalDigits.contains(first) else {
+            return sentence(line.contains("/") || line.contains("\\") ? line : replacingIDs(in: line, names, knownOnly: true))
+        }
         return sentence(replacingIDs(in: line, names))
     }
 
@@ -138,31 +141,32 @@ enum NativeStatusText {
     /// The timeline being edited decides. An ID that means different things elsewhere gets no name.
     private static func names(_ project: [String: Any]?, composition: String?) -> [String: String] {
         guard let project else { return [:] }
+        /// Every track and clip ID in a timeline. An empty name means the ID exists but has no name.
         func scope(_ tracks: [[String: Any]]) -> [String: String] {
             var found: [String: String] = [:]
             for track in tracks {
-                let trackName = track.string("name")
-                if !trackName.isEmpty { found[track.string("id")] = trackName }
+                found[track.string("id")] = track.string("name")
                 for clip in track.objects("clips") {
                     let source = clip.string("src")
                     let fallback = source.isEmpty ? clip.string("kind").capitalized : (source as NSString).lastPathComponent
-                    let label = clip.string("label", clip.dictionary("title").string("text", fallback))
-                    if !label.isEmpty { found[clip.string("id")] = label }
+                    found[clip.string("id")] = clip.string("label", clip.dictionary("title").string("text", fallback))
                 }
             }
+            found[""] = nil
             return found
         }
         let comps = project.dictionary("comps")
         func tracks(_ id: String) -> [[String: Any]] { (comps[id] as? [String: Any] ?? [:]).objects("tracks") }
         var result: [String: String] = [:], unclear = Set<String>()
         for found in [scope(project.objects("tracks"))] + comps.keys.sorted().map({ scope(tracks($0)) }) {
-            for (id, name) in found {
+            for (id, name) in found where !name.isEmpty {
                 if let known = result[id], known != name { unclear.insert(id) } else { result[id] = name }
             }
         }
         for id in unclear { result[id] = nil }
+        // The edited timeline's own IDs always win, even when one has no name there.
         let active = composition.flatMap { comps[$0] == nil ? nil : tracks($0) } ?? project.objects("tracks")
-        for (id, name) in scope(active) { result[id] = name }
+        for (id, name) in scope(active) { result[id] = name.isEmpty ? nil : name }
         for id in comps.keys.sorted() {
             let compName = (comps[id] as? [String: Any] ?? [:]).string("name")
             if !compName.isEmpty { result[id] = compName }
@@ -174,10 +178,14 @@ enum NativeStatusText {
         names[id].map { "“\($0)”" }
     }
 
-    /// Replaces project IDs such as c12, c12a or V2 with names. IDs no longer in the project become plain nouns.
-    private static func replacingIDs(in line: String, _ names: [String: String]) -> String {
+    /// File types an ID can be part of, as in c1.mov. Property suffixes such as c1.x or c1.scale are not files.
+    private static let fileTypes = "mov|mp4|m4v|mkv|avi|webm|mxf|mts|m2ts|braw|r3d|wav|mp3|m4a|aac|aif|aiff|flac|ogg|opus|caf|png|jpe?g|heic|heif|gif|tiff?|webp|bmp|svg|psd|exr|dpx|dng|cube|3dl|srt|vtt|json|xml|fcpxml|edl|otio|txt|pdf|zip"
+
+    /// Replaces project IDs such as c12, c12a or V2 with names. IDs no longer in the project become plain
+    /// nouns, unless `knownOnly` asks to leave them as written.
+    private static func replacingIDs(in line: String, _ names: [String: String], knownOnly: Bool = false) -> String {
         guard let regex = try? NSRegularExpression(pattern: #"\b([A-Za-z]{1,2})\d+[a-z]?\b"#),
-              let fileEnding = try? NSRegularExpression(pattern: #"^\.[A-Za-z0-9]{1,5}(?![A-Za-z0-9\[])"#) else { return line }
+              let fileEnding = try? NSRegularExpression(pattern: #"^\.(?:\#(fileTypes))(?![A-Za-z0-9\[])"#, options: .caseInsensitive) else { return line }
         let text = line as NSString
         func character(_ index: Int) -> String { index >= 0 && index < text.length ? text.substring(with: NSRange(location: index, length: 1)) : "" }
         /// An ID inside a path, a file name or quoted text is not a reference to a clip or track.
@@ -197,6 +205,7 @@ enum NativeStatusText {
             let id = String(line[range])
             let replacement: String
             if let known = name(id, names) { replacement = known }
+            else if knownOnly { continue }
             else {
                 switch String(line[prefixRange]) {
                 case "c", "Lc": replacement = "a clip"
