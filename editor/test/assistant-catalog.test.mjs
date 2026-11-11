@@ -274,7 +274,7 @@ test('host refresh coalesces account and metadata work; missing Claude discovery
   assert.equal(values[0].catalogs[0].models.length, 3)
   assert.match(values[0].providers.find(row => row.id === 'claude-code').catalogReason, /uses your account’s default model\. Its CLI does not report a model list/)
   assert.equal(values[0].providers.find(row => row.id === 'antigravity').adapterSupported, true)
-  assert.equal(values[0].providers.find(row => row.id === 'claude-code').productLoginApproval, 'unverified')
+  assert.equal(values[0].providers.find(row => row.id === 'claude-code').productLoginApproval, 'not-permitted-for-third-party-apps')
   assert.equal((await host.resolve(prefs, { text: 'Rename this title', selectionCount: 1 })).model, 'swift')
   host.close(); await assert.rejects(host.status(), /closed/)
 })

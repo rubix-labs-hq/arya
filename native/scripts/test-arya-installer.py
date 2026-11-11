@@ -152,6 +152,8 @@ class InstallerTests(unittest.TestCase):
                 self.assertIn("The editor works without an AI account.", text)
                 self.assertIn("Open Getting started on the start screen", text)
                 self.assertIn("Install Claude Code\nor Codex using the provider's official instructions", text)
+                self.assertIn("Continue with ChatGPT in Settings > Assistant accounts", text)
+                self.assertIn("This connection needs no CLI or companion", text)
                 self.assertIn("Arya supplies a separate companion", text)
                 self.assertNotIn("its official companion", text)
                 self.assertEqual(installer.bundle_digest(self.app), before)
@@ -519,7 +521,8 @@ class InstallerTests(unittest.TestCase):
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_text("fixture")
         entitlements = {key: True for key in ("com.apple.security.app-sandbox", "com.apple.security.files.user-selected.read-write",
-                                            "com.apple.security.files.bookmarks.app-scope", "com.apple.security.network.client")}
+                                            "com.apple.security.files.bookmarks.app-scope", "com.apple.security.network.client",
+                                            "com.apple.security.network.server")}
         def captured_tool(args, **kwargs):
             self.assertTrue(kwargs["capture_output"])
             output = plistlib.dumps(entitlements).decode() if "--entitlements" in args else ""

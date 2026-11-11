@@ -30,8 +30,14 @@ struct NativeGettingStartedView: View {
                     "The app starts with the native editor. View > Web Editor switches to the bundled web interface inside Arya. Both use the app's native project backend. Switching the interface does not install a server or expand the supported native export formats.",
                     "The separate browser development version uses a local server and a developer toolchain. Its setup and rendering requirements differ from this app. Use the native editor for the ordinary Mac installation journey."
                 ])
-                section("Connect an assistant when you need it", [
-                    "Open Arya Settings and choose Assistant. Install Claude Code or Codex using the official provider links shown there, then use the provider's sign-in flow. These provider command-line apps are separate from Arya's companion.",
+                if NativeChatGPT.supported {
+                    section("Connect ChatGPT when you need it", [
+                        "Open Settings, choose Assistant accounts, then Continue with ChatGPT. Sign in on the OpenAI page in your browser. Arya uses eligible requests from your ChatGPT plan or credits balance, subject to your account's usage limits.",
+                        "Return to Arya, choose an available model and review what you share before your first request. No command-line app or helper is needed for this connection. You can manage usage or sign out in the same settings."
+                    ])
+                }
+                section("Other assistant connections", [
+                    "Open Settings and choose Assistant accounts. Install Claude Code or Codex using the official provider links shown there, then use the provider's sign-in flow. These provider command-line apps are separate from Arya's companion.",
                     "Choose Turn on the assistant in Assistant settings. Arya opens the companion in a Terminal window and pairs with it. Arya supplies the companion. If Assistant settings reports a missing companion runtime, use the app's release support instructions. Starting Terminal does not confirm that an account or model is ready. Check the account and model results before sending a request.",
                     "The companion runs separately in Terminal. Quitting Arya does not stop it. To stop the companion you started, press Control-C in its Terminal window and wait for it to exit."
                 ])

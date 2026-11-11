@@ -42,6 +42,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.video
+        NSAppleEventsUsageDescription: Arya opens Terminal when you choose an advanced assistant connection to start its helper or sign in to Claude Code or Codex.
         NSSpeechRecognitionUsageDescription: Arya uses Apple speech recognition to transcribe your clips so you can edit by text. It runs on this device when supported, otherwise Apple processes the audio.
         NSHumanReadableCopyright: "Copyright © 2026 Rubix Labs"
         NSUserActivityTypes: [app.reel.project]
@@ -96,6 +97,7 @@ targets:
         UILaunchScreen: {}
         NSHumanReadableCopyright: "Copyright © 2026 Rubix Labs"
         ITSAppUsesNonExemptEncryption: false
+        LSApplicationCategoryType: public.app-category.video
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UIRequiresFullScreen: false

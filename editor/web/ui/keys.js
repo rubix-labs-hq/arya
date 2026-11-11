@@ -112,7 +112,7 @@ export function runEditorCommand(command) {
 export function installKeys() {
   window.addEventListener('keydown', e => {
     if (e.defaultPrevented) return
-    if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); set({ settingsOpen: !store.settingsOpen }); return }
+    if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); set({ settingsOpen: !store.settingsOpen, settingsOtherWays: false }); return }
     if (store.settingsOpen) return
     if (e.key === 'Escape' && store.showKeys) { e.preventDefault(); set({ showKeys: false }); return }
     if (e.target.closest?.(KEYBOARD_INPUTS)) return

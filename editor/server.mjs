@@ -30,6 +30,7 @@ import { ProjectRecovery, recoveryProject } from './core/project-recovery.mjs'
 import { runRecoveryJournal } from './core/project-recovery-bridge.mjs'
 import { createTranscriptRoutes } from './routes/transcript.mjs'
 import { createBrowserAssistant, confinedFile } from './agent/browser-assistant.mjs'
+import { createChatGPTAccount } from './agent/chatgpt-account.mjs'
 import { createChatHistory } from './agent/chat-history.mjs'
 import { createAssistantReview } from './agent/assistant-review.mjs'
 import { isAryaMusicAsset, musicAssetRecord } from './core/music-score.js'
@@ -963,8 +964,12 @@ const transcriptService = createTranscriptRoutes({
 const customExecutable = args['custom-executable']
 const customArguments = process.argv.slice(2).flatMap((value, index, values) => value === '--custom-arg' ? [values[index + 1]] : [])
 if (customArguments.length > 64 || customArguments.some(value => typeof value !== 'string' || value.length > 4096 || value.includes('\0'))) throw new Error('Invalid startup custom-agent arguments')
+// Sign in with ChatGPT keeps its tokens in ~/.arya/chatgpt (0600), never in the project or the page.
+// Its OAuth callback uses its own 127.0.0.1 listener, separate from this server.
+const chatgptAccount = createChatGPTAccount()
 const assistantService = createBrowserAssistant({
   root: ROOT, custom: customExecutable ? { executable: customExecutable, args: customArguments } : undefined,
+  chatgpt: chatgptAccount,
   getIdentity: () => projectEpoch,
   getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus) } : {}) }),
   renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null) }),
@@ -1518,6 +1523,7 @@ async function shutdown() {
   if (stopping) return
   stopping = true
   await assistantService.close()
+  try { await chatgptAccount.close() } catch {}
   worker?.kill()
   for (const job of jobs.values()) job.ffmpeg?.kill()
   try {

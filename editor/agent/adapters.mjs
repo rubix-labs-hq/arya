@@ -60,7 +60,27 @@ export async function providerStatus(custom) {
   return values
 }
 
+// Sign in with ChatGPT runs Arya's own agent process. It gets no CLI, no MCP config and only the
+// environment it needs; the parent keeps the OAuth tokens and hands out one access token per request.
+const CHATGPT_PASSTHROUGH = ['PATH', 'HOME', 'LANG', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'NO_PROXY', 'no_proxy', 'NODE_USE_ENV_PROXY']
+async function prepareChatGPT(request, transport) {
+  if (request.agent) throw new Error('ChatGPT runs Arya’s own agent. Leave Agent empty.')
+  if (request.effort) throw new Error('OpenAI does not list reasoning effort choices for ChatGPT plan models. Leave Effort on Default.')
+  if (request.model && !/^[A-Za-z0-9._:-]{1,128}$/.test(request.model)) throw new Error('Choose a model from the ChatGPT list in Assistant settings.')
+  const prompt = promptFor(request)
+  const marker = prompt.indexOf('\n\n<immutable_reel_context>')
+  if (marker < 0) throw new Error('The ChatGPT request could not be prepared.')
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-agent-'))
+  await fs.chmod(cwd, 0o700)
+  const env = Object.fromEntries(CHATGPT_PASSTHROUGH.filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]]))
+  Object.assign(env, { TMPDIR: cwd, REEL_AGENT_ENDPOINT: transport.endpoint, REEL_AGENT_RUN_ID: request.id, REEL_AGENT_RUN_TOKEN: transport.token, ...(request.model ? { ARYA_CHATGPT_MODEL: request.model } : {}) })
+  // Arya's rules go in instructions; the project context and request are the user's message.
+  const input = [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: prompt.slice(marker + 2) }] }]
+  return { command: process.execPath, args: [path.join(directory, 'chatgpt-agent.mjs')], cwd, env, prompt: JSON.stringify({ instructions: prompt.slice(0, marker), input }), cleanup: () => fs.rm(cwd, { recursive: true, force: true }) }
+}
+
 export async function prepareAdapter(request, transport, custom) {
+  if (request.provider === 'chatgpt') return prepareChatGPT(request, transport)
   if (request.provider === 'custom') {
     if (request.model && !(custom?.args ?? []).some(value => value.includes('{model}'))) throw new Error('This custom adapter cannot bind an exact requested model. Configure a literal {model} argument or use its explicit provider default.')
     if (request.effort && !(custom?.args ?? []).some(value => value.includes('{effort}'))) throw new Error('This custom adapter cannot bind the requested reasoning effort.')
@@ -109,6 +129,13 @@ export async function prepareAdapter(request, transport, custom) {
 export function outputEvent(provider, line) {
   let value
   try { value = JSON.parse(line) } catch { return provider === 'custom' && line.trim() ? { type: 'text', text: line } : null }
+  if (provider === 'chatgpt') {
+    // Arya's own agent writes exactly these three record shapes.
+    if (value?.type === 'text' && typeof value.text === 'string') return { type: 'text', text: value.text }
+    if (value?.type === 'done') return { type: 'done' }
+    if (value?.type === 'error' && typeof value.message === 'string') return { type: 'error', message: value.message, ...(/^chatgpt_[a-z_]{1,48}$/.test(value.code ?? '') ? { code: value.code } : {}) }
+    return null
+  }
   if (provider === 'antigravity') return antigravityOutputEvent(value)
   if (provider === 'gemini-cli') return geminiOutputEvent(value)
   if (value.event === 'step_update' && typeof value.step_update?.text_delta === 'string') return { type: 'text', text: value.step_update.text_delta }

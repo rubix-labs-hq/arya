@@ -3,6 +3,12 @@ import Foundation
 /// Shared account policy without UI or credential access. Saved choices and current
 /// dispatch eligibility are separate: a temporary account failure cannot erase a pool.
 public enum NativeAssistantRoutingPolicy {
+    /// Offer the built-in sign-in on a fresh installation without changing an existing setup.
+    public static func initialProvider(savedProvider: String?, hasCompanionConnection: Bool, chatGPTSupported: Bool) -> String {
+        if let savedProvider { return savedProvider }
+        return chatGPTSupported && !hasCompanionConnection ? "chatgpt" : "claude-code"
+    }
+
     public static let priorities = ["balanced", "quick", "quality"]
     public static func priorityLabel(_ value: String) -> String {
         value == "quick" ? "Speed" : value == "quality" ? "Quality" : "Balanced"
@@ -77,8 +83,12 @@ public enum NativeAssistantRoutingPolicy {
 
     public static func manualReadinessReason(provider: String, model: String, effort: String, catalogBound: Bool,
                                              availableModels: [[String: Any]]) -> String? {
-        guard ["claude-code", "codex", "antigravity", "anthropic"].contains(provider) else {
+        guard ["claude-code", "codex", "antigravity", "anthropic", "chatgpt"].contains(provider) else {
             return "Native AI sharing does not support this recipient. Choose a supported provider in Assistant settings."
+        }
+        // ChatGPT plan usage is a Manual-only route. Its models come from the signed-in account, never Auto.
+        if provider == "chatgpt" {
+            return ChatGPTAccountService.validSlug(model) ? nil : "Choose a ChatGPT model in Assistant settings. Sign in first if no model is listed."
         }
         if provider == "codex" && model.isEmpty {
             return "Choose an exact Codex model in Assistant settings. Refresh account discovery if no model is listed."

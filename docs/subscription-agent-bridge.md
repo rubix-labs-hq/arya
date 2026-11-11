@@ -1,6 +1,6 @@
 # Subscription agent bridge
 
-Arya's suggested provider is Claude Code. The companion runs the user's installed CLI outside the native app sandbox and returns edits through native project tools. Claude Code and Codex use their existing account sign-in. Arya does not read, copy or store provider OAuth credentials. The Anthropic API option remains separate and bills the user's API account.
+The companion runs the user's installed CLI outside the native app sandbox and returns edits through native project tools. Claude Code, Codex and Google Antigravity use their own account sign-in, which the user completes in that app. The local browser editor also offers [Sign in with ChatGPT](#sign-in-with-chatgpt-local-browser-editor). The direct-download Mac app offers it natively ([details](#sign-in-with-chatgpt-native-mac-app-direct-download)). The Mac App Store, iPhone and iPad builds do not offer it yet. Arya does not read, copy or store provider OAuth credentials. The Anthropic API option remains separate and bills the user's API account.
 
 On Mac, Start agent bridge copies the fixed scripts and launcher into Application Support/Reel/AgentBridge, creates a private pairing nonce, and opens the launcher in Terminal. Release builds include their signed Node.js runtime in Contents/Helpers. Source Debug builds can use installed Node.js 22 or newer. It starts a loopback listener on a free port and asks Arya to accept a nonce-bound callback. The app verifies authenticated bridge status before storing its own pairing token in Keychain. Manual pairing accepts a loopback address or a user-configured HTTPS bridge. The companion itself binds only to 127.0.0.1.
 
@@ -28,11 +28,11 @@ The bridge retains at most 64 MiB of request, event and tool-result JSON globall
 
 The seven Node tests include actual stdio edits, loopback authentication, idempotent registration, cancellation ownership, route restrictions, oversized output, a completed CLI that stays alive and undelivered frame-memory limits. `AgentCompositionTests` adds real native layers, pixels, motion, generated audio, a selected title tweak and undo. To run actual provider acceptance on synthetic media, set `REEL_LIVE_AGENT_PROVIDER=codex` or `claude-code` when running that focused Swift test. It saves the project, rendered frames and report under ignored `build/agent-native-live-*`. A fixture pass or sign-in status alone does not prove a provider editing run.
 
-Users sign in through the provider's own CLI. [Anthropic's published terms](https://code.claude.com/docs/en/legal-and-compliance) describe running an unmodified Claude Code binary with an end user's account and the conditions for offering it through a product. Arya does not provide a third-party Claude OAuth flow or intermediate subscription credentials.
+Users sign in through the provider's own CLI. Anthropic does not let other apps offer Claude sign-in without its approval, so Arya has no Claude sign-in button. [Anthropic's published terms](https://code.claude.com/docs/en/legal-and-compliance) describe running an unmodified Claude Code binary with an end user's account and the conditions for offering it through a product. Arya does not provide a third-party Claude OAuth flow or intermediate subscription credentials.
 
 ## Browser editor
 
-Browser Settings uses the same installed CLI accounts. Claude Code is the suggested default. `GET /api/assistant/status` reports installation, actual CLI account status, the selected provider and the active run. Status refreshes share one request and cache the result for 15 seconds. `checkedAt` gives the check time; loading or unavailable account status remains unknown. Provider usage limits are not reported, so `usage` is null. A startup-configured custom CLI manages its own account, and Arya does not claim that its subscription is verified.
+Browser Settings uses the same installed CLI accounts. When the server offers Sign in with ChatGPT, Settings shows it first and the installed apps move under **Other ways to connect**. That section starts collapsed unless another app is already the configured assistant, or the person opened Settings from the assistant panel's **Other ways to connect** button. `GET /api/assistant/status` reports installation, actual CLI account status, the selected provider and the active run. Status refreshes share one request and cache the result for 15 seconds. `checkedAt` gives the check time; loading or unavailable account status remains unknown. Provider usage limits are not reported, so `usage` is null. A startup-configured custom CLI manages its own account, and Arya does not claim that its subscription is verified.
 
 `POST /api/assistant/config` stores only bounded provider, model and agent preferences in the project's `.reel/assistant-settings.json`. On macOS, `POST /api/assistant/login` opens a guarded command file in Terminal with the resolved installed executable and fixed `claude auth login` or `codex login` arguments. The command removes API billing overrides. A successful launch means sign-in started; the provider's status must confirm authentication. Antigravity's sign-in launcher invokes the bundled profile helper, which opens the official CLI in Arya's separate profile. A successful launch still requires an account-status refresh before editing. Custom executable paths and literal arguments can be supplied only when starting the server with `--custom-executable` and repeated `--custom-arg` flags.
 
@@ -41,3 +41,54 @@ Browser prompts use an owned in-process companion with a private token. The brow
 Each project commit checks the active run, project epoch, current disk contents and the version captured before the tool's awaits. Durable transcript publication uses the same guard. Cancellation stops only the owned CLI and jobs that its tool context created; an existing user transcription job remains active when the agent reuses it. Interchange proxy imports dispatch internally so they keep that context. Exports stay in `renders/`, refuse referenced source destinations and cannot reopen a completed job. Related edits keep ordinary undo history and identify their activity as agent edits. Editor chat starts a separate CLI run, including when the Claude Code plugin opened the editor. It does not send messages to the terminal session. Legacy plugin relay sends are rejected because that connection has no verified AI recipient.
 
 The browser backend fixture suite uses actual local CLI subprocesses and HTTP tool dispatch. It covers editable layers and selection edits, fixed sign-in arguments, unknown account limits, cancellation ownership, registration failures, stale projects, preserved corrected transcripts, confined reads and writes, and undo. These fixtures do not prove a live subscription editing run.
+
+## Sign in with ChatGPT (local browser editor)
+
+`editor/server.mjs` offers OpenAI's [Sign in with ChatGPT plan usage for open-source local apps](https://developers.openai.com/siwc/token-sharing-open-source). The person clicks **Continue with ChatGPT**, signs in on OpenAI's page in their default browser, and returns to Arya. Arya never sees the password. Editing still works with no account.
+
+Sign-in (`editor/agent/chatgpt-account.mjs`):
+
+- The first sign-in for an account registers Arya with `client_id=dynamic_agent_client`, `agent_name_hint=Arya` and a saved `ext_agent_host_id` (`urn:uuid`). Later sign-ins use the issued `oaiapp_` client ID with `id_token_hint` and `login_hint`.
+- Scopes are `openid profile email offline_access resource.invoke chatgpt.tokens.use.direct`, with resource `https://api.openai.com/v1`. Each attempt uses a new `state`, `nonce` and PKCE S256 verifier.
+- A separate listener on `127.0.0.1` and a random port serves `/auth/start` and `/auth/callback`. The editor opens `/auth/start?attempt=…`, which redirects to OpenAI, so the identity hints never reach page state. The listener closes after one callback, a cancel or 10 minutes.
+- The ID token is checked against OpenAI's JWKS (RS256, `iss`, `aud`, `exp`, `iat`, `nbf`, `nonce`, `sub`). A returning sign-in must keep the same `sub`.
+- If the plan scope was not granted, the sign-in stays and Settings offers **Turn on ChatGPT plan usage**, which repeats sign-in with `prompt=consent`.
+
+Storage and renewal:
+
+- Files live in `~/.arya/chatgpt/` (folder 0700, files 0600): `host.json`, `accounts.json` keyed by client ID, and `refresh.lock`. The folder is created on the first sign-in, not at server start.
+- Access tokens are renewed under the file lock when fewer than 5 minutes remain, after re-reading the saved record. A future `earliest_refresh_at` defers renewal while the token is still valid. Refresh tokens rotate.
+- Unusable refresh tokens clear the session and keep the client ID. `invalid_client` marks the registration invalid, so the next sign-in registers again. Network errors and 5xx keep the credentials.
+- Sign-out stops a running ChatGPT request, then revokes the refresh token (4 tries, 8 seconds each) and clears the local tokens. If OpenAI does not confirm the revocation, Settings says so.
+
+Requests (`editor/agent/chatgpt-agent.mjs`):
+
+- Each request runs Arya's own agent in a child process with a minimal environment. Before each Responses call it asks the bridge for an access token at `POST /v1/runs/<id>/credential` with its own run token. The master token gets 404. A run is tied to the account that started it, so an account change returns 409.
+- `POST /v1/responses` uses `store:false`, `stream:true`, Arya's rules in `instructions` and the two tools in the `arya` function namespace. Output items are replayed without IDs. Frames return as `input_image`.
+- Only `response.completed` counts as success. OpenAI's plan errors map to codes such as `chatgpt_usage_limit`, with the request ID in the message. Retries happen only before the stream opens.
+- ChatGPT plan models are Manual only. OpenAI's model list reports no image support or price, so Auto never chooses them.
+- Sharing review names "OpenAI · ChatGPT plan". A new ChatGPT sign-in, a sign-out or an expired sign-in clears ChatGPT sharing, so the next request asks for review again. The first sign-in selects ChatGPT only when the project has no saved assistant choice, and sharing still needs review.
+
+Settings and the assistant panel follow OpenAI's [UI guidelines](https://developers.openai.com/siwc/ui-ux-guidelines): **Use your ChatGPT plan**, **Continue with ChatGPT**, a one-time **You're using your ChatGPT plan** notice, **Using ChatGPT plan · Manage usage** by the composer, and **Manage usage** as the main action after a usage limit. The button is text only because Arya has no ChatGPT logo under usable terms.
+
+Not available yet: the hosted browser beta (no local server, and OpenAI asks hosted apps to use its interest form). Fixture tests use local fake OAuth and Responses servers (`editor/test/fixtures/chatgpt-fake.mjs`). A live sign-in, one plan request and a confirmed sign-out were run with the local browser editor on 2026-11-10.
+
+## Sign in with ChatGPT (native Mac app, direct download)
+
+The direct-download Mac app has its own Swift version of the same flow. It does not use Node or the editor server. Only that build offers it: `NativeChatGPT.supported` is true only under `os(macOS) && ARYA_DIRECT_DISTRIBUTION`, which only the direct Mac target defines. The Mac App Store build, iPhone, iPad and Mac Catalyst compile the same code with sign-in turned off. Their Settings say only that this edition does not offer it yet, without pointing to another download. They stay off until OpenAI confirms that a free App Store app with optional tips is eligible.
+
+Sign-in (`native/ReelKit/Sources/ReelKit/ChatGPTAccount.swift`, actor `ChatGPTAccountService`):
+
+- The same OAuth contract as the editor: `dynamic_agent_client` with `agent_name_hint=Arya` and a stored `ext_agent_host_id` on first sign-in, then the issued `oaiapp_` client with `id_token_hint` and `login_hint`. Same scopes, resource and `prompt=consent` for **Turn on ChatGPT plan usage**. Each attempt has new `state`, `nonce` and S256 PKCE values.
+- The redirect is `http://127.0.0.1:<port>/auth/callback` on a one-time `NWListener` that accepts local connections only (`ChatGPTLoopbackListener.swift`). It answers one matching callback and stops listening. A wrong or replayed `state` is refused and the attempt keeps waiting. The attempt times out.
+- ID tokens are checked with `SecKey` RS256 against OpenAI's JWKS: signature, issuer, audience (and `azp` with several audiences), nonce, `exp`, `iat`, `nbf` and subject. An unknown `kid` refetches the keys once.
+- Refreshes share one task, so concurrent requests make one refresh. The rotated refresh token is saved to the Keychain. If that save fails, the session keeps working in memory until Arya quits. Unusable refresh codes clear that session; `invalid_client` marks the registration invalid.
+- Sign-out stops a running ChatGPT request, revokes the refresh token with retries, and clears the session even if OpenAI does not confirm. Settings reports which happened.
+- Storage is one Keychain item (`app.reel.assistant.chatgpt` / `vault`, `WhenUnlockedThisDeviceOnly`). App start reads it without a prompt. A Keychain that cannot be read is never overwritten.
+- The release entitlements add `com.apple.security.network.server` to the direct build only, for the loopback listener. `native/scripts/release.py` requires it in direct builds and still forbids it in the Store build.
+
+Requests (`ChatGPTAssistant.swift`): the Responses API with `store: false` and streaming, Arya's editing tools under one `arya` namespace, success only on `response.completed`, retries only before the stream opens, and the same plan error codes. The model list comes from OpenAI's `/models` for the signed-in account. The route is Manual only. Sharing review uses the existing confirmation with scope `chatgpt` at `https://api.openai.com/`, bound to the current sign-in. A new sign-in, a switch or a sign-out asks for review again. The editor's `/api/assistant/chatgpt/*` routes are answered natively with the same response shape.
+
+Settings shows **Use your ChatGPT plan** above the installed apps: **Continue with ChatGPT**, a waiting state with **Open the sign-in page again** and **Cancel sign-in**, the signed-in email and plan status, **Turn on ChatGPT plan usage**, **Use ChatGPT for the assistant**, a model picker, **Manage usage**, **Use a different account**, saved-account switching, **Sign out** and the one-time welcome notice.
+
+Tests: `ChatGPTAccountTests` and `ChatGPTAssistantTests` use a fake OpenAI transport and real loopback callbacks. Not yet run: a live native sign-in or plan request with a real ChatGPT account, and the loopback listener inside a signed, sandboxed release build.

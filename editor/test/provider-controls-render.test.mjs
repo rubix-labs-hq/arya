@@ -28,7 +28,7 @@ test('composer exposes direct provider, exact model and actual effort controls; 
     assert.ok(selects.every(node => node.props.disabled === active))
     assert.ok(all.some(node => node.type === 'option' && node.props.value === 'swift'))
     assert.ok(all.some(node => node.type === 'option' && node.props.value === 'low'))
-    assert.ok(all.some(node => node.type === 'option' && text(node).includes('Claude Code · Suggested')))
+    assert.ok(all.some(node => node.type === 'option' && text(node) === 'Claude Code'))
   }
 })
 
@@ -306,4 +306,34 @@ test('not-ready Auto keeps account/model controls and suppresses a dispatch prev
   assert.equal(nodes(tree).some(node => node.props?.class === 'assistant-route-preview'), false)
   assert.equal(nodes(tree).filter(node => node.type === 'select').length, 2)
   assert.ok(nodes(tree).find(node => node.props?.['aria-label'] === 'Manage assistant accounts and models'))
+})
+
+function nativeChatGPTFixture() {
+  const modelCatalog = { provider: 'chatgpt', complete: true, checkedAt: Date.now(), source: { kind: 'provider-sdk' }, models: ['gpt-one', 'gpt-two'].map(id => ({ provider: 'chatgpt', id, name: id, listed: true, available: true, retirementAt: null, inputModalities: ['text', 'image'], reasoningEfforts: [] })) }
+  return { ...nativeStatus, provider: 'chatgpt', mode: 'manual', model: 'gpt-one', effort: '', catalogBound: false, catalogs: [modelCatalog], providers: [{ id: 'chatgpt', installed: true, authenticated: true, available: true, adapterSupported: true, modelSelectionSupported: true, billingMode: 'subscription' }], chatgpt: { supported: true, signedIn: true, planUsage: true, accounts: [] } }
+}
+
+test('native ChatGPT composer model changes use the supported Manual configuration', async () => {
+  const current = nativeChatGPTFixture(), requests = [], store = { assistantStatus: current, caps: { host: 'native' } }
+  const controls = new Function('h', 'htm', 'useState', 'api', 'set', 'store', 'toast', 'ASSISTANT_PROVIDERS', 'assistantState', 'providerName', 'selectRoute', `${source}\nreturn {AssistantControls}`)(h, htm, value => [value, () => {}], async (route, body) => { requests.push({ route, body }); return current }, () => {}, store, () => {}, ASSISTANT_PROVIDERS, assistantState, providerName, selectRoute)
+  const tree = controls.AssistantControls({ status: current })
+  const selector = nodes(tree).find(node => node.type === 'select' && optionValues(node).includes('gpt-two'))
+  assert.ok(selector)
+  await selector.props.onChange({ target: { value: 'gpt-two' } })
+  const saved = requests.find(item => item.route === '/api/assistant/config').body
+  assert.equal(saved.provider, 'chatgpt'); assert.equal(saved.model, 'gpt-two'); assert.equal(saved.mode, 'manual'); assert.equal(saved.catalogBound, false)
+})
+
+test('native ChatGPT Settings model changes use the supported Manual configuration', async () => {
+  const current = nativeChatGPTFixture(), requests = []
+  const settings = settingsHarness(current, async (route, body) => { requests.push({ route, body }); return current })
+  const tree = settings.render()
+  const selector = nodes(tree).find(node => node.type === 'select' && optionValues(node).includes('gpt-two'))
+  assert.ok(selector)
+  selector.props.onChange({ target: { value: 'gpt-two' } })
+  const save = nodes(settings.render()).find(node => node.type === 'button' && text(node) === 'Save and close')
+  assert.ok(save)
+  await save.props.onClick()
+  const saved = requests.find(item => item.route === '/api/assistant/config').body
+  assert.equal(saved.provider, 'chatgpt'); assert.equal(saved.model, 'gpt-two'); assert.equal(saved.mode, 'manual'); assert.equal(saved.catalogBound, false)
 })
