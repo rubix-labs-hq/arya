@@ -33,14 +33,12 @@ export const assistantCopy = {
 };
 
 // The launch film. Its narration says Arya is free for Mac, on iPhone and iPad, and open source,
-// so the home page shows it only while all three are true. It shows app screens of build 1.1.0 (3),
-// one assistant request recorded in the browser editor built from source, and crops of the
-// AI-generated After the Tide still, and its caption says so.
+// so the home page shows it only while all three are true. What is in it is recorded in
+// assets/film/README.md.
 export const launchFilmCopy = {
   heading: 'Why Arya exists.',
   lead: 'A 75 second film with sound, from a single shot in 1895 to the edit you make today.',
   description: 'The Arya launch film, 75 seconds with narration and music. The narration appears on screen as it is spoken.',
-  caption: 'The narration is a synthetic voice made with ElevenLabs, and the score is original. The history scenes use crops of the still from the After the Tide sample project, which was AI-generated for this demo. The app screens are unaltered captures of Arya 1.1.0 (build 3) on Mac, iPad and iPhone. The Mac screens come from a Mac App Store build that is not public, and screens in the current downloads can differ. The assistant scene is one real request recorded in Arya’s browser editor, built from source, with the wait for the reply cut out.',
   width: 1920, height: 1080,
 };
 
@@ -109,7 +107,7 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
     ? `<section class="launch-film" id="film" aria-labelledby="launch-film-heading">
 <div class="wrap">
 <div class="section-head"><h2 id="launch-film-heading">${launchFilmCopy.heading}</h2><p>${launchFilmCopy.lead}</p></div>
-<figure class="launch-film-figure"><video controls playsinline preload="none" poster="${film.poster}" width="${launchFilmCopy.width}" height="${launchFilmCopy.height}" aria-label="${launchFilmCopy.description}"><source src="${film.src}" type="video/mp4"><a href="${film.src}">Download the launch film</a></video><figcaption class="credit">${launchFilmCopy.caption}</figcaption></figure>
+<figure class="launch-film-figure"><video controls playsinline preload="none" poster="${film.poster}" width="${launchFilmCopy.width}" height="${launchFilmCopy.height}" aria-label="${launchFilmCopy.description}"><source src="${film.src}" type="video/mp4"><a href="${film.src}">Download the launch film</a></video></figure>
 </div>
 </section>
 `

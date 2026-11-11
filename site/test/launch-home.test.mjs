@@ -112,7 +112,7 @@ test('the exported clip never plays by itself and has a text alternative', () =>
   assert.ok(text(live.home).includes('shown here as a 720p copy without sound'));
 });
 
-test('the launch film plays only when started, says what is synthetic and sits under the hero', () => {
+test('the launch film plays only when started and sits under the hero', () => {
   const start = live.home.indexOf('<section class="launch-film"');
   assert.ok(start > live.home.indexOf('<section class="hero">') && start < live.home.indexOf('<section class="pages"'));
   const section = live.home.slice(start, live.home.indexOf('</section>', start));
@@ -120,9 +120,8 @@ test('the launch film plays only when started, says what is synthetic and sits u
   for (const attribute of ['controls', 'playsinline', 'preload="none"', 'poster="/assets/film/launch-film-poster.webp?v=', 'width="1920"', 'height="1080"', 'aria-label="The Arya launch film, 75 seconds with narration and music.']) assert.ok(video.includes(attribute), attribute);
   assert.doesNotMatch(video, /autoplay|loop|muted/);
   assert.match(section, /<source src="\/assets\/film\/launch-film\.mp4\?v=[0-9a-f]{12}" type="video\/mp4"><a href="\/assets\/film\/launch-film\.mp4\?v=[0-9a-f]{12}">Download the launch film<\/a><\/video>/);
-  const caption = text(section);
-  for (const claim of ['The narration is a synthetic voice', 'AI-generated for this demo', 'unaltered captures of Arya 1.1.0 (build 3)', 'Mac App Store build that is not public', 'browser editor, built from source']) assert.ok(caption.includes(claim), claim);
-  assert.doesNotMatch(caption, /on the Mac App Store|available on the Mac App Store/);
+  assert.doesNotMatch(section, /<figcaption/);
+  assert.doesNotMatch(text(section), /on the Mac App Store|available on the Mac App Store/);
 });
 
 test('the launch film is hidden while its narration would not be true', async () => {
