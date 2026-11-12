@@ -116,7 +116,7 @@ test('pending mobile release renders plain review status and provides no active 
   assert.equal(result.status, 0, result.stderr);
 
   const download = pages.download;
-  assert.ok(download.includes('Version 1.0.5 (build 1) is waiting for App Review, with no download yet. It will be released automatically as a free download worldwide after approval.'));
+  assert.ok(download.includes(`Version ${pending.mobileRelease.version} (build ${pending.mobileRelease.build}) is waiting for App Review, with no download yet. It will be released automatically as a free download worldwide after approval.`));
   assert.ok(download.includes('waiting for App Review'));
   assert.ok(download.includes('no download yet'));
   assert.ok(/released automatically as a free download worldwide after approval/i.test(download));
