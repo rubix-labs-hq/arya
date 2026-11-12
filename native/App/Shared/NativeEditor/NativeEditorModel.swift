@@ -146,7 +146,8 @@ enum NativeStatusText {
     /// The commit summary for clips moved by `delta` seconds, such as Moved “Interview” +0.04 s.
     /// The clips are named from the project before the edit, so no ID reaches the status line.
     static func moved(_ clips: [[String: Any]], by delta: Double) -> String {
-        "Moved \(clipSubject(clips)) \(String(format: "%+.2f", delta)) s"
+        // A drag to another track at the same time has no offset worth printing.
+        abs(delta) < 0.005 ? "Moved \(clipSubject(clips))" : "Moved \(clipSubject(clips)) \(String(format: "%+.2f", delta)) s"
     }
 
     /// The commit summary for deleted clips. It is built before the edit, while the clips still have names.

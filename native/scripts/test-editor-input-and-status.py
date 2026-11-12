@@ -220,6 +220,7 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(nudgedRight == "Moved “arya-test-clip.mp4” +0.03 s.", "A nudge names the clip: \(nudgedRight)")
         require(status(NativeStatusText.moved([sound, video], by: -1.0 / 30)) == "Moved “arya-test-clip.mp4” -0.03 s.", "A linked clip and its sound count as one clip")
         require(status(NativeStatusText.moved([video, sound, other], by: 0.5)) == "Moved 2 clips +0.50 s.", "Several clips are counted")
+        require(status(NativeStatusText.moved([video], by: 0)) == "Moved “arya-test-clip.mp4”.", "A same-time move to another track prints no offset")
         let deleted = status(NativeStatusText.deleted([video, sound], ripple: false))
         require(deleted == "Deleted “arya-test-clip.mp4”.", "A delete names the clip: \(deleted)")
         require(status(NativeStatusText.deleted([video, other], ripple: true)) == "Ripple deleted 2 clips.", "A ripple delete counts clips")
