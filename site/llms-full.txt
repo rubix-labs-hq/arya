@@ -5,7 +5,7 @@
 ## Availability
 
 - Mac: version 1.1.1, macOS 14 or later, Apple silicon and Intel. Signed and notarized download: https://github.com/rubix-labs-hq/arya/releases/download/v1.1.1/Arya-1.1.1.dmg. SHA-256: 497d8db2ef27498310735a0676196dc6c2c0a3d4fa5709d437e6e7a68962817a.
-- iPhone and iPad: version 1.0.5, available on the App Store: https://apps.apple.com/us/app/arya-video-editor/id6826357116.
+- iPhone and iPad: version 1.1.0, available on the App Store: https://apps.apple.com/us/app/arya-video-editor/id6826357116.
 - Browser editor: https://editwitharya.app/editor/. Browser storage is local to this origin. Use exported backups; this is not cloud storage.
 
 ## Editing

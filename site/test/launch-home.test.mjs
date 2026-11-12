@@ -159,7 +159,7 @@ test('iPad and iPhone screens appear only while the App Store release is live', 
   assert.ok(live.home.includes('<meta name="apple-itunes-app" content="app-id=6826357116">'));
   assert.ok(live.download.includes('<meta name="apple-itunes-app" content="app-id=6826357116">'));
   assert.ok(live.home.includes('<h2 id="closing-heading">Start your first cut.</h2>'));
-  assert.ok(text(live.home).includes('Arya 1.0.5 for iPhone and iPad is on the App Store.'));
+  assert.ok(text(live.home).includes(`Arya ${shipped.mobileRelease.version} for iPhone and iPad is on the App Store.`));
 
   // Not live: the Mac alone, no clip, no claim about the other devices.
   assert.deepEqual([...macOnly.home.matchAll(/class="family-layer family-([a-z]+)"/g)].map(match => match[1]), ['mac']);
