@@ -136,7 +136,42 @@ enum NativeStatusText {
         // The editor core writes commit lines in lower case, such as "moved c1 to 2s on V1". A line that
         // starts with a capital was written for people, so its paths and names stay exactly as they are.
         guard let first = line.unicodeScalars.first, CharacterSet.lowercaseLetters.contains(first) || CharacterSet.decimalDigits.contains(first) else { return sentence(line) }
+        // The core logs the exact cut time, such as 3.0333333s. Round it as the timeline does.
+        if let parts = capture(#"^bladed (\S+) at (-?[0-9.]+)s → (\S+)$"#), let at = Double(parts[1]) {
+            return sentence(replacingIDs(in: "bladed \(parts[0]) at \(String(format: "%.2f", at)) s → \(parts[2])", names))
+        }
         return sentence(replacingIDs(in: line, names))
+    }
+
+    /// The commit summary for clips moved by `delta` seconds, such as Moved “Interview” +0.04 s.
+    /// The clips are named from the project before the edit, so no ID reaches the status line.
+    static func moved(_ clips: [[String: Any]], by delta: Double) -> String {
+        "Moved \(clipSubject(clips)) \(String(format: "%+.2f", delta)) s"
+    }
+
+    /// The commit summary for deleted clips. It is built before the edit, while the clips still have names.
+    static func deleted(_ clips: [[String: Any]], ripple: Bool) -> String {
+        "\(ripple ? "Ripple deleted" : "Deleted") \(clipSubject(clips))"
+    }
+
+    /// One linked group, such as a video clip and its sound, reads as one clip.
+    private static func clipSubject(_ clips: [[String: Any]]) -> String {
+        var groups: [[[String: Any]]] = [], keys: [String: Int] = [:]
+        for clip in clips {
+            let link = clip.string("link"), key = link.isEmpty ? "id:\(clip.string("id"))" : "link:\(link)"
+            if let index = keys[key] { groups[index].append(clip) } else { keys[key] = groups.count; groups.append([clip]) }
+        }
+        guard groups.count == 1, let group = groups.first, let clip = group.first(where: { $0.string("kind") != "audio" }) ?? group.first else {
+            return groups.count == 1 ? "a clip" : "\(groups.count) clips"
+        }
+        let name = clipName(clip)
+        return name.isEmpty ? "a clip" : "“\(name)”"
+    }
+
+    private static func clipName(_ clip: [String: Any]) -> String {
+        let source = clip.string("src")
+        let fallback = source.isEmpty ? clip.string("kind").capitalized : (source as NSString).lastPathComponent
+        return clip.string("label", clip.dictionary("title").string("text", fallback))
     }
 
     private static let propertyWords: [String: String] = [
@@ -156,11 +191,7 @@ enum NativeStatusText {
             var found: [String: String] = [:]
             for track in tracks {
                 found[track.string("id")] = track.string("name")
-                for clip in track.objects("clips") {
-                    let source = clip.string("src")
-                    let fallback = source.isEmpty ? clip.string("kind").capitalized : (source as NSString).lastPathComponent
-                    found[clip.string("id")] = clip.string("label", clip.dictionary("title").string("text", fallback))
-                }
+                for clip in track.objects("clips") { found[clip.string("id")] = clipName(clip) }
             }
             found[""] = nil
             return found
@@ -1214,7 +1245,8 @@ final class NativeEditorModel: ObservableObject {
         // The core rejects an edit that names a locked clip, so leave selected locked clips out.
         let ids = tracks.filter { !$0.locked }.flatMap(\.clips).map(\.id).filter { selectedIDs.contains($0) }.sorted()
         guard !ids.isEmpty else { status = "The selected clips are on locked tracks."; return }
-        editBatch([["op": ripple ? "ripple_delete" : "delete", "ids": ids]], summary: ripple ? "Ripple delete selected clips" : "Delete selected clips",
+        let clips = tracks.flatMap(\.clips).filter { ids.contains($0.id) }.sorted { $0.id < $1.id }.map(\.fields)
+        editBatch([["op": ripple ? "ripple_delete" : "delete", "ids": ids]], summary: NativeStatusText.deleted(clips, ripple: ripple),
                   expectedVersion: version, feedback: true)
     }
     func duplicate() {
@@ -1243,7 +1275,7 @@ final class NativeEditorModel: ObservableObject {
         let delta = max(frames / max(1, fps), -(clips.map(\.start).min() ?? 0))
         guard delta != 0 else { return }
         editBatch(clips.map { ["op": "move", "id": $0.id, "start": $0.start + delta, "unlinked": true] },
-                  summary: "Nudge selected clips", expectedVersion: version, feedback: true)
+                  summary: NativeStatusText.moved(clips.map(\.fields), by: delta), expectedVersion: version, feedback: true)
     }
     func add(_ asset: NativeAsset) {
         let track = tracks.first { $0.kind == (asset.kind == "audio" ? "audio" : "video") && !$0.locked }

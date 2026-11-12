@@ -1353,7 +1353,7 @@ struct NativeTimeline: View {
         do {
             let result = try plan(source, translation: translation)
             guard source.capture.hasChanges(result) else { return }
-            model.editBatch(result.operations, summary: result.detail, expectedVersion: source.capture.version, feedback: true)
+            model.editBatch(result.operations, summary: commitSummary(result, source.capture), expectedVersion: source.capture.version, feedback: true)
         } catch { model.status = error.localizedDescription }
     }
     private func verticalOffset(_ id: String) -> CGFloat {
@@ -1421,8 +1421,14 @@ struct NativeTimeline: View {
             let activeMode: NativeTimelineMode = edge == nil ? chosenMode : (chosenMode == .ripple || chosenMode == .roll ? chosenMode : .trim)
             let result = try source.plan(mode: activeMode, delta: direction / source.fps, edge: edge)
             guard matches(source), source.hasChanges(result) else { return }
-            model.editBatch(result.operations, summary: result.detail, expectedVersion: source.version, feedback: true)
+            model.editBatch(result.operations, summary: commitSummary(result, source), expectedVersion: source.version, feedback: true)
         } catch { model.status = error.localizedDescription }
+    }
+    /// A move names the clips it moved. Other edits keep the planner's own detail.
+    private func commitSummary(_ result: NativeTimelinePlanning.Plan, _ source: NativeTimelinePlanning.Capture) -> String {
+        let ids = result.operations.compactMap { $0["op"] as? String == "move" ? $0["id"] as? String : nil }
+        guard !ids.isEmpty, ids.count == result.operations.count else { return result.detail }
+        return NativeStatusText.moved(ids.compactMap { try? source.clip($0).fields }, by: result.offsets[source.lead] ?? 0)
     }
     // Split and Delete go through the model, as the Timeline menu does. The core leaves linked
     // partners on locked tracks alone, so a locked partner no longer blocks the edit.
