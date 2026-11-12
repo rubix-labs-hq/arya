@@ -212,6 +212,24 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         ]
         require(NativeStatusText.activity("updated track V1: name", who: "you", project: unnamed) == "Updated a track.", "An unnamed track does not borrow a nested timeline's name")
         require(status("", who: "reel").isEmpty, "Empty lines stay empty")
+        // Nudge, delete and blade name the clip and round the time.
+        let video: [String: Any] = ["id": "c1", "kind": "video", "src": "media/arya-test-clip.mp4", "link": "L1"]
+        let sound: [String: Any] = ["id": "c2", "kind": "audio", "src": "media/arya-test-clip.mp4", "link": "L1"]
+        let other: [String: Any] = ["id": "c3", "kind": "video", "src": "media/second.mov"]
+        let nudgedRight = status(NativeStatusText.moved([video], by: 1.0 / 30))
+        require(nudgedRight == "Moved “arya-test-clip.mp4” +0.03 s.", "A nudge names the clip: \(nudgedRight)")
+        require(status(NativeStatusText.moved([sound, video], by: -1.0 / 30)) == "Moved “arya-test-clip.mp4” -0.03 s.", "A linked clip and its sound count as one clip")
+        require(status(NativeStatusText.moved([video, sound, other], by: 0.5)) == "Moved 2 clips +0.50 s.", "Several clips are counted")
+        require(status(NativeStatusText.moved([video], by: 0)) == "Moved “arya-test-clip.mp4”.", "A same-time move to another track prints no offset")
+        let deleted = status(NativeStatusText.deleted([video, sound], ripple: false))
+        require(deleted == "Deleted “arya-test-clip.mp4”.", "A delete names the clip: \(deleted)")
+        require(status(NativeStatusText.deleted([video, other], ripple: true)) == "Ripple deleted 2 clips.", "A ripple delete counts clips")
+        require(status(NativeStatusText.deleted([["id": "c9", "label": "c9 intro"]], ripple: false)) == "Deleted “c9 intro”.", "A clip name that looks like an ID stays whole")
+        let cutProject: [String: Any] = ["tracks": [["id": "V1", "name": "Video 1", "clips": [video, ["id": "c4", "kind": "video", "src": "media/arya-test-clip.mp4"]]]]]
+        let bladed = NativeStatusText.activity("bladed c1 at 3.0333333s → c4", who: "you", project: cutProject)
+        require(bladed == "Bladed “arya-test-clip.mp4” at 3.03 s → “arya-test-clip.mp4”.", "Blade rounds the cut time and names both parts: \(bladed)")
+        require(NativeStatusText.activity("bladed c1 at 4s → c4", who: "you", project: cutProject) == "Bladed “arya-test-clip.mp4” at 4.00 s → “arya-test-clip.mp4”.", "Whole-second cuts read the same way")
+        require(!hasID(NativeStatusText.activity("bladed c1 at 2.5s → c4", who: "you", project: named)), "A cut part that is gone becomes a plain noun")
 
         // Device words.
         require(NativeCurveHit.hint.hasPrefix(HOST_CURVE_WORD), "Curve hint uses the platform's word: \(NativeCurveHit.hint)")
