@@ -45,9 +45,9 @@ Custom Manual requests with a specific model also fail before launch if the adap
 
 ## Mobile and provider boundaries
 
-CLI agents run on the companion Mac, not on iPhone/iPad. Mobile setup needs an authenticated HTTPS companion reachable from that device. A Mac loopback address cannot be used from another device. A manually configured endpoint is distinct from a complete managed discovery, pairing and TLS flow; that latter flow still needs implementation and real-device acceptance.
+Sign in with ChatGPT works on iPhone and iPad with one tap and needs no companion. CLI agents run on the companion Mac, not on iPhone/iPad. The phone setup screen therefore shows no install steps: it offers ChatGPT, an Anthropic API key on the device, or a connection to Arya on a Mac. Using a CLI subscription from a phone needs an authenticated HTTPS companion reachable from that device. A Mac loopback address cannot be used from another device. A manually configured endpoint is distinct from a complete managed discovery, pairing and TLS flow; that latter flow still needs implementation and real-device acceptance.
 
-Claude account sign-in is supported in the user's own CLI. Anthropic's SDK documentation restricts third-party consumer subscription login without prior approval, so Arya has no Claude sign-in button. Eligibility for an embedded public Arya distribution remains unverified; the external Claude Code/MCP path is kept explicit. This is separate from local account detection or technical adapter behavior.
+Claude account sign-in is supported in the user's own CLI. Anthropic's SDK documentation restricts third-party consumer subscription login without prior approval, so Arya has no Claude sign-in button in any build. On iPhone and iPad, Claude is available through an Anthropic API key (billed separately) or through Claude Code on a paired Mac. Eligibility for an embedded public Arya distribution remains unverified; the external Claude Code/MCP path is kept explicit. This is separate from local account detection or technical adapter behavior.
 
 ## Evidence and validation
 

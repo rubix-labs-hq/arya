@@ -1,6 +1,6 @@
 # Subscription agent bridge
 
-The companion runs the user's installed CLI outside the native app sandbox and returns edits through native project tools. Claude Code, Codex and Google Antigravity use their own account sign-in, which the user completes in that app. The local browser editor also offers [Sign in with ChatGPT](#sign-in-with-chatgpt-local-browser-editor). The direct-download Mac app offers it natively ([details](#sign-in-with-chatgpt-native-mac-app-direct-download)). The Mac App Store, iPhone and iPad builds do not offer it yet. Arya does not read, copy or store provider OAuth credentials. The Anthropic API option remains separate and bills the user's API account.
+The companion runs the user's installed CLI outside the native app sandbox and returns edits through native project tools. Claude Code, Codex and Google Antigravity use their own account sign-in, which the user completes in that app. The local browser editor also offers [Sign in with ChatGPT](#sign-in-with-chatgpt-local-browser-editor). Every native build offers it too: the direct-download Mac app, the Mac App Store app, iPhone and iPad ([details](#sign-in-with-chatgpt-native-apps)). Arya does not read, copy or store provider OAuth credentials. The Anthropic API option remains separate and bills the user's API account.
 
 On Mac, Start agent bridge copies the fixed scripts and launcher into Application Support/Reel/AgentBridge, creates a private pairing nonce, and opens the launcher in Terminal. Release builds include their signed Node.js runtime in Contents/Helpers. Source Debug builds can use installed Node.js 22 or newer. It starts a loopback listener on a free port and asks Arya to accept a nonce-bound callback. The app verifies authenticated bridge status before storing its own pairing token in Keychain. Manual pairing accepts a loopback address or a user-configured HTTPS bridge. The companion itself binds only to 127.0.0.1.
 
@@ -73,9 +73,11 @@ Settings and the assistant panel follow OpenAI's [UI guidelines](https://develop
 
 Not available yet: the hosted browser beta (no local server, and OpenAI asks hosted apps to use its interest form). Fixture tests use local fake OAuth and Responses servers (`editor/test/fixtures/chatgpt-fake.mjs`). A live sign-in, one plan request and a confirmed sign-out were run with the local browser editor on 2026-11-10.
 
-## Sign in with ChatGPT (native Mac app, direct download)
+## Sign in with ChatGPT (native apps)
 
-The direct-download Mac app has its own Swift version of the same flow. It does not use Node or the editor server. Only that build offers it: `NativeChatGPT.supported` is true only under `os(macOS) && ARYA_DIRECT_DISTRIBUTION`, which only the direct Mac target defines. The Mac App Store build, iPhone, iPad and Mac Catalyst compile the same code with sign-in turned off. Their Settings say only that this edition does not offer it yet, without pointing to another download. They stay off until OpenAI confirms that a free App Store app with optional tips is eligible.
+The native apps have their own Swift version of the same flow. They do not use Node or the editor server. `NativeChatGPT.supported` is true in every build: the direct-download Mac app, the Mac App Store app (Mac Catalyst), iPhone and iPad. Arya is MIT-licensed and runs on the person's device, which is the case OpenAI documents for ChatGPT plan usage. OpenAI asks paid or remotely hosted apps to use its interest form instead; Arya is free, and its optional tips unlock nothing.
+
+The direct Mac app opens OpenAI's page in the default browser. iPhone, iPad and the Mac App Store app open it in an in-app `ASWebAuthenticationSession` sheet (`NativeChatGPTWebSignIn`). The app stays in the foreground, so its loopback listener stays alive to receive the callback. The sheet shares Safari's cookies, so a person already signed in to chatgpt.com usually needs one tap. It closes by itself once the callback arrives. Closing it early cancels the attempt. A sign-in started from **Continue with ChatGPT** also makes ChatGPT the assistant, so no second step is needed.
 
 Sign-in (`native/ReelKit/Sources/ReelKit/ChatGPTAccount.swift`, actor `ChatGPTAccountService`):
 
@@ -85,7 +87,7 @@ Sign-in (`native/ReelKit/Sources/ReelKit/ChatGPTAccount.swift`, actor `ChatGPTAc
 - Refreshes share one task, so concurrent requests make one refresh. The rotated refresh token is saved to the Keychain. If that save fails, the session keeps working in memory until Arya quits. Unusable refresh codes clear that session; `invalid_client` marks the registration invalid.
 - Sign-out stops a running ChatGPT request, revokes the refresh token with retries, and clears the session even if OpenAI does not confirm. Settings reports which happened.
 - Storage is one Keychain item (`app.reel.assistant.chatgpt` / `vault`, `WhenUnlockedThisDeviceOnly`). App start reads it without a prompt. A Keychain that cannot be read is never overwritten.
-- The release entitlements add `com.apple.security.network.server` to the direct build only, for the loopback listener. `native/scripts/release.py` requires it in direct builds and still forbids it in the Store build.
+- The Mac entitlements add `com.apple.security.network.server` for the loopback listener, in both the direct and the Store build. `native/scripts/release.py` and `native/scripts/validate-app-store.py` require it. iOS needs no entitlement for a loopback listener.
 
 Requests (`ChatGPTAssistant.swift`): the Responses API with `store: false` and streaming, Arya's editing tools under one `arya` namespace, success only on `response.completed`, retries only before the stream opens, and the same plan error codes. The model list comes from OpenAI's `/models` for the signed-in account. The route is Manual only. Sharing review uses the existing confirmation with scope `chatgpt` at `https://api.openai.com/`, bound to the current sign-in. A new sign-in, a switch or a sign-out asks for review again. The editor's `/api/assistant/chatgpt/*` routes are answered natively with the same response shape.
 

@@ -146,15 +146,16 @@ class ReleaseTests(unittest.TestCase):
         spec = (release.REPO / "native/project.yml").read_text()
         self.assertIn("NSAppleEventsUsageDescription:", spec)
 
-    def testOnlyTheDirectBuildMayListenForTheChatGPTCallback(self):
+    def testEveryMacBuildMayListenForTheChatGPTCallback(self):
         direct = plistlib.loads(release.ENTITLEMENTS.read_bytes())
         self.assertIs(direct["com.apple.security.network.server"], True)
         store = plistlib.loads((release.REPO / "native/App/macOS/Reel-AppStore.entitlements").read_bytes())
-        self.assertNotIn("com.apple.security.network.server", store)
+        self.assertIs(store["com.apple.security.network.server"], True)
+        # iOS needs no entitlement for a loopback listener.
         ios = plistlib.loads((release.REPO / "native/App/iOS/Reel.entitlements").read_bytes())
         self.assertNotIn("com.apple.security.network.server", ios)
         validator = (release.REPO / "native/scripts/validate-app-store.py").read_text()
-        self.assertIn("'com.apple.security.network.server'", validator)
+        self.assertIn("entitlements.get('com.apple.security.network.server') is True", validator)
         entitlements = dict(direct)
         del entitlements["com.apple.security.network.server"]
         signature = "CodeDirectory flags=0x10000(runtime)\n"

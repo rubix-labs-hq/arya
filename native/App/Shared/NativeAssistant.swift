@@ -10,6 +10,10 @@ import AppKit
 import CoreImage.CIFilterBuiltins
 #endif
 import Combine
+#if os(iOS)
+import AuthenticationServices
+import UIKit
+#endif
 
 enum NativeCredentialReadAccess {
     case passive, userInitiated
@@ -117,6 +121,8 @@ final class NativeAssistant: ObservableObject {
     private var chatgptClient: ChatGPTAssistant?
     private var chatgptClientKey: String?
     private var chatgptObservation: AnyCancellable?
+    /// Set when the person starts ChatGPT sign-in, so a successful sign-in becomes the assistant in one step.
+    var chooseChatGPTAfterSignIn = false
     /// Which credential a run uses: the Anthropic API key, the ChatGPT sign-in or the bridge token.
     private enum CredentialRoute { case api, chatgpt, bridge }
     private var credentialRoute: CredentialRoute {
@@ -199,9 +205,12 @@ final class NativeAssistant: ObservableObject {
     private func chatgptChanged() {
         let account = NativeChatGPTAccount.shared
         // First-time setup: a new ChatGPT sign-in becomes the assistant only when none was chosen yet.
-        if UserDefaults.standard.string(forKey: Self.providerPreference) == nil, account.status.planUsage, task == nil, stoppingTask == nil {
-            try? selectProvider("chatgpt")
+        // A sign-in the person just started from Continue with ChatGPT also becomes the assistant.
+        if UserDefaults.standard.string(forKey: Self.providerPreference) == nil || chooseChatGPTAfterSignIn, account.status.planUsage, task == nil, stoppingTask == nil {
+            chooseChatGPTAfterSignIn = false
+            if provider != "chatgpt" { try? selectProvider("chatgpt") }
         }
+        if [.failed, .cancelled, .expired].contains(account.status.phase) { chooseChatGPTAfterSignIn = false }
         guard provider == "chatgpt" else { return }
         if chatgptClientKey != nil, chatgptClientKey?.hasPrefix((account.status.identity ?? "-") + "\n") != true { chatgptClient = nil; chatgptClientKey = nil }
         if model.isEmpty, task == nil, let first = account.models.first {
@@ -1653,15 +1662,10 @@ private enum AssistantCredential {
 // MARK: Sign in with ChatGPT
 
 /// ChatGPT plan usage through Sign in with ChatGPT. OpenAI offers it to open-source apps that run
-/// on the user's device, so only the direct Mac build exposes it. The Store build and iPhone and
-/// iPad builds compile the same account code but never offer sign-in until OpenAI confirms that
-/// they are eligible.
+/// on the user's device. Arya is open source and runs on the device in every build, so the direct
+/// Mac app, the Mac App Store app, iPhone and iPad all offer it.
 enum NativeChatGPT {
-    #if os(macOS) && ARYA_DIRECT_DISTRIBUTION
     static let supported = true
-    #else
-    static let supported = false
-    #endif
     // Neutral on purpose: Store, iPhone and iPad builds must not point people to another download.
     static let unavailable = "Sign in with ChatGPT is not available in this edition of Arya yet."
     static let destination = "OpenAI Responses API (https://api.openai.com/v1) with your Sign in with ChatGPT account"
@@ -1694,6 +1698,53 @@ final class ChatGPTKeychainVault: ChatGPTVaultStore, @unchecked Sendable {
     }
 }
 
+#if os(iOS)
+/// iPhone, iPad and the Mac App Store build show OpenAI's sign-in page in an in-app sheet. The app
+/// stays in the foreground, so its loopback listener receives the callback. The callback scheme is
+/// never used: the sheet closes once the account service leaves its waiting phase.
+@MainActor
+final class NativeChatGPTWebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
+    static let shared = NativeChatGPTWebSignIn()
+    private var session: ASWebAuthenticationSession?
+
+    func present(_ url: URL) -> Bool {
+        dismiss()
+        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "reelchatgpt") { [weak self] _, error in
+            Task { @MainActor in
+                guard let self, self.session != nil else { return }
+                self.session = nil
+                // The person closed the sheet before finishing: end the attempt.
+                if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
+                    let service = NativeChatGPTAccount.shared.service
+                    if await service.status().phase == .waiting { _ = await service.cancelSignIn() }
+                    await NativeChatGPTAccount.shared.sync()
+                }
+            }
+        }
+        // Reuse the person's existing chatgpt.com sign-in in Safari, so most sign-ins take one tap.
+        session.prefersEphemeralWebBrowserSession = false
+        session.presentationContextProvider = self
+        self.session = session
+        guard session.start() else { self.session = nil; return false }
+        return true
+    }
+
+    func dismiss() {
+        guard let session else { return }
+        self.session = nil
+        session.cancel()
+    }
+
+    nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        MainActor.assumeIsolated {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            let active = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+            return active?.windows.first { $0.isKeyWindow } ?? active?.windows.first ?? ASPresentationAnchor()
+        }
+    }
+}
+#endif
+
 /// One account service per process, shared by every window. Tokens stay inside the service actor.
 @MainActor
 final class NativeChatGPTAccount: ObservableObject {
@@ -1721,13 +1772,17 @@ final class NativeChatGPTAccount: ObservableObject {
         #if os(macOS)
         return await MainActor.run { NSWorkspace.shared.open(url) }
         #else
-        return false
+        return await MainActor.run { NativeChatGPTWebSignIn.shared.present(url) }
         #endif
     }
 
     func sync() async {
         let value = await service.status()
         if value != status { status = value }
+        #if os(iOS)
+        // The callback reached Arya, or the attempt ended: close OpenAI's sign-in sheet.
+        if value.phase != .waiting { NativeChatGPTWebSignIn.shared.dismiss() }
+        #endif
         if value.identity != modelsIdentity {
             modelsIdentity = value.identity
             models = []; modelsError = nil
@@ -1814,13 +1869,13 @@ struct NativeChatGPTSettings: View {
                 .frame(minHeight: 44).disabled(working)
         }
         if status.storage == .unreadable || status.storage == .unavailable {
-            Text("Keychain could not be read. Unlock your Mac, then check again. Your saved ChatGPT sign-in was not changed.")
+            Text("Keychain could not be read. Unlock this device, then check again. Your saved ChatGPT sign-in was not changed.")
                 .font(.caption).fixedSize(horizontal: false, vertical: true)
             Button("Check again") { run { await account.load(userInitiated: true) } }.frame(minHeight: 44).disabled(working)
         }
         if waiting {
             Label(status.phase == .exchanging ? "Finishing sign-in…" : "Waiting for ChatGPT sign-in", systemImage: "hourglass")
-            Text(status.phase == .exchanging ? "Arya is confirming the sign-in with OpenAI." : "Finish signing in on the ChatGPT page in your browser. Arya never sees your password.")
+            Text(status.phase == .exchanging ? "Arya is confirming the sign-in with OpenAI." : "Finish signing in on the ChatGPT page. Arya never sees your password.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if status.phase == .waiting {
                 Button("Open the sign-in page again") {
@@ -1841,7 +1896,7 @@ struct NativeChatGPTSettings: View {
             if !status.accounts.isEmpty {
                 Button("Use a different account") { start(newAccount: true) }.frame(minHeight: 44).disabled(blocked)
             }
-            Text("Sign-in opens in your browser. Your ChatGPT plan decides which requests are eligible and how much you can use.")
+            Text("One tap opens OpenAI's sign-in page. Your ChatGPT plan decides which requests are eligible and how much you can use.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         } else {
             Label(status.planUsage ? "Using ChatGPT plan" : "ChatGPT plan usage is off", systemImage: status.planUsage ? "checkmark.circle.fill" : "exclamationmark.circle")
@@ -1900,8 +1955,9 @@ struct NativeChatGPTSettings: View {
     private func start(account id: String? = nil, newAccount: Bool = false, enablePlan: Bool = false) {
         run {
             guard !assistant.isWorking else { notice = "Cancel or finish the current assistant request before changing ChatGPT accounts."; return }
+            assistant.chooseChatGPTAfterSignIn = true
             let opened = try await account.signIn(account: id, newAccount: newAccount, enablePlan: enablePlan)
-            notice = opened ? "" : "Arya could not open your browser. Use Open the sign-in page again."
+            notice = opened ? "" : "Arya could not open the sign-in page. Use Open the sign-in page again."
         }
     }
 
@@ -1914,9 +1970,9 @@ struct NativeChatGPTSettings: View {
         run {
             let result = await assistant.signOutChatGPT(account: status.signOutCleanupRequired ? nil : status.active)
             guard result.signedOut else { notice = "No ChatGPT sign-in was saved."; return }
-            notice = status.signOutCleanupRequired ? "Unlock your Mac, then choose Finish signing out to remove the saved tokens." : result.revocationConfirmed
-                ? "Signed out of ChatGPT. Arya removed the sign-in from this Mac."
-                : "Signed out on this Mac, but OpenAI did not confirm the revocation. An unused sign-in expires within 30 days."
+            notice = status.signOutCleanupRequired ? "Unlock this device, then choose Finish signing out to remove the saved tokens." : result.revocationConfirmed
+                ? "Signed out of ChatGPT. Arya removed the sign-in from this device."
+                : "Signed out on this device, but OpenAI did not confirm the revocation. An unused sign-in expires within 30 days."
         }
     }
 }
@@ -1961,8 +2017,13 @@ struct NativeAssistantSettings: View {
         var title: String {
             switch self {
             case .chatgpt: return "Use your ChatGPT plan"
+            #if os(iOS)
+            case .companion: return "Connect to your Mac"
+            case .accounts: return "Choose how to connect"
+            #else
             case .companion: return "Turn on the assistant"
             case .accounts: return "Choose an account"
+            #endif
             case .models: return "Choose model"
             case .sharing: return "Review sharing"
             case .advanced: return "Advanced options"
@@ -1995,7 +2056,11 @@ struct NativeAssistantSettings: View {
         if facts.checkingKey { return .init(title: "Checking the saved API key", detail: "Wait for the local key check. It does not verify model access or sharing permission.", section: nil) }
         if facts.checking { return .init(title: "Checking accounts and models", detail: "Wait for the current result. Starting a check does not confirm access.", section: nil) }
         if facts.provider == "anthropic" && facts.mode == "manual" {
+            #if os(iOS)
+            if !facts.configured { return .init(title: "Add your API key", detail: facts.reason, section: .accounts) }
+            #else
             if !facts.configured { return .init(title: "Check or add your API key", detail: facts.reason, section: .advanced) }
+            #endif
             return .init(title: "Review API sharing before Send", detail: "The Anthropic API route is selected. API requests are billed separately from subscriptions; Send checks the exact sharing scope.", section: .sharing)
         }
         if facts.provider == "chatgpt" && facts.mode == "manual" {
@@ -2003,7 +2068,11 @@ struct NativeAssistantSettings: View {
             return .init(title: "Review sharing before Send", detail: "Your ChatGPT plan is selected. Requests go directly to OpenAI; Send checks the exact sharing scope.", section: .sharing)
         }
         if facts.mode == "manual" && ["custom", "gemini-cli"].contains(facts.provider) { return .init(title: "Choose a supported editing connection", detail: "This connection cannot send project data here. Use Claude Code or Codex, or continue manual editing.", section: .accounts) }
-        if facts.endpointEmpty { return .init(title: "Turn on the assistant", detail: "Choose your account and sign in below, then turn on the helper to check its status.", section: .companion) }
+        #if os(iOS)
+        if facts.endpointEmpty { return .init(title: "Sign in with ChatGPT", detail: "Continue with ChatGPT signs in with one tap. You can also add an Anthropic API key or connect to Arya on your Mac.", section: .chatgpt) }
+        #else
+        if facts.endpointEmpty { return .init(title: "Sign in with ChatGPT", detail: "Continue with ChatGPT signs in with one click. To use Claude Code, Codex or Antigravity instead, choose it below and turn on the helper.", section: .chatgpt) }
+        #endif
         if !facts.verified { return .init(title: "Reconnect the assistant", detail: "Restart the helper and reconnect below to check your saved account.", section: .companion) }
         if !facts.configured {
             if facts.mode == "auto" { return .init(title: "Review the available Auto pool", detail: facts.reason, section: .models) }
@@ -2272,7 +2341,88 @@ struct NativeAssistantSettings: View {
         .sheet(isPresented: $reviewingSharing) { NativeAssistantSharingReview(assistant: assistant) }
     }
 
-    private func accountSettings(proxy: ScrollViewProxy) -> some View {
+    #if os(iOS)
+    /// iPhone and iPad cannot run Claude Code, Codex or Antigravity, so setup offers only what works
+    /// from the device: an Anthropic API key here, or a subscription app running on a Mac.
+    private var phoneUsesAPIKey: Bool { assistant.provider == "anthropic" }
+    private var phoneUsesMac: Bool { ["claude-code", "codex", "antigravity", "gemini-cli", "custom"].contains(assistant.provider) }
+
+    private func phoneAccountSettings(proxy: ScrollViewProxy) -> some View {
+        Group {
+            Section("Other ways to connect") {
+                Text("Nothing to install on this device. ChatGPT above signs in with one tap.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button {
+                    do { try assistant.selectProvider("anthropic"); try assistant.setRouting(mode: "manual", effort: ""); loadFields() }
+                    catch { message = error.localizedDescription }
+                } label: {
+                    Label("Claude on this device · Anthropic API key", systemImage: phoneUsesAPIKey ? "checkmark.circle.fill" : "circle")
+                }.frame(minHeight: 44).disabled(busy)
+                Button {
+                    do {
+                        if !phoneUsesMac { try assistant.selectProvider("claude-code") }
+                        try assistant.setRouting(mode: "manual", effort: ""); loadFields()
+                    } catch { message = error.localizedDescription }
+                } label: {
+                    Label("Your Claude or ChatGPT subscription · through your Mac", systemImage: phoneUsesMac ? "checkmark.circle.fill" : "circle")
+                }.frame(minHeight: 44).disabled(busy)
+                Text("Anthropic does not let other apps sign in to Claude subscriptions. Use an Anthropic API key here, or Claude Code on your Mac.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if phoneUsesAPIKey {
+                Section("Add your Anthropic API key") {
+                    Text("Requests go straight from this device to Anthropic. Anthropic bills API usage separately from a Claude subscription. The key stays in this device's Keychain.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if assistant.apiConfigured { Label("API key saved on this device", systemImage: "checkmark.circle.fill").font(.caption) }
+                    SecureField(assistant.apiConfigured ? "Replace Anthropic API key" : "Anthropic API key", text: $key)
+                        .textContentType(.password).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .frame(minHeight: 44).disabled(busy)
+                    Button("Save API key") {
+                        defer { key = "" }
+                        do { try assistant.update(apiKey: key, model: assistant.model.isEmpty ? Assistant.Configuration().model : assistant.model); message = "API key saved in this device's Keychain." }
+                        catch { message = error.localizedDescription }
+                    }.frame(minHeight: 44).disabled(key.isEmpty || busy)
+                    Link("Get an API key from Anthropic", destination: URL(string: "https://console.anthropic.com/settings/keys")!).frame(minHeight: 44)
+                    if assistant.apiConfigured {
+                        Button("Remove API key", role: .destructive) {
+                            do { try assistant.removeAPIKey(); message = "API key removed." }
+                            catch { message = error.localizedDescription }
+                        }.frame(minHeight: 44).disabled(busy)
+                    }
+                    if !message.isEmpty { Text(message).font(.caption).fixedSize(horizontal: false, vertical: true) }
+                }
+            } else if phoneUsesMac {
+                Section("Use a subscription from your Mac") {
+                    Text("Arya on your Mac runs the app you choose with your own account sign-in. Connect this device to it below.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    ForEach(["claude-code", "codex", "antigravity"], id: \.self) { id in
+                        Button {
+                            do { try assistant.selectProvider(id); try assistant.setRouting(mode: "manual", effort: ""); loadFields() }
+                            catch { message = error.localizedDescription }
+                        } label: {
+                            Label(id == "claude-code" ? "Claude Code · Claude account" : id == "codex" ? "Codex · ChatGPT account" : "Google Antigravity · Google account", systemImage: assistant.provider == id ? "checkmark.circle.fill" : "circle")
+                        }.frame(minHeight: 44).disabled(busy)
+                    }
+                    DisclosureGroup("Account and model details") {
+                        ForEach(["claude-code", "codex", "antigravity"], id: \.self) { id in accountRow(id, proxy: proxy) }
+                    }
+                    if !message.isEmpty { Text(message).font(.caption).fixedSize(horizontal: false, vertical: true) }
+                    inlineResult(.accounts, next: assistant.accountStatusVerified ? .models : nil, proxy: proxy)
+                }
+            }
+        }
+    }
+    #endif
+
+    @ViewBuilder private func accountSettings(proxy: ScrollViewProxy) -> some View {
+        #if os(iOS)
+        phoneAccountSettings(proxy: proxy)
+        #else
+        desktopAccountSettings(proxy: proxy)
+        #endif
+    }
+
+    private func desktopAccountSettings(proxy: ScrollViewProxy) -> some View {
         let selected = assistant.providers.first { $0.string("id") == assistant.provider }
         let known = assistant.accountStatusVerified
         let installed = known ? selected?["installed"] as? Bool : nil
@@ -2380,8 +2530,13 @@ struct NativeAssistantSettings: View {
                     Text(reason).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 if id == "claude-code" {
+                    #if os(iOS)
+                    Text("Anthropic does not let other apps offer Claude sign-in without its approval, so Arya has no Claude sign-in button. Sign in to Claude Code on your Mac. Arya there runs it and never sees your password or tokens.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    #else
                     Text("Anthropic does not let other apps offer Claude sign-in without its approval, so Arya has no Claude sign-in button. Install Claude Code and sign in to it yourself. Arya runs it where it is installed and never sees your password or tokens.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    #endif
                     Text("Claude Code's provider default remains a manual choice when no verified account model list is available.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else if id == "antigravity" {
@@ -2407,7 +2562,7 @@ struct NativeAssistantSettings: View {
                     nextButton(to: .accounts, proxy: proxy, receipt: resultReceipts["sign-in.\(id)"])
                 }
                 #else
-                Text("Install and sign in on the Mac running your companion. iPhone and iPad do not run desktop CLI subscriptions.")
+                Text("This app runs on your Mac, not on this device. Sign in to it there.")
                     .font(.caption).foregroundStyle(.secondary)
                 #endif
                 Button(selectionLabel) {
@@ -2706,8 +2861,15 @@ struct NativeAssistantSettings: View {
         } catch { message = error.localizedDescription }
     }
 
-    private func companionSettings(proxy: ScrollViewProxy) -> some View {
-        Section("3. Turn on the assistant") {
+    @ViewBuilder private func companionSettings(proxy: ScrollViewProxy) -> some View {
+        #if os(iOS)
+        if phoneUsesMac { Section("Connect to your Mac") { companionContent(proxy: proxy) } }
+        #else
+        Section("3. Turn on the assistant") { companionContent(proxy: proxy) }
+        #endif
+    }
+
+    @ViewBuilder private func companionContent(proxy: ScrollViewProxy) -> some View {
             #if os(iOS)
             if let offer = assistant.mobileCompanionOffer {
                 VStack(alignment: .leading, spacing: 8) {
@@ -2754,7 +2916,7 @@ struct NativeAssistantSettings: View {
             mobilePairingGuide
             }
             #else
-            Text("Confirm the full HTTPS address with the trusted Mac owner. Enter their current pairing token privately. An address link does not connect this device or include a token.")
+            Text("Enter the secure HTTPS address and pairing token of Arya on your Mac. An address link does not connect this device or include a token.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Text("A localhost address points to this device. AI sharing is reviewed separately before Send.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -2762,7 +2924,6 @@ struct NativeAssistantSettings: View {
             #if os(iOS)
             manualCompanionSettings(proxy: proxy)
             #endif
-        }
     }
 
     @ViewBuilder private func manualCompanionSettings(proxy: ScrollViewProxy) -> some View {

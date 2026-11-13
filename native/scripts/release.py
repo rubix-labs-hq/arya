@@ -122,8 +122,8 @@ def validate_bundle(app, signed=False):
                 "com.apple.security.files.user-selected.read-write",
                 "com.apple.security.files.bookmarks.app-scope",
                 "com.apple.security.network.client",
-                # Sign in with ChatGPT's one-time loopback callback (127.0.0.1 only). Direct builds only;
-                # validate-app-store.py still refuses this entitlement in the Store build.
+                # Sign in with ChatGPT's one-time loopback callback (127.0.0.1 only). The Store build
+                # needs it too; validate-app-store.py checks that.
                 "com.apple.security.network.server"):
         if entitlements.get(key) is not True:
             raise ValueError(f"The app is missing {key}.")
