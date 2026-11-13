@@ -121,8 +121,12 @@ final class NativeAssistant: ObservableObject {
     private var chatgptClient: ChatGPTAssistant?
     private var chatgptClientKey: String?
     private var chatgptObservation: AnyCancellable?
-    /// Set when the person starts ChatGPT sign-in, so a successful sign-in becomes the assistant in one step.
-    var chooseChatGPTAfterSignIn = false
+    /// Tracks a sign-in the person started from Continue with ChatGPT, so its success becomes the
+    /// assistant in one step. Only an attempt seen waiting and then finishing counts; anything else clears it.
+    private enum ChatGPTChoice { case none, started, inFlight }
+    private var chatgptChoice = ChatGPTChoice.none
+    func beginChatGPTChoice() { chatgptChoice = .started }
+    func abandonChatGPTChoice() { chatgptChoice = .none }
     /// Which credential a run uses: the Anthropic API key, the ChatGPT sign-in or the bridge token.
     private enum CredentialRoute { case api, chatgpt, bridge }
     private var credentialRoute: CredentialRoute {
@@ -205,12 +209,18 @@ final class NativeAssistant: ObservableObject {
     private func chatgptChanged() {
         let account = NativeChatGPTAccount.shared
         // First-time setup: a new ChatGPT sign-in becomes the assistant only when none was chosen yet.
-        // A sign-in the person just started from Continue with ChatGPT also becomes the assistant.
-        if UserDefaults.standard.string(forKey: Self.providerPreference) == nil || chooseChatGPTAfterSignIn, account.status.planUsage, task == nil, stoppingTask == nil {
-            chooseChatGPTAfterSignIn = false
-            if provider != "chatgpt" { try? selectProvider("chatgpt") }
+        if UserDefaults.standard.string(forKey: Self.providerPreference) == nil, account.status.planUsage, task == nil, stoppingTask == nil {
+            try? selectProvider("chatgpt")
         }
-        if [.failed, .cancelled, .expired].contains(account.status.phase) { chooseChatGPTAfterSignIn = false }
+        // A sign-in the person just started from Continue with ChatGPT also becomes the assistant.
+        switch (chatgptChoice, account.status.phase) {
+        case (.started, .waiting), (.started, .exchanging): chatgptChoice = .inFlight
+        case (.inFlight, .done):
+            chatgptChoice = .none
+            if account.status.planUsage, task == nil, stoppingTask == nil, provider != "chatgpt" { try? selectProvider("chatgpt") }
+        case (.inFlight, .failed), (.inFlight, .cancelled), (.inFlight, .expired), (.inFlight, .idle): chatgptChoice = .none
+        default: break
+        }
         guard provider == "chatgpt" else { return }
         if chatgptClientKey != nil, chatgptClientKey?.hasPrefix((account.status.identity ?? "-") + "\n") != true { chatgptClient = nil; chatgptClientKey = nil }
         if model.isEmpty, task == nil, let first = account.models.first {
@@ -1706,13 +1716,16 @@ final class ChatGPTKeychainVault: ChatGPTVaultStore, @unchecked Sendable {
 final class NativeChatGPTWebSignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
     static let shared = NativeChatGPTWebSignIn()
     private var session: ASWebAuthenticationSession?
+    private var token: UUID?
 
     func present(_ url: URL) -> Bool {
         dismiss()
+        let token = UUID()
         let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "reelchatgpt") { [weak self] _, error in
             Task { @MainActor in
-                guard let self, self.session != nil else { return }
-                self.session = nil
+                // A sheet Arya closed itself, or one replaced by a newer sheet, changes nothing.
+                guard let self, self.token == token else { return }
+                self.session = nil; self.token = nil
                 // The person closed the sheet before finishing: end the attempt.
                 if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
                     let service = NativeChatGPTAccount.shared.service
@@ -1724,14 +1737,14 @@ final class NativeChatGPTWebSignIn: NSObject, ASWebAuthenticationPresentationCon
         // Reuse the person's existing chatgpt.com sign-in in Safari, so most sign-ins take one tap.
         session.prefersEphemeralWebBrowserSession = false
         session.presentationContextProvider = self
-        self.session = session
-        guard session.start() else { self.session = nil; return false }
+        self.session = session; self.token = token
+        guard session.start() else { self.session = nil; self.token = nil; return false }
         return true
     }
 
     func dismiss() {
         guard let session else { return }
-        self.session = nil
+        self.session = nil; token = nil
         session.cancel()
     }
 
@@ -1955,8 +1968,10 @@ struct NativeChatGPTSettings: View {
     private func start(account id: String? = nil, newAccount: Bool = false, enablePlan: Bool = false) {
         run {
             guard !assistant.isWorking else { notice = "Cancel or finish the current assistant request before changing ChatGPT accounts."; return }
-            assistant.chooseChatGPTAfterSignIn = true
-            let opened = try await account.signIn(account: id, newAccount: newAccount, enablePlan: enablePlan)
+            assistant.beginChatGPTChoice()
+            let opened: Bool
+            do { opened = try await account.signIn(account: id, newAccount: newAccount, enablePlan: enablePlan) }
+            catch { assistant.abandonChatGPTChoice(); throw error }
             notice = opened ? "" : "Arya could not open the sign-in page. Use Open the sign-in page again."
         }
     }
@@ -2069,9 +2084,9 @@ struct NativeAssistantSettings: View {
         }
         if facts.mode == "manual" && ["custom", "gemini-cli"].contains(facts.provider) { return .init(title: "Choose a supported editing connection", detail: "This connection cannot send project data here. Use Claude Code or Codex, or continue manual editing.", section: .accounts) }
         #if os(iOS)
-        if facts.endpointEmpty { return .init(title: "Sign in with ChatGPT", detail: "Continue with ChatGPT signs in with one tap. You can also add an Anthropic API key or connect to Arya on your Mac.", section: .chatgpt) }
+        if facts.endpointEmpty { return .init(title: "Connect to your Mac", detail: "Enter the address and pairing token of Arya on your Mac. Or use Continue with ChatGPT above to sign in with one tap.", section: .companion) }
         #else
-        if facts.endpointEmpty { return .init(title: "Sign in with ChatGPT", detail: "Continue with ChatGPT signs in with one click. To use Claude Code, Codex or Antigravity instead, choose it below and turn on the helper.", section: .chatgpt) }
+        if facts.endpointEmpty { return .init(title: "Turn on the assistant", detail: "Choose your account and sign in below, then turn on the helper to check its status.", section: .companion) }
         #endif
         if !facts.verified { return .init(title: "Reconnect the assistant", detail: "Restart the helper and reconnect below to check your saved account.", section: .companion) }
         if !facts.configured {
@@ -2863,7 +2878,8 @@ struct NativeAssistantSettings: View {
 
     @ViewBuilder private func companionSettings(proxy: ScrollViewProxy) -> some View {
         #if os(iOS)
-        if phoneUsesMac { Section("Connect to your Mac") { companionContent(proxy: proxy) } }
+        // A saved pairing stays manageable even after switching to ChatGPT, an API key or Auto.
+        if phoneUsesMac || !assistant.endpoint.isEmpty || assistant.routingMode == "auto" { Section("Connect to your Mac") { companionContent(proxy: proxy) } }
         #else
         Section("3. Turn on the assistant") { companionContent(proxy: proxy) }
         #endif
