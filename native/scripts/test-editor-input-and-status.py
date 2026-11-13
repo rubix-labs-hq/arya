@@ -230,6 +230,13 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
         require(bladed == "Bladed “arya-test-clip.mp4” at 3.03 s → “arya-test-clip.mp4”.", "Blade rounds the cut time and names both parts: \(bladed)")
         require(NativeStatusText.activity("bladed c1 at 4s → c4", who: "you", project: cutProject) == "Bladed “arya-test-clip.mp4” at 4.00 s → “arya-test-clip.mp4”.", "Whole-second cuts read the same way")
         require(!hasID(NativeStatusText.activity("bladed c1 at 2.5s → c4", who: "you", project: named)), "A cut part that is gone becomes a plain noun")
+        // The caption under a selected clip names its track, never the clip ID.
+        let captionClip = NativeClip(fields: ["id": "c1a", "kind": "audio", "src": "media/arya-test-clip.mp4"])
+        let captionTrack = NativeTrack(fields: ["id": "A1", "name": "Audio 1", "kind": "audio", "clips": [captionClip.fields]])
+        require(NativeClipCaption.text(captionClip, track: captionTrack) == "Audio · Audio 1", "The caption names the track")
+        require(NativeClipCaption.text(captionClip, track: nil) == "Audio", "A layer caption is the kind alone")
+        require(NativeClipCaption.text(captionClip, track: NativeTrack(fields: ["id": "A1"])) == "Audio", "An unnamed track does not show its ID")
+        require(!NativeClipCaption.text(captionClip, track: captionTrack).contains("c1a"), "No clip ID in the caption")
 
         // Device words.
         require(NativeCurveHit.hint.hasPrefix(HOST_CURVE_WORD), "Curve hint uses the platform's word: \(NativeCurveHit.hint)")
@@ -268,6 +275,9 @@ def main():
         block(deliver, 'struct NativeExportRepeatGuard {'),
         block(model, 'enum NativeStatusText {'),
         block(timeline, 'enum NativeTimelineWords {'),
+        block(project, 'struct NativeTrack: Identifiable {'),
+        block(project, 'struct NativeClip: Identifiable {'),
+        block(project, 'enum NativeClipCaption {'),
     ])
     # NativeViewerGeometry and NativeMotionGraphLayout reference neighbours that the checks do not use.
     for marker in ['struct NativeMotionKeyRef:', 'struct NativeMotionKey:', 'enum NativeMotionGraphMode', 'enum NativeMotionMath {', 'enum NativeMotionPropertyChoice {']:

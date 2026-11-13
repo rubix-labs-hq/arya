@@ -703,7 +703,7 @@ struct NativeInterchangeImportSheet: View {
             Text("Caption destination").font(.headline)
             Text(compositionName).font(.callout)
             Picker("Caption track", selection: $importing.options.track) {
-                ForEach(model.tracks.filter { $0.kind == "caption" && !$0.locked }) { track in Text("\(track.id) · \(track.name) · \(track.clips.count) captions").tag(track.id) }
+                ForEach(model.tracks.filter { $0.kind == "caption" && !$0.locked }) { track in Text("\(track.name) · \(track.clips.count) captions").tag(track.id) }
                 Text("\(newTrack) · New caption track").tag(newTrack)
             }.disabled(importing.busy)
             Picker("Import mode", selection: $importing.options.replace) {
