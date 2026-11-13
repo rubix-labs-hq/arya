@@ -196,7 +196,7 @@ private struct NativeImportedFigmaLayers: View {
         let source = NativeSelectionAIContext.figmaNode(clip.fields).map { " · Figma \($0)" } ?? ""
         let properties = clip.fields.dictionary("anim").keys.sorted()
         let motion = properties.isEmpty ? "" : " · Keyframes: \(properties.joined(separator: ", "))"
-        return "\(clip.kind.capitalized) · \(clip.id)\(source)\(motion)"
+        return "\(NativeClipCaption.text(clip, track: nil))\(source)\(motion)"
     }
 }
 

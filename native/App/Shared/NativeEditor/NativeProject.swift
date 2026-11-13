@@ -50,6 +50,16 @@ struct NativeClip: Identifiable {
     var nodes: [[String: Any]] { fields.dictionary("nodes").objects("list") }
 }
 
+/// The caption under a selected clip's name, such as "Audio · Audio 1". It never shows a clip ID.
+enum NativeClipCaption {
+    static func text(_ clip: NativeClip, track: NativeTrack?) -> String {
+        let kind = clip.kind.isEmpty ? "Clip" : clip.kind.capitalized
+        guard let track else { return kind }
+        let name = track.fields.string("name")
+        return name.isEmpty ? kind : "\(kind) · \(name)"
+    }
+}
+
 struct NativeAsset: Identifiable {
     let id: String
     let fields: [String: Any]

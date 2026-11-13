@@ -645,7 +645,7 @@ struct NativeInspector: View {
                             Button { model.selectedID = nil } label: { Image(systemName: "xmark") }
                                 .buttonStyle(NativeToolbarButtonStyle()).accessibilityLabel("Clear selection")
                         }
-                        Text("\(clip.kind.capitalized) · \(clip.id)").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                        Text(NativeClipCaption.text(clip, track: model.tracks.first { $0.clips.contains { $0.id == clip.id } })).font(.caption2).foregroundStyle(NativeEditorStyle.muted)
                         #endif
                         NativeTextRow("Label", value: clip.fields.string("label")) { model.update(clip, ["label": $0]) }.macInspectorAnchor("inspector.label")
                         GroupBox("Timing") {

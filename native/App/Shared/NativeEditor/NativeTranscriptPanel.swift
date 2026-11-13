@@ -1164,7 +1164,7 @@ struct NativeTranscriptPanel: View {
             Toggle("Burn captions into preview and export", isOn: $burnInCaptions)
             Picker("Caption destination", selection: $captionTrack) {
                 Text("\(nextCaptionTrack) · New caption track").tag("")
-                ForEach(model.tracks.filter { $0.kind == "caption" && !$0.locked }) { track in Text("\(track.id) · \(track.name)").tag(track.id) }
+                ForEach(model.tracks.filter { $0.kind == "caption" && !$0.locked }) { track in Text(track.name).tag(track.id) }
             }
             if !captionTrack.isEmpty {
                 Toggle("Replace this track's captions", isOn: $replaceCaptions)
