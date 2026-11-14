@@ -74,6 +74,16 @@ test('coarse pointers get 44px targets across workflow, viewer, colour and audio
   assert.match(coarse, /\.strip \{ min-width: 108px; \}/, 'two 44px mute/solo targets fit inside the strip')
 })
 
+test('phone Audio gives the mixer content height and keeps its channels scrollable', async () => {
+  const css = await fs.readFile(new URL('../web/styles.css', import.meta.url), 'utf8')
+  const phone = css.slice(css.indexOf('@container (max-width: 560px)'), css.indexOf('.tl-toolbar { overflow-x:'))
+  assert.match(phone, /\.page\.audio \.audio-top \{ flex: none; min-height: 0;.*grid-template-rows: auto auto minmax\(220px, auto\);/)
+  assert.match(phone, /\.audio-monitor :is\(\.viewer-info, \.viewer-bar, \.viewer-stage, \.src-scrub\) \{ display: none; \}/)
+  assert.doesNotMatch(phone, /\.transport.*display: none/, 'timecode and playback stay available')
+  assert.match(phone, /\.mixer \{ flex: none; height: 520px; overflow-x: auto; \}/)
+  assert.match(phone, /\.mixer \.fader \{ height: auto; \}/, 'vertical sliders stretch inside their row without inflating intrinsic height')
+})
+
 test('usePhoneLayout reads the query, follows change events and removes its listener', async () => {
   const listeners = []
   const query = { matches: false, addEventListener: (type, fn) => listeners.push(['add', type, fn]), removeEventListener: (type, fn) => listeners.push(['remove', type, fn]) }

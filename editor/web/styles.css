@@ -612,9 +612,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 }
 
 @container (max-width: 560px) {
-  .audio-top { grid-template-columns: minmax(0, 1fr); grid-template-rows: 180px 260px 220px; overflow: auto; }
+  .page.audio .audio-top { flex: none; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(220px, auto); }
   .audio-monitor { grid-column: 1; grid-row: 1; }
+  .audio-monitor :is(.viewer-info, .viewer-bar, .viewer-stage, .src-scrub) { display: none; }
   .mixer-panel { grid-column: 1; grid-row: 2; }
+  .mixer { flex: none; height: 520px; overflow-x: auto; }
+  .mixer .fader { height: auto; }
   .audio-tools { grid-column: 1; grid-row: 3; }
 }
 
