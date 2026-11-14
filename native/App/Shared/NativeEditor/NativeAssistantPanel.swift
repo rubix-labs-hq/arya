@@ -773,6 +773,8 @@ struct NativeAssistantPanel: View {
         do {
             if assistant.provider != "chatgpt" { try assistant.selectProvider("chatgpt") }
             try assistant.update(apiKey: nil, model: slug)
+            // A chosen model only takes effect in Manual routing.
+            if assistant.routingMode != "manual" { try assistant.setRouting(mode: "manual", effort: "") }
         } catch { model.status = error.localizedDescription }
     }
 
