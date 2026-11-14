@@ -117,6 +117,7 @@ private struct NativeScriptImportPresenter: View {
 struct NativeAssistantPanel: View {
     @ObservedObject var assistant: NativeAssistant
     @ObservedObject var model: NativeEditorModel
+    @ObservedObject private var chatGPT = NativeChatGPTAccount.shared
     var openSettings: (() -> Void)?
     var close: (() -> Void)?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -761,6 +762,22 @@ struct NativeAssistantPanel: View {
         return !assistant.modelOptions.contains { $0.string("provider") == "claude-code" && $0.flag("isDefault") }
     }
 
+    /// Models OpenAI lists for the signed-in ChatGPT account, when plan usage is on.
+    private var chatGPTMenuModels: [ChatGPTModel] {
+        guard NativeChatGPT.supported, chatGPT.status.signedIn, chatGPT.status.planUsage,
+              !assistant.modelOptions.contains(where: { $0.string("provider") == "chatgpt" }) else { return [] }
+        return chatGPT.models
+    }
+
+    private func chooseChatGPTModel(_ slug: String) {
+        do {
+            if assistant.provider != "chatgpt" { try assistant.selectProvider("chatgpt") }
+            try assistant.update(apiKey: nil, model: slug)
+            // A chosen model only takes effect in Manual routing.
+            if assistant.routingMode != "manual" { try assistant.setRouting(mode: "manual", effort: "") }
+        } catch { model.status = error.localizedDescription }
+    }
+
     private var modelControls: some View {
             Menu {
                 if assistant.routingSupported && !assistant.autoModels.isEmpty {
@@ -802,6 +819,17 @@ struct NativeAssistantPanel: View {
                                         Label(item.string("name", item.string("id")), systemImage: "checkmark")
                                     } else { Text(item.string("name", item.string("id"))) }
                                 }
+                            }
+                        }
+                    }
+                }
+                // A signed-in ChatGPT plan lists its models here too, like the picker in Assistant settings.
+                if !chatGPTMenuModels.isEmpty {
+                    Section(NativeAssistant.providerName("chatgpt")) {
+                        ForEach(chatGPTMenuModels, id: \.slug) { item in
+                            Button { chooseChatGPTModel(item.slug) } label: {
+                                if assistant.provider == "chatgpt" && assistant.model == item.slug { Label(item.displayName, systemImage: "checkmark") }
+                                else { Text(item.displayName) }
                             }
                         }
                     }
@@ -1110,6 +1138,10 @@ private struct NativeAssistantPreviewCard: View {
                     .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 6))
                 }
                 if receipt.clips.count > 6 { note("\(receipt.clips.count - 6) more layers change.") }
+                if !receipt.scopes.isEmpty { note("Settings: \(receipt.scopes.map(\.name).joined(separator: ", ")).") }
+                // Everything Apply will change, with values, so nothing is approved unseen.
+                DisclosureGroup("Show all changes") { allChanges(receipt) }
+                    .font(.caption).frame(minHeight: 44).accessibilityIdentifier("editor.assistant.previewAllChanges")
             }
             if !stale {
                 ForEach(Array(proposal.previews.enumerated()), id: \.offset) { index, step in
@@ -1140,6 +1172,30 @@ private struct NativeAssistantPreviewCard: View {
     }
 
     private func note(_ text: String) -> Text { Text(text).font(.caption).foregroundStyle(NativeEditorStyle.muted) }
+
+    private func allChanges(_ receipt: NativeChangeReceipt) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(receipt.scopes.enumerated()), id: \.offset) { _, scope in
+                changeGroup(title: "\(scope.name) · \(scope.status)", changes: scope.changes)
+            }
+            ForEach(receipt.clips) { clip in
+                changeGroup(title: "\(proposal.names[clip.clipID] ?? clip.name) · \(clip.compositionName) · \(clip.status)", changes: clip.changes)
+            }
+            if receipt.truncated {
+                note("Arya shortened this list. It shows \(receipt.clips.count) of \(receipt.totalClips) layers and \(receipt.scopes.count) of \(receipt.totalScopes) settings groups.")
+            }
+        }.padding(.top, 4).textSelection(.enabled)
+    }
+
+    private func changeGroup(title: String, changes: [NativeChangeReceipt.Change]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.system(size: 11, weight: .medium)).fixedSize(horizontal: false, vertical: true)
+            ForEach(Array(changes.flatMap(Self.readable).enumerated()), id: \.offset) { _, change in
+                Text("\(change.property): \(change.before) → \(change.after)").font(.system(size: 10.5, design: .monospaced))
+                    .foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 
     /// grade.exposure: Absent → 0.3 instead of /grade: Absent → {"exposure":0.2999…}.
     static func readable(_ change: NativeChangeReceipt.Change) -> [(property: String, before: String, after: String)] {

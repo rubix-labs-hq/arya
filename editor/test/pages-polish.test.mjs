@@ -11,6 +11,11 @@ const html = htm.bind(h)
 const walk = (node, out = []) => { if (Array.isArray(node)) node.forEach(n => walk(n, out)); else if (node && typeof node === 'object') { if (typeof node.type === 'function') return walk(node.type(node.props), out); out.push(node); walk(node.props?.children, out) } return out }
 const text = node => walk([node]).flatMap(n => [n.props?.children].flat()).filter(c => typeof c === 'string' || typeof c === 'number').join('')
 
+test('the transcript file picker fits its panel and retains the editor button style', () => {
+  assert.match(css, /#transcript-import \{ display: block; width: 100%; max-width: 100%; min-width: 0; margin-top: 4px; \}/)
+  assert.match(css, /#transcript-import::file-selector-button \{[^}]*font: inherit;[^}]*background: var\(--panel-2\);[^}]*border: 1px solid var\(--line-2\);[^}]*border-radius: 6px;/)
+})
+
 test('Motion tools render named icon buttons whose pressed state follows the tool', () => {
   const page = read('ui/motion/page.js')
   const body = page.slice(page.indexOf('const SHAPES ='), page.indexOf('function LeftPanel()'))

@@ -30,7 +30,14 @@ const PRESETS = [
 ]
 
 // The tip card counts only exports started in this tab, even if Deliver closed before the reply.
-const noteStartedExport = job => { if (job?.id) set({ startedExports: [...(store.startedExports ?? []), job.id].slice(-20) }) }
+// Retry re-sends exactly what this tab requested, including the composition, so it never renders something else.
+const requestedSpecs = new Map()
+const noteStartedExport = (job, spec) => {
+  if (!job?.id) return
+  requestedSpecs.set(job.id, spec)
+  while (requestedSpecs.size > 20) requestedSpecs.delete(requestedSpecs.keys().next().value)
+  set({ startedExports: [...(store.startedExports ?? []), job.id].slice(-20) })
+}
 
 export function DeliverPage() {
   const s = useStore()
@@ -42,6 +49,7 @@ export function DeliverPage() {
   const [rangeMode, setRangeMode] = useState(p.range ? 'range' : 'all')
   const [width, setWidth] = useState(null)
   const [fps, setFps] = useState(null)
+  const [dismissed, setDismissed] = useState({ root: s.root, ids: [] })
   const outW = width ?? choice.width ?? p.width
   const outH = Math.round((outW * p.height) / p.width / 2) * 2
   const range = rangeMode === 'range' && p.range ? p.range : { in: 0, out: duration(p) }
@@ -61,15 +69,18 @@ export function DeliverPage() {
         const { startNativeExport } = await import('../engine/export-webcodecs.js')
         guard.assertCurrent()
         const { job, completion } = await startNativeExport(project, spec)
-        noteStartedExport(job)
+        noteStartedExport(job, spec)
         completion.catch(error => { if (guard.isCurrent() && error.message !== 'cancelled') toast(error.message, 'error') })
-      } else noteStartedExport(await api('/api/export', spec))
+      } else noteStartedExport(await api('/api/export', spec), spec)
     },
   })
   useEffect(() => () => request.current.dispose(), [])
   const renderRequest = request.current.state()
   const requestPending = ['pending', 'stale-pending'].includes(renderRequest.phase)
 
+  const exportJobs = s.jobs.filter(job => job.kind === 'export' && !(dismissed.root === s.root && dismissed.ids.includes(job.id)))
+  const dismiss = id => setDismissed(previous => ({ root: s.root, ids: [...(previous.root === s.root ? previous.ids : []), id] }))
+  const retry = job => request.current.run(requestedSpecs.get(job.id), native ? s.project : null)
   const render = () => request.current.run({ preset: choice.preset, name, width: outW, height: outH, fps: fps ?? p.fps, range, ...(composition ? { comp: s.openComp } : {}) }, native ? s.project : null)
   const still = async () => {
     try {
@@ -104,7 +115,7 @@ export function DeliverPage() {
         </div></div>
         <div class="kv"><span>Length</span><b>${timecode(range.out - range.in, p.fps)}</b></div>
         <div class="kv"><span>Output</span><b>renders/${name.replace(/[^\w.-]+/g, '-')}.${choice.preset.startsWith('prores') ? 'mov' : choice.preset === 'gif' ? 'gif' : choice.preset === 'audio-wav' ? 'wav' : choice.preset === 'audio-m4a' ? 'm4a' : choice.preset === 'png-seq' ? 'png…' : 'mp4'}</b></div>
-        <div class="row gap deliver-actions"><button class="primary" disabled=${requestPending} aria-busy=${requestPending} onClick=${render}>${renderRequest.phase === 'stale-pending' ? 'Waiting for previous request…' : renderRequest.phase === 'pending' ? 'Preparing render…' : renderRequest.phase === 'failed' ? 'Retry render' : '⇪ Render'}</button><button class="ghost" disabled=${host.kind === 'browser-local'} title=${host.kind === 'browser-local' ? 'Still-frame saving is not yet available in the hosted beta.' : undefined} onClick=${still}>Save still frame</button></div>
+        <div class="row gap deliver-actions"><button class="primary" disabled=${requestPending} aria-busy=${requestPending} onClick=${render}><span aria-hidden="true">⇪</span> ${renderRequest.phase === 'stale-pending' ? 'Waiting for previous request…' : renderRequest.phase === 'pending' ? 'Preparing render…' : renderRequest.phase === 'failed' ? 'Retry render' : 'Render'}</button><button class="ghost" disabled=${host.kind === 'browser-local'} title=${host.kind === 'browser-local' ? 'Still-frame saving is not yet available in the hosted beta.' : undefined} onClick=${still}>Save still frame</button></div>
         ${renderRequest.phase === 'failed' ? html`<div class="hint" role="alert">Render could not start: ${renderRequest.error} Retry when you’re ready.</div>` : null}
         <div class="hint">${host.kind === 'browser-local' ? 'Your browser renders the GPU compositor and audio mix, then saves the completed file on this device. Use Download in Saved exports. Keep this tab open during rendering. The hosted beta supports exports up to five minutes. Available presets depend on the browser codecs.' : native ? 'Renders use the viewer compositor and audio mixer. WebCodecs encodes the file and Arya saves it in your project. For ProRes, GIF or PNG sequences, turn off View > Web Editor and render from the Deliver page.' : 'Renders use the same compositor as the viewer, in a background browser, encoded by ffmpeg.'}</div>
         ${registry.deliver.length ? html`<h3>Interchange</h3><div class="row gap wrap">${registry.deliver.map(a => html`<button class="ghost" onClick=${() => a.run(p)}>${a.label}</button>`)}</div>` : null}
@@ -113,15 +124,16 @@ export function DeliverPage() {
       <div class="panel deliver-queue">
         <h3>Render queue</h3>
         ${requestPending ? html`<div class="hint" role="status" aria-live="polite">${renderRequest.phase === 'stale-pending' ? 'A render request for the previous timeline is still waiting for confirmation. Wait for confirmation before starting another.' : 'Preparing the render. Waiting for confirmation.'}</div>` : null}
-        ${!requestPending && s.jobs.filter(j => j.kind === 'export').length === 0 ? html`<div class="empty-hint">Nothing rendered yet. Choose a preset, then press Render.</div>` : null}
-        ${[...s.jobs].filter(j => j.kind === 'export').reverse().map(j => html`
+        ${!requestPending && exportJobs.length === 0 ? html`<div class="empty-hint">Nothing rendered yet. Choose a preset, then press Render.</div>` : null}
+        ${[...exportJobs].reverse().map(j => html`
           <div class=${`job ${j.state}`}>
             <div class="job-name"><b>${(j.output ?? j.spec?.out ?? '').split('/').pop()}</b><span class="muted">${j.spec?.preset} · ${j.spec?.width}×${j.spec?.height}</span></div>
             <div class="bar"><div style=${{ width: `${Math.round((j.progress ?? 0) * 100)}%` }}></div></div>
             <div class="row gap">
-              <span class="muted small">${j.state === 'done' ? `done in ${((j.finished - j.created) / 1000).toFixed(1)}s` : j.state === 'failed' ? j.error : `${Math.round((j.progress ?? 0) * 100)}%`}</span>
+              <span class="muted small">${j.state === 'done' ? `done in ${((j.finished - j.created) / 1000).toFixed(1)}s` : j.state === 'failed' ? /render worker did not start/i.test(j.error ?? '') ? 'The render could not start. Try again.' : j.error || 'The render could not finish. Try again.' : `${Math.round((j.progress ?? 0) * 100)}%`}</span>
               <span class="grow"></span>
               ${j.state === 'running' || j.state === 'queued' ? html`<button class="ghost tiny" onClick=${() => api('/api/jobs/cancel', { id: j.id })}>Cancel</button>` : null}
+              ${j.state === 'failed' ? html`${requestedSpecs.has(j.id) ? html`<button class="ghost tiny" disabled=${requestPending} onClick=${() => retry(j)}>Retry</button>` : null}<button class="ghost tiny" onClick=${() => dismiss(j.id)}>Dismiss</button>` : null}
               ${j.deliveryWarning ? html`<span class="hint">${j.deliveryWarning}</span>` : null}
             </div>
           </div>`)}

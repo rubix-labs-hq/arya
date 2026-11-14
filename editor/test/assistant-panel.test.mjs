@@ -124,3 +124,33 @@ test('a preview with processing steps lists what each renders and where it lands
   button(failed, 'Dismiss').props.onClick(); assert.equal(dismissed, 1)
   assert.equal(assistantPanel.ApplyingCard({ applying: null }), null)
 })
+
+
+test('transition-only selections never suggest whole-timeline edits', () => {
+  const p = interview()
+  assert.deepEqual(assistantSuggestions(p, { selection: ['tr:c2'] }), [])
+  assert.deepEqual(assistantSuggestions(p, { selection: ['tr:c1', 'tr:c2'] }), [])
+  assert.ok(assistantSuggestions(p).some(item => item.id === 'silences'))
+})
+
+
+test('Show all changes includes every receipt layer, setting and property value', () => {
+  const p = interview()
+  const ops = [
+    ...Array.from({ length: 8 }, (_, i) => ({ op: 'add_title', text: `Title ${i}`, start: i, dur: 1 })),
+    { op: 'update', id: 'c1', set: { opacity: 0.7, gain: -3, mute: true, label: 'New label', speed: 1.2 } },
+    { op: 'project', set: { width: 1080, height: 1920 } },
+  ]
+  const proposal = { ops, baseVersion: 1 }
+  const receipt = assistantPanel.previewChanges(p, proposal).receipt
+  const tree = assistantPanel.PreviewCard({ proposal, project: p, version: 1 })
+  const details = nodes(tree).find(node => node.type === 'details' && text(node).startsWith('Show all changes'))
+  assert.ok(details)
+  for (const item of [...receipt.scopes, ...receipt.clips]) for (const change of item.changes) {
+    assert.ok(text(details).includes(change.property))
+    assert.ok(text(details).includes(change.before))
+    assert.ok(text(details).includes(change.after))
+  }
+  assert.match(text(details), /1080.*1920/s)
+  assert.equal(nodes(details).some(node => ['button', 'input'].includes(node.type)), false)
+})

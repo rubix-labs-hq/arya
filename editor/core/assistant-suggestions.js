@@ -26,6 +26,8 @@ const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one :
 /** Up to four { id, label, prompt } suggestions for the current project, selection and timeline. */
 export function assistantSuggestions(project, { selection = [], comp = null } = {}) {
   if (!project) return []
+  // A transition selection must never turn into an instruction for the whole timeline.
+  if (selection.length && selection.every(id => String(id).startsWith('tr:'))) return []
   const scope = scopeOf(project, comp)
   const all = clipsOf(scope)
   const ids = new Set(selection.filter(id => !String(id).startsWith('tr:')))

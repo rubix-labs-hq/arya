@@ -66,3 +66,21 @@ test('clip strip cards are named buttons that show the clip name', () => {
   assert.deepEqual(patches, [{ selection: ['c2'] }])
   assert.deepEqual(seeks, [5])
 })
+
+
+test('the Color hint offers the same serial corrector action as the node editor', () => {
+  const body = source.slice(source.indexOf('const PALETTES ='), source.indexOf('export function ColorPage()'))
+  const clip = { id: 'c1', kind: 'video', src: 'a.mp4' }
+  let selected = { id: 'primary', type: 'primary' }
+  const calls = []
+  const Palettes = new Function('html', 'useStore', 'selectedNode', 'gradeTarget', 'graphOf', 'nodeNumbers', 'nodeTitle', 'store', 'TYPE_LABEL', 'nodeActions', 'GradeControls', `${body}\nreturn Palettes`)(
+    htm.bind(h), () => ({ selection: ['c1'] }), () => selected, () => ({ key: 'primary' }), () => ({}), () => new Map(), () => 'Primary', { project: {} }, {},
+    (...args) => ({ serial: () => calls.push(args) }), () => null)
+  const nodes = walk(Palettes({ clip }))
+  const hint = nodes.find(n => n.props?.role === 'note')
+  assert.ok(hint.props.children.includes('Add a corrector with + Serial to use Qualifier and Window. '))
+  walk(hint).find(n => n.type === 'button').props.onClick()
+  assert.deepEqual(calls, [[clip, 'primary']])
+  selected = { id: 'corrector', type: 'corrector' }
+  assert.equal(walk(Palettes({ clip })).some(n => n.props?.role === 'note'), false)
+})

@@ -43,6 +43,14 @@
 
 @media (pointer: coarse) {
   .phone-switch button, .phone-readout button, .phone-edit .transport button { min-height: 44px; min-width: 44px; }
+  .pages button, .tab-scroll .tabs button, .seg button, .tl-toolbar .tools button, button.tiny,
+  .viewer-bar > button:has(> .ico), .transport .buttons button, .deliver-actions button,
+  .page.color .palette-tabs button, .page.color .grade-look .look-grid button,
+  .page.color .grade-actions button, .strip button { min-height: 44px; min-width: 44px; }
+  .node-bar { height: auto; min-height: 52px; }
+  input[type=range] { min-height: 44px; }
+  input[type=range].fader { min-width: 44px; }
+  .strip { min-width: 108px; }
 }
 
 /* Wrapper visibility also covers the existing compact tablet layout. */

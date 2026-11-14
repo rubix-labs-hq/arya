@@ -104,7 +104,7 @@ test('actual DeliverPage disables Render and announces preparation before its re
   assert.equal(f.find(rendered, 'Nothing rendered yet.'), null)
   await busy.click(); assert.equal(f.calls.length, 1)
   f.resolve({ id: 'synthetic-job' }); await pending
-  assert.equal(f.button(f.render()).label, '⇪ Render')
+  assert.equal(f.button(f.render()).label, 'Render')
   assert.equal(f.toasts.length, 1)
 })
 
@@ -112,6 +112,7 @@ test('actual DeliverPage keeps startup failure in an alert and labels the next a
   const f = component(), pending = f.button(f.render()).click()
   f.reject(new Error('Synthetic worker startup failure')); await pending
   const rendered = f.render(), alert = f.find(rendered, 'role="alert"'), retry = f.button(rendered)
+  assert.ok(alert.strings.join('').includes('Render could not start: '))
   assert.ok(alert.values.includes('Synthetic worker startup failure'))
   assert.equal(retry.label, 'Retry render')
   assert.equal(retry.disabled, false); assert.equal(retry.busy, false)
@@ -137,4 +138,40 @@ test('the Mac Web Editor offers only presets its WebCodecs route can render', ()
   assert.ok(mac.includes('YouTube 1080p') && !mac.includes('ProRes 4444') && !mac.includes('palette-optimized'), 'ProRes and GIF are hidden in the Mac Web Editor')
   const full = offered(component({ hostKind: 'server', caps: { presets: nativePresets, webPresets } }).render())
   assert.ok(full.includes('ProRes 4444'), 'the server editor still offers every preset it renders')
+})
+
+
+test('failed queue rows retry the exact spec this tab requested, including the composition, and can be dismissed', async () => {
+  const f = component()
+  f.state.openComp = 'intro'; f.state.project = { ...f.state.project, comps: { intro: { name: 'Intro', range: { in: 0, out: 1 } } } }
+  const started = f.button(f.render()).click()
+  f.resolve({ id: 'failed-job' }); await started
+  const requested = JSON.parse(JSON.stringify(f.calls[0]))
+  assert.equal(requested[1].comp, 'intro')
+  // The composition closes before the user retries; the retry must still render the composition.
+  f.state.openComp = null
+  f.state.jobs = [
+    { id: 'failed-job', kind: 'export', state: 'failed', error: 'the render worker did not start', spec: { preset: 'h264-web', out: 'renders/intro.mp4' } },
+    { id: 'other-tab-job', kind: 'export', state: 'failed', error: 'Encoder ran out of memory', spec: { preset: 'h264-web', out: 'renders/other.mp4' } },
+    { id: 'done-job', kind: 'export', state: 'done', spec: { preset: 'h264-web', out: 'renders/success.mp4' } },
+  ]
+  const rows = f.render().values.flat(Infinity).filter(value => value?.strings?.join('').includes('job-name'))
+  const ours = rows.find(value => JSON.stringify(value).includes('intro.mp4')), theirs = rows.find(value => JSON.stringify(value).includes('other.mp4'))
+  assert.ok(ours.values.includes('The render could not start. Try again.'))
+  assert.ok(theirs.values.includes('Encoder ran out of memory'))
+  assert.ok(f.find(ours, '>Retry</button>'), 'a job this tab started can be retried')
+  assert.equal(f.find(theirs, '>Retry</button>'), null, 'a job from elsewhere has no spec to retry')
+  await f.find(ours, '>Retry</button>').values[1]()
+  assert.deepEqual(JSON.parse(JSON.stringify(f.calls[1])), requested)
+  f.find(ours, '>Dismiss</button>').values[1]()
+  const remaining = f.render().values.flat(Infinity).filter(value => value?.strings?.join('').includes('job-name')).map(value => JSON.stringify(value))
+  assert.equal(remaining.length, 2)
+  assert.ok(!remaining.some(row => row.includes('intro.mp4')))
+})
+
+
+test('Render has a plain accessible label and hides its decorative arrow', () => {
+  const f = component(), rendered = f.render()
+  assert.equal(f.button(rendered).label, 'Render')
+  assert.match(f.find(rendered, 'deliver-actions').strings.join(''), /<span aria-hidden="true">⇪<\/span>/)
 })

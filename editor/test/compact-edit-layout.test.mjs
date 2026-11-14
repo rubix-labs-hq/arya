@@ -194,26 +194,27 @@ test('selection context follows the current composition without editing the sele
   f.pick('Inspector'); f.pick('Viewer'); assert.deepEqual(f.state, before)
 })
 test('More exposes existing actions and keeps the project name available', t => {
-  const f = fixture(t), tree = f.top(), button = f.button('Editor actions')
+  const f = fixture(t), tree = f.top(), button = f.button('More editor actions')
+  assert.ok(button.props['aria-label'].startsWith(text(button)), 'accessible name starts with visible More label')
   assert.equal(button.props['aria-expanded'], false); assert.equal(nodes(tree).find(node => cls(node, 'proj')).props.title, f.state.project.name)
-  button.props.onClick(); assert.equal(f.button('Editor actions').props['aria-expanded'], true)
+  button.props.onClick(); assert.equal(f.button('More editor actions').props['aria-expanded'], true)
   const list = actionList(f.top()); assert.equal(cls(list, 'open'), true)
   for (const label of ['Recovery', 'Undo', 'Redo', 'Keyboard shortcuts', 'Settings', 'Close actions']) assert(nodes(list).some(node => node.type === 'button' && (node.props['aria-label'] === label || node.props['aria-label']?.startsWith(label + ', ') || text(node) === label)), label)
   assert.equal(nodes(list).filter(node => node.type === f.layout.LayoutMenu).length, 1)
   assert.deepEqual(f.requests, []); assert.deepEqual(f.mutations, [])
 })
 test('Escape closes More and restores its trigger while other keys keep native behavior', t => {
-  const f = fixture(t, { width: 390 }); f.button('Editor actions').props.onClick(); let prevented = 0, stopped = 0
+  const f = fixture(t, { width: 390 }); f.button('More editor actions').props.onClick(); let prevented = 0, stopped = 0
   const event = key => ({ key, preventDefault: () => prevented++, stopPropagation: () => stopped++ })
-  actionGroup(f.top()).props.onKeyDown(event(' ')); assert.equal(prevented, 0); assert.equal(f.button('Editor actions').props['aria-expanded'], true)
-  actionGroup(f.top()).props.onKeyDown(event('Escape')); assert.equal(prevented, 1); assert.equal(stopped, 1); assert.equal(f.focusCount(), 1); assert.equal(f.button('Editor actions').props['aria-expanded'], false)
+  actionGroup(f.top()).props.onKeyDown(event(' ')); assert.equal(prevented, 0); assert.equal(f.button('More editor actions').props['aria-expanded'], true)
+  actionGroup(f.top()).props.onKeyDown(event('Escape')); assert.equal(prevented, 1); assert.equal(stopped, 1); assert.equal(f.focusCount(), 1); assert.equal(f.button('More editor actions').props['aria-expanded'], false)
   actionGroup(f.top()).props.onKeyDown(event('Escape')); assert.equal(prevented, 1)
 })
 test('focus within More keeps it open; leaving closes it without stealing focus', t => {
-  const f = fixture(t, { width: 390 }); f.button('Editor actions').props.onClick()
-  actionGroup(f.top()).props.onFocusOut({ currentTarget: { contains: () => true }, relatedTarget: {} }); assert.equal(f.button('Editor actions').props['aria-expanded'], true)
-  actionGroup(f.top()).props.onFocusOut({ currentTarget: { contains: () => false }, relatedTarget: {} }); assert.equal(f.button('Editor actions').props['aria-expanded'], false); assert.equal(f.focusCount(), 0)
-  f.button('Editor actions').props.onClick(); f.button('Close actions').props.onClick(); assert.equal(f.focusCount(), 1); assert.equal(f.button('Editor actions').props['aria-expanded'], false)
+  const f = fixture(t, { width: 390 }); f.button('More editor actions').props.onClick()
+  actionGroup(f.top()).props.onFocusOut({ currentTarget: { contains: () => true }, relatedTarget: {} }); assert.equal(f.button('More editor actions').props['aria-expanded'], true)
+  actionGroup(f.top()).props.onFocusOut({ currentTarget: { contains: () => false }, relatedTarget: {} }); assert.equal(f.button('More editor actions').props['aria-expanded'], false); assert.equal(f.focusCount(), 0)
+  f.button('More editor actions').props.onClick(); f.button('Close actions').props.onClick(); assert.equal(f.focusCount(), 1); assert.equal(f.button('More editor actions').props['aria-expanded'], false)
 })
 test('Undo and Redo retain the existing API and project update behavior', async t => {
   const f = fixture(t); await f.button('Undo').props.onClick(); await f.button('Redo').props.onClick()
@@ -227,7 +228,7 @@ test('Settings and recovery still respect sharing review ownership', t => {
 })
 test('queued delivery progress stays visible on More and routes through the existing action', t => {
   const f = fixture(t); f.state.jobs = [{ state: 'queued', progress: 0.12 }]
-  assert.equal(text(f.button('Editor actions')), 'More 12%'); assert.equal(f.button('Editor actions').props['aria-label'], 'Editor actions, delivery 12%'); f.button('Open delivery progress').props.onClick(); assert.equal(f.state.page, 'deliver')
+  assert.equal(text(f.button('More editor actions')), 'More 12%'); assert.equal(f.button('More editor actions').props['aria-label'], 'More editor actions, delivery 12%'); f.button('Open delivery progress').props.onClick(); assert.equal(f.state.page, 'deliver')
 })
 test('Assistant and keyboard controls keep their existing state transitions', t => {
   const f = fixture(t), before = copy(f.state.project)
@@ -286,7 +287,7 @@ function modalFixture(t) {
     openRecovery(options) { recoveryCaptured = document.activeElement; recoveryDialog = openProjectRecovery({ document, ...options }); return recoveryDialog },
   })
   const originalTrigger = document.createElement('button'); document.body.append(originalTrigger)
-  originalTrigger.visible = () => !f.moreTrigger.getClientRects().length || f.button('Editor actions').props['aria-expanded']
+  originalTrigger.visible = () => !f.moreTrigger.getClientRects().length || f.button('More editor actions').props['aria-expanded']
   t.after(() => { settingsCleanup?.(); if (recoveryDialog && !recoveryDialog.controller.state.busy) recoveryDialog.close() })
   const enter = action => { originalTrigger.focus(); const value = f.button(action).props.onClick(); actionGroup(f.top()).props.onFocusOut({ currentTarget: { contains: () => false }, relatedTarget: document.activeElement }); return value }
   const close = action => {
@@ -298,10 +299,10 @@ function modalFixture(t) {
 
 for (const action of ['Settings', 'Recovery']) test(`${action} opened from compact More restores the visible More trigger`, async t => {
   const m = modalFixture(t), { f, document } = m
-  f.button('Editor actions').props.onClick(); m.enter(action)
+  f.button('More editor actions').props.onClick(); m.enter(action)
   assert.equal(m.captured(action), f.moreTrigger, 'The actual modal capture must occur after the visible-trigger handoff')
   assert.notEqual(document.activeElement, f.moreTrigger, 'The actual modal must receive focus')
-  assert.equal(f.button('Editor actions').props['aria-expanded'], false); assert.equal(m.originalTrigger.visible(), false)
+  assert.equal(f.button('More editor actions').props['aria-expanded'], false); assert.equal(m.originalTrigger.visible(), false)
   await Promise.resolve()
   assert.equal(m.close(action), true); assert.equal(document.activeElement, f.moreTrigger); assert.equal(f.moreTrigger.getClientRects().length, 1)
   if (action === 'Settings') { assert.equal(m.mounted.current, false); assert.equal(m.settingsRefreshes(), 1) }
@@ -309,28 +310,28 @@ for (const action of ['Settings', 'Recovery']) test(`${action} opened from compa
 })
 for (const action of ['Settings', 'Recovery']) test(`${action} on desktop keeps its original visible opener after resizing out of More`, async t => {
   const m = modalFixture(t), { f, document } = m
-  f.button('Editor actions').props.onClick(); f.resize(1200); m.enter(action)
+  f.button('More editor actions').props.onClick(); f.resize(1200); m.enter(action)
   assert.equal(f.moreTrigger.getClientRects().length, 0); assert.equal(m.captured(action), m.originalTrigger); assert.equal(f.focusCount(), 0)
   await Promise.resolve()
   assert.equal(m.close(action), true); assert.equal(document.activeElement, m.originalTrigger); assert.equal(m.originalTrigger.visible(), true); assert.equal(f.focusCount(), 0)
 })
 test('stale modal actions do not move focus or open a dialog during sharing review', t => {
   const m = modalFixture(t), { f, document } = m
-  f.button('Editor actions').props.onClick()
+  f.button('More editor actions').props.onClick()
   const staleSettings = f.button('Settings').props.onClick, staleRecovery = f.button('Recovery').props.onClick
   m.originalTrigger.focus(); f.state.assistantSharingReviewOpen = true
   staleSettings(); staleRecovery()
   assert.equal(document.activeElement, m.originalTrigger); assert.equal(f.focusCount(), 0)
-  assert.equal(f.button('Editor actions').props['aria-expanded'], true); assert.equal(f.state.settingsOpen, false)
+  assert.equal(f.button('More editor actions').props['aria-expanded'], true); assert.equal(f.state.settingsOpen, false)
   assert.equal(m.captured('Settings'), undefined); assert.equal(m.captured('Recovery'), undefined); assert.deepEqual(f.requests, []); assert.deepEqual(f.mutations, [])
 })
 
 test('Escape after resizing More to desktop keeps focus on the visible desktop action', t => {
   const m = modalFixture(t), { f, document } = m
-  f.button('Editor actions').props.onClick(); f.resize(1200); m.originalTrigger.focus()
+  f.button('More editor actions').props.onClick(); f.resize(1200); m.originalTrigger.focus()
   let prevented = 0, stopped = 0
   actionGroup(f.top()).props.onKeyDown({ key: 'Escape', preventDefault: () => prevented++, stopPropagation: () => stopped++ })
-  assert.equal(prevented, 1); assert.equal(stopped, 1); assert.equal(f.button('Editor actions').props['aria-expanded'], false)
+  assert.equal(prevented, 1); assert.equal(stopped, 1); assert.equal(f.button('More editor actions').props['aria-expanded'], false)
   assert.equal(document.activeElement, m.originalTrigger); assert.equal(f.focusCount(), 0); assert.equal(f.moreTrigger.getClientRects().length, 0)
 })
 

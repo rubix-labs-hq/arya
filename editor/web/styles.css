@@ -216,6 +216,7 @@ label.btn { background: var(--accent); color: var(--accent-ink); border-radius: 
 .tl-toolbar { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-bottom: 1px solid var(--line); flex: none; }
 .tl-toolbar .tools button { font-size: 14px; min-width: 32px; }
 .tl-toolbar input[type=range] { width: 120px; }
+.tl-zoom { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .timeline { flex: 1; display: flex; min-height: 0; position: relative; }
 .timeline.empty { display: grid; place-items: center; color: var(--muted); }
 .track-headers { flex: none; border-right: 1px solid var(--line); overflow: clip; position: relative; background: #181b16; }
@@ -378,6 +379,7 @@ label.btn { background: var(--accent); color: var(--accent-ink); border-radius: 
 .media-center .viewer { flex: 1 1 60%; }
 .transcript-panel { flex: 1 1 40%; padding: 8px 10px; overflow: auto; }
 /* The transcript import picker uses the editor's button style instead of the browser default. */
+#transcript-import { display: block; width: 100%; max-width: 100%; min-width: 0; margin-top: 4px; }
 #transcript-import::file-selector-button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 9px; margin-right: 8px; cursor: pointer; }
 #transcript-import:hover:not(:disabled)::file-selector-button { border-color: #59634c; background: #2a2d26; }
 #transcript-import:disabled::file-selector-button { opacity: 0.4; cursor: default; }
@@ -612,13 +614,16 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 }
 
 @container (max-width: 560px) {
-  .audio-top { grid-template-columns: minmax(0, 1fr); grid-template-rows: 180px 260px 220px; overflow: auto; }
+  .page.audio .audio-top { flex: none; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(220px, auto); }
   .audio-monitor { grid-column: 1; grid-row: 1; }
+  .audio-monitor :is(.viewer-info, .viewer-bar, .viewer-stage, .src-scrub) { display: none; }
   .mixer-panel { grid-column: 1; grid-row: 2; }
+  .mixer { flex: none; height: 520px; overflow-x: auto; }
+  .mixer .fader { height: auto; }
   .audio-tools { grid-column: 1; grid-row: 3; }
 }
 
-.tl-toolbar { overflow-x: auto; min-width: 0; }
+.tl-toolbar { overflow-x: auto; min-width: 0; flex-wrap: wrap; }
 .tl-toolbar > * { flex-shrink: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; }

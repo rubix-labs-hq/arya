@@ -85,14 +85,14 @@ const ds=moduleURL(`export {api,set,toast,viewProject,store} from ${JSON.stringi
 const deliverSource=(await fs.readFile(new URL('../web/ui/deliver.js',import.meta.url),'utf8')).replace("'preact'",JSON.stringify(import.meta.resolve('preact'))).replace("'preact/hooks'",JSON.stringify(hooks)).replace("'htm'",JSON.stringify(import.meta.resolve('htm'))).replace("'/core/project.js'",JSON.stringify(coreURL)).replace("'./store.js'",JSON.stringify(ds)).replace("'./viewer.js'",JSON.stringify(moduleURL('export const Viewer=()=>null;'))).replace("'./registry.js'",JSON.stringify(moduleURL('export const registry={deliver:[]};'))).replace("'../host.js'",JSON.stringify(hostURL)).replace("'./deliver-request.js'",JSON.stringify(new URL('../web/ui/deliver-request.js',import.meta.url).href))
 const {DeliverPage}=await import(moduleURL(deliverSource))
 function buttons(node,out=[]){if(Array.isArray(node))node.forEach(v=>buttons(v,out));else if(node&&typeof node==='object'){if(node.type==='button')out.push(node);buttons(node.props?.children,out)}return out}
-const label=n=>(Array.isArray(n.props.children)?n.props.children.flat(Infinity):[n.props.children]).filter(v=>typeof v==='string').join('')
+const label=n=>(Array.isArray(n.props.children)?n.props.children.flat(Infinity):[n.props.children]).filter(v=>typeof v==='string').join('').trim()
 test('actual Deliver render and still requests carry selected marks/duration/composition only',async t=>{
   const {calls}=editor(t),before=globalThis.window;globalThis.window={reel:{player:{t:3}}};t.after(()=>{if(before===undefined)delete globalThis.window;else globalThis.window=before})
   const click=async text=>{const button=buttons(DeliverPage()).find(v=>label(v)===text);assert.ok(button,text);await button.props.onClick()}
-  await click('⇪ Render');assert.deepEqual(calls.at(-1),{route:'/api/export',body:{preset:'h264-high',name:'Five seconds',width:1920,height:1080,fps:25,range:{in:0,out:5},comp:'k1'}})
-  await edit({op:'range',in:2,out:4});await click('⇪ Render');assert.deepEqual(calls.at(-1).body.range,{in:2,out:4})
+  await click('Render');assert.deepEqual(calls.at(-1),{route:'/api/export',body:{preset:'h264-high',name:'Five seconds',width:1920,height:1080,fps:25,range:{in:0,out:5},comp:'k1'}})
+  await edit({op:'range',in:2,out:4});await click('Render');assert.deepEqual(calls.at(-1).body.range,{in:2,out:4})
   await click('Save still frame');assert.deepEqual(calls.at(-1).body,{at:3,width:1920,comp:'k1'})
-  set({openComp:null});await click('⇪ Render');assert.deepEqual(calls.at(-1).body.range,{in:1,out:7});assert.equal(Object.hasOwn(calls.at(-1).body,'comp'),false)
+  set({openComp:null});await click('Render');assert.deepEqual(calls.at(-1).body.range,{in:1,out:7});assert.equal(Object.hasOwn(calls.at(-1).body,'comp'),false)
 })
 test('actual native bundle bridge applies scoped ops equivalently to ES modules',async t=>{
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),'arya-comp-core-'));t.after(()=>fs.rm(temp,{recursive:true,force:true}));const output=path.join(temp,'reel-core.js')

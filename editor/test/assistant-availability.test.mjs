@@ -98,9 +98,12 @@ test('ready providers and missing route reasons retain existing account status a
 
 test('welcome describes current assistant context without a fixed provider', () => {
   const source = readFileSync(new URL('../web/ui/app.js', import.meta.url), 'utf8').replaceAll('import.meta.url', JSON.stringify(new URL('../web/ui/app.js', import.meta.url).href)).replace(/^import .*$/gm, '').replace('export async function mountApp', 'async function mountApp')
-  const tree = new Function('h', 'htm', 'useState', 'useStore', 'host', `${source}\nreturn Welcome()`)(h, htm, value => [value, () => {}], () => ({}), { kind: 'http' })
+  const render = configured => new Function('h', 'htm', 'useState', 'useStore', 'host', `${source}\nreturn Welcome()`)(h, htm, value => [value, () => {}], () => ({ assistantStatus: { configured } }), { kind: 'http' })
+  const tree = render(true)
   const text = node => node == null ? '' : Array.isArray(node) ? node.map(text).join('') : typeof node === 'object' ? text(node.props?.children) : String(node)
   assert.match(text(tree), /connected assistant.*current selection and references/)
   assert.match(text(tree), /Review its changes with undo/)
   assert.doesNotMatch(text(tree), /Claude/)
+  assert.match(text(render(false)), /connect an assistant \(optional\)/)
+  assert.doesNotMatch(text(render(false)), /your connected assistant/)
 })

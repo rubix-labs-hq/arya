@@ -41,11 +41,21 @@ export async function importMediaPaths(paths, { request, notify, expectedCount }
 }
 
 /** Uploaded files can fail probing. Success reports only the later import result. */
-export async function uploadMediaFiles(files, { upload, request, notify } = {}) {
+export async function uploadMediaFiles(files, { upload, request, notify, assets = {} } = {}) {
   if (!files.length) return null
   const paths = []
   let failed = 0
+  // Imported assets record byte size and filename, but no content hash. The hosted beta keeps
+  // the original name in asset.name because its stored path carries a generated prefix.
+  const identity = (name, size) => `${String(name).normalize('NFC')}\0${size}`
+  const known = new Set(Object.entries(assets).filter(([, asset]) => Number.isSafeInteger(asset?.size) && asset.size > 0)
+    .map(([path, asset]) => identity(asset.name ?? path.split('/').pop(), asset.size)))
   for (const file of files) {
+    const fileIdentity = identity(file.name, file.size)
+    if (Number.isSafeInteger(file.size) && known.has(fileIdentity)) {
+      notify(`Skipped ${file.name}. A file with the same name and size is already in this project.`, 'info')
+      continue
+    }
     try {
       notify(`Uploading ${file.name}…`)
       const result = await upload(file)

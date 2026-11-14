@@ -1,6 +1,9 @@
 /* Assistant panel: context, suggestions and the text box first; input kind, model and tips in
    one disclosure; a preview card before an assistant change applies; one-step undo after. */
 
+/* Keep the intro readable above the composer even when the panel must scroll. */
+.chat > .chat-list:has(> .chat-empty:only-child) { flex: 0 0 auto; }
+
 .chat .assistant-composer-card { min-height: 0; max-height: none; flex: 0 0 auto; }
 .chat .assistant-composer-content { flex: 0 1 auto; max-height: 40vh; min-height: 0; }
 .chat .assistant-composer-footer { min-height: 0; max-height: none; align-items: center; padding: 2px 8px 8px; overflow: visible; }
@@ -66,3 +69,13 @@
 .assistant-applying header b { font-weight: 600; overflow-wrap: anywhere; }
 .assistant-applying p { margin: 6px 0 0; overflow-wrap: anywhere; }
 .assistant-applying.failed [role=alert] { color: var(--danger); }
+
+.assistant-preview-details { margin-top: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.assistant-preview-details > summary { cursor: pointer; padding: 8px 0; }
+.assistant-preview-details dd { margin: 0 0 6px; white-space: pre-wrap; }
+
+.claude-btn .assistant-setup-indicator { font-size: 10px; line-height: 1.2; color: var(--muted); }
+@media (max-width: 480px) {
+  .topbar-actions .claude-btn:has(.assistant-setup-indicator:not([hidden])) { flex-direction: column; gap: 2px; padding: 3px 6px; }
+  .topbar-actions .claude-btn .assistant-setup-indicator { font-size: 10px; }
+}

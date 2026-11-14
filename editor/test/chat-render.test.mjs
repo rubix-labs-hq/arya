@@ -216,8 +216,8 @@ test('refresh in progress has a status message and a Settings control', () => {
 test('confirmed sign-out still renders the connection controls', () => {
   const status = expiredStatus('manual'); status.providers[0].authenticated = false; status.providers[0].available = false
   const tree = panel({ state: 'idle' }, true, { status })
-  assert.match(textContent(tree), /Connect your editing assistant/)
-  assert.match(textContent(tree), /Set up assistant/)
+  assert.match(textContent(tree), /Codex: Sign-in needed/)
+  assert.match(textContent(tree), /Assistant settings/)
   assert.doesNotMatch(textContent(tree), /Refresh availability/)
 })
 

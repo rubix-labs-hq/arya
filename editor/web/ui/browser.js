@@ -35,12 +35,12 @@ export const TITLE_PRESETS = [
 const MEDIA_ICON = { video: 'video', audio: 'audio', image: 'image' }
 
 function uploadFiles(files) {
-  if (host.kind !== 'browser-local') return uploadMediaFiles(files, { upload: file => host.upload(file), request: api, notify: toast })
+  if (host.kind !== 'browser-local') return uploadMediaFiles(files, { upload: file => host.upload(file), request: api, notify: toast, assets: store.project?.assets })
   return (async () => {
   try {
     if (!store.project) await api('/api/new', { name: 'Untitled' })
     const captured = host.browser.context()
-    return await uploadMediaFiles(files, { upload: file => { host.browser.assert(captured); return host.upload(file) }, request: (path, body) => { host.browser.assert(captured); return api(path, body) }, notify: toast })
+    return await uploadMediaFiles(files, { upload: file => { host.browser.assert(captured); return host.upload(file) }, request: (path, body) => { host.browser.assert(captured); return api(path, body) }, notify: toast, assets: store.project?.assets })
   } catch (error) { toast(error.message, 'error'); return null }
   })()
 }
@@ -278,6 +278,19 @@ function MediaTab({ p }) {
   const [kind, setKind] = useState('all')
   const fileInput = useRef(null)
   const folderInput = useRef(null)
+  const [folderMedia, setFolderMedia] = useState(null)
+  const root = store.root
+  const empty = Object.keys(p.assets).length === 0
+  useEffect(() => {
+    let active = true
+    setFolderMedia(null)
+    if (empty && host.kind !== 'browser-local') {
+      api('/api/files?dir=.').then(list => {
+        if (active && store.root === root) setFolderMedia({ dir: list.dir || '.', count: list.entries.filter(entry => !entry.dir).length })
+      }).catch(() => {})
+    }
+    return () => { active = false }
+  }, [root, empty])
   const entries = Object.entries(p.assets).filter(([src, a]) => mediaMatchesQuery(src, a, q) && (kind === 'all' || (kind === 'audio' ? !a.hasVideo : kind === 'image' ? a.hasVideo && !a.duration : a.hasVideo && a.duration)))
 
   return html`
@@ -294,6 +307,7 @@ function MediaTab({ p }) {
         <select value=${kind} onChange=${e => setKind(e.target.value)}><option value="all">All</option><option value="video">Video</option><option value="audio">Audio</option><option value="image">Stills</option></select>
       </div>
       ${entries.length === 0 ? html`<div class="empty-hint">${host.kind === 'browser-local' ? 'Drop your video, audio or images here, or choose Import or From folder. Music generation needs a supported native or local connection.' : 'Drop video, audio or images anywhere in this window, use Import, or create music.'}</div>` : null}
+      ${empty && folderMedia?.count > 0 ? html`<div class="empty-hint"><p>${folderMedia.count} media ${folderMedia.count === 1 ? 'file' : 'files'} in this folder</p><button class="primary" onClick=${() => importFolder([folderMedia.dir], folderMedia.count)}>Import all media here (${folderMedia.count})</button></div>` : null}
       <div class="media-grid">
         ${entries.map(([src, asset]) => html`<${MediaCard} key=${src} p=${p} src=${src} asset=${asset} />`)}
       </div>
