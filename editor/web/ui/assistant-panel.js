@@ -79,6 +79,13 @@ function PreviewCard({ proposal, project, version, running, newRequest, busy, on
     </li>`)}</ul>` : null}
     ${layers.length > MAX_LAYERS ? html`<p class="assistant-preview-note">${plural(layers.length - MAX_LAYERS, 'more layer')} change.</p>` : null}
     ${settings.length && !stale ? html`<p class="assistant-preview-note">Settings: ${settings.slice(0, 4).map(scope => scope.name).join(', ')}${settings.length > 4 ? ', …' : ''}</p>` : null}
+    ${receipt && !stale ? html`<details class="assistant-preview-details"><summary>Show all changes</summary>
+      ${[...receipt.scopes, ...receipt.clips].map(item => html`<div class="receipt-layer">
+        <b>${item.name}</b><span class="receipt-meta">${item.compositionName ?? ''} ${item.id ?? ''} · ${STATUS[item.status] ?? item.status}</span>
+        <dl>${item.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span aria-label="changes to"> → </span><span>${change.after}</span></dd>`)}</dl>
+      </div>`)}
+      ${receipt.truncated ? html`<p class="assistant-preview-note">Some changes or values in this receipt are shortened.</p>` : null}
+    </details>` : null}
     ${steps.length && !stale ? html`<ol class="assistant-preview-steps" aria-label="Processing steps">${steps.map((step, index) => html`<li key=${index}>
       <b>${step.preview?.title ?? step.path}</b>
       <p><span class="assistant-preview-step-label">Produces</span> ${step.preview?.produces ?? ''}</p>
