@@ -185,6 +185,8 @@ export function ChatPanel() {
       track: object ? object.track.name ? `${object.track.name} (${object.track.id})` : object.track.id : null }
   })
   const quick = assistantPanel.suggestions(s.project, { selection: s.selection, comp: s.openComp })
+  // Suggestions show only while the box is empty, so one never replaces typed text. Each is sent as a prompt.
+  const showSuggestions = quick.length > 0 && !text.trim()
   const lastRequest = [...s.chat].reverse().find(m => ['user', 'you'].includes(m.role) && m.text)?.text ?? ''
   const view = assistantPanel.focus(s.project, { comp: s.openComp, playhead })
   const scopeName = s.openComp ? s.project?.comps?.[s.openComp]?.name ? `${s.project.comps[s.openComp].name} (${s.openComp})` : s.openComp : 'Main timeline'
@@ -261,7 +263,7 @@ export function ChatPanel() {
       <div class="assistant-context"><span class="context-label">${working ? 'Next request context' : 'Editing context'}</span><b>${context}</b><span class="muted">${scopeName} · Playhead ${view.time}${view.under.length ? ` over ${view.under.slice(0, 2).join(', ')}${view.under.length > 2 ? ` and ${view.under.length - 2} more` : ''}` : ''}</span><span class="muted">${s.refs.length ? `${s.refs.length} references attached` : 'Selection and playhead included'}</span></div>
       ${selection.length ? html`<div class="assistant-selection-chips" aria-label="Current selection included when sending">${selection.map(item => html`<span class="chip small" key=${item.id}><b>${item.label}</b><small>${item.id}${item.track ? ` · ${item.track}` : ''}</small></span>`)}</div>` : null}
       ${s.refs.length ? html`<div class="refs" aria-label="Attached references">${s.refs.map(r => html`<span class="chip"><${Icon} name="attach" size=${14} /> ${r.label}<button aria-label=${`Remove reference ${r.label}`} onClick=${() => set({ refs: s.refs.filter(x => x !== r) })}><${Icon} name="close" size=${14} /></button></span>`)}</div>` : null}
-      ${quick.length ? html`<div class="assistant-suggestions" role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${`${item.prompt} It goes into the box for you to review before sending.`} onClick=${() => { setText(item.prompt); focusComposer() }}>${item.label}</button>`)}</div>` : null}
+      ${showSuggestions ? html`<div class="assistant-suggestions" role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${`${item.prompt} It goes into the box for you to review before sending.`} onClick=${() => { setText(item.prompt, 'prompt'); focusComposer() }}>${item.label}</button>`)}</div>` : null}
       </div>
       <div class="composer">
         <textarea rows="3" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'} value=${text}
@@ -279,7 +281,7 @@ export function ChatPanel() {
             }
           }}></textarea>
       </div>
-      ${!canSend && !working ? html`<div class="assistant-send-reason"><span>${!s.connected ? 'Reconnect to send. Your draft is kept.' : status.refreshRequired ? 'Refresh model availability to send. Your draft is kept.' : 'Set up an assistant to send. Your draft is kept.'}</span><button class="ghost tiny" onClick=${status.refreshRequired ? refreshAvailability : () => set({ settingsOpen: true })}>${status.refreshRequired ? 'Refresh availability' : 'Set up assistant'}</button></div>` : null}
+      ${!canSend && !working ? html`<div class="assistant-send-reason"><span>${!s.connected ? 'Reconnect to send. Your draft is kept.' : status.refreshRequired ? 'Refresh model availability to send. Your draft is kept.' : 'Set up an assistant to send. Your draft is kept.'}</span>${s.connected ? html`<button onClick=${status.refreshRequired ? refreshAvailability : () => set({ settingsOpen: true })}>${status.refreshRequired ? 'Refresh availability' : 'Set up assistant'}</button>` : null}</div>` : null}
       <div class="assistant-composer-footer">
         ${chatgptPlan && status.ready ? html`<span class="assistant-plan-note">Using ChatGPT plan · <a href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></span>` : null}
         ${native ? null : html`<label class="assistant-preview-toggle" title="Show the clips and settings a request will change, and apply them only when you choose"><input type="checkbox" checked=${preview} disabled=${working || Boolean(sharingReview)} onChange=${e => setPreview(e.target.checked)} /><span>Preview changes</span></label>`}

@@ -407,11 +407,14 @@ button.primary:hover:not(:disabled), button.send:hover:not(:disabled) { backgrou
 .topbar .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar .pages { min-width: 0; flex-shrink: 1; overflow-x: auto; }
 @media (max-width: 1200px) {
-  .chat { position: fixed; right: 6px; top: calc(var(--topbar-height) + 6px); bottom: 6px; z-index: 50; margin: 0; box-shadow: -12px 0 40px #000a; }
   .page.edit .upper { grid-template-columns: minmax(170px, 24%) 1fr minmax(220px, 28%); }
   .pages { margin-left: 8px; }
   .pages button { padding: 4px 9px; }
   .proj .muted { display: none; }
+}
+/* The assistant stays docked beside the edit down to 900px; only narrower windows float it. */
+@media (max-width: 900px) {
+  .chat { position: fixed; right: 6px; top: calc(var(--topbar-height) + 6px); bottom: 6px; z-index: 50; margin: 0; box-shadow: -12px 0 40px #000a; }
   .workspace-divider.divider-chat { display: none; }
 }
 @media (max-width: 720px) {

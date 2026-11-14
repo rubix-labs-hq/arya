@@ -221,7 +221,8 @@ struct NativeDeliverPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Deliver").font(.headline)
+                // The phone sheet already shows Deliver as its title.
+                if model.mobilePanel != .deliver { Text("Deliver").font(.headline) }
                 TextField("File name", text: $name).textFieldStyle(.roundedBorder)
                 Picker("Preset", selection: $preset) { ForEach(presets, id: \.self) { Text(Self.presetName($0)).tag($0) } }
                 if hdrAvailable {

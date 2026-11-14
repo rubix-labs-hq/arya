@@ -1207,6 +1207,11 @@ struct NativeEditorView: View {
                 if compact {
                     Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                         .help("Undo latest edit").accessibilityLabel("Undo")
+                    // On a phone the assistant is one tap away, not inside Tools.
+                    Button { select(.assistant, compact: true) } label: { Image(systemName: "text.bubble") }
+                        .buttonStyle(NativeToolbarButtonStyle(selected: model.mobilePanel == .assistant))
+                        .help("Ask the assistant to edit or explain").accessibilityLabel("Assistant")
+                        .accessibilityIdentifier("editor.compactAssistant")
                 } else {
                 Button {
                     assistantVisible.toggle()

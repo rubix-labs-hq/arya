@@ -398,7 +398,9 @@ function SourceViewer({ compact } = {}) {
 
   useEffect(() => {
     const onKey = e => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || store.settingsOpen || store.viewerMode !== 'source' || e.target.closest?.('input, textarea, select, [contenteditable], [role="dialog"], [role="alertdialog"], dialog, button, summary, a[href], [role="button"], [role="tab"]')) return
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || store.settingsOpen || store.viewerMode !== 'source' || e.target.closest?.('input, textarea, select, [contenteditable], [role="dialog"], [role="alertdialog"], dialog')) return
+      // As in keys.js: a focused control keeps Space and Enter; I, O and the placement keys still work.
+      if ((e.key === ' ' || e.key === 'Enter') && e.target.closest?.('button, summary, a[href], [role="button"], [role="tab"]')) return
       const v = video.current
       const k = e.key.toLowerCase()
       if (k === 'i') setSrc({ in: offset + (v?.currentTime ?? 0) })

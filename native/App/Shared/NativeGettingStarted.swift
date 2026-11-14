@@ -18,7 +18,7 @@ struct NativeGettingStartedView: View {
                 #else
                 section("Start a project on iPhone or iPad", [
                     "Choose New Project on the start screen. Enter a name, choose the video format and create the project. Arya saves it in its Projects folder in Files. Open Project lets you select an existing project folder.",
-                    "Open Media to import from Files or Photos. Review the copied source in Media and add it to the timeline. Select a clip to edit its properties. The More menu has Undo, Redo and Settings. Use Deliver to export."
+                    "Open Media to import from Files or Photos. Review the copied source in Media and add it to the timeline. Select a clip to edit its properties. Undo and the Assistant are at the top of the editor, with Settings and more beside them. Use Deliver to export."
                 ])
                 #endif
                 section("Keep your project folder", [
@@ -42,8 +42,14 @@ struct NativeGettingStartedView: View {
                     "The companion runs separately in Terminal. Quitting Arya does not stop it. To stop the companion you started, press Control-C in its Terminal window and wait for it to exit."
                 ])
                 #else
-                section("Connect an assistant when you need it", [
-                    "Open Settings and choose Assistant accounts. iPhone and iPad do not run desktop provider command-line apps. Subscription assistance needs a companion on a trusted Mac with a reachable HTTPS address.",
+                if NativeChatGPT.supported {
+                    section("Connect ChatGPT when you need it", [
+                        "Open the Assistant, or Settings then Assistant accounts, and choose Continue with ChatGPT. Sign in on the OpenAI page that opens. Arya uses eligible requests from your ChatGPT plan or credits balance, subject to your account's usage limits.",
+                        "Choose an available model and review what you share before your first request. Nothing else needs to be installed. You can manage usage or sign out in the same settings."
+                    ])
+                }
+                section("Other assistant connections", [
+                    "Claude Code and Codex do not run on iPhone or iPad. To use those subscriptions, connect to a companion on a trusted Mac with a reachable HTTPS address.",
                     "Ask that Mac owner for the full address and current pairing token. Review the address, enter the token privately and choose Connect companion in Assistant settings. An address link alone does not connect your device. Check the account and model results before sending a request.",
                     "Remote hosting is a separate setup. Starting the local Mac companion does not create a remote HTTPS address. You can continue manual editing without connecting a companion."
                 ])
