@@ -227,3 +227,21 @@ test('native sign-out cleanup remains available while the session is signed out'
   await retry.props.onClick()
   assert.deepEqual(calls[0], { route: '/api/assistant/chatgpt/sign-out', body: {} })
 })
+
+
+test('selected provider failures and recovery come before the ChatGPT alternative', async () => {
+  for (const provider of ['codex', 'claude-code']) {
+    const reason = 'The selected account session expired. Sign in again.'
+    const status = baseStatus({ provider, reason, chatgpt: account(),
+      providers: [{ id: provider, installed: true, authenticated: false, available: false, reason }] })
+    const { tree, state } = panel(status)
+    const cards = nodes(tree).filter(node => node.props?.class === 'assistant-setup')
+    assert.equal(cards.length, 2)
+    assert.match(text(cards[0]), /session expired/)
+    assert.ok(button(cards[0], 'Refresh status'))
+    button(cards[0], 'Assistant settings').props.onClick()
+    assert.equal(state.settingsOpen, true)
+    assert.match(text(cards[1]), /Or use ChatGPT/)
+    assert.ok(button(cards[1], 'Continue with ChatGPT'))
+  }
+})
