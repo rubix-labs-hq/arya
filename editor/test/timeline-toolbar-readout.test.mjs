@@ -31,6 +31,19 @@ const walk = (nodes, out = []) => { for (const n of nodes) if (n && typeof n ===
 const text = node => walk([node]).flatMap(n => n.props.children).filter(c => typeof c === 'string').join('')
 const hasClass = (node, name) => String(node.props?.class ?? '').split(' ').includes(name)
 
+test('the timeline toolbar wraps controls instead of pushing zoom off the right edge', async () => {
+  const css = await fs.readFile(new URL('../web/styles.css', import.meta.url), 'utf8')
+  assert.match(css, /\.tl-toolbar \{ overflow-x: auto; min-width: 0; flex-wrap: wrap; \}/)
+  assert.match(css, /\.tl-zoom \{ display: flex; align-items: center; gap: 6px; margin-left: auto; \}/)
+  globalThis.__readoutState = { tool: 'select', selection: [], zoom: 80, openComp: null }
+  try {
+    const { Toolbar } = await loadToolbar('zoom-wrap')
+    const zoom = walk(expand(Toolbar())).find(node => hasClass(node, 'tl-zoom'))
+    assert.ok(zoom, 'zoom controls wrap together')
+    assert.deepEqual(walk([zoom]).filter(node => node.type === 'button' || node.type === 'input').map(node => node.props['aria-label']), ['Zoom out', 'Timeline zoom', 'Zoom in', 'Fit timeline'])
+  } finally { delete globalThis.__readoutState }
+})
+
 test('tool titles give a short name and a shortcut', async () => {
   const { toolNameAndKey } = await loadToolbar('names')
   assert.deepEqual(toolNameAndKey('Select (A)'), { name: 'Select', shortcut: 'A', where: '' })

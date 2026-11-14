@@ -91,10 +91,12 @@ export function Toolbar() {
       <button class=${`ghost ${s.linked ? 'on' : ''}`} aria-label="Linked selection" aria-pressed=${!!s.linked} title="Linked selection" onClick=${() => set({ linked: !s.linked })}><${Icon} name="link" /></button>
       <span class="grow"></span>
       <span class="muted small">${s.selection.length ? `${s.selection.length} selected` : ''}</span>
+      <div class="tl-zoom">
       <button class="ghost" aria-label="Zoom out" title="Zoom out (⌘-)" onClick=${() => set({ zoom: Math.max(0.5, s.zoom / 1.5) })}><${Icon} name="minus" /></button>
       <input aria-label="Timeline zoom" type="range" min="0" max="100" value=${Math.log(s.zoom / 0.5) / Math.log(4800) * 100} onInput=${e => set({ zoom: 0.5 * 4800 ** (Number(e.target.value) / 100) })} />
       <button class="ghost" aria-label="Zoom in" title="Zoom in (⌘=)" onClick=${() => set({ zoom: Math.min(2400, s.zoom * 1.5) })}><${Icon} name="plus" /></button>
       <button class="ghost" aria-label="Fit timeline" title="Zoom to fit (⇧Z)" onClick=${() => set({ zoom: Math.max(0.5, (document.querySelector('.tl-canvas')?.clientWidth ?? 1000) / Math.max(1, duration(viewProject()) * 1.05)), scroll: 0 })}><${Icon} name="fit" /></button>
+      </div>
     </div>
   `
 }

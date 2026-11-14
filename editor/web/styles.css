@@ -216,6 +216,7 @@ label.btn { background: var(--accent); color: var(--accent-ink); border-radius: 
 .tl-toolbar { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-bottom: 1px solid var(--line); flex: none; }
 .tl-toolbar .tools button { font-size: 14px; min-width: 32px; }
 .tl-toolbar input[type=range] { width: 120px; }
+.tl-zoom { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .timeline { flex: 1; display: flex; min-height: 0; position: relative; }
 .timeline.empty { display: grid; place-items: center; color: var(--muted); }
 .track-headers { flex: none; border-right: 1px solid var(--line); overflow: clip; position: relative; background: #181b16; }
@@ -621,7 +622,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
   .audio-tools { grid-column: 1; grid-row: 3; }
 }
 
-.tl-toolbar { overflow-x: auto; min-width: 0; }
+.tl-toolbar { overflow-x: auto; min-width: 0; flex-wrap: wrap; }
 .tl-toolbar > * { flex-shrink: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; }
