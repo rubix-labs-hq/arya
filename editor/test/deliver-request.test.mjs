@@ -112,7 +112,8 @@ test('actual DeliverPage keeps startup failure in an alert and labels the next a
   const f = component(), pending = f.button(f.render()).click()
   f.reject(new Error('Synthetic worker startup failure')); await pending
   const rendered = f.render(), alert = f.find(rendered, 'role="alert"'), retry = f.button(rendered)
-  assert.ok(alert.values.includes('Synthetic worker startup failure'))
+  assert.ok(alert.strings.join('').includes('The render could not start. Try again.'))
+  assert.ok(!JSON.stringify(alert).includes('Synthetic worker startup failure'))
   assert.equal(retry.label, 'Retry render')
   assert.equal(retry.disabled, false); assert.equal(retry.busy, false)
   assert.equal(f.toasts.length, 0)
@@ -137,4 +138,28 @@ test('the Mac Web Editor offers only presets its WebCodecs route can render', ()
   assert.ok(mac.includes('YouTube 1080p') && !mac.includes('ProRes 4444') && !mac.includes('palette-optimized'), 'ProRes and GIF are hidden in the Mac Web Editor')
   const full = offered(component({ hostKind: 'server', caps: { presets: nativePresets, webPresets } }).render())
   assert.ok(full.includes('ProRes 4444'), 'the server editor still offers every preset it renders')
+})
+
+
+test('failed queue rows use plain text, retry their original spec and can be dismissed', async () => {
+  const f = component()
+  const spec = { preset: 'h264-web', width: 320, height: 180, fps: 24, range: { in: 1, out: 2 }, out: 'renders/previous.mp4' }
+  f.state.jobs = [{ id: 'failed-job', kind: 'export', state: 'failed', error: 'the render worker did not start', spec }, { id: 'done-job', kind: 'export', state: 'done', spec: { ...spec, out: 'renders/success.mp4' } }]
+  let rendered = f.render()
+  // Locate the failed row and inspect its nested action template.
+  const queueRows = rendered.values.flat(Infinity).filter(value => value?.strings?.join('').includes('job-name'))
+  const row = queueRows.find(value => value.values.includes('job failed'))
+  assert.ok(row)
+  assert.ok(row.values.includes('The render could not start. Try again.'))
+  assert.ok(!JSON.stringify(row).includes('the render worker did not start'))
+  const actions = f.find(row, '>Retry</button>')
+  assert.ok(actions)
+  const pending = actions.values[1]()
+  assert.deepEqual(JSON.parse(JSON.stringify(f.calls[0])), ['/api/export', spec])
+  assert.equal(f.find(f.render(), '>Retry</button>').values[0], true)
+  f.resolve({ id: 'retried-job' }); await pending
+  f.find(f.render(), '>Retry</button>').values[2]()
+  rendered = f.render()
+  assert.ok(!JSON.stringify(rendered).includes('job failed'))
+  assert.ok(JSON.stringify(rendered).includes('job done'))
 })
