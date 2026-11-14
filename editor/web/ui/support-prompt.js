@@ -42,19 +42,36 @@ function SupportPrompt() {
   </aside>`
 }
 
-/** Watches exports this tab sees finish and shows the card when the rules allow. */
+/** Watches exports this tab started and shows the card when the rules allow. */
 export function mountSupportPrompt(supportURL) {
+  // Browser automation and test runs never see the card.
+  if (globalThis.navigator?.webdriver) return
   let seen = new Map(store.jobs.map(job => [job.id, job.state]))
+  let root = store.root
+  let timer = null
+  // Each export this tab starts lets one finished export count, so another tab's export never does.
+  let started = store.exportsStarted ?? 0, unmatched = 0
   subscribe(() => {
+    if (store.root !== root) {
+      // A different project: drop the pending card and forget the old project's jobs.
+      root = store.root
+      clearTimeout(timer)
+      if (store.supportPromptOpen) set({ supportPromptOpen: false })
+      seen = new Map(store.jobs.map(job => [job.id, job.state]))
+      started = store.exportsStarted ?? 0; unmatched = 0
+      return
+    }
+    if ((store.exportsStarted ?? 0) > started) { unmatched += store.exportsStarted - started; started = store.exportsStarted }
     for (const job of store.jobs) {
-      if (!exportJustFinished(seen.get(job.id), job)) continue
+      if (unmatched === 0 || !exportJustFinished(seen.get(job.id), job)) continue
+      unmatched -= 1
       const { state, show } = successfulExport(load(), { now: Date.now(), channelAvailable: Boolean(supportURL) })
       save(state)
-      if (show) setTimeout(() => set({ supportPromptOpen: true }), 1200)
+      if (show) { clearTimeout(timer); timer = setTimeout(() => set({ supportPromptOpen: true }), 1200) }
     }
     seen = new Map(store.jobs.map(job => [job.id, job.state]))
   })
-  const root = document.createElement('div')
-  document.body.append(root)
-  render(h(SupportPrompt), root)
+  const host = document.createElement('div')
+  document.body.append(host)
+  render(h(SupportPrompt), host)
 }

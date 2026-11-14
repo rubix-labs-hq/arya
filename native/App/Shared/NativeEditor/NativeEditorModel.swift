@@ -712,6 +712,7 @@ final class NativeEditorModel: ObservableObject {
     @Published var status = ""
     /// The optional tip card. Set only by `confirmExportFeedback` after a successful export.
     @Published var supportPromptVisible = false
+    private var supportPromptTask: Task<Void, Never>?
     @Published var busy = false
     @Published var missingMediaRestoreRequest: NativeMissingMediaRestoreRequest?
     @Published private(set) var restoringMediaSource: String?
@@ -926,8 +927,10 @@ final class NativeEditorModel: ObservableObject {
         emitHaptic(kind)
         // The tip card waits a moment so the export message is read first.
         guard kind == .success, NativeSupportPromptLedger.successfulExport() else { return }
-        Task { @MainActor [weak self] in
+        supportPromptTask?.cancel()
+        supportPromptTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
             self?.supportPromptVisible = true
         }
     }
@@ -1007,6 +1010,7 @@ final class NativeEditorModel: ObservableObject {
         changeReceipts = []
         timelineClipboard = nil; clipboardEditing = false; clipboardTaskID = nil
         hapticPolicy.reset()
+        supportPromptTask?.cancel(); supportPromptTask = nil; supportPromptVisible = false
         time = 0; frame = nil; metalFrame = nil; clearScopes(); hdrScopes = false; renderError = nil; rendering = false
         displayedTime = nil; displayedPreviewID = nil; displayedVersion = nil; displayedRevision = nil; displayedComposition = nil; displayedFolder = nil; displayedGeneration = nil; scrubbing = false; paintedFrames = 0
         jobs = []; capabilities = [:]; status = ""; busy = false

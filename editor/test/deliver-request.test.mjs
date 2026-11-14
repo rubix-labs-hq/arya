@@ -75,7 +75,7 @@ function component({ hostKind = 'browser', caps = {} } = {}) {
     useState(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = initial; return [hooks[slot], value => { hooks[slot] = typeof value === 'function' ? value(hooks[slot]) : value }] },
     useRef(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = { current: initial }; return hooks[slot] },
     useEffect(effect) { const slot = index++; if (!(slot in hooks)) { hooks[slot] = true; const cleanup = effect(); if (cleanup) cleanups.push(cleanup) } },
-    set() {}, duration: () => 1, timecode: () => '00:01', viewProject: () => state.project,
+    store: state, set() {}, duration: () => 1, timecode: () => '00:01', viewProject: () => state.project,
     toast: (...args) => toasts.push(args), api: (...args) => { calls.push(args); return response },
     html: (strings, ...values) => ({ strings, values }), Viewer: () => {}, registry: { deliver: [] },
   })

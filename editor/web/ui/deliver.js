@@ -52,7 +52,8 @@ export function DeliverPage() {
   if (!request.current) request.current = createDeliverRequest({
     getScope: () => ({ root: s.root, version: s.version, project: s.project, comp: s.openComp }),
     changed: () => refreshRequest(value => value + 1),
-    started: () => toast('Render started'),
+    // exportsStarted lets the tip card count only exports started in this tab.
+    started: () => { toast('Render started'); set({ exportsStarted: (store.exportsStarted ?? 0) + 1 }) },
     start: async (spec, project, guard) => {
       if (host.kind === 'native' || host.kind === 'browser-local') {
         const { startNativeExport } = await import('../engine/export-webcodecs.js')
