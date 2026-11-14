@@ -175,7 +175,7 @@ for (const selector of ['summary', 'button', 'a[href]', '[role="button"]', '[rol
   for (const descendant of [false, true]) test(`focused ${selector}${descendant ? ' child' : ''} keeps Space and navigation with its control`, () => {
     const c = keyboard(), target = controlTarget(selector, descendant), before = structuredClone(c.state)
     c.document.activeElement = target
-    for (const key of [' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']) {
+    for (const key of [' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Backspace', 'Delete']) {
       assert.equal(c.dispatch(key, { target }).defaultPrevented, false, key)
     }
     assert.deepEqual(c.playerCalls, [])

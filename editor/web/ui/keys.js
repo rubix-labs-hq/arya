@@ -43,10 +43,11 @@ function clipsUnderPlayhead(p) {
 
 const COMMAND_INPUTS = 'input, textarea, select, [contenteditable], [role="dialog"], [role="alertdialog"], dialog'
 
-// A focused button, link or tab keeps the keys that operate it. Every other shortcut still works
-// after a click, so the person never has to click the timeline before typing a shortcut.
+// A focused button, link or tab keeps the keys that operate it, and Delete and Backspace never
+// remove clips from there. Every other shortcut still works after a click, so the person never has
+// to click the timeline before typing a shortcut. viewer.js applies the same rule to Source keys.
 const FOCUSABLE_CONTROLS = 'button, summary, a[href], [role="button"], [role="tab"]'
-const CONTROL_KEYS = new Set([' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'])
+const CONTROL_KEYS = new Set([' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Backspace', 'Delete'])
 
 export function runEditorCommand(command) {
   if (store.settingsOpen || document.activeElement?.closest?.(COMMAND_INPUTS)) return 'input'

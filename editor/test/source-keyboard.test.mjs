@@ -106,6 +106,12 @@ test('SourceViewer capture listener does not place from contenteditable, dialogs
   for (const options of [{ defaultPrevented: true }, { metaKey: true }, { ctrlKey: true }]) { const c = sourceKey(); c.dispatch(options); assert.equal(c.placements.length, 0) }
   const c = sourceKey(); c.state.settingsOpen = true; c.dispatch({}); assert.equal(c.placements.length, 0)
 })
+test('SourceViewer marks and places after a click on a button, which keeps only Space', () => {
+  const onButton = { closest: actual => actual.includes('button') && !actual.includes('input') ? {} : null }
+  for (const key of ['i', 'o', 'q']) { const c = sourceKey(), e = c.dispatch({ key, target: onButton }); assert.equal(e.stopped, true, key) }
+  const c = sourceKey(); c.dispatch({ key: 'i', target: onButton }); assert.deepEqual(c.marks, [{ in: 3 }])
+  const space = sourceKey(), e = space.dispatch({ key: ' ', target: onButton }); assert.equal(space.toggles.length, 0); assert.equal(e.stopped, undefined)
+})
 test('SourceViewer ordinary placement key stays local while Timeline mode delegates to global keyboard', () => {
   const c = sourceKey(), e = c.dispatch({}); assert.deepEqual(c.placements, ['connect']); assert.equal(e.defaultPrevented, true); assert.equal(e.stopped, true)
   const timeline = sourceKey(); timeline.state.viewerMode = 'timeline'; const passthrough = timeline.dispatch({}); assert.equal(timeline.placements.length, 0); assert.equal(passthrough.stopped, undefined)
@@ -247,7 +253,7 @@ for (const entry of ['Keyboard', 'SourceViewer']) for (const nested of [false, t
 for (const selector of ['summary', 'button', 'a[href]', '[role="button"]', '[role="tab"]']) test(`SourceViewer capture preserves keyboard defaults for focused ${selector} children`, () => {
   const c = sourceKey(), control = {}
   const target = { closest: selectors => selectors.split(',').some(s => s.trim() === selector) ? control : null }
-  for (const key of [' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'i', 'o', 'e', 'w', 'd', 'q']) {
+  for (const key of [' ', 'Enter', 'ArrowLeft', 'ArrowRight']) {
     const e = c.dispatch({ key, target })
     assert.equal(e.defaultPrevented, undefined, key)
     assert.equal(e.stopped, undefined, key)
