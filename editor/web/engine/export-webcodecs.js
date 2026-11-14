@@ -93,8 +93,14 @@ export async function runNativeExport(project, job) {
     const wavOnly = preset === 'audio-wav'
     const codec = preset === 'hevc' ? 'hevc' : 'avc'
     const quality = new Quality({ bitrate: Math.max(1_000_000, Math.round(width * height * fps * (preset === 'h264-web' ? 0.08 : 0.18))) })
+    // Mediabunny 1.x selects AVC levels by frame size/bitrate, not frame rate.
+    // Keep its WebKit constrained-baseline workaround when requesting level 5.2.
+    const webkit = /apple/i.test(navigator.vendor ?? '') || (/AppleWebKit/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)) || /\b(iPad|iPhone|iPod)\b/.test(navigator.userAgent)
+    const macroblocks = Math.ceil(width / 16) * Math.ceil(height / 16)
+    const encoderOptions = codec === 'avc' && macroblocks <= 36864 && macroblocks * fps > 983040 && macroblocks * fps <= 2073600
+      ? { fullCodecString: webkit ? 'avc1.424034' : 'avc1.640034' } : {}
     const audioQuality = new Quality({ bitrate: 256_000 })
-    if (!audioOnly && !(await canEncodeVideo(codec, { width, height, frameRate: fps, quality, latencyMode: 'realtime' }))) {
+    if (!audioOnly && !(await canEncodeVideo(codec, { width, height, frameRate: fps, quality, ...encoderOptions, latencyMode: 'realtime' }))) {
       throw new Error(`${preset === 'hevc' ? 'HEVC' : 'H.264'} encoding is unavailable at ${width}×${height}. Choose another preset or resolution.`)
     }
     if (!wavOnly && !(await canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: RATE, quality: audioQuality }))) throw new Error('AAC encoding is unavailable on this device. Use the WAV audio preset.')
@@ -110,7 +116,7 @@ export async function runNativeExport(project, job) {
       const target = new StreamTarget(new WritableStream({ write: chunk => write(chunk.data, chunk.position) }), { chunked: true, chunkSize: 1024 * 1024 })
       output = new Output({ target, format: new Mp4OutputFormat({ fastStart: false }) })
       // WebKit's quality-mode H.264 encoder can stall without producing packets.
-      const video = !audioOnly ? new CanvasSource(r.canvas, { codec, quality, keyFrameInterval: 2, latencyMode: 'realtime' }) : null
+      const video = !audioOnly ? new CanvasSource(r.canvas, { codec, quality, ...encoderOptions, keyFrameInterval: 2, latencyMode: 'realtime' }) : null
       const audio = new AudioBufferSource({ codec: 'aac', quality: audioQuality })
       if (video) output.addVideoTrack(video, { frameRate: fps })
       output.addAudioTrack(audio)

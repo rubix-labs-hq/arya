@@ -32,6 +32,21 @@ export const assistantCopy = {
   faq: ['Do I need an AI subscription?', `No. Editing, grading, motion, audio and export all work without an assistant. Connecting your own ${assistantProviders} account is optional.`],
 };
 
+// Arya Pro in the App Store edition: iPhone, iPad and the Mac App Store edition, one purchase across
+// all three. Every Pro sentence on the site comes from here and shows only when
+// config.mobileRelease.pro is true and the App Store release is live. The direct Mac download and
+// the browser editor never need Pro. Prices vary by storefront, so no page states one.
+export const proCopy = {
+  short: 'Free editing and 1080p export. Arya Pro adds 4K, ProRes and HDR.',
+  store: 'In the App Store edition, editing and 1080p export are free, and Arya Pro adds 4K, ProRes and HDR export.',
+  free: 'Editing and export up to 1080p are free, with no watermark, ads or account.',
+  adds: 'Arya Pro adds export above 1080p (4K and up to 8K), Apple ProRes 422, 422 HQ and 4444, and HDR10 (PQ) and HLG delivery.',
+  universal: 'One Arya Pro purchase covers iPhone, iPad and the Mac App Store edition.',
+  plans: 'Choose a monthly plan, a yearly plan with a one-week free trial, or a one-time lifetime purchase. Plans and prices are shown in the app.',
+  early: 'If you installed Arya from the App Store before version 1.2.0, Arya Pro is included at no charge.',
+  direct: 'The Mac download from this site and the browser editor stay free and never need Arya Pro.',
+};
+
 // The launch film. Its narration says Arya is free for Mac, on iPhone and iPad, and open source,
 // so the home page shows it only while all three are true. What is in it is recorded in
 // assets/film/README.md.
@@ -70,7 +85,7 @@ export function nativeCaptureNote({ native, shown = null, releaseReady = false, 
   return `Captured from Arya ${native.version} on ${devices}, ${native.captured}, with the ${listed(projects)} sample project${projects.length > 1 ? 's' : ''}.${media ? ` ${media}` : ''}${current}`;
 }
 
-export function productHome({ button, link, faq, stage, shots, figures, native, film = null, releaseReady = false, publicSource = null, accessURL = null, browserEditor = null, mobileURL = null, mobileVersion = null, contributionsConfigured = false, version = '1.0.0', size = '104 MB', minimumOS = 'macOS 14', architectures = 'Apple silicon and Intel' }) {
+export function productHome({ button, link, faq, stage, shots, figures, native, film = null, releaseReady = false, publicSource = null, accessURL = null, browserEditor = null, mobileURL = null, mobileVersion = null, pro = false, contributionsConfigured = false, version = '1.0.0', size = '104 MB', minimumOS = 'macOS 14', architectures = 'Apple silicon and Intel' }) {
   if (!Array.isArray(shots) || shots.length !== 4 || shots[0].id !== 'edit') throw new Error('The home gallery needs four verified captures, starting with Edit');
   const nativeIds = ['mac-color', 'mac-edit', 'ipad-color', 'iphone-edit', 'mac-color-inspector', 'mac-motion-inspector', 'mac-media-panel', 'ipad-color-inspector', 'iphone-deliver'];
   if (!native?.images || nativeIds.some(id => !native.images[id])) throw new Error('The home page needs every native capture listed in assets/product/native.json');
@@ -123,7 +138,7 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
   const ledger = [
     `<li class="ledger-row ledger-mac"><div class="ledger-what"><strong>Mac</strong><span>${releaseReady ? `Arya ${version}. ${minimumOS} or later, ${architectures}. Free.` : releaseLine}</span></div>${button(action.href, action.label)}</li>`,
     mobileURL
-      ? `<li class="ledger-row ledger-ios"><div class="ledger-what"><strong>iPhone and iPad</strong><span>Arya ${mobileVersion} on the App Store. Free core editor.</span></div>${button(mobileURL, 'Download on the App Store')}</li>`
+      ? `<li class="ledger-row ledger-ios"><div class="ledger-what"><strong>iPhone and iPad</strong><span>Arya ${mobileVersion} on the App Store. ${pro ? proCopy.short : 'Free core editor.'}</span></div>${button(mobileURL, 'Download on the App Store')}</li>`
       : '<li class="ledger-row ledger-later"><div class="ledger-what"><strong>iPhone and iPad</strong><span>Coming later. There is no public download yet.</span></div></li>',
     browserEditor ? `<li class="ledger-row ledger-browser"><div class="ledger-what"><strong>Browser</strong><span>No install. No AI assistant, Figma import or transcription.</span></div>${button(browserEditor, 'Try in your browser <span class="button-badge">Limited</span>', 'secondary')}</li>` : '',
   ].join('');
@@ -170,7 +185,7 @@ ${layer('ipad-color', 'ipad', { small: shot('ipad-color-inspector'), eager: true
     },
     {
       id: 'deliver', statement: 'Export the file you need.',
-      text: 'Arya reads and writes FCPXML, OpenTimelineIO, SRT and WebVTT, and exports H.264, HEVC, ProRes 422, 422 HQ and 4444, GIF, PNG sequences, WAV and AAC. <a href="#editions">What each edition exports</a> is listed below.',
+      text: `Arya reads and writes FCPXML, OpenTimelineIO, SRT and WebVTT, and exports H.264, HEVC, ProRes 422, 422 HQ and 4444, GIF, PNG sequences, WAV and AAC. <a href="#editions">What each edition exports</a> is listed below.${pro && mobileURL ? ` ${proCopy.store}` : ''}`,
       layout: mobileURL ? 'duo' : 'text', plate: mobileURL ? plate('iphone-deliver') : '', figure: mobileURL ? clipFigure('after-the-tide') : '',
     },
   ].map((chapter, index) => {
@@ -199,14 +214,14 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
     ['Opus Clip', 'Passage suggestions quote the transcript they come from. Each short stays an editable composition.', 'Suggestion scores rank structure only. They do not predict views.'],
   ].map(([from, carries, missing]) => `<tr><th scope="row">${from}</th><td data-label="Carries over">${carries}</td><td data-label="Not yet">${missing}</td></tr>`).join('');
   const downloadAnswer = releaseReady
-    ? `Yes. Arya ${version} for Mac is on the download page with its version, requirements and SHA-256 checksum. It is free, signed, notarized and licensed under MIT. ${mobileURL ? `Arya ${mobileVersion} is also available on the App Store for iPhone and iPad.` : 'iPhone and iPad builds are coming later.'}`
+    ? `Yes. Arya ${version} for Mac is on the download page with its version, requirements and SHA-256 checksum. It is free, signed, notarized and licensed under MIT. ${mobileURL ? `Arya ${mobileVersion} is also available on the App Store for iPhone and iPad.${pro ? ` ${proCopy.store}` : ''}` : 'iPhone and iPad builds are coming later.'}`
     : `Not yet. Arya is in a private beta by invitation. The Mac app needs final interface checks, a signed package and Apple notarization before a public download. ${accessURL ? 'You can request beta access on the download page.' : betaRequestsClosed}`;
 
   // What each place gives you. Facts only, each one already stated on a guide page or in the table below.
   const platforms = [
     `<article class="platform"><h3>Mac</h3><p class="platform-state">${releaseReady ? `Arya ${version}, a ${size} notarized universal DMG for ${minimumOS} or later.` : 'Private beta, by invitation.'}</p><ul><li>Local project folders with automatic proxies.</li><li>FCPXML and OpenTimelineIO interchange, with ProRes 4444 and PNG alpha export.</li><li>Assistant connections, Figma import and transcription with Apple Speech.</li></ul>${link(action.href, action.label)}</article>`,
     mobileURL
-      ? `<article class="platform"><h3>iPhone and iPad</h3><p class="platform-state">Arya ${mobileVersion} on the App Store. Free core editor.</p><ul><li>Add media from Files or Photos.</li><li>New projects are saved in Arya’s Projects folder in Files. You can also open project folders you choose.</li><li>Export from Deliver. Keep Arya active until the export finishes if your device does not support background export.</li></ul>${link(mobileURL, 'Download on the App Store')}</article>`
+      ? `<article class="platform"><h3>iPhone and iPad</h3><p class="platform-state">Arya ${mobileVersion} on the App Store. ${pro ? proCopy.short : 'Free core editor.'}</p><ul>${pro ? `<li>${proCopy.free} ${proCopy.adds}</li><li>${proCopy.plans} ${proCopy.early}</li>` : ''}<li>Add media from Files or Photos.</li><li>New projects are saved in Arya’s Projects folder in Files. You can also open project folders you choose.</li><li>Export from Deliver. Keep Arya active until the export finishes if your device does not support background export.</li></ul>${link(mobileURL, 'Download on the App Store')}</article>`
       : '<article class="platform"><h3>iPhone and iPad</h3><p class="platform-state">Coming later. There is no public mobile download or TestFlight link yet.</p><ul><li>iPad and iPhone builds share the project format.</li></ul></article>',
     browserEditor ? `<article class="platform"><h3>Browser</h3><p class="platform-state">A hosted preview at <code>/editor/</code>, with no install.</p><ul><li>Runs in current Chrome and Edge.</li><li>Timeline editing, color grading, motion and audio, with projects kept in your browser profile.</li><li>No AI assistant, Figma import, transcription or captions.</li></ul>${link(browserEditor, 'Try in your browser')}</article>` : '',
   ].join('');
@@ -281,13 +296,13 @@ ${faq([
   ['What is the difference between the Mac app and the browser editor?', 'The Mac app and the local browser editor (run from source) support local project folders, AI assistant connections, Figma imports and local transcription. The hosted browser editor at /editor/ runs entirely in your browser storage with no AI assistant, Figma import, transcription, captions or FCPXML and OTIO interchange.'],
   assistantCopy.faq,
   ['Where does my footage go?', 'On Mac, your project file and media stay in the local folder you choose. In the hosted browser editor, files stay in your browser profile storage. Nothing is uploaded unless you send a prompt to your connected AI provider, or the Mac app transcribes a language your Mac cannot recognize on device, which sends that audio to Apple. Read the privacy policy for details.'],
-  ['Is Arya really free and open source?', publicSource ? 'Yes. Arya is released under the MIT license with no subscriptions, watermarks or paid tiers. The full source code is on GitHub.' : 'The repository is currently private. The plan is to publish it after a review of history, dependencies and licenses.'],
+  ['Is Arya really free and open source?', publicSource ? (pro ? `Arya is open source under the MIT license, and the full source code is on GitHub. The Mac download from this site and the browser editor are free, with no subscriptions, watermarks or paid tiers. In the App Store edition for iPhone, iPad and Mac, editing and export up to 1080p are free, with no watermark, ads or account. ${proCopy.adds} ${proCopy.plans}` : 'Yes. Arya is released under the MIT license with no subscriptions, watermarks or paid tiers. The full source code is on GitHub.') : 'The repository is currently private. The plan is to publish it after a review of history, dependencies and licenses.'],
 ])}
 </section>
 <section class="layer-study-section wrap"><details class="layer-study"><summary>Explore the editable-layer illustration<span>An interactive brand study</span></summary><div class="layer-study-body"><noscript><p>Layer controls need JavaScript. The artwork remains available to view.</p></noscript><p>Afterlight is a separate illustration of editable layers. It does not run the Arya application or call an agent.</p>${stage}</div></details></section>
 <section class="closing wrap" aria-labelledby="closing-heading">
-<div class="closing-copy"><h2 id="closing-heading">${mobileURL ? 'Start your first cut.' : 'Start cutting on your Mac.'}</h2><p class="closing-meta">${releaseReady ? `Arya ${version} for Mac is a ${size} notarized universal DMG for ${minimumOS} or later.${mobileURL ? ` Arya ${mobileVersion} for iPhone and iPad is on the App Store.` : ''} Arya is free and MIT licensed.` : releaseLine}</p></div>
+<div class="closing-copy"><h2 id="closing-heading">${mobileURL ? 'Start your first cut.' : 'Start cutting on your Mac.'}</h2><p class="closing-meta">${releaseReady ? `Arya ${version} for Mac is a ${size} notarized universal DMG for ${minimumOS} or later.${mobileURL ? ` Arya ${mobileVersion} for iPhone and iPad is on the App Store.` : ''}${pro && mobileURL ? ` Arya is MIT licensed, and the Mac download is free. ${proCopy.store}` : ' Arya is free and MIT licensed.'}` : releaseLine}</p></div>
 <div class="closing-actions">${button(action.href, action.label)}${mobileURL ? button(mobileURL, 'Download on the App Store', 'secondary closing-ios') : ''}${browserEditor ? button(browserEditor, 'Try in your browser (limited)', 'secondary') : ''}</div>
-${contributionsConfigured ? '<p class="closing-support">Arya is free to use. If it helps your work, you can <a href="/support/">support its development</a> with a one-time contribution.</p>' : ''}
+${contributionsConfigured ? (pro && mobileURL ? '<p class="closing-support">The Mac download and the browser editor are free to use. If Arya helps your work, you can <a href="/support/">support its development</a> with a one-time contribution. In the App Store edition, Arya Pro also funds development.</p>' : '<p class="closing-support">Arya is free to use. If it helps your work, you can <a href="/support/">support its development</a> with a one-time contribution.</p>') : ''}
 </section>`;
 }

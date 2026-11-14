@@ -38,6 +38,7 @@ private struct NativeDeliveryHistoryView: View {
     @State private var share: ShareSelection?
     #if os(iOS)
     @State private var supportVisible = false
+    @ObservedObject private var proStore = NativeProStore.shared
     #endif
     private struct ShareSelection: Identifiable {
         let id = UUID()
@@ -85,20 +86,22 @@ private struct NativeDeliveryHistoryView: View {
         }
     }
     // BEGIN SUPPORT EXPORT LINK
-    /// One quiet, optional link once a completed export exists. It never opens by itself and
-    /// never blocks an export. iOS uses App Store tips; only direct-download Mac builds link out.
-    /// The occasional tip card after an export is `NativeSupportPromptCard`.
+    /// One quiet link once a completed export exists. It never opens by itself. App Store
+    /// builds offer Arya Pro to people without it; direct-download Mac builds link to the
+    /// website for optional tips. The occasional card after an export is `NativeSupportPromptCard`.
     @ViewBuilder private var supportLink: some View {
         #if os(iOS)
-        Button { supportVisible = true } label: { Label("Support Arya", systemImage: "heart") }
-            .font(.caption)
-            .accessibilityHint("Optional tips. Every feature stays free.")
-            .accessibilityIdentifier("deliver.support")
-            .sheet(isPresented: $supportVisible) {
-                NavigationStack {
-                    NativeSupportView(store: .shared).toolbar { Button("Done") { supportVisible = false } }
+        if !proStore.access.isPro {
+            Button { supportVisible = true } label: { Label("Arya Pro", systemImage: "sparkles") }
+                .font(.caption)
+                .accessibilityHint("4K, ProRes and HDR export. Editing and 1080p export stay free.")
+                .accessibilityIdentifier("deliver.support")
+                .sheet(isPresented: $supportVisible) {
+                    NavigationStack {
+                        NativeProView(store: proStore).toolbar { Button("Done") { supportVisible = false } }
+                    }
                 }
-            }
+        }
         #elseif ARYA_DIRECT_DISTRIBUTION
         Button { NativeSupportLink.open() } label: { Label("Support Arya…", systemImage: "heart") }
             .font(.caption)
@@ -193,6 +196,8 @@ struct NativeDeliverPanel: View {
     @State private var exportScope = "whole"
     #if os(iOS)
     @ObservedObject private var mobileExport = NativeMobileExport.shared
+    @ObservedObject private var proStore = NativeProStore.shared
+    @State private var proVisible = false
     #endif
 
     private var presets: [String] { model.capabilities.dictionary("export")["presets"] as? [String] ?? model.capabilities["presets"] as? [String] ?? [] }
@@ -215,6 +220,32 @@ struct NativeDeliverPanel: View {
         }
         return nil
     }
+    /// True when this App Store build needs Arya Pro for the chosen settings. The backend applies
+    /// the same rule, so this only explains the lock before the export starts.
+    private var needsPro: Bool {
+        #if os(iOS)
+        guard let size = outputSize, !proStore.access.isPro else { return false }
+        return ProExportRule.requiresPro(width: Double(size.width), height: Double(size.height), preset: preset,
+                                         hdr: hdrAvailable && hdrTransfers.contains(transfer) ? transfer : nil)
+        #else
+        return false
+        #endif
+    }
+    private var proBadge: String {
+        #if os(iOS)
+        return proStore.access.isPro ? "" : " · Pro"
+        #else
+        return ""
+        #endif
+    }
+    /// Sets the largest output that fits inside `long` by `short`, keeping the composition aspect
+    /// ratio. 1920 by 1080 is always free; 3840 by 2160 is 4K.
+    private func chooseSize(long: Double, short: Double) {
+        guard let width = ProExportRule.fittedWidth(canvasWidth: model.width, canvasHeight: model.height, longEdge: long, shortEdge: short) else { return }
+        if !outputOverrides { outputFPS = model.fps }
+        outputOverrides = true
+        outputWidth = Double(width)
+    }
     private var activeRange: ClosedRange<Double>? {
         NativeExportDimensions.markedRange(project: model.project?.fields ?? [:], composition: model.composition, duration: model.duration)
     }
@@ -224,12 +255,12 @@ struct NativeDeliverPanel: View {
                 // The phone sheet already shows Deliver as its title.
                 if model.mobilePanel != .deliver { Text("Deliver").font(.headline) }
                 TextField("File name", text: $name).textFieldStyle(.roundedBorder)
-                Picker("Preset", selection: $preset) { ForEach(presets, id: \.self) { Text(Self.presetName($0)).tag($0) } }
+                Picker("Preset", selection: $preset) { ForEach(presets, id: \.self) { Text(Self.presetName($0) + ($0.hasPrefix("prores-") ? proBadge : "")).tag($0) } }
                 if hdrAvailable {
                     Picker("Color delivery", selection: $transfer) {
                         Text("SDR Rec.709").tag("sdr")
-                        if hdrTransfers.contains("pq") { Text("HDR10 PQ").tag("pq") }
-                        if hdrTransfers.contains("hlg") { Text("HDR HLG").tag("hlg") }
+                        if hdrTransfers.contains("pq") { Text("HDR10 PQ" + proBadge).tag("pq") }
+                        if hdrTransfers.contains("hlg") { Text("HDR HLG" + proBadge).tag("hlg") }
                     }
                     if transfer != "sdr" { Text("10-bit Rec.2020. HDR playback requires a compatible display.").font(.caption).foregroundStyle(.secondary) }
                 }
@@ -241,6 +272,14 @@ struct NativeDeliverPanel: View {
                 let range = exportScope == "range" ? activeRange : nil
                 Text("\(nativeTimecode(range?.lowerBound ?? 0, fps: model.fps)) to \(nativeTimecode(range?.upperBound ?? model.duration, fps: model.fps))")
                     .font(.system(.caption, design: .monospaced)).foregroundStyle(NativeEditorStyle.muted)
+                HStack(spacing: 8) {
+                    Text("Size").font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                    Button("1080p") { chooseSize(long: 1920, short: 1080) }.accessibilityIdentifier("deliver.size.1080")
+                    Button("4K" + proBadge) { chooseSize(long: 3840, short: 2160) }.accessibilityIdentifier("deliver.size.4k")
+                    Button("Canvas") { outputOverrides = false }.accessibilityIdentifier("deliver.size.canvas")
+                }
+                .buttonStyle(.bordered).font(.caption)
+                .accessibilityElement(children: .contain).accessibilityLabel("Output size")
                 Toggle("Custom output settings", isOn: $outputOverrides)
                     .onChange(of: outputOverrides) { _, enabled in if enabled { outputWidth = model.width; outputFPS = model.fps } }
                 if outputOverrides {
@@ -251,7 +290,15 @@ struct NativeDeliverPanel: View {
                 }
                 if let size = outputSize { Text("\(size.width) × \(size.height) · \((outputOverrides ? outputFPS : model.fps).formatted()) fps").font(.caption).foregroundStyle(NativeEditorStyle.muted) }
                 if let outputError { Text(outputError).font(.caption).foregroundStyle(.orange) }
-                Button(starting ? "Starting export" : "Export video") { export() }.buttonStyle(NativeToolbarButtonStyle(selected: true)).disabled(starting || model.duration <= 0 || presets.isEmpty || outputError != nil)
+                if needsPro {
+                    Text("Exports above 1080p, Apple ProRes and HDR are part of Arya Pro. Choose 1080p, or get Arya Pro.")
+                        .font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                        .accessibilityIdentifier("deliver.proNote")
+                }
+                Button(starting ? "Starting export" : needsPro ? "Export with Arya Pro" : "Export video") { needsPro ? showPro() : export() }
+                    .buttonStyle(NativeToolbarButtonStyle(selected: true))
+                    .disabled(starting || model.duration <= 0 || presets.isEmpty || outputError != nil)
+                    .accessibilityIdentifier("deliver.export")
                 Button("Save current frame") { still() }.disabled(model.metalFrame == nil)
                 #if os(iOS)
                 if !mobileExport.message.isEmpty { Text(mobileExport.message).font(.caption).foregroundStyle(.secondary) }
@@ -288,6 +335,14 @@ struct NativeDeliverPanel: View {
             }.nativePanelPadding()
         }
         .sheet(item: $importSheet) { _ in NativeInterchangeImportSheet(model: model, session: session) }
+        #if os(iOS)
+        .sheet(isPresented: $proVisible) {
+            NavigationStack {
+                NativeProView(store: proStore, reason: "Arya Pro exports this video at full quality. Editing and 1080p export stay free.")
+                    .toolbar { Button("Done") { proVisible = false } }
+            }
+        }
+        #endif
         .onAppear { if !presets.contains(preset) { preset = presets.first ?? "h264" } }
         .onChange(of: presets) { _, values in if !values.contains(preset) { preset = values.first ?? "h264" } }
         .onChange(of: preset) { _, _ in if !hdrAvailable { transfer = "sdr" } }
@@ -303,6 +358,12 @@ struct NativeDeliverPanel: View {
     private var rememberedExportEnded: Bool {
         guard let job = repeatGuard.job else { return false }
         return NativeExportRepeatGuard.ended(model.jobs.first { $0.string("id") == job }?.string("state"))
+    }
+
+    private func showPro() {
+        #if os(iOS)
+        proVisible = true
+        #endif
     }
 
     private func export() {

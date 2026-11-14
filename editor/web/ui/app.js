@@ -201,6 +201,8 @@ function Welcome() {
         <div class="row gap">
           <button class="primary" disabled=${busy || needsRecovery} onClick=${() => start({ name: 'Untitled' })}>New 1080p project</button>
           <button class="ghost" disabled=${busy || needsRecovery} onClick=${() => start({ name: 'Vertical', width: 1080, height: 1920 })}>New 9:16 project</button>
+          <button class="ghost" disabled=${busy || needsRecovery} onClick=${() => start({ name: '4K UHD', width: 3840, height: 2160 })}>New 4K UHD project</button>
+          <button class="ghost" disabled=${busy || needsRecovery} onClick=${() => start({ name: '4K Vertical', width: 2160, height: 3840 })}>New 4K 9:16 project</button>
         </div>
         <p class="muted">Or drop media anywhere in this window to start.</p>
       </div>

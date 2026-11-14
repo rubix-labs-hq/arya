@@ -129,7 +129,7 @@ final class NativeHDRDecoder {
             last = sample; if pts > time + 1e-6 { break }
         }
         guard let last, let buffer = CMSampleBufferGetImageBuffer(last) else { throw reader?.error ?? ReelRenderingError("HDR source has no frame") }
-        let image = CIImage(cvPixelBuffer: buffer).transformed(by: transform)
+        let image = CIImage(cvPixelBuffer: buffer).transformed(by: transform.coreImageDisplay)
         return image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
     }
     deinit { reader?.cancelReading() }

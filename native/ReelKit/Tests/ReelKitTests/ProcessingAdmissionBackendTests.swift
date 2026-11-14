@@ -177,6 +177,35 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
         try assertNoSavedTranscript(fixture); XCTAssertEqual(try Data(contentsOf: fixture.root.appendingPathComponent("reel.project.json")), before)
         XCTAssertEqual(policy.snapshot().active, 0)
     }
+    // BEGIN ARYA PRO GATE
+    /// App Store builds turn the gate on at launch. The backend refuses a locked export on both
+    /// export paths before any job, admission or file exists, and admits it once Pro is active.
+    func testEnforcedProGateRefusesUHDExportOnBothPathsUntilUnlocked() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let policy = admission(), fixture = try await fixture(policy)
+        let before = try Data(contentsOf: fixture.root.appendingPathComponent("reel.project.json"))
+        let uhd: [String: Any] = ["name": "UHD", "width": 3840, "height": 2160, "fps": 1, "range": ["in": 0, "out": 1]]
+        for extra in [["preset": "h264-high"], ["renderer": "webcodecs"], ["renderer": "webcodecs", "width": 1920, "height": 1080, "hdr": "pq"]] as [[String: Any]] {
+            do {
+                _ = try await call(fixture, "/api/export", uhd.merging(extra) { $1 })
+                XCTFail("A locked export started: \(extra)")
+            } catch let error as ReelBackend.APIError {
+                XCTAssertEqual(error.message, ProExportRule.lockedMessage)
+            }
+        }
+        let jobs = try await call(fixture, "/api/jobs")
+        XCTAssertEqual((jobs["jobs"] as? [Any])?.count ?? 0, 0)
+        XCTAssertEqual(policy.snapshot().active + policy.snapshot().queued, 0)
+        XCTAssertEqual(try Data(contentsOf: fixture.root.appendingPathComponent("reel.project.json")), before)
+
+        ProExportGate.shared.setUnlocked(true)
+        let job = try await call(fixture, "/api/export", uhd.merging(["renderer": "webcodecs"]) { $1 })
+        let id = try XCTUnwrap(job["id"] as? String); try await waitUntilRunning(fixture, id)
+        _ = try await call(fixture, "/api/export/finish", ["id": id, "error": "fixture exited", "drained": true])
+        XCTAssertEqual(policy.snapshot().active + policy.snapshot().queued, 0)
+    }
+    // END ARYA PRO GATE
     func testHostedExportCancelNeedsDrainAckAndProgressNeverClaimsCompletionEarly() async throws {
         let policy = admission(), fixture = try await fixture(policy)
         let held = try policy.reserve(capturedBytes: 1)

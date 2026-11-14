@@ -866,8 +866,9 @@ struct NativeInspector: View {
                     Text("16:9 HD").tag("1920x1080")
                     Text("16:9 UHD").tag("3840x2160")
                     Text("9:16 Portrait").tag("1080x1920")
+                    Text("9:16 UHD").tag("2160x3840")
                     Text("1:1 Square").tag("1080x1080")
-                    if !["1920x1080", "3840x2160", "1080x1920", "1080x1080"].contains("\(Int(model.width))x\(Int(model.height))") {
+                    if !["1920x1080", "3840x2160", "1080x1920", "2160x3840", "1080x1080"].contains("\(Int(model.width))x\(Int(model.height))") {
                         Text("Custom").tag("\(Int(model.width))x\(Int(model.height))")
                     }
                 }

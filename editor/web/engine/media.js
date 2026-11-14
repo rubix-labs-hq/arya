@@ -34,7 +34,7 @@ const holder = (() => {
 
 export function mediaUrl(project, src) {
   const asset = project.assets[src]
-  const path = asset?.proxy ?? src
+  const path = project.__aryaExportSourceRevision ? src : asset?.proxy ?? src
 
   const revision = project.__aryaExportSourceRevision
   return host.url(`/media?path=${encodeURIComponent(path)}${revision ? `&sourceRevision=${encodeURIComponent(revision)}` : ''}`)
@@ -196,7 +196,7 @@ export class Media {
       if (!current()) { frame?.close(); return }
       if (!frame) throw new Error('no frame')
       this.frames.get(clipId)?.frame.close()
-      this.frames.set(clipId, { frame, stamp: target })
+      this.frames.set(clipId, { frame, stamp: target, rotation: r.reader.rotation })
     } catch {
       if (!current()) return
       r.failed = true

@@ -128,6 +128,8 @@ export async function prepareExportCohort(root, captured, check = () => {}) {
     }
     const snapshot = rewrite(captured.project)
     snapshot.assets = Object.fromEntries(Object.entries(snapshot.assets ?? {}).map(([key, value]) => [mapping.get(key) ?? key, value]))
+    // Keep proxy bytes admitted for integrity, but render the immutable originals.
+    for (const asset of Object.values(snapshot.assets)) delete asset.proxy
     const receipt = { id: path.basename(dir), projectSHA256: createHash('sha256').update(JSON.stringify(captured.project)).digest('hex'), sourcesSHA256: createHash('sha256').update(JSON.stringify(records.map(({ value, identity, digest }) => ({ path: value, identity, digest })))).digest('hex'), count: records.length }
     return { project: snapshot, receipt, cleanup, assertCurrentSync, async assertCurrent(check = () => {}) {
       assertDirectory()

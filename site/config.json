@@ -35,6 +35,7 @@
     "build": "5",
     "appStoreURL": "https://apps.apple.com/us/app/arya-video-editor/id6826357116",
     "appId": "6826357116",
+    "pro": false,
     "allowedHosts": [
       "apps.apple.com"
     ]

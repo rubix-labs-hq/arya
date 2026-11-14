@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Support channel separation. No build or network.
 
-iOS App Store: StoreKit tips only, never a website payment link.
-Mac direct download (Developer ID): website link, compiled only with ARYA_DIRECT_DISTRIBUTION.
-Mac App Store (future): must not set that flag and must use In-App Purchase.
+iOS, iPadOS and Mac App Store: Arya Pro through In-App Purchase only, never a website payment link.
+Mac direct download (Developer ID): free, with a website tip link compiled only with ARYA_DIRECT_DISTRIBUTION.
+The Mac App Store edition shares the iOS target and must not set that flag.
 Browser editors: website link from the local server route or the hosted publish step only."""
 import argparse
 from pathlib import Path
@@ -35,7 +35,8 @@ def text(path):
 ios_sources = [p for d in ('App/iOS', 'App/Shared', 'ReelKit/Sources') for p in (native / d).rglob('*.swift')]
 check(ios_sources, 'iOS sources found')
 for path in ios_sources:
-    source = re.sub(r'https://editwitharya\.app/(?:download/#mac|install/#accounts|install/#figma)', '', text(path))
+    # Help links and the privacy policy (required next to a subscription) are not payment destinations.
+    source = re.sub(r'https://editwitharya\.app/(?:download/#mac|install/#accounts|install/#figma|privacy/)', '', text(path))
     hits = WEBSITE.findall(source)
     check(not hits, f'{path.relative_to(root)} names a website payment link: {sorted(set(hits))}')
 
@@ -91,7 +92,7 @@ def sources_phase(target):
 
 check('NativeSupportLink.swift' in sources_phase('Reel'), 'Mac target builds the link file')
 check('NativeSupportLink.swift' not in sources_phase('Reel iOS'), 'iOS target never builds the link file')
-check('NativeSupport.swift in Sources' not in sources_phase('Reel'), 'Mac target never builds StoreKit tips')
+check('NativeSupport.swift in Sources' not in sources_phase('Reel'), 'Mac target never builds StoreKit purchases')
 spec = text(native / 'project.yml')
 mac_spec = spec.split('\n  Reel:\n', 1)[1].split('\n  Reel iOS:\n', 1)[0]
 check(FLAG in mac_spec and spec.count(FLAG) == 1, 'XcodeGen sets the flag on the Mac target only')

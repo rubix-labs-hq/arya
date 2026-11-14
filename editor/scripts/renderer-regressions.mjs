@@ -70,6 +70,40 @@ function figmaGradient(type, handles, gradientTransform) {
 }
 
 const cases = {
+  async rotation4k() {
+    const ff = args => execFileSync('ffmpeg', ['-nostdin', '-hide_banner', '-loglevel', 'error', '-y', ...args], { maxBuffer: 64 * 1024 * 1024 })
+    const original = path.join(ROOT, 'landscape.mp4'), rotated = path.join(ROOT, 'portrait.mp4'), proxy = path.join(ROOT, 'proxy.mp4')
+    ff(['-f', 'lavfi', '-i', 'testsrc2=s=3840x2160:r=30:d=0.1', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', original])
+    ff(['-display_rotation', '-90', '-i', original, '-c', 'copy', rotated])
+    // A deliberately different proxy proves this frame uses original pixels.
+    ff(['-f', 'lavfi', '-i', 'color=magenta:s=540x960:r=30:d=0.1', '-c:v', 'libx264', proxy])
+    await post('/api/new', { name: '4K rotation', width: 2160, height: 3840, fps: 30 })
+    await ops([{ op: 'import', assets: { 'portrait.mp4': { width: 2160, height: 3840, rotation: -90, proxy: 'proxy.mp4', hasVideo: true, duration: 0.1, fps: 30 } } }, { op: 'append', src: 'portrait.mp4', track: 'V1', dur: 0.1, audio: false }])
+    let rendered
+    try { rendered = await post('/api/frame', { at: 0, width: 2160 }) }
+    catch (error) {
+      if (!error.message.includes('the render worker did not start')) throw error
+      // Cold Chrome startup can exceed the server's admission deadline on busy Macs.
+      // Wait for that same worker, then test pixels; never retry a rendering failure.
+      const deadline = Date.now() + 60000
+      while (!(await fetch(`${BASE}/api/state`).then(r => r.json())).worker) {
+        if (Date.now() > deadline) throw error
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      rendered = await post('/api/frame', { at: 0, width: 2160 })
+    }
+    const decode = file => ff(['-i', file, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'])
+    const expected = decode(rotated), actual = decode(rendered.path)
+    assert.equal(actual.length, 2160 * 3840 * 3)
+    assert.equal(actual.length, expected.length)
+    // Sample away from edges; ffmpeg and the GPU use slightly different YUV rounding.
+    let error = 0, count = 0
+    for (let y = 100; y < 3840; y += 211) for (let x = 100; x < 2160; x += 197) {
+      const offset = (y * 2160 + x) * 3
+      for (let c = 0; c < 3; c++) { error += Math.abs(actual[offset + c] - expected[offset + c]); count++ }
+    }
+    assert.ok(error / count < 5, `rotated original pixels differ from ffmpeg: mean error ${error / count}`)
+  },
   async coverFit() {
     await scene([
       { op: 'add_comp', width: 80, height: 20, duration: 1 },
@@ -294,8 +328,17 @@ try {
   console.log(`${Object.keys(cases).filter(name => !SELECT || name === SELECT).length - failed} passed, ${failed} failed`)
   if (failed) process.exitCode = 1
 } finally {
+  // The server exits before Chrome finishes flushing its profile. Track only
+  // the browser launched in this fixture's unique directory before shutdown.
+  let workerPID
+  try { workerPID = Number(fs.readlinkSync(path.join(ROOT, '.reel/chrome/SingletonLock')).match(/-(\d+)$/)?.[1]) } catch {}
   await fetch(`${BASE}/api/shutdown`, { method: 'POST' }).catch(() => {})
   server.kill()
-  await new Promise(resolve => server.exitCode !== null ? resolve() : server.once('exit', resolve))
-  fs.rmSync(ROOT, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
+  await new Promise(resolve => server.exitCode !== null || server.signalCode !== null ? resolve() : server.once('exit', resolve))
+  const deadline = Date.now() + 60000
+  while (workerPID && Date.now() < deadline) {
+    try { process.kill(workerPID, 0) } catch { break }
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  await fs.promises.rm(ROOT, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
 }

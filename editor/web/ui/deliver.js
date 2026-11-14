@@ -16,7 +16,7 @@ const html = htm.bind(h)
 
 const PRESETS = [
   { id: 'youtube', name: 'YouTube 1080p', preset: 'h264-high', scale: 1, note: 'H.264 High, CRF 17, AAC 320k' },
-  { id: '4k', name: '4K master', preset: 'h264-high', width: 3840, note: 'H.264 at 3840 wide' },
+  { id: '4k', name: '4K master', preset: 'h264-high', maxEdge: 3840, note: 'H.264 up to 3840×2160, landscape or portrait' },
   { id: 'web', name: 'Web / Vimeo', preset: 'h264-web', note: 'H.264, smaller file' },
   { id: 'fast', name: 'Fast H.264', preset: 'h264-fast', note: 'VideoToolbox hardware encode' },
   { id: 'hevc', name: 'HEVC (H.265)', preset: 'hevc', note: 'VideoToolbox HEVC, Apple-friendly' },
@@ -50,7 +50,9 @@ export function DeliverPage() {
   const [width, setWidth] = useState(null)
   const [fps, setFps] = useState(null)
   const [dismissed, setDismissed] = useState({ root: s.root, ids: [] })
-  const outW = width ?? choice.width ?? p.width
+  const outW = width ?? (choice.maxEdge
+    ? Math.max(2, Math.floor(p.width * Math.min(3840 / Math.max(p.width, p.height), 2160 / Math.min(p.width, p.height)) / 2) * 2)
+    : choice.width ?? p.width)
   const outH = Math.round((outW * p.height) / p.width / 2) * 2
   const range = rangeMode === 'range' && p.range ? p.range : { in: 0, out: duration(p) }
   const native = host.kind === 'native' || host.kind === 'browser-local'
@@ -106,7 +108,7 @@ export function DeliverPage() {
         <div class="field"><label>File name</label><input value=${name} onInput=${e => setName(e.target.value)} onKeyDown=${e => e.stopPropagation()} /></div>
         ${!choice.preset.startsWith('audio') ? html`
           <div class="field"><label>Resolution</label><select value=${outW} onChange=${e => setWidth(Number(e.target.value))}>
-            ${[...new Set([p.width, 3840, 2560, 1920, 1280, 960, 640].filter(w => w <= Math.max(3840, p.width)))].map(w => html`<option value=${w}>${w}×${Math.round((w * p.height) / p.width / 2) * 2}</option>`)}
+            ${[...new Set([p.width, outW, 3840, 2560, 2160, 1920, 1280, 960, 640].filter(w => w <= Math.max(3840, p.width)))].map(w => html`<option value=${w}>${w}×${Math.round((w * p.height) / p.width / 2) * 2}</option>`)}
           </select></div>
           <div class="field"><label>Frame rate</label><select value=${fps ?? p.fps} onChange=${e => setFps(Number(e.target.value))}>${[p.fps, 24, 25, 30, 50, 60].filter((v, i, a) => a.indexOf(v) === i).map(f => html`<option value=${f}>${f}</option>`)}</select></div>` : null}
         <div class="field"><label>Range</label><div class="seg">

@@ -977,3 +977,15 @@ export function curveTables(curves) {
 }
 
 export { hexToRgb, baseValue, opacityAt, valueAt }
+
+/** Normalize raw decoder pixels before fit, crop, masks and the node graph. */
+export function orientSource(comp, source, rotation, key) {
+  const angle = ((rotation % 360) + 360) % 360
+  if (!angle) return source
+  const quarter = angle === 90 || angle === 270
+  const w = quarter ? source.h : source.w, h = quarter ? source.w : source.h
+  const target = comp.pooled(`orientation:${key}`, w, h)
+  comp.clear(target)
+  comp.drawLayer(target, source, { x: w / 2, y: h / 2, w: source.w, h: source.h, rotation: angle, opacity: 1, fx: {} }, { width: w, height: h }, 0)
+  return { tex: target.tex, w, h, flipY: true }
+}

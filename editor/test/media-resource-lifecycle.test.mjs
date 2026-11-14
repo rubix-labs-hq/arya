@@ -231,3 +231,11 @@ test('cancelled job ID is retired so a following job can finish with clean resou
   assert.equal(fixture.f.media.resetCount, 2)
   assert.ok(fixture.requests.some(url => url.endsWith('/done')))
 })
+
+test('decoder preserves clockwise track rotation alongside raw VideoFrames', async () => {
+  const f = await decoderFixture({ track: Promise.resolve({ displayWidth: 2160, displayHeight: 3840, rotation: 90, canDecode: async () => true }) })
+  try {
+    await f.reader.ready
+    assert.equal(f.reader.rotation, 90)
+  } finally { f.reader.close() }
+})

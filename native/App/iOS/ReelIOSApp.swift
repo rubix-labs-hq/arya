@@ -96,8 +96,9 @@ struct ReelIOSApp: App {
     @State private var presentation = NativeMobilePresentation()
 
     init() {
-        // StoreKit delivers unfinished tip transactions only to a listener running at launch.
-        NativeSupportStore.shared.start()
+        // Turns on the App Store export rule and starts the purchase listener. StoreKit delivers
+        // unfinished transactions only to a listener running at launch.
+        NativeProStore.shared.start()
     }
 
     var body: some Scene {
@@ -144,7 +145,7 @@ struct ReelIOSApp: App {
                             Button("Recover saved project…") { session.offerProjectRecovery() }
                             Button("Assistant settings") { presentation.presentSheet(.assistantSettings) }
                             Button("Getting started") { presentation.presentSheet(.gettingStarted) }
-                            Button("Support Arya") { presentation.presentSheet(.support) }
+                            Button("Arya Pro") { presentation.presentSheet(.support) }
                             Button("Native editor") { session.useWebEditor = false }
                         } label: {
                             Image(systemName: "folder").padding(10)
@@ -171,7 +172,7 @@ struct ReelIOSApp: App {
                             .id(route.id)
                     case .support:
                         NavigationStack {
-                            NativeSupportView(store: .shared)
+                            NativeProView(store: .shared)
                                 .toolbar { Button("Done") { presentation.dismissSheet(route) } }
                         }
                         .id(route.id)
