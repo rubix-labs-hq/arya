@@ -124,3 +124,11 @@ test('a preview with processing steps lists what each renders and where it lands
   button(failed, 'Dismiss').props.onClick(); assert.equal(dismissed, 1)
   assert.equal(assistantPanel.ApplyingCard({ applying: null }), null)
 })
+
+
+test('transition-only selections never suggest whole-timeline edits', () => {
+  const p = interview()
+  assert.deepEqual(assistantSuggestions(p, { selection: ['tr:c2'] }), [])
+  assert.deepEqual(assistantSuggestions(p, { selection: ['tr:c1', 'tr:c2'] }), [])
+  assert.ok(assistantSuggestions(p).some(item => item.id === 'silences'))
+})
