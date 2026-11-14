@@ -45,11 +45,14 @@ export async function uploadMediaFiles(files, { upload, request, notify, assets 
   if (!files.length) return null
   const paths = []
   let failed = 0
-  // The existing import metadata has byte size and filename, but no content hash.
-  const known = new Set(Object.entries(assets).filter(([, asset]) => Number.isSafeInteger(asset.size)).map(([path, asset]) => `${path.split('/').pop()}\0${asset.size}`))
+  // Imported assets record byte size and filename, but no content hash. The hosted beta keeps
+  // the original name in asset.name because its stored path carries a generated prefix.
+  const identity = (name, size) => `${String(name).normalize('NFC')}\0${size}`
+  const known = new Set(Object.entries(assets).filter(([, asset]) => Number.isSafeInteger(asset?.size) && asset.size > 0)
+    .map(([path, asset]) => identity(asset.name ?? path.split('/').pop(), asset.size)))
   for (const file of files) {
-    const identity = `${file.name}\0${file.size}`
-    if (Number.isSafeInteger(file.size) && known.has(identity)) {
+    const fileIdentity = identity(file.name, file.size)
+    if (Number.isSafeInteger(file.size) && known.has(fileIdentity)) {
       notify(`Skipped ${file.name}. A file with the same name and size is already in this project.`, 'info')
       continue
     }
@@ -61,7 +64,6 @@ export async function uploadMediaFiles(files, { upload, request, notify, assets 
         throw new Error(`Could not upload ${file.name}. The upload service did not return a file.`)
       }
       paths.push(result.path)
-      if (Number.isSafeInteger(file.size)) known.add(identity)
     } catch (error) {
       failed++
       reportFailure(new Error(`${file.name}: ${error?.message || String(error)}`), notify)

@@ -257,14 +257,35 @@ test('actual missing-folder route rejection becomes an error toast without closi
 
 test('uploads skip existing name-and-size matches before copying and keep different sizes', async () => {
   const n = notices(), uploaded = []
-  const result = await uploadMediaFiles([{ name: 'a.mp4', size: 100 }, { name: 'a.mp4', size: 200 }, { name: 'a.mp4', size: 200 }], {
+  const result = await uploadMediaFiles([{ name: 'a.mp4', size: 100 }, { name: 'a.mp4', size: 200 }], {
     ...n, assets: { 'media/a.mp4': { size: 100 } },
     upload: async file => { uploaded.push(file); return { path: 'media/a-1.mp4' } },
     request: async () => ({ assets: { 'media/a-1.mp4': { size: 200 } } }),
   })
   assert.deepEqual(uploaded, [{ name: 'a.mp4', size: 200 }])
   assert.equal(result.count, 1)
-  assert.equal(n.messages.filter(m => m.text.includes('same name and size')).length, 2)
+  assert.equal(n.messages.filter(m => m.text.includes('same name and size')).length, 1)
+})
+
+test('hosted assets match on their saved original name, not the generated storage path', async () => {
+  const n = notices(), uploaded = []
+  await uploadMediaFiles([{ name: 'clip.mp4', size: 300 }], {
+    ...n, assets: { 'media/5f1c2e-clip.mp4': { name: 'clip.mp4', size: 300 } },
+    upload: async file => { uploaded.push(file); return { path: 'media/x.mp4' } },
+    request: async () => ({ assets: {} }),
+  })
+  assert.deepEqual(uploaded, [])
+  assert.equal(n.messages.filter(m => m.text.includes('same name and size')).length, 1)
+})
+
+test('only files already in the project are skipped, so a failed copy never hides a later one', async () => {
+  const n = notices(), uploaded = []
+  await uploadMediaFiles([{ name: 'b.mp4', size: 50 }, { name: 'b.mp4', size: 50 }], {
+    ...n, assets: {},
+    upload: async file => { uploaded.push(file); return { path: `media/b-${uploaded.length}.mp4` } },
+    request: async () => ({ assets: { 'media/b-2.mp4': { size: 50 } } }),
+  })
+  assert.equal(uploaded.length, 2)
 })
 
 test('the empty media list offers the existing import-all flow for project folder media', async () => {
