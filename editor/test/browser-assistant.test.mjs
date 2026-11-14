@@ -25,7 +25,8 @@ const statuses = async () => [
   { id: 'antigravity', installed: true, authenticated: true, available: false, reason: 'Per-run permissions are unavailable.' },
   { id: 'custom', installed: true, authenticated: true },
 ]
-const alive = pid => { try { process.kill(Number(pid), 0); return true } catch { return false } }
+// process.kill(0, 0) signals our own process group and always succeeds, so refuse a non-PID.
+const alive = pid => { const id = Number(pid); assert.ok(Number.isInteger(id) && id > 0, `Expected a process ID, got ${JSON.stringify(pid)}`); try { process.kill(id, 0); return true } catch { return false } }
 // A deadline rather than a fixed count of polls: child CLIs exit through grace periods that run
 // longer than 5 s when the whole suite loads the machine. The assertions are unchanged.
 const waitFor = async (predicate, ms = 20000) => {

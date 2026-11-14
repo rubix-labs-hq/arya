@@ -153,7 +153,8 @@ async function externalBridge(mode, marker) {
   } }
 }
 const exists = async file => { try { return await fs.readFile(file, 'utf8') } catch { return null } }
-const alive = pid => { try { process.kill(Number(pid), 0); return true } catch { return false } }
+// process.kill(0, 0) signals our own process group and always succeeds, so refuse a non-PID.
+const alive = pid => { const id = Number(pid); assert.ok(Number.isInteger(id) && id > 0, `Expected a process ID, got ${JSON.stringify(pid)}`); try { process.kill(id, 0); return true } catch { return false } }
 
 test('oversized output finalizes within bounds and keeps the companion responsive', async () => {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-agent-limit-')), marker = path.join(folder, 'pid')
