@@ -66,7 +66,7 @@ test('the capture note names the sample projects on screen and says what their m
   const mac = Object.keys(native.images).filter(id => native.images[id].device === 'Mac');
   const macNote = nativeCaptureNote({ native, shown: mac });
   assert.ok(macNote.includes(disclosure));
-  assert.ok(macNote.includes('come from a Mac App Store build of Arya 1.1.0 that is not public. Screens in the direct Mac build can differ.'));
+  assert.ok(macNote.includes('come from the Mac App Store build of Arya 1.1.0. Screens in the direct Mac build can differ.'));
   for (const id of mac) assert.equal(native.images[id].edition === 'Mac App Store', native.images[id].project === 'After the Tide', id);
   const phone = nativeCaptureNote({ native, shown: ['iphone-edit', 'iphone-deliver'], mobileURL: 'https://apps.apple.com/app/id1', mobileVersion: '1.1.0' });
   assert.doesNotMatch(phone, /Mac App Store/);

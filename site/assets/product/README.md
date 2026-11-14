@@ -25,7 +25,7 @@ The home page leads with the native captures. It uses browser captures only wher
 | `after-the-tide.mp4` | The 12 second export the iPhone app rendered from the After the Tide project, at 1280 by 720 without sound. |
 | `after-the-tide-poster.webp` | One frame of that export. |
 
-Captures are cropped or scaled down, then converted with `cwebp`. Nothing is drawn over them and none is enlarged. Every capture shows the After the Tide sample project, except `native-mac-motion-inspector.webp`, which shows Motion Study, a generated title over a shape layer. The Mac captures of After the Tide come from the Mac App Store build of 1.1.0 (3), which is not public. The Motion Study capture comes from the direct build. `link-preview.png` in `assets/brand` uses `native-mac-color-inspector.webp`; its source is `docs/design/link-preview.html`.
+Captures are cropped or scaled down, then converted with `cwebp`. Nothing is drawn over them and none is enlarged. Every capture shows the After the Tide sample project, except `native-mac-motion-inspector.webp`, which shows Motion Study, a generated title over a shape layer. The Mac captures of After the Tide come from the Mac App Store build of 1.1.0 (3). The Motion Study capture comes from the direct build. `link-preview.png` in `assets/brand` uses `native-mac-color-inspector.webp`; its source is `docs/design/link-preview.html`.
 
 ### After the Tide
 
