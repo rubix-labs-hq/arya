@@ -253,3 +253,28 @@ test('actual missing-folder route rejection becomes an error toast without closi
   assert.equal(successes(f.messages).length, 0)
   assert.deepEqual(Object.keys(route.state.project.assets), [])
 })
+
+
+test('uploads skip existing name-and-size matches before copying and keep different sizes', async () => {
+  const n = notices(), uploaded = []
+  const result = await uploadMediaFiles([{ name: 'a.mp4', size: 100 }, { name: 'a.mp4', size: 200 }, { name: 'a.mp4', size: 200 }], {
+    ...n, assets: { 'media/a.mp4': { size: 100 } },
+    upload: async file => { uploaded.push(file); return { path: 'media/a-1.mp4' } },
+    request: async () => ({ assets: { 'media/a-1.mp4': { size: 200 } } }),
+  })
+  assert.deepEqual(uploaded, [{ name: 'a.mp4', size: 200 }])
+  assert.equal(result.count, 1)
+  assert.equal(n.messages.filter(m => m.text.includes('same name and size')).length, 2)
+})
+
+test('the empty media list offers the existing import-all flow for project folder media', async () => {
+  const requests = []
+  const f = renderFixture({ seed: ['', false, 'all', { dir: '.', count: 2 }], request: async (url, body) => { requests.push({ url, body }); return { assets: { a: {}, b: {} } } } })
+  const nodes = f.nodes(f.render('MediaTab', { p: { assets: {} } }))
+  assert.ok(nodes.some(node => node.type === 'p' && node.children.join('') === '2 media files in this folder'))
+  const action = nodes.find(node => node.type === 'button' && node.children.join('') === 'Import all media here (2)')
+  assert.ok(action)
+  await action.props.onClick()
+  assert.deepEqual(JSON.parse(JSON.stringify(requests)), [{ url: '/api/import', body: { paths: ['.'] } }])
+  assert.equal(f.messages.at(-1).text, 'Imported 2 files')
+})

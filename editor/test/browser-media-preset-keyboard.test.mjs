@@ -24,7 +24,7 @@ const browserBody = [
   between(source, 'function MediaTab(', 'async function addTitlePreset('),
   between(source, 'function TransitionsTab(', 'export function Browser('),
 ].join('\n')
-const uiFactory = new Function('deps', `const { html, useState, useRef, store, time, edit, toast, host, api, uploadMediaFiles, EFFECTS, TRANSITIONS, BrowserSections, MediaCard, FolderPicker, mediaMatchesQuery, showMusicDetails } = deps; ${browserBody}\nreturn { MediaTab, TransitionsTab, EffectsTab }`)
+const uiFactory = new Function('deps', `const { html, useState, useRef, useEffect, store, time, edit, toast, host, api, uploadMediaFiles, EFFECTS, TRANSITIONS, BrowserSections, MediaCard, FolderPicker, mediaMatchesQuery, showMusicDetails } = deps; ${browserBody}\nreturn { MediaTab, TransitionsTab, EffectsTab }`)
 const scopedBody = storeSource.match(/function scoped\(ops\) \{[\s\S]*?\n\}/)?.[0]
 assert.ok(scopedBody)
 const editBody = between(storeSource, 'export async function edit(', 'export function connect(').replace('export ', '')
@@ -55,7 +55,7 @@ function fixture({ locked = false, selected = true, uploadError = false } = {}) 
     return { ...result, version: store.version + 1 }
   }
   const edit = editFactory(store, core.applyOps, set, api, toast)
-  const ui = uiFactory({ html: htm.bind(h), useState: value => [value, () => {}], useRef: value => ({ current: value }), store, time, edit, toast, api, uploadMediaFiles,
+  const ui = uiFactory({ html: htm.bind(h), useEffect() {}, useState: value => [value, () => {}], useRef: value => ({ current: value }), store, time, edit, toast, api, uploadMediaFiles,
     host: { upload: async file => { uploads.push(file); if (uploadError) throw Error('Owned upload failed'); return { path: `media/${file.name}` } } },
     EFFECTS: core.EFFECTS, TRANSITIONS: core.TRANSITIONS, BrowserSections() {}, MediaCard() {}, FolderPicker() {}, mediaMatchesQuery: () => true, showMusicDetails() { assert.fail('Unrelated music action') } })
   const tree = [...nodes(ui.MediaTab({ p: store.project })), ...nodes(ui.TransitionsTab()), ...nodes(ui.EffectsTab())]

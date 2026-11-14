@@ -41,11 +41,18 @@ export async function importMediaPaths(paths, { request, notify, expectedCount }
 }
 
 /** Uploaded files can fail probing. Success reports only the later import result. */
-export async function uploadMediaFiles(files, { upload, request, notify } = {}) {
+export async function uploadMediaFiles(files, { upload, request, notify, assets = {} } = {}) {
   if (!files.length) return null
   const paths = []
   let failed = 0
+  // The existing import metadata has byte size and filename, but no content hash.
+  const known = new Set(Object.entries(assets).filter(([, asset]) => Number.isSafeInteger(asset.size)).map(([path, asset]) => `${path.split('/').pop()}\0${asset.size}`))
   for (const file of files) {
+    const identity = `${file.name}\0${file.size}`
+    if (Number.isSafeInteger(file.size) && known.has(identity)) {
+      notify(`Skipped ${file.name}. A file with the same name and size is already in this project.`, 'info')
+      continue
+    }
     try {
       notify(`Uploading ${file.name}…`)
       const result = await upload(file)
@@ -54,6 +61,7 @@ export async function uploadMediaFiles(files, { upload, request, notify } = {}) 
         throw new Error(`Could not upload ${file.name}. The upload service did not return a file.`)
       }
       paths.push(result.path)
+      if (Number.isSafeInteger(file.size)) known.add(identity)
     } catch (error) {
       failed++
       reportFailure(new Error(`${file.name}: ${error?.message || String(error)}`), notify)
