@@ -55,7 +55,16 @@ private struct NativeSelectionAIIntent: View {
                         }
                     }
                     Text("The assistant receives your intent and source layer references, plus project context. Its tools can read the open project, transcripts and requested project or reference images. Review AI sharing permission before the first send. Motion stays editable in the Motion panel.").font(.caption).foregroundStyle(.secondary)
-                    if !assistant.configured { Text(assistant.reason).font(.caption).foregroundStyle(.secondary) }
+                    if !assistant.configured {
+                        // Setup opens in place, and the intent typed here stays.
+                        Text(assistant.reason).font(.caption).foregroundStyle(.secondary)
+                        NavigationLink {
+                            NativeAssistantSettings(assistant: assistant).navigationTitle("Assistant settings")
+                        } label: {
+                            Label("Set up assistant", systemImage: "sparkles").frame(minHeight: 44)
+                        }.buttonStyle(.borderedProminent).tint(NativeEditorStyle.accent)
+                            .accessibilityIdentifier("askAI.setUpAssistant")
+                    }
                     if assistant.isWorking { Text("Wait for the assistant to finish its current edit.").font(.caption).foregroundStyle(.secondary) }
                     if let error {
                         Text(error).font(.caption).foregroundStyle(.secondary)

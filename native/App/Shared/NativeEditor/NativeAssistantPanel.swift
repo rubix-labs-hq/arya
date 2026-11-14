@@ -378,6 +378,15 @@ struct NativeAssistantPanel: View {
         }
     }
 
+    /// Touch devices get full-size suggestion buttons with a 44-point target.
+    private static var touch: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
+    }
+
     private var phoneComposer: Bool {
         #if os(iOS)
         horizontalSizeClass == .compact
@@ -415,12 +424,15 @@ struct NativeAssistantPanel: View {
     /// Suggested requests and the Preview changes switch, above the draft.
     private var composerAssists: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !assistant.suggestions.isEmpty {
+            // Suggestions show only while the draft is empty, so one never replaces typed text.
+            // Each one is sent as a prompt, not as a script or screenplay.
+            if !assistant.suggestions.isEmpty && model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(assistant.suggestions) { item in
-                            Button(item.label) { model.assistantDraft = item.prompt }
-                                .buttonStyle(.bordered).controlSize(.small).tint(NativeEditorStyle.text).fixedSize(horizontal: true, vertical: false).disabled(assistant.isWorking)
+                            Button(item.label) { model.assistantInputKind = "prompt"; model.assistantDraft = item.prompt }
+                                .buttonStyle(.bordered).controlSize(Self.touch ? .regular : .small).tint(NativeEditorStyle.text).fixedSize(horizontal: true, vertical: false).disabled(assistant.isWorking)
+                                .frame(minHeight: Self.touch ? 44 : nil)
                                 .help(item.prompt + " It goes into the draft for you to review before sending.")
                         }
                     }
@@ -1014,7 +1026,7 @@ struct NativeAssistantPanel: View {
                             .font(.system(size: 10)).foregroundStyle(NativeEditorStyle.muted).textSelection(.enabled)
                         receiptChanges(clip.changes)
                         if clip.status != "deleted" {
-                            Button("Select changed object") { model.selectReceiptClip(clip) }.controlSize(.small)
+                            Button("Select changed object") { model.selectReceiptClip(clip) }.controlSize(Self.touch ? .regular : .small).frame(minHeight: Self.touch ? 44 : nil)
                                 .disabled(model.receiptSelection(clip) == nil)
                                 .accessibilityLabel("Select \(clip.name) in \(clip.compositionName)")
                         }

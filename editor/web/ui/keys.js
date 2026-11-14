@@ -43,7 +43,11 @@ function clipsUnderPlayhead(p) {
 
 const COMMAND_INPUTS = 'input, textarea, select, [contenteditable], [role="dialog"], [role="alertdialog"], dialog'
 
-const KEYBOARD_INPUTS = `${COMMAND_INPUTS}, button, summary, a[href], [role="button"], [role="tab"]`
+// A focused button, link or tab keeps the keys that operate it, and Delete and Backspace never
+// remove clips from there. Every other shortcut still works after a click, so the person never has
+// to click the timeline before typing a shortcut. viewer.js applies the same rule to Source keys.
+const FOCUSABLE_CONTROLS = 'button, summary, a[href], [role="button"], [role="tab"]'
+const CONTROL_KEYS = new Set([' ', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', 'Backspace', 'Delete'])
 
 export function runEditorCommand(command) {
   if (store.settingsOpen || document.activeElement?.closest?.(COMMAND_INPUTS)) return 'input'
@@ -115,7 +119,8 @@ export function installKeys() {
     if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); set({ settingsOpen: !store.settingsOpen, settingsOtherWays: false }); return }
     if (store.settingsOpen) return
     if (e.key === 'Escape' && store.showKeys) { e.preventDefault(); set({ showKeys: false }); return }
-    if (e.target.closest?.(KEYBOARD_INPUTS)) return
+    if (e.target.closest?.(COMMAND_INPUTS)) return
+    if (CONTROL_KEYS.has(e.key) && e.target.closest?.(FOCUSABLE_CONTROLS)) return
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
       const target = e.target.closest?.('[tabindex]') ?? e.target
       if (target instanceof Element && !target.closest('.tl-canvas, .node-panel, [role="separator"]')) {
