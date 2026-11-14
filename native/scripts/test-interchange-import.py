@@ -364,6 +364,9 @@ console.log('Passed post-import production editBatch request through shared appl
         # The Deliver panel registers export jobs for completion feedback through the production model methods.
         model_helpers += '\n'.join(block(model_implementation, marker) for marker in ['func registerExportFeedback(', 'func confirmExportFeedback(']) + '\n'
         ui_fixture = ui_fixture.replace('    var receives = 0', model_helpers + '    var receives = 0')
+        # The Deliver panel hides its own title inside the phone Deliver sheet.
+        ui_fixture = ui_fixture.replace('    var receives = 0', '    var mobilePanel: NativePanel?\n    var receives = 0', 1)
+        ui_fixture += '\nenum NativePanel { case deliver }\n'
         # Delivery UI is type-checked here too; only its backend access seam is inert.
         # Real output/read-only/reopen behavior belongs to DeliveryHistoryBackendTests.
         ui_fixture = ui_fixture.replace('    var previewRequests = 0', '    let sessionID = \"import-fixture\"\n    var previewRequests = 0')
