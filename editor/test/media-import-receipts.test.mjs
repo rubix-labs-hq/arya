@@ -278,3 +278,9 @@ test('the empty media list offers the existing import-all flow for project folde
   assert.deepEqual(JSON.parse(JSON.stringify(requests)), [{ url: '/api/import', body: { paths: ['.'] } }])
   assert.equal(f.messages.at(-1).text, 'Imported 2 files')
 })
+
+test('one media file in the project folder is counted in the singular', () => {
+  const f = renderFixture({ seed: ['', false, 'all', { dir: '.', count: 1 }], request: async () => ({}) })
+  const nodes = f.nodes(f.render('MediaTab', { p: { assets: {} } }))
+  assert.ok(nodes.some(node => node.type === 'p' && node.children.join('') === '1 media file in this folder'))
+})
