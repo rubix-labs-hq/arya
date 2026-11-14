@@ -104,7 +104,7 @@ test('actual DeliverPage disables Render and announces preparation before its re
   assert.equal(f.find(rendered, 'Nothing rendered yet.'), null)
   await busy.click(); assert.equal(f.calls.length, 1)
   f.resolve({ id: 'synthetic-job' }); await pending
-  assert.equal(f.button(f.render()).label, '⇪ Render')
+  assert.equal(f.button(f.render()).label, 'Render')
   assert.equal(f.toasts.length, 1)
 })
 
@@ -162,4 +162,11 @@ test('failed queue rows use plain text, retry their original spec and can be dis
   rendered = f.render()
   assert.ok(!JSON.stringify(rendered).includes('job failed'))
   assert.ok(JSON.stringify(rendered).includes('job done'))
+})
+
+
+test('Render has a plain accessible label and hides its decorative arrow', () => {
+  const f = component(), rendered = f.render()
+  assert.equal(f.button(rendered).label, 'Render')
+  assert.match(f.find(rendered, 'deliver-actions').strings.join(''), /<span aria-hidden="true">⇪<\/span>/)
 })
