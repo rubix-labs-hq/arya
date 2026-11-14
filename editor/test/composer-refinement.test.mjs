@@ -116,7 +116,8 @@ test('named reference removal changes only the actual refs', () => {
 
 test('suggestions follow the selection, sit before the text box and set a draft without dispatch', () => {
   const clips = [{ id: 'c1', kind: 'video', src: 'a.mp4', start: 0, dur: 4 }, { id: 'c2', kind: 'video', src: 'b.mp4', start: 4, dur: 4 }]
-  const f = fixture({ selection: ['c1', 'c2'], project: { width: 1920, height: 1080, assets: { 'a.mp4': { hasAudio: true }, 'b.mp4': { hasAudio: true } }, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} } })
+  const f = fixture({ selection: ['c1', 'c2'], project: { width: 1920, height: 1080, assets: { 'a.mp4': { hasAudio: true }, 'b.mp4': { hasAudio: true } }, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} } }, '')
+  f.state.assistantDraft.inputKind = 'script'
   const tree = f.draw(), group = nodes(tree).find(node => node.props?.class === 'assistant-suggestions')
   assert.ok(group); assert.equal(group.props['aria-label'], 'Suggested requests')
   const labels = nodes(group).filter(node => node.type === 'button').map(node => text(node))
@@ -126,8 +127,9 @@ test('suggestions follow the selection, sit before the text box and set a draft 
   const card = nodes(tree).find(node => node.props?.class === 'assistant-composer-card')
   const order = flatten(card.props.children).filter(child => child && typeof child === 'object').map(child => child.props?.class)
   assert.ok(order.indexOf('assistant-composer-content') < order.indexOf('composer'))
-  assert.equal(nodes(f.draw()).find(node => node.props?.class === 'assistant-suggestions') !== undefined, true)
-  assert.equal(nodes(fixture({ claude: { state: 'working' }, selection: ['c1'], project: { assets: {}, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} } }).draw()).find(node => node.props?.class === 'assistant-suggestion').props.disabled, true)
+  assert.equal(f.state.assistantDraft.inputKind, 'prompt', 'a suggestion is always sent as a prompt')
+  assert.equal(nodes(f.draw()).find(node => node.props?.class === 'assistant-suggestions'), undefined, 'suggestions hide once the box has text, so none replaces it')
+  assert.equal(nodes(fixture({ claude: { state: 'working' }, selection: ['c1'], project: { assets: {}, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} } }, '').draw()).find(node => node.props?.class === 'assistant-suggestion').props.disabled, true)
 })
 
 for (const flags of [{ isComposing: true }, { nativeEvent: { isComposing: true } }, { keyCode: 229 }, { altKey: true }, { ctrlKey: true }, { shiftKey: true }]) test(`Enter preserves composition or newline for ${JSON.stringify(flags)}`, async () => {

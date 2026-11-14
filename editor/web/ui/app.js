@@ -90,7 +90,7 @@ function TopBar() {
       </div></div>
       <span class="topbar-sep before-assistant" aria-hidden="true"></span>
       <button class=${`claude-btn ${s.chatOpen ? 'on' : ''} ${['thinking', 'working', 'running', 'queued', 'cancelling'].includes(s.claude.state) ? 'busy' : ''}`} aria-expanded=${s.chatOpen} onClick=${() => set({ chatOpen: !s.chatOpen })}><${Icon} name="assistant" />Assistant${s.refs.length ? html` <span class="count">${s.refs.length}</span>` : ''}</button>
-      <span class=${`conn ${s.connected ? 'ok' : ''}`} title=${host.kind === 'browser-local' ? 'Using project storage on this browser' : s.connected ? 'Connected to the Arya server' : 'Disconnected'}></span>
+      ${/* Shown only when the editor loses its server, so a dot beside Assistant never reads as AI status. */ s.connected ? null : html`<span class="conn" role="status" aria-label="Disconnected from the Arya server" title="Disconnected from the Arya server"></span>`}
       </div>
     </div>
   `

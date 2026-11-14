@@ -182,6 +182,13 @@ for (const selector of ['summary', 'button', 'a[href]', '[role="button"]', '[rol
     assert.deepEqual(c.calls, [])
     assert.deepEqual(c.state, before)
   })
+  test(`page and edit shortcuts still run after clicking a ${selector}`, () => {
+    const c = keyboard({ selection: ['c1'] }), target = controlTarget(selector)
+    assert.equal(c.dispatch('!', { code: 'Digit6', shiftKey: true, target }).defaultPrevented, true)
+    assert.equal(c.state.page, 'deliver')
+    c.dispatch('b', { metaKey: true, target })
+    assert.equal(c.calls.length, 1, 'Cmd-B splits with the button still focused')
+  })
   test(`native editor commands still run with focus on ${selector}`, () => {
     const c = keyboard()
     c.document.activeElement = controlTarget(selector)
