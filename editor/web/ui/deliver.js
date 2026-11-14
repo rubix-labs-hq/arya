@@ -29,6 +29,9 @@ const PRESETS = [
   { id: 'png', name: 'PNG sequence', preset: 'png-seq', note: 'one PNG per frame' },
 ]
 
+// The tip card counts only exports started in this tab, even if Deliver closed before the reply.
+const noteStartedExport = job => { if (job?.id) set({ startedExports: [...(store.startedExports ?? []), job.id].slice(-20) }) }
+
 export function DeliverPage() {
   const s = useStore()
   useEffect(() => { set({ viewerMode: 'timeline' }) }, [])
@@ -52,15 +55,15 @@ export function DeliverPage() {
   if (!request.current) request.current = createDeliverRequest({
     getScope: () => ({ root: s.root, version: s.version, project: s.project, comp: s.openComp }),
     changed: () => refreshRequest(value => value + 1),
-    // exportsStarted lets the tip card count only exports started in this tab.
-    started: () => { toast('Render started'); set({ exportsStarted: (store.exportsStarted ?? 0) + 1 }) },
+    started: () => toast('Render started'),
     start: async (spec, project, guard) => {
       if (host.kind === 'native' || host.kind === 'browser-local') {
         const { startNativeExport } = await import('../engine/export-webcodecs.js')
         guard.assertCurrent()
-        const { completion } = await startNativeExport(project, spec)
+        const { job, completion } = await startNativeExport(project, spec)
+        noteStartedExport(job)
         completion.catch(error => { if (guard.isCurrent() && error.message !== 'cancelled') toast(error.message, 'error') })
-      } else await api('/api/export', spec)
+      } else noteStartedExport(await api('/api/export', spec))
     },
   })
   useEffect(() => () => request.current.dispose(), [])
