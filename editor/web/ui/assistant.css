@@ -73,3 +73,9 @@
 .assistant-preview-details { margin-top: 8px; font-size: 12px; overflow-wrap: anywhere; }
 .assistant-preview-details > summary { cursor: pointer; padding: 8px 0; }
 .assistant-preview-details dd { margin: 0 0 6px; white-space: pre-wrap; }
+
+.claude-btn .assistant-setup-indicator { font-size: 10px; line-height: 1.2; color: var(--muted); }
+@media (max-width: 480px) {
+  .topbar-actions .claude-btn:has(.assistant-setup-indicator:not([hidden])) { flex-direction: column; gap: 2px; padding: 3px 6px; }
+  .topbar-actions .claude-btn .assistant-setup-indicator { font-size: 10px; }
+}

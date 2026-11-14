@@ -14,7 +14,7 @@ const cls = (node, name) => String(node.props?.class ?? '').split(/\s+/).include
 const LayoutMenu = function LayoutMenu() {}
 
 function shell(project) {
-  const store = { project, version: 7, root: '/selected', recovery: { status: 'valid' }, jobs: [], claude: { state: 'idle' }, refs: [], page: 'edit' }
+  const store = { project, version: 7, root: '/selected', recovery: { status: 'valid' }, jobs: [], caps: {}, claude: { state: 'idle' }, refs: [], page: 'edit' }
   const context = vm.createContext({ html: htm.bind(h), h, Icon, store, host: { kind: 'http' }, useStore: () => store, useState: value => [value, () => {}], useRef: value => ({ current: value }), showRecovery() {}, api: async () => ({}), set: value => Object.assign(store, value), toast() {}, PAGES: [['edit', 'Edit', '⇧2', 20]], registry: { pages: [] }, ScrollTabs() {}, LayoutMenu })
   for (const name of ['Welcome', 'TopBar']) vm.runInContext(app.match(new RegExp(`function ${name}\\([^]*?\\n}\\n`))[0], context)
   return context
@@ -61,4 +61,18 @@ test('the welcome screen marks New 1080p project as the primary action', () => {
   const buttons = nodes(store.Welcome()).filter(node => node.type === 'button')
   assert.equal(cls(buttons.find(node => text(node) === 'New 1080p project'), 'primary'), true)
   assert.equal(cls(buttons.find(node => text(node) === 'New 9:16 project'), 'primary'), false)
+})
+
+
+test('the no-account assistant button keeps a visible indicator and accessible name', () => {
+  const context = shell(null)
+  context.store.caps = {}
+  context.store.assistantStatus = { configured: false, providers: [] }
+  let assistant = nodes(context.TopBar()).find(node => cls(node, 'claude-btn'))
+  assert.equal(assistant.props['aria-label'], 'Assistant, not set up')
+  assert.equal(nodes(assistant).find(node => cls(node, 'assistant-setup-indicator')).props.hidden, false)
+  context.store.assistantStatus = { configured: true }
+  assistant = nodes(context.TopBar()).find(node => cls(node, 'claude-btn'))
+  assert.equal(assistant.props['aria-label'], 'Assistant')
+  assert.equal(nodes(assistant).find(node => cls(node, 'assistant-setup-indicator')).props.hidden, true)
 })
