@@ -33,9 +33,10 @@ if not a.unsigned:
     if mac:
         assert entitlements.get('com.apple.security.app-sandbox') is True, 'Mac App Store bundle is not sandboxed'
         for forbidden in ('com.apple.security.automation.apple-events', 'com.apple.security.temporary-exception.apple-events',
-                          'com.apple.security.cs.allow-unsigned-executable-memory', 'com.apple.security.cs.disable-library-validation',
-                          'com.apple.security.network.server'):
+                          'com.apple.security.cs.allow-unsigned-executable-memory', 'com.apple.security.cs.disable-library-validation'):
             assert forbidden not in entitlements, f'Unexpected Mac entitlement: {forbidden}'
+        # Sign in with ChatGPT receives its OAuth callback on a 127.0.0.1 listener.
+        assert entitlements.get('com.apple.security.network.server') is True, 'Mac App Store bundle cannot receive the ChatGPT sign-in callback'
     assert entitlements.get('get-task-allow') is not True, 'Release permits debugger attachment'
 print(json.dumps({'bundle': info['CFBundleIdentifier'], 'version': info['CFBundleShortVersionString'],
                   'platform': 'Mac App Store' if mac else 'iOS', 'signatureChecked': not a.unsigned,
