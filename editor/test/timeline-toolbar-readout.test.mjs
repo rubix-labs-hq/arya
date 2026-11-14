@@ -35,6 +35,10 @@ test('the timeline toolbar wraps controls instead of pushing zoom off the right 
   const css = await fs.readFile(new URL('../web/styles.css', import.meta.url), 'utf8')
   assert.match(css, /\.tl-toolbar \{ overflow-x: auto; min-width: 0; flex-wrap: wrap; \}/)
   assert.match(css, /\.tl-zoom \{ display: flex; align-items: center; gap: 6px; margin-left: auto; \}/)
+  // The wrapper must not cost the zoom buttons their toolbar size or their 44px touch targets.
+  const icons = await fs.readFile(new URL('../web/ui/icons.css', import.meta.url), 'utf8')
+  assert.match(icons, /^\.tl-toolbar > button\.ghost, \.tl-zoom > button\.ghost \{ min-width: 30px; min-height: 28px;/m)
+  assert.match(icons, /\(pointer: coarse\)[^}]*\.tl-zoom > button\.ghost \{ min-width: 44px; min-height: 44px; \}/)
   globalThis.__readoutState = { tool: 'select', selection: [], zoom: 80, openComp: null }
   try {
     const { Toolbar } = await loadToolbar('zoom-wrap')

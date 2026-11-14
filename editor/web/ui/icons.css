@@ -5,7 +5,7 @@
 
 /* Center an icon inside the button types that hold one. :where() keeps this at zero
    specificity, so existing rules that hide a button at a breakpoint still win. */
-:where(.topbar-actions .topbar-undo, .topbar-actions button.topbar-utility, .transport .buttons button, .tl-toolbar .tools button, .tl-toolbar > button.ghost):where(:has(> .ico)) { display: inline-grid; place-items: center; padding-inline: 6px; line-height: 0; }
+:where(.topbar-actions .topbar-undo, .topbar-actions button.topbar-utility, .transport .buttons button, .tl-toolbar .tools button, .tl-toolbar > button.ghost, .tl-zoom > button.ghost):where(:has(> .ico)) { display: inline-grid; place-items: center; padding-inline: 6px; line-height: 0; }
 
 /* Text buttons that lead with an icon. Settings already has its own flex rule in styles.css. */
 .claude-btn, .job-pill { display: inline-flex; align-items: center; gap: 6px; }
@@ -27,7 +27,7 @@
 .tl-toolbar .tools button { min-width: 30px; min-height: 28px; color: var(--muted); }
 .tl-toolbar .tools button:hover:not(:disabled) { color: var(--text); }
 .tl-toolbar .tools button.on { color: var(--accent); }
-.tl-toolbar > button.ghost { min-width: 30px; min-height: 28px; color: var(--muted); }
+.tl-toolbar > button.ghost, .tl-zoom > button.ghost { min-width: 30px; min-height: 28px; color: var(--muted); }
 .tl-toolbar > button.ghost.on { color: var(--accent); }
 
 /* Scrolling tab strips fade at the edge that has more tabs, instead of cutting a label in half. */
@@ -37,7 +37,7 @@
 
 @media (pointer: coarse) {
   .topbar-actions .topbar-undo, .topbar-actions button.topbar-utility,
-  .transport .buttons button, .tl-toolbar .tools button, .tl-toolbar > button.ghost { min-width: 44px; min-height: 44px; }
+  .transport .buttons button, .tl-toolbar .tools button, .tl-toolbar > button.ghost, .tl-zoom > button.ghost { min-width: 44px; min-height: 44px; }
 }
 
 /* Assistant close and reference controls use the same drawn set. */
