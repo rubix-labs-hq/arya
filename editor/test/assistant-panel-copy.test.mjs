@@ -166,3 +166,11 @@ test('plugin chat discloses a separate provider run', () => {
   const tree = render(readyStatus, { caps: { assistant: { pluginSession: true } } })
   assert.match(text(tree), /Typing here starts a separate Codex run. To use this Claude session, ask in the terminal./)
 })
+
+
+test('the empty intro keeps its natural height above the composer', async () => {
+  const css = await fs.readFile(new URL('assistant.css', ui), 'utf8')
+  assert.match(css, /\.chat > \.chat-list:has\(> \.chat-empty:only-child\)\s*\{\s*flex: 0 0 auto;/)
+  assert.ok(find(render(), 'chat-empty'))
+  assert.ok(find(render(), 'assistant-composer-card'))
+})

@@ -1,6 +1,9 @@
 /* Assistant panel: context, suggestions and the text box first; input kind, model and tips in
    one disclosure; a preview card before an assistant change applies; one-step undo after. */
 
+/* Keep the intro readable above the composer even when the panel must scroll. */
+.chat > .chat-list:has(> .chat-empty:only-child) { flex: 0 0 auto; }
+
 .chat .assistant-composer-card { min-height: 0; max-height: none; flex: 0 0 auto; }
 .chat .assistant-composer-content { flex: 0 1 auto; max-height: 40vh; min-height: 0; }
 .chat .assistant-composer-footer { min-height: 0; max-height: none; align-items: center; padding: 2px 8px 8px; overflow: visible; }
