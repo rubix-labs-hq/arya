@@ -185,3 +185,28 @@ test('a successful old-root submission consumes its draft when the other project
   s.switchRoot('/project-a'); assert.equal(s.draft(), '')
   assert.equal(s.calls.at(-1).body.text, 'Submitted A')
 })
+
+
+test('project changes dismiss old cancellation notices and unavailable assistants hide suggestions', t => {
+  const s = session(t)
+  s.state.assistantStatus = { provider: 'codex', configured: false, chatgpt: { supported: true, attempt: { state: 'cancelled', message: 'ChatGPT sign-in was cancelled.' } } }
+  assert.match(text(s.render()), /ChatGPT sign-in was cancelled/)
+  s.state.project = { ...s.state.project, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2, title: { text: 'Opening' } }] }] }
+  s.state.selection = ['c1']
+  let tree = s.render()
+  assert.doesNotMatch(text(tree), /ChatGPT sign-in was cancelled/)
+  assert.equal(nodes(tree).some(node => node.props?.class === 'assistant-suggestion'), false)
+  s.close(); s.mount()
+  assert.doesNotMatch(text(s.render()), /ChatGPT sign-in was cancelled/)
+  s.input('Keep my draft')
+  s.state.root = '/new-project'
+  s.render()
+  assert.doesNotMatch(text(s.render()), /ChatGPT sign-in was cancelled/)
+  s.state.root = '/project-a'
+  s.render()
+  assert.equal(s.draft(), 'Keep my draft')
+  s.state.assistantStatus.chatgpt.attempt = { state: 'waiting' }
+  s.render()
+  s.state.assistantStatus.chatgpt.attempt = { state: 'cancelled', message: 'ChatGPT sign-in was cancelled.' }
+  assert.match(text(s.render()), /ChatGPT sign-in was cancelled/)
+})

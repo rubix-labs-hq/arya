@@ -129,7 +129,7 @@ test('suggestions follow the selection, sit before the text box and set a draft 
   assert.ok(order.indexOf('assistant-composer-content') < order.indexOf('composer'))
   assert.equal(f.state.assistantDraft.inputKind, 'prompt', 'a suggestion is always sent as a prompt')
   assert.equal(nodes(f.draw()).find(node => node.props?.class === 'assistant-suggestions'), undefined, 'suggestions hide once the box has text, so none replaces it')
-  assert.equal(nodes(fixture({ claude: { state: 'working' }, selection: ['c1'], project: { assets: {}, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} } }, '').draw()).find(node => node.props?.class === 'assistant-suggestion').props.disabled, true)
+  assert.equal(nodes(fixture({ claude: { state: 'working' }, selection: ['c1'], project: { assets: {}, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} } }, '').draw()).find(node => node.props?.class === 'assistant-suggestion'), undefined, 'suggestions hide while requests cannot be sent')
 })
 
 for (const flags of [{ isComposing: true }, { nativeEvent: { isComposing: true } }, { keyCode: 229 }, { altKey: true }, { ctrlKey: true }, { shiftKey: true }]) test(`Enter preserves composition or newline for ${JSON.stringify(flags)}`, async () => {
