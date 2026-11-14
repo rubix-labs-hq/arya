@@ -61,6 +61,19 @@ test('the phone query covers portrait phones and short landscape phones, not tab
   assert.match(css, /\.page\.phone-edit \.edit-pane, \.page\.phone-edit > \.lower \{ order: 3; flex: 1; min-height: 0;/, 'outranks styles.css .page.edit .lower min-height')
 })
 
+test('coarse pointers get 44px targets across workflow, viewer, colour and audio controls', async () => {
+  const css = await read('phone.css')
+  const coarse = css.slice(css.indexOf('@media (pointer: coarse)'), css.indexOf('/* Wrapper visibility'))
+  for (const selector of ['.pages button', '.tab-scroll .tabs button', '.seg button', '.tl-toolbar .tools button', 'button.tiny', '.viewer-bar > button:has(> .ico)', '.transport .buttons button', '.deliver-actions button', '.page.color .palette-tabs button', '.page.color .grade-look .look-grid button', '.page.color .grade-actions button', '.strip button']) {
+    const rule = coarse.slice(0, coarse.indexOf('}', coarse.indexOf(selector)) + 1)
+    assert.ok(rule.includes(selector), selector)
+    assert.match(rule, /min-height: 44px; min-width: 44px;/, selector)
+  }
+  assert.match(coarse, /input\[type=range\] \{ min-height: 44px; \}/)
+  assert.match(coarse, /input\[type=range\]\.fader \{ min-width: 44px; \}/)
+  assert.match(coarse, /\.strip \{ min-width: 108px; \}/, 'two 44px mute/solo targets fit inside the strip')
+})
+
 test('usePhoneLayout reads the query, follows change events and removes its listener', async () => {
   const listeners = []
   const query = { matches: false, addEventListener: (type, fn) => listeners.push(['add', type, fn]), removeEventListener: (type, fn) => listeners.push(['remove', type, fn]) }
