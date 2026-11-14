@@ -13,7 +13,7 @@ import { addRef, api, edit, set, store, time, toast, useStore, useTime, viewProj
 import { Viewer } from './viewer.js'
 import { Icon } from './icons.js'
 import { graphOf, nodeNumbers, nodeTitle, TYPE_LABEL } from './color/graph.js'
-import { NodeEditor } from './color/node-editor.js'
+import { NodeEditor, nodeActions } from './color/node-editor.js'
 import { GalleryPanel, NodePanel, PresetsPanel, QualifierPanel, WindowPanel } from './color/panels.js'
 import { LUTWorkflowPanel } from './color/workflow-panel.js'
 import { gradedClip, gradeTarget, preview, selectedNode } from './color/state.js'
@@ -491,9 +491,9 @@ function Palettes({ clip }) {
       <span class="muted">${(store.project?.assets?.[clip.src]?.name?.trim() || String(clip.src ?? clip.kind).split('/').pop())} · ${s.selection.length ? 'selected clip' : 'clip under the playhead'}</span>
       ${node ? html`<span class=${`node-chip ${node.enabled === false ? 'off' : ''}`} title="The grade controls edit this node">${num ? `${num} ` : ''}${nodeTitle(node)}${node.label ? ` (${TYPE_LABEL[node.type]})` : ''}${node.enabled === false ? ' · bypassed' : ''}</span>` : null}
       <span class="grow"></span>
-      <div class="palette-tabs">${PALETTES.map(([k, l]) => html`<button class=${tab === k ? 'on' : ''} disabled=${!usable[k]} title=${usable[k] ? '' : 'Select a corrector node for this palette'} onClick=${() => set({ colorTab: k })}>${l}</button>`)}</div>
+      <div class="palette-tabs">${PALETTES.map(([k, l]) => html`<button class=${tab === k ? 'on' : ''} disabled=${!usable[k]} title=${usable[k] ? '' : 'Add a corrector with + Serial for this palette'} onClick=${() => set({ colorTab: k })}>${l}</button>`)}</div>
     </div>
-    ${!corrector ? html`<p class="hint palette-hint" role="note">Select a corrector node to use Qualifier and Window.</p>` : null}
+    ${!corrector ? html`<p class="hint palette-hint" role="note">Add a corrector with + Serial to use Qualifier and Window. <button class="ghost tiny" onClick=${() => nodeActions(clip, node?.id).serial()}>+ Serial</button></p>` : null}
     ${clip.kind === 'adjustment' && clip.nodes ? html`<div class="warn">Adjustment clips render their primary grade only; their node graph does not render yet.</div>` : null}
     ${tab === 'primaries' && target ? html`<${GradeControls} clip=${clip} target=${target} key=${target.key} />` : null}
     ${tab === 'qualifier' && corrector ? html`<${QualifierPanel} clip=${clip} node=${node} />` : null}
