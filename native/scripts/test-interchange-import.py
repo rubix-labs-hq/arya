@@ -360,6 +360,8 @@ console.log('Passed post-import production editBatch request through shared appl
     var height = 1080.0
     func mediaURL(_ path: String) throws -> URL { URL(fileURLWithPath:path) }
     private var hapticPolicy = NativeHapticPolicy()
+    @Published var supportPromptVisible = false
+    private var supportPromptTask: Task<Void, Never>?
 '''
         # The Deliver panel registers export jobs for completion feedback through the production model methods.
         model_helpers += '\n'.join(block(model_implementation, marker) for marker in ['func registerExportFeedback(', 'func confirmExportFeedback(']) + '\n'
@@ -372,6 +374,8 @@ console.log('Passed post-import production editBatch request through shared appl
         ui_fixture = ui_fixture.replace('    var previewRequests = 0', '    let sessionID = \"import-fixture\"\n    var previewRequests = 0')
         ui_fixture = ui_fixture.replace('    var calls:', '    let folder = ProjectFolder(root: FileManager.default.temporaryDirectory)\n    func deliveryURL(id: String, root: String) async throws -> URL { throw APIError("No delivery interaction in the import fixture") }\n    var calls:')
         mobile_fixture = '''
+// The tip prompt's ledger is covered by SupportPromptTests; this check only type-checks its caller.
+@MainActor enum NativeSupportPromptLedger { static func successfulExport() -> Bool { false } }
 @MainActor final class NativeMobileExport: ObservableObject {
     static let shared = NativeMobileExport()
     var message = ""

@@ -87,6 +87,7 @@ private struct NativeDeliveryHistoryView: View {
     // BEGIN SUPPORT EXPORT LINK
     /// One quiet, optional link once a completed export exists. It never opens by itself and
     /// never blocks an export. iOS uses App Store tips; only direct-download Mac builds link out.
+    /// The occasional tip card after an export is `NativeSupportPromptCard`.
     @ViewBuilder private var supportLink: some View {
         #if os(iOS)
         Button { supportVisible = true } label: { Label("Support Arya", systemImage: "heart") }

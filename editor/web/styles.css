@@ -1016,3 +1016,16 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .assistant-plan-error b { font-size:12px; font-weight:500; }
 .assistant-plan-error p { margin:0; }
 .assistant-plan-error a.button { display:inline-flex; align-items:center; min-height:32px; padding:6px 12px; border-radius:6px; text-decoration:none; background:var(--accent); color:var(--accent-ink); }
+
+/* Occasional tip card after a successful export (ui/support-prompt.js). */
+.support-prompt { position: fixed; right: 18px; bottom: 18px; z-index: 850; width: min(380px, calc(100vw - 32px)); padding: 14px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--panel-2); box-shadow: 0 12px 36px #0009; animation: support-prompt-in .28s ease-out; }
+.support-prompt-body { display: flex; gap: 10px; align-items: flex-start; }
+.support-prompt-icon { color: var(--accent); font-size: 15px; line-height: 20px; }
+.support-prompt p { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.support-prompt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+.support-prompt-actions a.button { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 12px; border-radius: 6px; text-decoration: none; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.support-prompt-actions button { min-height: 32px; }
+.support-prompt-actions button.ghost { color: var(--muted); }
+@keyframes support-prompt-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .support-prompt { animation: none; } }
+@media (max-width: 720px) { .support-prompt { left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); width: auto; } .support-prompt-actions a.button, .support-prompt-actions button { min-height: 44px; } }

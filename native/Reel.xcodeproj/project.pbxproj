@@ -15,6 +15,8 @@
 		1BDD9ED7B0C96615B18414FA /* NativeVectorEditingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB39D1F403E233F99B2044B9 /* NativeVectorEditingOverlay.swift */; };
 		86D7DDEBAAC3FD16BAF9F4AD /* NativeAudioPanelWork.swift in Sources */ = {isa = PBXBuildFile; fileRef = C31E61DB0233401C907D8465 /* NativeAudioPanelWork.swift */; };
 		429BBE6356C6C6CC20F448E5 /* NativeAudioPanelWork.swift in Sources */ = {isa = PBXBuildFile; fileRef = C31E61DB0233401C907D8465 /* NativeAudioPanelWork.swift */; };
+		5E1A7C0D2B9F4E6A8C3D1F02 /* NativeSupportPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1A7C0D2B9F4E6A8C3D1F01 /* NativeSupportPrompt.swift */; };
+		5E1A7C0D2B9F4E6A8C3D1F03 /* NativeSupportPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1A7C0D2B9F4E6A8C3D1F01 /* NativeSupportPrompt.swift */; };
 		258FCB4755A0B4E02DD0BE0E /* NativeMixControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12580249A2EE3A7CB891AB4 /* NativeMixControls.swift */; };
 		449327E7D0EB0F5CD82C6217 /* NativeMixControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12580249A2EE3A7CB891AB4 /* NativeMixControls.swift */; };
 		24662B4D8F28B3C6CE10C38F /* NativeColorWindowGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8A35B6F2B6E9F895B4C03F /* NativeColorWindowGeometry.swift */; };
@@ -127,6 +129,7 @@
 		B007C6E3870A82101D53686E /* NativeGettingStarted.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeGettingStarted.swift; sourceTree = "<group>"; };
 		DB39D1F403E233F99B2044B9 /* NativeVectorEditingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVectorEditingOverlay.swift; sourceTree = "<group>"; };
 		C31E61DB0233401C907D8465 /* NativeAudioPanelWork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAudioPanelWork.swift; sourceTree = "<group>"; };
+		5E1A7C0D2B9F4E6A8C3D1F01 /* NativeSupportPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSupportPrompt.swift; sourceTree = "<group>"; };
 		F12580249A2EE3A7CB891AB4 /* NativeMixControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMixControls.swift; sourceTree = "<group>"; };
 		1C8A35B6F2B6E9F895B4C03F /* NativeColorWindowGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeColorWindowGeometry.swift; sourceTree = "<group>"; };
 		A377846715409DD5D0191E52 /* NativeColorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeColorWindowController.swift; sourceTree = "<group>"; };
@@ -217,6 +220,7 @@
 				DB39D1F403E233F99B2044B9 /* NativeVectorEditingOverlay.swift */,
 				C31E61DB0233401C907D8465 /* NativeAudioPanelWork.swift */,
 				F12580249A2EE3A7CB891AB4 /* NativeMixControls.swift */,
+				5E1A7C0D2B9F4E6A8C3D1F01 /* NativeSupportPrompt.swift */,
 				1C8A35B6F2B6E9F895B4C03F /* NativeColorWindowGeometry.swift */,
 				A377846715409DD5D0191E52 /* NativeColorWindowController.swift */,
 				640E04ABEA0EC2FC2877674F /* NativeColorWindowControls.swift */,
@@ -496,6 +500,7 @@
 				459A28F95BF608EB99D8C840 /* NativeVectorEditingOverlay.swift in Sources */,
 				86D7DDEBAAC3FD16BAF9F4AD /* NativeAudioPanelWork.swift in Sources */,
 				258FCB4755A0B4E02DD0BE0E /* NativeMixControls.swift in Sources */,
+				5E1A7C0D2B9F4E6A8C3D1F02 /* NativeSupportPrompt.swift in Sources */,
 				24662B4D8F28B3C6CE10C38F /* NativeColorWindowGeometry.swift in Sources */,
 				22D06094572E74BB53AEBAF9 /* NativeColorWindowController.swift in Sources */,
 				2B564DD3FD401C90F1D00BBB /* NativeColorWindowControls.swift in Sources */,
@@ -556,6 +561,7 @@
 				1BDD9ED7B0C96615B18414FA /* NativeVectorEditingOverlay.swift in Sources */,
 				429BBE6356C6C6CC20F448E5 /* NativeAudioPanelWork.swift in Sources */,
 				449327E7D0EB0F5CD82C6217 /* NativeMixControls.swift in Sources */,
+				5E1A7C0D2B9F4E6A8C3D1F03 /* NativeSupportPrompt.swift in Sources */,
 				E3280E241248D5A515F314C4 /* NativeColorWindowGeometry.swift in Sources */,
 				C6A8BE345CE905B4964B22C0 /* NativeColorWindowController.swift in Sources */,
 				DBA80933AE8BB685CB6F2312 /* NativeColorWindowControls.swift in Sources */,

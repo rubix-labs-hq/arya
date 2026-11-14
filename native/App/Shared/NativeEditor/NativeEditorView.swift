@@ -354,6 +354,15 @@ struct NativeEditorView: View {
                     .accessibilityLabel("Editor status. \(status)")
                 }
             }
+            // Before the inset so the card sits above the compact workflow bar.
+            .overlay(alignment: compact ? .bottom : .bottomTrailing) {
+                if model.supportPromptVisible {
+                    NativeSupportPromptCard(model: model, compact: compact)
+                        .padding(compact ? 12 : 18)
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(reduceMotion ? nil : .spring(duration: 0.35), value: model.supportPromptVisible)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if compact {
                     VStack(spacing: 0) {

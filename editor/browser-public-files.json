@@ -72,6 +72,10 @@
     "target": "core/project.js"
   },
   {
+    "source": "core/support-prompt.js",
+    "target": "core/support-prompt.js"
+  },
+  {
     "source": "core/render-grade.js",
     "target": "core/render-grade.js"
   },
@@ -606,6 +610,10 @@
   {
     "source": "web/ui/support-link.js",
     "target": "editor/ui/support-link.js"
+  },
+  {
+    "source": "web/ui/support-prompt.js",
+    "target": "editor/ui/support-prompt.js"
   },
   {
     "source": "web/ui/shape-appearance.js",
