@@ -12,7 +12,12 @@ if (params.has('worker')) {
   // none, so the App Store builds never show a website payment link.
   Promise.all([import('./host.js'), import('./ui/support-link.js'), import('./ui/store.js')])
     .then(([{ host }, { resolveSupportLink }, { set }]) => resolveSupportLink({ kind: host.kind, request: path => host.request(path) })
-      .then(supportURL => { if (supportURL) set({ supportURL }) }))
+      .then(async supportURL => {
+        if (!supportURL) return
+        set({ supportURL })
+        const { mountSupportPrompt } = await import('./ui/support-prompt.js')
+        mountSupportPrompt(supportURL)
+      }))
     .catch(() => {})
   if (globalThis.__aryaBrowserHost) await mounting
   const { installAccessibleNames } = await import('./ui/accessible-names.js')
