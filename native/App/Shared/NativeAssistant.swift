@@ -259,7 +259,10 @@ final class NativeAssistant: ObservableObject {
     }
     var inputCharacterLimit: Int { NativeAssistantRoutingPolicy.inputCharacterLimit(provider: provider, mode: routingMode) }
     var autoModels: [[String: Any]] { eligibleAutoModels.filter { enabledModelKeys?.contains(Self.modelKey($0)) ?? true } }
-    var routingLabel: String { routingMode == "auto" ? "Auto · \(NativeAssistantRoutingPolicy.priorityLabel(routingPriority))" : modelOptions.first { $0.string("provider") == provider && $0.string("id") == model }?.string("name") ?? (model.isEmpty ? "\(providerName) · Default" : model) }
+    var routingLabel: String { routingMode == "auto" ? "Auto · \(NativeAssistantRoutingPolicy.priorityLabel(routingPriority))" : modelOptions.first { $0.string("provider") == provider && $0.string("id") == model }?.string("name") ?? chatGPTModelName ?? (model.isEmpty ? "\(providerName) · Default" : model) }
+    private var chatGPTModelName: String? {
+        provider == "chatgpt" ? NativeChatGPTAccount.shared.models.first { $0.slug == model }?.displayName : nil
+    }
     static func providerName(_ id: String) -> String {
         ["claude-code": "Claude Code", "codex": "Codex", "antigravity": "Google Antigravity", "gemini-cli": "Gemini CLI · retired", "custom": "Custom agent", "anthropic": "Anthropic API", "chatgpt": "ChatGPT plan"][id] ?? id
     }
