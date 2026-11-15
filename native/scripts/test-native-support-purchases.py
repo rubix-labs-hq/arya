@@ -96,8 +96,13 @@ check('NativeProStore.shared.start()' in launch, 'Listener and export rule start
 check('ProExportGate.shared.enforce(true)' in support, 'App Store builds enforce the export rule')
 
 # The backend refuses gated exports on both export paths, not only the UI.
-gate = 'guard ProExportGate.shared.allows(width: width, height: height, preset: preset, hdr: b["hdr"] as? String) else { throw APIError(ProExportRule.lockedMessage) }'
+# HDR is read the way the renderer reads it, so `hdr: true` cannot slip past as SDR.
+gate = 'preset: preset, hdr: ProExportRule.requestedHDR(b)) else { throw APIError(ProExportRule.lockedMessage) }'
 check(backend.count(gate) == 2, 'Native and WebCodecs export paths both check the gate')
+check('b["hdr"] as? String) else { throw APIError(ProExportRule.lockedMessage)' not in backend, 'No gate reads HDR as a string only')
+check('height: max(height, renderedHeight)' in backend, 'GIF and PNG exports are gated at the size they render')
+check('onAccessChange?(access)\n    }' in core, 'Every entitlement read updates the export gate')
+check('guard let result = try? await AppTransaction.shared else { return defaults.bool(forKey: key) }' in support, 'The signed AppTransaction decides early-supporter access')
 
 # The direct-download Mac app never enforces the rule.
 check('ProExportGate' not in mac_app and 'NativeProStore' not in mac_app, 'Direct Mac app has no Pro gate')

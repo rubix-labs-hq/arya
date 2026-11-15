@@ -398,7 +398,8 @@ console.log('Passed post-import production editBatch request through shared appl
         # real store and state machine so this standalone check covers that dependency.
         support_core = (repo / 'native/ReelKit/Sources/ReelKit/ProPurchases.swift').read_text()
         support_ui = (repo / 'native/App/iOS/NativeSupport.swift').read_text().replace('import ReelKit\n', '')
-        ui_source += '\n#if os(iOS)\n' + support_core + '\n' + support_ui + '\n#endif\n'
+        # Deliver sizes come from ProExportRule on every platform; the store UI is iOS only.
+        ui_source += '\n' + support_core + '\n#if os(iOS)\n' + support_ui + '\n#endif\n'
         ui_source += '\n' + (editor / 'NativeRenderQueue.swift').read_text()
         swift.write_text(ui_source)
         for sdk,target in [('macosx','arm64-apple-macos14.0'),('iphonesimulator','arm64-apple-ios17.0-simulator')]:

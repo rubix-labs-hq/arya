@@ -1305,7 +1305,10 @@ public actor ReelBackend {
         let width = (b["width"] as? NSNumber)?.doubleValue ?? (fields["width"] as? NSNumber)?.doubleValue ?? 1920
         let height = (b["height"] as? NSNumber)?.doubleValue ?? width * ((fields["height"] as? NSNumber)?.doubleValue ?? 1080) / ((fields["width"] as? NSNumber)?.doubleValue ?? 1920)
         try validateExportAdmission(width: width, height: height, fps: fps, from: from, to: to)
-        guard ProExportGate.shared.allows(width: width, height: height, preset: preset, hdr: b["hdr"] as? String) else { throw APIError(ProExportRule.lockedMessage) }
+        // GIF and PNG frames take their height from the canvas shape, not the request.
+        let canvasWidth = (fields["width"] as? NSNumber)?.doubleValue ?? 1920, canvasHeight = (fields["height"] as? NSNumber)?.doubleValue ?? 1080
+        let renderedHeight = ["gif", "png-seq"].contains(preset) && canvasWidth > 0 ? width * canvasHeight / canvasWidth : height
+        guard ProExportGate.shared.allows(width: width, height: max(height, renderedHeight), preset: preset, hdr: ProExportRule.requestedHDR(b)) else { throw APIError(ProExportRule.lockedMessage) }
         let ext = preset.hasPrefix("prores-") ? "mov" : preset == "gif" ? "gif" : preset == "png-seq" ? "frames" : Self.presetExtensions[preset] ?? "mp4"
         let name = ProjectFolder.cleanFileName(b["name"] as? String ?? fields["name"] as? String ?? "reel")
         let renders = try Self.exportFile(folder.rendersDir, folder: folder)
@@ -3880,7 +3883,7 @@ public actor ReelBackend {
         let rangeIn = (range?["in"] as? NSNumber)?.doubleValue ?? 0
         let rangeOut = try (range?["out"] as? NSNumber)?.doubleValue ?? core.duration(project: snapshot)
         try validateExportAdmission(width: width, height: height, fps: fps, from: rangeIn, to: rangeOut)
-        guard ProExportGate.shared.allows(width: width, height: height, preset: preset, hdr: b["hdr"] as? String) else { throw APIError(ProExportRule.lockedMessage) }
+        guard ProExportGate.shared.allows(width: width, height: height, preset: preset, hdr: ProExportRule.requestedHDR(b)) else { throw APIError(ProExportRule.lockedMessage) }
         let outWidth = Int((width / 2).rounded()) * 2, outHeight = Int((height / 2).rounded()) * 2
         let spec: [(String, JSON)] = [
             ("preset", .string(preset)), ("name", .string(raw)),

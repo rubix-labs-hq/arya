@@ -162,6 +162,27 @@ final class ProPurchaseTests: XCTestCase {
 
     // MARK: Updates, refunds and restore
 
+    /// A launch can open the gate from the last stored answer. The first refresh must close it
+    /// again even though the controller's own access never changed from free.
+    func testEveryRefreshReportsAccessSoAStaleUnlockCloses() async {
+        let store = FakeStore(), controller = ProPurchaseController(client: store)
+        var gate: [ProAccess] = []
+        controller.onAccessChange = { gate.append($0) }
+        await controller.refreshAccess()
+        await controller.refreshAccess()
+        XCTAssertEqual(gate, [.free, .free])
+    }
+
+    func testRequestedHDRMatchesTheRenderer() {
+        XCTAssertEqual(ProExportRule.requestedHDR(["hdr": true]), "pq")
+        XCTAssertEqual(ProExportRule.requestedHDR(["hdr": true, "transfer": "hlg"]), "hlg")
+        XCTAssertEqual(ProExportRule.requestedHDR(["hdr": NSNumber(value: 1)]), "pq")
+        XCTAssertEqual(ProExportRule.requestedHDR(["hdr": "hlg"]), "hlg")
+        XCTAssertNil(ProExportRule.requestedHDR(["hdr": false]))
+        XCTAssertNil(ProExportRule.requestedHDR(["hdr": "sdr"]))
+        XCTAssertNil(ProExportRule.requestedHDR([:]))
+    }
+
     func testUpdatesFollowTheStoreSoARefundTurnsProOff() async {
         let (controller, store) = await loaded(), log = FinishLog()
         store.access = .lifetime

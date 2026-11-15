@@ -143,9 +143,10 @@ public final class ProPurchaseController {
 
     public private(set) var catalog: Catalog = .notLoaded { didSet { onChange?() } }
     public private(set) var status: Status = .idle { didSet { onChange?() } }
-    public private(set) var access: ProAccess = .free { didSet { if access != oldValue { onChange?(); onAccessChange?(access) } } }
+    public private(set) var access: ProAccess = .free { didSet { if access != oldValue { onChange?() } } }
     public var onChange: (() -> Void)?
-    /// Called whenever Pro turns on or off, so the export gate follows at once.
+    /// Called after every entitlement read, changed or not, so the export gate always matches
+    /// the App Store answer, including when a cached unlock from an earlier launch has lapsed.
     public var onAccessChange: ((ProAccess) -> Void)?
 
     private let client: ProStoreClient
@@ -187,6 +188,7 @@ public final class ProPurchaseController {
     /// Reads entitlements again. Call at launch and whenever the app returns to the foreground.
     public func refreshAccess() async {
         access = await client.currentAccess()
+        onAccessChange?(access)
     }
 
     /// Returns false when the request was refused before any purchase sheet could appear.
@@ -321,6 +323,15 @@ public enum ProExportRule {
 
     /// True when this export needs Pro: a picture above 1080p in either orientation, any
     /// Apple ProRes preset, or HDR. Audio-only exports are always free.
+    /// The HDR transfer a request asks for, read the way the renderer reads it: `hdr: true`
+    /// means PQ, and any `hdr` string asks for HDR. Nil means SDR.
+    public static func requestedHDR(_ body: [String: Any]) -> String? {
+        if let value = body["hdr"] as? String { return value.isEmpty || value.lowercased() == "sdr" ? nil : value }
+        if let flag = body["hdr"] as? Bool { return flag ? (body["transfer"] as? String ?? "pq") : nil }
+        if let flag = body["hdr"] as? NSNumber { return flag.boolValue ? (body["transfer"] as? String ?? "pq") : nil }
+        return nil
+    }
+
     public static func requiresPro(width: Double, height: Double, preset: String, hdr: String?) -> Bool {
         if preset.hasPrefix("audio-") { return false }
         if preset.hasPrefix("prores-") { return true }

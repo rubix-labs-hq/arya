@@ -67,7 +67,8 @@ final class StoreKitProClient: ProStoreClient {
             guard case .verified(let transaction) = result, transaction.revocationDate == nil, !transaction.isUpgraded,
                   let plan = ProPlan(productID: transaction.productID) else { continue }
             if plan == .lifetime { return .lifetime }
-            if let expires = transaction.expirationDate, expires < Date() { continue }
+            // currentEntitlements already drops lapsed subscriptions and keeps those in a
+            // billing grace period, so no expiration check here.
             if best == .free || plan == .yearly { best = .subscribed(plan) }
         }
         if best != .free { return best }
@@ -118,12 +119,16 @@ final class StoreKitProClient: ProStoreClient {
 enum NativeProEarlySupport {
     static let key = "pro.earlySupporter"
 
+    /// The signed AppTransaction decides. The stored answer is used only when StoreKit cannot
+    /// answer at all, for example offline, so an early supporter keeps Pro without a network.
     static func qualifies(defaults: UserDefaults = .standard) async -> Bool {
-        if defaults.bool(forKey: key) { return true }
-        guard let result = try? await AppTransaction.shared, case .verified(let app) = result,
-              app.environment == .production else { return false }
+        guard let result = try? await AppTransaction.shared else { return defaults.bool(forKey: key) }
+        guard case .verified(let app) = result, app.environment == .production else {
+            defaults.removeObject(forKey: key)
+            return false
+        }
         let early = ProEarlySupporter.qualifies(originalAppVersion: app.originalAppVersion)
-        if early { defaults.set(true, forKey: key) }
+        defaults.set(early, forKey: key)
         return early
     }
 }
@@ -169,6 +174,7 @@ final class NativeProStore: ObservableObject {
     private let client = StoreKitProClient()
     private let controller: ProPurchaseController
     private var foreground: NSObjectProtocol?
+    private var periodic: Task<Void, Never>?
 
     private init() {
         controller = ProPurchaseController(client: client)
@@ -197,6 +203,14 @@ final class NativeProStore: ObservableObject {
         Task { await controller.refreshAccess() }
         foreground = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.controller.refreshAccess() }
+        }
+        // A subscription can lapse while Arya stays open, and StoreKit sends no transaction
+        // for that, so read entitlements again every 15 minutes.
+        periodic = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15 * 60))
+                await self?.controller.refreshAccess()
+            }
         }
     }
 

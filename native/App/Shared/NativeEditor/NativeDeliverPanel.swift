@@ -280,8 +280,12 @@ struct NativeDeliverPanel: View {
                 }
                 .buttonStyle(.bordered).font(.caption)
                 .accessibilityElement(children: .contain).accessibilityLabel("Output size")
-                Toggle("Custom output settings", isOn: $outputOverrides)
-                    .onChange(of: outputOverrides) { _, enabled in if enabled { outputWidth = model.width; outputFPS = model.fps } }
+                // Start from the canvas only when the person turns this on, so the 1080p and 4K
+                // buttons keep the size they chose.
+                Toggle("Custom output settings", isOn: Binding(get: { outputOverrides }, set: { enabled in
+                    if enabled && !outputOverrides { outputWidth = model.width; outputFPS = model.fps }
+                    outputOverrides = enabled
+                }))
                 if outputOverrides {
                     NativeNumberRow("Output width", value: outputWidth, range: 16...8192, step: 2, showsSlider: false) { outputWidth = ($0 / 2).rounded() * 2 }
                     HStack { Text("Output height").foregroundStyle(NativeEditorStyle.muted); Spacer(); Text(outputSize.map { String($0.height) } ?? "Unavailable").monospacedDigit() }.font(.caption)
