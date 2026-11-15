@@ -1225,10 +1225,13 @@ public actor ReelBackend {
             let context = ProcessingScope.context
             let time = (b["time"] as? NSNumber)?.doubleValue ?? (b["at"] as? NSNumber)?.doubleValue ?? 0
             let view = try JSON.parse(projectView(comp: b["comp"] as? String)) as? [String: Any] ?? [:]
-            let width = (b["width"] as? NSNumber)?.doubleValue ?? (view["width"] as? NSNumber)?.doubleValue ?? 1920
+            // The renderer takes the requested width as an integer, so admission and the Pro gate do too.
+            let width = (b["width"] as? NSNumber).map { Double($0.intValue) } ?? (view["width"] as? NSNumber)?.doubleValue ?? 1920
             let height = width * ((view["height"] as? NSNumber)?.doubleValue ?? 1080) / ((view["width"] as? NSNumber)?.doubleValue ?? 1920)
             guard time.isFinite, time >= 0 else { throw APIError("Choose a finite frame time.") }
             try validateExportAdmission(width: width, height: height, fps: 1, from: 0, to: 1)
+            // A saved frame is an export too: above 1080p it needs Pro in App Store builds.
+            guard ProExportGate.shared.allows(width: width, height: height, preset: "png", hdr: nil) else { throw APIError(ProExportRule.lockedMessage) }
             let name = b["name"] as? String ?? "frame-\(UUID().uuidString).png"
             let output = try folder.output(b["out"] as? String ?? ".reel/frames/" + ProjectFolder.cleanFileName(name))
             guard output.path.hasPrefix(folder.dotDir.appendingPathComponent("frames").path + "/") else { throw APIError("Still outputs must stay under .reel/frames/.") }

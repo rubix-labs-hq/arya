@@ -152,6 +152,9 @@ public final class ProPurchaseController {
     private let client: ProStoreClient
     private var handled: Set<UInt64> = []
     private var listener: Task<Void, Never>?
+    private var refreshGeneration = 0
+    private var appliedGeneration = 0
+    private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(client: ProStoreClient) { self.client = client }
 
@@ -187,8 +190,22 @@ public final class ProPurchaseController {
 
     /// Reads entitlements again. Call at launch and whenever the app returns to the foreground.
     public func refreshAccess() async {
-        access = await client.currentAccess()
-        onAccessChange?(access)
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        let fresh = await client.currentAccess()
+        // A read that started earlier, such as the foreground refresh that fires as the purchase
+        // sheet closes, can finish after the purchase's own refresh. Keep only the newest read,
+        // and let a superseded caller wait for it so restore and purchase see current access.
+        guard generation == refreshGeneration else {
+            if appliedGeneration < refreshGeneration { await withCheckedContinuation { refreshWaiters.append($0) } }
+            return
+        }
+        access = fresh
+        appliedGeneration = generation
+        onAccessChange?(fresh)
+        let waiters = refreshWaiters
+        refreshWaiters = []
+        waiters.forEach { $0.resume() }
     }
 
     /// Returns false when the request was refused before any purchase sheet could appear.

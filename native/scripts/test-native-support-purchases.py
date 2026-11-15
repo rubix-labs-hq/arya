@@ -101,7 +101,9 @@ gate = 'preset: preset, hdr: ProExportRule.requestedHDR(b)) else { throw APIErro
 check(backend.count(gate) == 2, 'Native and WebCodecs export paths both check the gate')
 check('b["hdr"] as? String) else { throw APIError(ProExportRule.lockedMessage)' not in backend, 'No gate reads HDR as a string only')
 check('height: max(height, renderedHeight)' in backend, 'GIF and PNG exports are gated at the size they render')
-check('onAccessChange?(access)\n    }' in core, 'Every entitlement read updates the export gate')
+check('access = fresh\n        appliedGeneration = generation\n        onAccessChange?(fresh)' in core, 'Every applied entitlement read updates the export gate')
+check('guard generation == refreshGeneration else {' in core and 'refreshWaiters.append' in core, 'An older entitlement read that finishes late cannot relock Pro, and waits for the newest')
+check('preset: "png", hdr: nil) else { throw APIError(ProExportRule.lockedMessage) }' in backend, 'Saved frames above 1080p need Pro too')
 check('guard let result = try? await AppTransaction.shared else { return defaults.bool(forKey: key) }' in support, 'The signed AppTransaction decides early-supporter access')
 
 # The direct-download Mac app never enforces the rule.
