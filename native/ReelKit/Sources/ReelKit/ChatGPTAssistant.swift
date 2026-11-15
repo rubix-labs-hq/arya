@@ -27,6 +27,8 @@ public actor ChatGPTAssistant {
     public typealias Credential = @Sendable () async throws -> ChatGPTCredential
 
     static let namespace = "arya"
+    /// Used only for Manual ChatGPT runs; covers the editor's text limit plus attached references.
+    static let promptCharacterLimit = NativeAssistantRoutingPolicy.promptCharacterLimit(provider: "chatgpt", mode: "manual")
     static let maximumBody = 32 * 1024 * 1024
     static let imageTypes = ["image/png", "image/jpeg", "image/webp"]
 
@@ -60,7 +62,7 @@ public actor ChatGPTAssistant {
         try Task.checkCancellation()
         guard !running else { throw Assistant.Failure.busy }
         let prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty, prompt.count <= 32_000 else { throw Assistant.Failure.invalidPrompt }
+        guard !prompt.isEmpty, prompt.count <= Self.promptCharacterLimit else { throw Assistant.Failure.invalidPrompt }
         guard ChatGPTAccountService.validSlug(configuration.model) else {
             throw ChatGPTAccountError("Choose a ChatGPT model in Assistant settings.", code: "chatgpt_model")
         }

@@ -37,6 +37,8 @@ public final class ChatGPTLoopbackListener: @unchecked Sendable {
     private let handler: Handler
     private let lock = NSLock()
     private var stopped = false
+    private var failed = false
+    private var failureHandler: (@Sendable () -> Void)?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
 
     private init(listener: NWListener, port: UInt16, queue: DispatchQueue, handler: @escaping Handler) {
@@ -77,9 +79,35 @@ public final class ChatGPTLoopbackListener: @unchecked Sendable {
             result.accept(connection)
         }
         listener.stateUpdateHandler = { [weak result] state in
-            if case .failed = state { result?.stop() }
+            if case .failed = state { result?.fail() }
         }
         return result
+    }
+
+    /// True until the listener is stopped, closed or torn down by the system.
+    public var isListening: Bool { lock.lock(); defer { lock.unlock() }; return !stopped }
+
+    /// Called once if the system tears the listening socket down after it opened. iOS can reclaim a
+    /// suspended app's socket while the person is in another app. Runs at once if that already happened.
+    public func onFailure(_ handler: @escaping @Sendable () -> Void) {
+        lock.lock()
+        let already = failed
+        if !already { failureHandler = handler }
+        lock.unlock()
+        if already { handler() }
+    }
+
+    /// The socket failed. A deliberate stop or close never reports a failure.
+    func fail() {
+        lock.lock()
+        let report = !stopped && !failed
+        if report { failed = true }
+        let handler = report ? failureHandler : nil
+        failureHandler = nil
+        lock.unlock()
+        guard report else { return }
+        stop()
+        handler?()
     }
 
     /// Stops accepting connections. A response already being written still completes.
@@ -87,6 +115,7 @@ public final class ChatGPTLoopbackListener: @unchecked Sendable {
         lock.lock()
         let wasStopped = stopped
         stopped = true
+        if !failed { failureHandler = nil }
         lock.unlock()
         if !wasStopped { listener.cancel() }
     }

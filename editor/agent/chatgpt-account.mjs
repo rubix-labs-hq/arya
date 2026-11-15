@@ -400,7 +400,15 @@ export function createChatGPTAccount(options = {}) {
         throw failure(`OpenAI could not renew your ChatGPT sign-in (${code || response.status}). Try again shortly.`, 503, 'chatgpt_refresh_unavailable')
       }
       const tokens = tokenSet(body, account)
-      if (body.id_token !== undefined) { await verifyIdentity(body.id_token, { clientID: account.client_id, subject: account.subject }); account.id_token = body.id_token }
+      if (body.id_token !== undefined) {
+        try { await verifyIdentity(body.id_token, { clientID: account.client_id, subject: account.subject }) } catch (error) {
+          // OpenAI already spent the old refresh token. Keep the rotated one so the next renewal can still
+          // succeed (for example after a key-set fetch fails), but trust nothing else from this reply.
+          if (tokens.refresh_token && tokens.refresh_token !== account.refresh_token) { account.refresh_token = tokens.refresh_token; writeFile('accounts.json', saved) }
+          throw error
+        }
+        account.id_token = body.id_token
+      }
       Object.assign(account, tokens)
       writeFile('accounts.json', saved)
       return credential(account)

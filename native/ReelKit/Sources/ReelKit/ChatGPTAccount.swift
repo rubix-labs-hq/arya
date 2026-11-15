@@ -294,14 +294,25 @@ public actor ChatGPTAccountService {
         }
         attempt = current
         warning = nil
+        listener.onFailure { [weak self] in Task { await self?.listenerFailed(id) } }
         notify()
         return await opener(url)
     }
 
     /// Opens the same pending attempt's page again. The URL never leaves this actor otherwise.
+    /// A listener the system closed cannot receive the callback, so that attempt ends instead.
     public func reopenSignInPage() async -> Bool {
         guard let current = attempt, current.phase == .waiting else { return false }
+        guard current.listener.isListening else { listenerFailed(current.id); return false }
         return await opener(current.authorizeURL)
+    }
+
+    static let interruptedMessage = "The sign-in connection was interrupted. Continue with ChatGPT to start again."
+
+    private func listenerFailed(_ id: UUID) {
+        guard attempt?.id == id, attempt?.phase == .waiting else { return }
+        finishAttempt(.failed, Self.interruptedMessage, close: true)
+        notify()
     }
 
     @discardableResult public func cancelSignIn() -> Bool {
@@ -571,7 +582,13 @@ public actor ChatGPTAccountService {
         let tokens = try tokenSet(body, previous: latest)
         var idToken: String?
         if body["id_token"] != nil {
-            _ = try await verifyIdentity(body["id_token"], clientID: clientID, nonce: nil, subject: latest.subject)
+            do { _ = try await verifyIdentity(body["id_token"], clientID: clientID, nonce: nil, subject: latest.subject) }
+            catch {
+                // OpenAI already spent the old refresh token. Keep the rotated one so the next renewal can
+                // still succeed (for example after a key-set fetch fails), but trust nothing else from this reply.
+                keepRotatedRefresh(tokens.refreshToken, replacing: refresh, clientID: clientID, generation: started)
+                throw error
+            }
             idToken = body["id_token"] as? String
         }
         guard var updated = vault, let index = updated.accounts.firstIndex(where: { $0.clientID == clientID }),
@@ -589,6 +606,17 @@ public actor ChatGPTAccountService {
             notify()
         }
         return credential(updated.accounts[index])
+    }
+
+    private func keepRotatedRefresh(_ rotated: String?, replacing refresh: String, clientID: String, generation started: Int) {
+        guard let rotated, rotated != refresh else { return }
+        guard var updated = vault, let index = updated.accounts.firstIndex(where: { $0.clientID == clientID }),
+              current(clientID, refresh: refresh, generation: started) != nil else {
+            Task { _ = await self.revoke(rotated, client: clientID) }
+            return
+        }
+        updated.accounts[index].refreshToken = rotated
+        do { try persist(updated) } catch { vault = updated }
     }
 
     private func current(_ clientID: String, refresh: String, generation started: Int) -> ChatGPTRecord? {

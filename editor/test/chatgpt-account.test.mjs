@@ -259,6 +259,25 @@ test('tokens refresh near expiry once across two editor processes, and rotation 
   assert.deepEqual(fake.violations, [])
 })
 
+test('a renewal whose identity check fails keeps the rotated refresh token and nothing else', async t => {
+  const clock = { now: Date.now() }
+  const { fake, account, make } = await setup(t, { clock })
+  await signIn(account)
+  const before = await account.accessToken()
+  // A new process has no cached signing keys, and OpenAI's key endpoint is failing.
+  const relaunched = make()
+  clock.now += 61 * 60 * 1000
+  fake.refreshIDToken = true
+  fake.jwksStatus = 503
+  await assert.rejects(relaunched.accessToken(), error => /signing keys are unavailable/i.test(error.message))
+  assert.equal(relaunched.status().signedIn, true)
+  fake.jwksStatus = 200
+  const after = await relaunched.accessToken()
+  assert.notEqual(after.accessToken, before.accessToken)
+  assert.equal(fake.refreshGrants, 2)
+  assert.deepEqual(fake.violations, [])
+})
+
 test('an unusable refresh token ends the session but keeps the registration and hint', async t => {
   const clock = { now: Date.now() }
   const { fake, account } = await setup(t, { clock })

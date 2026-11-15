@@ -225,6 +225,17 @@ final class AssistantTests: XCTestCase {
         XCTAssertFalse(Assistant.allows(method: "POST", path: "/api/assistant/proposal/apply"))
     }
 
+    func testManualAnthropicAcceptsTheFullMessageWithReferences() async throws {
+        let provider = FakeProvider([reply("Done.")])
+        let longest = NativeAssistantRoutingPolicy.composePrompt(String(repeating: "s", count: 32_000), referenceText: String(repeating: "r", count: NativeAssistantRoutingPolicy.referenceByteLimit))
+        let reply = try await make(provider).run(longest, sharing: try sharing(), authorize: {})
+        XCTAssertEqual(reply.text, "Done.")
+        do { _ = try await make(provider).run(longest + "x", sharing: try sharing(), authorize: {}); XCTFail("over the limit") }
+        catch { XCTAssertEqual(error as? Assistant.Failure, .invalidPrompt) }
+        let requests = await provider.requests
+        XCTAssertEqual(requests.count, 1)
+    }
+
     private func sharing(_ model: String = "test-model") throws -> AssistantSharingScope {
         try .init(models: [.init(provider: "anthropic", model: model)], companion: URL(string: "https://api.anthropic.com/")!)
     }
