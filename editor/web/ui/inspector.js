@@ -460,7 +460,7 @@ function CompInspector({ id }) {
   const k = store.project.comps[id]
   const [name, setName] = useState(null)
   const upd = set => edit({ op: 'update_comp', target: id, set })
-  const sizes = [['1920x1080', '1080p HD'], ['3840x2160', '4K UHD'], ['1080x1920', '9:16 vertical'], ['1080x1080', '1:1 square'], ['1280x720', '720p']]
+  const sizes = [['1920x1080', '1080p HD'], ['3840x2160', '4K UHD'], ['2160x3840', '4K 9:16 vertical'], ['1080x1920', '9:16 vertical'], ['1080x1080', '1:1 square'], ['1280x720', '720p']]
 
   return html`
     <div class="inspector-head"><b>Composition</b><span class="muted"> ${id}</span></div>
@@ -481,7 +481,7 @@ function CompInspector({ id }) {
 function ProjectInspector() {
   if (store.openComp && store.project.comps?.[store.openComp]) return html`<${CompInspector} id=${store.openComp} />`
   const p = viewProject()
-  const presets = [['1920x1080', '1080p HD'], ['3840x2160', '4K UHD'], ['1280x720', '720p'], ['1080x1920', '9:16 vertical'], ['1080x1080', '1:1 square'], ['1080x1350', '4:5 portrait'], ['2560x1080', '21:9 wide']]
+  const presets = [['1920x1080', '1080p HD'], ['3840x2160', '4K UHD'], ['2160x3840', '4K 9:16 vertical'], ['1280x720', '720p'], ['1080x1920', '9:16 vertical'], ['1080x1080', '1:1 square'], ['1080x1350', '4:5 portrait'], ['2560x1080', '21:9 wide']]
   const [name, setName] = useState(null)
 
   return html`

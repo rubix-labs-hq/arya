@@ -185,7 +185,9 @@ final class NativeMobileExport: ObservableObject {
             if task == nil, !canRunExport { throw CancellationError() }
             if task == nil { fallbackJobs[jobID] = backend }
             message = "Exporting in Arya"
-            for _ in 0..<1800 {
+            // Long 4K exports can run past 30 minutes. The background task's expiration ends
+            // this loop through cancellation; otherwise it waits for the job to finish.
+            while !success {
                 try Task.checkCancellation()
                 let job = try await backend.handle(method: "GET", path: nativeQuery("/api/jobs/wait", ["id": jobID, "timeout": "1000"]), body: nil)
                 updateProgress(job.text, requestID: request.id, task: task)
@@ -251,7 +253,9 @@ final class NativeMobileExport: ObservableObject {
         #endif
         Task {
             var completed = false
-            for _ in 0..<1800 {
+            // Wait as long as the job runs. The background-task expiration handler above cancels
+            // the job if the system ends Arya's time.
+            while true {
                 guard let json = try? await backend.handle(method: "GET", path: nativeQuery("/api/jobs/wait", ["id": id, "timeout": "1000"]), body: nil),
                       let job = try? JSON.parse(json.text) as? [String: Any] else { break }
                 if job.string("state") == "done" { if session?.backend === backend { session?.nativeEditor.confirmExportFeedback(job) }; completed = true; if request?.id == requestID { clear(); message = "Export saved to \(job.string("output"))" }; break }

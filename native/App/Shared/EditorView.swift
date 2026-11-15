@@ -326,12 +326,12 @@ struct StartView: View {
                         }
                         if let openSupport {
                             Button(action: openSupport) {
-                                Label("Support Arya", systemImage: "heart")
+                                Label("Arya Pro", systemImage: "sparkles")
                                     .frame(minHeight: 44)
                                     .contentShape(Rectangle())
                             }
-                            .accessibilityHint("Optional tips. Every feature stays free.")
-                            .accessibilityIdentifier("welcome.support")
+                            .accessibilityHint("4K, ProRes and HDR export. Editing and 1080p export stay free.")
+                            .accessibilityIdentifier("welcome.pro")
                         }
                         #endif
                     }
@@ -406,9 +406,10 @@ struct NativeNewProjectSheet: View {
 
     enum Format: String, CaseIterable, Identifiable {
         case landscape = "Landscape HD", portrait = "Portrait HD", square = "Square"
+        case landscapeUHD = "Landscape 4K", portraitUHD = "Portrait 4K"
         var id: String { rawValue }
-        var width: Int { self == .landscape ? 1920 : 1080 }
-        var height: Int { self == .portrait ? 1920 : 1080 }
+        var width: Int { [.landscape: 1920, .portrait: 1080, .square: 1080, .landscapeUHD: 3840, .portraitUHD: 2160][self]! }
+        var height: Int { [.landscape: 1080, .portrait: 1920, .square: 1080, .landscapeUHD: 2160, .portraitUHD: 3840][self]! }
     }
 
     var body: some View {

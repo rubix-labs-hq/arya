@@ -17,7 +17,7 @@ const { default: colorRoutes, colorCapabilities } = await import(url('routes/col
 const workflowSource = fs.readFileSync(path.join(source, 'web/ui/color/workflows.js'), 'utf8').replace("'/core/cube-lut.js'", JSON.stringify(url('core/cube-lut.js')))
 const { createColorWorkflows } = await import(data(workflowSource))
 let frameSource = fs.readFileSync(path.join(source, 'web/engine/frame.js'), 'utf8')
-const stubs = { '/core/project.js': url('core/project.js'), '/core/caption-render.js': url('core/caption-render.js'), './compositor.js': data('export const hexToRgb=()=>[0.5,0.5,0.5]'), './media.js': data('export const mediaUrl=(p,s)=>s'), './shapes.js': data('export const maskCanvas=()=>null; export const resolvedShape=()=>null; export const shapeCanvas=()=>null;'), './render-resolution.js': url('web/engine/render-resolution.js') }
+const stubs = { '/core/project.js': url('core/project.js'), '/core/caption-render.js': url('core/caption-render.js'), './compositor.js': data('export const hexToRgb=()=>[0.5,0.5,0.5]; export const orientSource=(_comp,source)=>source'), './media.js': data('export const mediaUrl=(p,s)=>s'), './shapes.js': data('export const maskCanvas=()=>null; export const resolvedShape=()=>null; export const shapeCanvas=()=>null;'), './render-resolution.js': url('web/engine/render-resolution.js') }
 for (const [name, replacement] of Object.entries(stubs)) frameSource = frameSource.replace(`from '${name}'`, `from ${JSON.stringify(replacement)}`)
 const { drawFrame } = await import(data(frameSource))
 const hash = text => createHash('sha256').update(text, 'utf8').digest('hex')

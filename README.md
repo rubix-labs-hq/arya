@@ -52,6 +52,7 @@ Arya runs as a native SwiftUI and Metal app for Mac, and as a browser editor. Yo
 - Multicam with audio sync for up to nine angles.
 - Import and export FCPXML, OpenTimelineIO, SRT and WebVTT. Export CMX 3600 EDL for individual video tracks.
 - Export H.264, HEVC, ProRes 422, 422 HQ and 4444, GIF, PNG sequences, WAV and AAC from a render queue.
+- The native apps export above 1080p, at 4K and up to 8K, and deliver HDR10 (PQ) and HLG. See [Pricing](#pricing) for the App Store edition.
 
 **Color**
 - A node graph with serial, parallel and layer-mixer nodes.
@@ -113,11 +114,15 @@ The Mac app and the local browser editor share the same project format and editi
 | Option | Status |
 | --- | --- |
 | **Mac app** | Download the notarized DMG from [GitHub Releases](https://github.com/rubix-labs-hq/arya/releases/latest). Requires macOS 14 or newer, Apple silicon or Intel. Free. |
-| **Browser editor** | Try the hosted editor at [arya-beta-delta.vercel.app/editor](https://editwitharya.app/editor/) in current Chrome or Edge. It has no assistant, transcription, captions, Figma or interchange (see [Where each feature runs](#where-each-feature-runs)). For everything, run it locally (see below). |
-| **iPhone, iPad and Mac App Store** | Coming later. |
+| **Browser editor** | Try the hosted editor at [editwitharya.app/editor](https://editwitharya.app/editor/) in current Chrome or Edge. It has no assistant, transcription, captions, Figma or interchange (see [Where each feature runs](#where-each-feature-runs)). For everything, run it locally (see below). |
+| **iPhone, iPad and Mac App Store** | On the [App Store](https://apps.apple.com/us/app/arya-video-editor/id6826357116) for iPhone and iPad. The Mac App Store edition shares the same App Store record, so one purchase covers all three. See [Pricing](#pricing). |
 | **Build from source** | See [Quick start for developers](#quick-start-for-developers). |
 
-Arya is free. Optional contributions are being set up on the [support page](https://editwitharya.app/support/).
+## Pricing
+
+- **Mac download and browser editor.** Free, with no account, subscription, watermark or paid tier. The Mac download exports 4K and 8K, ProRes and HDR at no charge. The hosted browser editor has its own export limits; see [Where each feature runs](#where-each-feature-runs). Optional one-time tips on the [support page](https://editwitharya.app/support/) fund development. They start at $5 and unlock nothing.
+- **App Store edition (iPhone, iPad and Mac App Store).** Up to version 1.1.1 it is free, with optional tips through Apple. Starting with 1.2.0, editing and export up to 1080p are free, with no watermark, ads or account. Arya Pro adds export above 1080p (4K and up to 8K), Apple ProRes 422, 422 HQ and 4444, and HDR10 (PQ) and HLG delivery. It also funds development. Choose a monthly plan, a yearly plan with a one-week free trial, or a one-time lifetime purchase. Prices are shown in the app and vary by storefront.
+- **Early supporters.** If you installed Arya from the App Store before 1.2.0, you keep Arya Pro at no charge.
 
 ## Quick start for developers
 

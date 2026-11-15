@@ -3,9 +3,9 @@ import StoreKit
 import SwiftUI
 
 // BEGIN SUPPORT PROMPT VIEW
-/// Saves the tip prompt's counts on this device and decides whether this build can show it.
-/// iOS, iPadOS and Mac Catalyst offer App Store tips. Direct-download Mac builds link to the
-/// website. Any other build, such as a future Mac App Store build, never shows the prompt.
+/// Saves the prompt's counts on this device and decides whether this build can show it.
+/// iOS, iPadOS and the Mac App Store edition offer Arya Pro to people who do not have it yet.
+/// Direct-download Mac builds link to the website for optional tips.
 @MainActor
 enum NativeSupportPromptLedger {
     static let key = "support.prompt.state"
@@ -18,7 +18,7 @@ enum NativeSupportPromptLedger {
 
     static var channelAvailable: Bool {
         #if os(iOS)
-        return AppStore.canMakePayments
+        return AppStore.canMakePayments && !NativeProStore.shared.access.isPro
         #elseif ARYA_DIRECT_DISTRIBUTION
         return true
         #else
@@ -54,13 +54,13 @@ struct NativeSupportPromptCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "heart.fill")
+                Image(systemName: Self.icon)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(NativeEditorStyle.accent)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Enjoying Arya?").font(.subheadline.weight(.semibold)).foregroundStyle(NativeEditorStyle.text)
-                    Text("Arya is free, with no ads and no account. If it saves you time, an optional tip helps keep it that way. It unlocks nothing.")
+                    Text(Self.message)
                         .font(.footnote).foregroundStyle(NativeEditorStyle.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -76,12 +76,12 @@ struct NativeSupportPromptCard: View {
         .overlay { RoundedRectangle(cornerRadius: 12).stroke(NativeEditorStyle.controlLine.opacity(0.7)) }
         .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Optional tip")
+        .accessibilityLabel(Self.label)
         .accessibilityIdentifier("supportPrompt")
         #if os(iOS)
         .sheet(isPresented: $supportVisible, onDismiss: { model.supportPromptVisible = false }) {
             NavigationStack {
-                NativeSupportView(store: .shared).toolbar { Button("Done") { supportVisible = false } }
+                NativeProView(store: .shared).toolbar { Button("Done") { supportVisible = false } }
             }
         }
         #endif
@@ -89,12 +89,12 @@ struct NativeSupportPromptCard: View {
 
     @ViewBuilder private var buttons: some View {
         Button { choose(.support) } label: {
-            Text("Leave a tip").frame(minHeight: NativeEditorStyle.minimumControlHeight - 12)
+            Text(Self.action).frame(minHeight: NativeEditorStyle.minimumControlHeight - 12)
         }
         .buttonStyle(.borderedProminent)
         .tint(NativeEditorStyle.accent)
         .foregroundStyle(NativeEditorStyle.accentInk)
-        .accessibilityHint("Optional. Every feature stays free.")
+        .accessibilityHint(Self.hint)
         .accessibilityIdentifier("supportPrompt.tip")
         Button("Not now") { choose(.notNow) }
             .buttonStyle(.bordered)
@@ -105,6 +105,20 @@ struct NativeSupportPromptCard: View {
             .foregroundStyle(NativeEditorStyle.muted)
             .accessibilityIdentifier("supportPrompt.never")
     }
+
+    #if os(iOS)
+    private static let icon = "sparkles"
+    private static let label = "Arya Pro"
+    private static let message = "Editing and 1080p export stay free. Arya Pro adds 4K and higher, Apple ProRes and HDR export, and funds an independent editor."
+    private static let action = "See Arya Pro"
+    private static let hint = "Shows plans and prices. Nothing is charged until you confirm."
+    #else
+    private static let icon = "heart.fill"
+    private static let label = "Optional tip"
+    private static let message = "Arya is free, with no ads and no account. If it saves you time, an optional tip helps keep it that way. It unlocks nothing."
+    private static let action = "Leave a tip"
+    private static let hint = "Opens the Arya website. Every feature stays free."
+    #endif
 
     private func choose(_ choice: SupportPromptChoice) {
         NativeSupportPromptLedger.record(choice)

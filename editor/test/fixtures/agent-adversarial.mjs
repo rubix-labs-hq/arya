@@ -2,12 +2,14 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 for await (const chunk of process.stdin) {}
 const mode = process.argv[2], marker = process.argv[3]
-if (marker) fs.writeFileSync(marker, String(process.pid))
+// Write through a rename so a test polling for the marker never reads an empty file.
+const publish = (file, value) => { fs.writeFileSync(`${file}.tmp`, value); fs.renameSync(`${file}.tmp`, file) }
+if (marker) publish(marker, String(process.pid))
 if (mode === 'flood') {
   for (let i = 0; i < 4300; i++) process.stdout.write(JSON.stringify({ type: 'text', text: 'x'.repeat(1800) }) + '\n')
 } else if (mode === 'done') {
   const proxy = spawn(process.execPath, [process.argv[4]], { stdio: ['pipe', 'ignore', 'inherit'], env: process.env })
-  fs.writeFileSync(marker + '.mcp', String(proxy.pid))
+  publish(marker + '.mcp', String(proxy.pid))
   process.stdout.write(JSON.stringify({ type: 'done', text: 'Complete' }) + '\n')
 } else if (mode === 'calls') {
   const base = process.env.REEL_AGENT_ENDPOINT, id = process.env.REEL_AGENT_RUN_ID

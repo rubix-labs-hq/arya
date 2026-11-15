@@ -857,6 +857,13 @@ function startEncoder(job) {
     const vf = ['vflip']
     const custom = preset.v.indexOf('-vf')
     const vargs = [...preset.v]
+    const bitrate = vargs.indexOf('-b:v')
+    if (bitrate >= 0) vargs[bitrate + 1] = String(Math.round(parseFloat(vargs[bitrate + 1]) * 1_000_000 * width * height * fps / (1920 * 1080 * 30)))
+    // H.264 level 5.1 allows 983040 macroblocks per second (ITU-T H.264 A.1).
+    const macroblocks = Math.ceil(width / 16) * Math.ceil(height / 16)
+    if (job.spec.preset === 'h264-fast' && width * height > 1920 * 1080 && macroblocks <= 36864 && macroblocks * fps <= 2073600) {
+      vargs.push('-level:v', macroblocks * fps > 983040 ? '5.2' : '5.1')
+    }
     if (custom >= 0) {
       vf.push(vargs[custom + 1])
       vargs.splice(custom, 2)

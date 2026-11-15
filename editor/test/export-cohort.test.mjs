@@ -31,7 +31,7 @@ for (const target of ['original', 'copy']) test(`final cohort check refuses an e
   } finally { cohort.cleanup() }
 })
 
-test('immutable cohort rewrites video, proxy, audio, nested clip and LUT to admitted byte copies', async t => {
+test('immutable cohort rewrites original video, audio, nested clip and LUT without preview proxies', async t => {
   const { root, project } = fixture(t), captured = captureExportSources(root, project)
   captured.project.tracks[0].clips.push({ kind: 'title', text: 'media/video.mp4', transcript: { text: 'media/audio.wav' } })
   const cohort = await prepareExportCohort(root, captured)
@@ -39,7 +39,8 @@ test('immutable cohort rewrites video, proxy, audio, nested clip and LUT to admi
   const clip = cohort.project.tracks[0].clips[0]
   assert.notEqual(clip.src, project.tracks[0].clips[0].src)
   assert.equal(fs.readFileSync(path.join(root, clip.src), 'utf8'), 'admitted video')
-  assert.equal(fs.readFileSync(path.join(root, cohort.project.assets[clip.src].proxy), 'utf8'), 'admitted proxy')
+  assert.equal(cohort.project.assets[clip.src].proxy, undefined)
+  assert.equal(project.assets['media/video.mp4'].proxy, 'media/proxy.mp4')
   assert.equal(fs.readFileSync(path.join(root, clip.grade.lut), 'utf8'), 'admitted lut')
   assert.equal(fs.readFileSync(path.join(root, cohort.project.comps.nested.tracks[0].clips[0].src), 'utf8'), 'admitted audio')
   assert.equal(project.tracks[0].clips[0].src, 'media/video.mp4')

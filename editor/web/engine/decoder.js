@@ -21,6 +21,7 @@ export class FrameReader {
       if (this.closed || !track || !(await track.canDecode())) throw new Error(`cannot decode ${this.url}`)
       if (this.closed) throw new Error('Decoder closed')
       this.sink = new VideoSampleSink(track)
+      this.rotation = track.rotation // clockwise; toVideoFrame() returns unrotated pixels
       this.width = track.displayWidth
       this.height = track.displayHeight
     } catch (error) { this.disposeInput(); throw error }

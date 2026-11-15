@@ -9,7 +9,7 @@ const mediaModule = moduleURL(`export function mediaUrl(project, src) { const as
 const frameSource = (await fs.readFile(new URL('../web/engine/frame.js', import.meta.url), 'utf8'))
   .replace("'/core/project.js'", JSON.stringify(coreURL))
   .replace("'./media.js'", JSON.stringify(mediaModule))
-  .replace("'./compositor.js'", JSON.stringify(moduleURL('export const hexToRgb=()=>[0,0,0]')))
+  .replace("'./compositor.js'", JSON.stringify(moduleURL('export const hexToRgb=()=>[0,0,0]; export const orientSource=(_comp,source)=>source')))
   .replace("'./shapes.js'", JSON.stringify(moduleURL('export const maskCanvas=()=>null; export const resolvedShape=()=>null; export const shapeCanvas=()=>null;')))
   .replace("'/core/caption-render.js'", JSON.stringify(new URL('../core/caption-render.js', import.meta.url).href))
   .replace("'./render-resolution.js'", JSON.stringify(new URL('../web/engine/render-resolution.js', import.meta.url).href))

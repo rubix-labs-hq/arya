@@ -1483,6 +1483,7 @@ private struct NativeEditorPreferences: View {
     @State private var gettingStartedVisible = false
     #if os(iOS)
     @State private var supportVisible = false
+    @ObservedObject private var proStore = NativeProStore.shared
     #endif
 
     var body: some View {
@@ -1508,16 +1509,20 @@ private struct NativeEditorPreferences: View {
             .accessibilityIdentifier("settings.gettingStarted")
             #if os(iOS)
             Button { supportVisible = true } label: {
-                Label("Support Arya", systemImage: "heart")
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
+                HStack {
+                    Label("Arya Pro", systemImage: "sparkles")
+                    Spacer()
+                    Text(proStore.access.summary).font(.footnote).foregroundStyle(NativeEditorStyle.muted)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .padding(.horizontal, 18)
-            .accessibilityHint("Optional tips. Every feature stays free.")
-            .accessibilityIdentifier("settings.support")
+            .accessibilityHint("4K, ProRes and HDR export. Editing and 1080p export stay free.")
+            .accessibilityIdentifier("settings.pro")
             .sheet(isPresented: $supportVisible) {
                 NavigationStack {
-                    NativeSupportView(store: .shared)
+                    NativeProView(store: proStore)
                         .toolbar { Button("Done") { supportVisible = false } }
                 }
             }

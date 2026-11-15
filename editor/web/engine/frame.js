@@ -4,7 +4,7 @@
 // effects, and blends layer by layer. See docs/format.md section 1.8 for the order.
 
 import { clipEnd, compDuration, compView, findClip, nodeOrder, opacityAt, sourceTime, valueAt } from '/core/project.js'
-import { hexToRgb } from './compositor.js'
+import { hexToRgb, orientSource } from './compositor.js'
 import { mediaUrl } from './media.js'
 import { maskCanvas, resolvedShape, shapeCanvas } from './shapes.js'
 import { captionTitle } from '/core/caption-render.js'
@@ -314,9 +314,13 @@ function sourceFor(ctx, view, c, t, path, depth) {
       ih = v.el.videoHeight || view.height
     }
     if (!entry) return null
-    const fit = (c.fit === 'cover' ? Math.max : Math.min)(view.width / iw, view.height / ih)
+    // HTMLVideoElement (including decoder fallback) is already oriented. Raw
+    // VideoFrames are not; ffprobe reports counterclockwise display rotation.
+    const rotation = decoded ? decoded.rotation ?? -(root.assets[src]?.rotation ?? 0) : 0
+    const source = orientSource(comp, { tex: entry.tex, w: iw, h: ih }, rotation, `${depth}:${key}`)
+    const fit = (c.fit === 'cover' ? Math.max : Math.min)(view.width / source.w, view.height / source.h)
 
-    return { source: { tex: entry.tex, w: iw, h: ih }, w: iw * fit, h: ih * fit }
+    return { source, w: source.w * fit, h: source.h * fit }
   }
   if (c.kind === 'comp') {
     const k = root.comps?.[c.comp]

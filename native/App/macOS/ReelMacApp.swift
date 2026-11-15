@@ -196,8 +196,21 @@ struct ReelMacApp: App {
         panel.nameFieldLabel = "Project:"
         panel.nameFieldStringValue = "Untitled Arya"
         panel.canCreateDirectories = true
+        // Frame size for the new project. 4K choices match the iPhone and iPad new-project sheet.
+        let formats: [(String, Int, Int)] = [("Landscape HD, 1920 × 1080", 1920, 1080), ("Portrait HD, 1080 × 1920", 1080, 1920),
+                                              ("Square, 1080 × 1080", 1080, 1080), ("Landscape 4K, 3840 × 2160", 3840, 2160),
+                                              ("Portrait 4K, 2160 × 3840", 2160, 3840)]
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        popup.addItems(withTitles: formats.map(\.0))
+        popup.setAccessibilityIdentifier("newProject.frameSize")
+        let label = NSTextField(labelWithString: "Frame size:")
+        let row = NSStackView(views: [label, popup])
+        row.orientation = .horizontal
+        row.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        panel.accessoryView = row
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        session.create(at: url)
+        let format = formats[max(0, popup.indexOfSelectedItem)]
+        session.create(at: url, width: format.1, height: format.2)
     }
 
     private func importMedia() {

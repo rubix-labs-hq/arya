@@ -253,3 +253,35 @@ test('animated and expression-driven 4K window renders after JSON reopen without
   assert.ok(nodeTargets(f).every(target => target.w === 3840 && target.h === 2160))
   assert.equal(JSON.stringify(reopened), saved)
 })
+
+for (const rotation of [-90, 90, 180, 270]) test(`decoded rotation ${rotation} is upright before fitting and node effects`, () => {
+  const quarter = Math.abs(rotation) % 180 === 90
+  const w = quarter ? 2160 : 3840, h = quarter ? 3840 : 2160
+  const p = project(w, h, [{ op: 'import', assets: { 'rotated.mov': { hasVideo: true, width: w, height: h, rotation, duration: 4, fps: 30 } } }, { op: 'append', src: 'rotated.mov', track: 'V1', dur: 4, audio: false }])
+  const f = spy(w, h), media = { useDecoders: true, frames: new Map([['c1', { frame: { displayWidth: 3840, displayHeight: 2160 }, stamp: 1 }]]) }
+  drawFrame(f.comp, media, p, 1)
+  const orientation = f.calls.find(c => c.layer?.rotation)
+  assert.ok(orientation, 'raw decoded pixels must be oriented')
+  assert.equal(orientation.layer.rotation, ((-rotation % 360) + 360) % 360)
+  assert.equal(orientation.target.w, w); assert.equal(orientation.target.h, h)
+  const final = f.calls.find(c => c.layer?.matrix)
+  assert.equal(final.layer.w, w); assert.equal(final.layer.h, h)
+  assert.ok(nodeTargets(f).every(t => t.w === w && t.h === h))
+})
+test('HTML video preview is already upright and must not rotate a second time', () => {
+  const p = project(2160, 3840, [{ op: 'import', assets: { 'rotated.mov': { hasVideo: true, width: 2160, height: 3840, rotation: -90, duration: 4 } } }, { op: 'append', src: 'rotated.mov', track: 'V1', dur: 4, audio: false }])
+  const f = spy(540, 960), media = { video: () => ({ ready: true, el: { readyState: 4, videoWidth: 1080, videoHeight: 1920 } }) }
+  drawFrame(f.comp, media, p, 1)
+  assert.equal(f.calls.some(c => c.layer?.rotation), false)
+  const final = f.calls.find(c => c.layer?.matrix)
+  assert.equal(final.layer.w, 2160); assert.equal(final.layer.h, 3840)
+})
+
+test('decoder-reported orientation overrides asset metadata for an already-rotated proxy', () => {
+  const p = project(2160, 3840, [{ op: 'import', assets: { 'rotated.mov': { hasVideo: true, width: 2160, height: 3840, rotation: -90, duration: 4 } } }, { op: 'append', src: 'rotated.mov', track: 'V1', dur: 4, audio: false }])
+  const f = spy(540, 960), media = { useDecoders: true, frames: new Map([['c1', { frame: { displayWidth: 540, displayHeight: 960 }, rotation: 0, stamp: 1 }]]) }
+  drawFrame(f.comp, media, p, 1)
+  assert.equal(f.calls.some(c => c.layer?.rotation), false)
+  const final = f.calls.find(c => c.layer?.matrix)
+  assert.equal(final.layer.w, 2160); assert.equal(final.layer.h, 3840)
+})

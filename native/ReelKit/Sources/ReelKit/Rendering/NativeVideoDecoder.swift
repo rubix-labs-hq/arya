@@ -43,7 +43,7 @@ final class NativeVideoDecoder {
         return buffer
     }
     func frame(at time: Double, maximum: Int, sampling: NativeSourceSampling? = nil) throws -> CGImage {
-        var image = CIImage(cvPixelBuffer: try buffer(at: time)).transformed(by: transform)
+        var image = CIImage(cvPixelBuffer: try buffer(at: time)).transformed(by: transform.coreImageDisplay)
         image = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX, y: -image.extent.minY))
         let requested = try sampling?.maximum(sourceWidth: image.extent.width, sourceHeight: image.extent.height, baseline: maximum) ?? maximum
         let scale = min(1, Double(requested) / max(image.extent.width, image.extent.height))
@@ -52,4 +52,12 @@ final class NativeVideoDecoder {
         return result
     }
     deinit { reader?.cancelReading() }
+}
+
+extension CGAffineTransform {
+    /// A track's `preferredTransform` assumes y grows downward; Core Image's y grows upward.
+    /// Applying it unchanged turns 90 and 270 degree clips the wrong way, so the clip lands
+    /// upside down. Mirroring y on both sides gives the same rotation in Core Image space.
+    /// Callers move the result back to the origin, so the translation is dropped.
+    var coreImageDisplay: CGAffineTransform { CGAffineTransform(a: a, b: -b, c: -c, d: d, tx: 0, ty: 0) }
 }
