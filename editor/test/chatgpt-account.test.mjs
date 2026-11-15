@@ -336,6 +336,27 @@ test('while the key set stays down, an unconfirmed identity keeps the session', 
   assert.deepEqual(fake.violations, [])
 })
 
+test('a renewal that returns another account ends the session and revokes the rotated token', async t => {
+  const clock = { now: Date.now() }
+  const { fake, account, make } = await setup(t, { clock })
+  await signIn(account)
+  clock.now += 61 * 60 * 1000
+  fake.refreshIDToken = true
+  fake.refreshSubject = 'sub-someone-else'
+  const revoked = fake.revocations.length
+  await assert.rejects(account.accessToken(), error => error.code === 'chatgpt_sign_in_required' && /different account/i.test(error.message))
+  assert.equal(account.status().signedIn, false)
+  for (let i = 0; i < 100 && fake.revocations.length === revoked; i++) await new Promise(resolve => setTimeout(resolve, 10))
+  assert.equal(fake.revocations.length, revoked + 1, 'the rotated refresh token is revoked')
+  // A following renewal without an identity token is not accepted under this account, in this process or a new one.
+  fake.refreshIDToken = false
+  fake.refreshSubject = undefined
+  await assert.rejects(account.accessToken(), error => error.code === 'chatgpt_sign_in_required')
+  await assert.rejects(make().accessToken(), error => error.code === 'chatgpt_sign_in_required')
+  assert.equal(fake.refreshGrants, 1)
+  assert.deepEqual(fake.violations, [])
+})
+
 test('an unusable refresh token ends the session but keeps the registration and hint', async t => {
   const clock = { now: Date.now() }
   const { fake, account } = await setup(t, { clock })
