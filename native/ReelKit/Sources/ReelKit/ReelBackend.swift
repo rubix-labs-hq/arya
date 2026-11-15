@@ -581,8 +581,10 @@ public actor ReelBackend {
         guard let composition = (p["comps"] as? [String: [String: Any]])?[comp] else { throw APIError("No composition \(comp).") }
         p["tracks"] = composition["tracks"]
         p["markers"] = composition["markers"] ?? []
-        // A JSON null falls back to the project value, like `comp.height ?? p.height` in the renderer.
-        for key in ["width", "height", "fps", "background"] { if let value = composition[key], !(value is NSNull) { p[key] = value } }
+        // Like compView in the editor: a null or missing size or rate falls back to the project value,
+        // and a null or missing background is transparent, never the project color.
+        for key in ["width", "height", "fps"] { if let value = composition[key], !(value is NSNull) { p[key] = value } }
+        p["background"] = composition["background"].flatMap { $0 is NSNull ? nil : $0 } ?? "transparent"
         p["compId"] = comp
         return JSON(any: p).text
     }
@@ -741,6 +743,7 @@ public actor ReelBackend {
     #if DEBUG
     private var processingTestBarrier: (@Sendable () async throws -> Void)?
     func setProcessingTestBarrier(_ barrier: (@Sendable () async throws -> Void)?) { processingTestBarrier = barrier }
+    func projectViewForTesting(comp: String?) throws -> String { try projectView(comp: comp) }
     func processingWorkersForTesting() -> Int { nativeTasks.count + directProcessingCancellations.count }
     #endif
     private func processingTestStage() async throws {

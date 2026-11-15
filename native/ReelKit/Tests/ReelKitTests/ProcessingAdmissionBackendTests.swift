@@ -304,10 +304,16 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
     func testNullCompositionHeightUsesTheProjectSizeForTheFrameGate() async throws {
         ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
         defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
-        let comp: [String: Any] = ["name": "Tall", "width": 1080, "height": NSNull(), "fps": 30, "tracks": [], "markers": []]
-        let fixture = try await fixture(admission(), canvas: (1080, 3840), comps: ["k1": comp])
+        let comp: [String: Any] = ["name": "Tall", "width": 1080, "height": NSNull(), "fps": 30, "background": NSNull(), "tracks": [], "markers": []]
+        var plain = comp; plain["background"] = nil; plain["name"] = "Plain"
+        let fixture = try await fixture(admission(), canvas: (1080, 3840), comps: ["k1": comp, "k2": plain])
         let size = try await fixture.backend.canvasSize(comp: "k1")
         XCTAssertEqual(size.width, 1080); XCTAssertEqual(size.height, 3840)
+        // A null or missing composition background is transparent, as compView makes it, not the project color.
+        for id in ["k1", "k2"] {
+            let view = try JSON.parse(try await fixture.backend.projectViewForTesting(comp: id)) as? [String: Any]
+            XCTAssertEqual(view?["background"] as? String, "transparent", id)
+        }
         do {
             _ = try await call(fixture, "/api/frame", ["time": 0, "width": 1080, "comp": "k1"])
             XCTFail("A free 1080 by 3840 still was saved")
