@@ -130,6 +130,7 @@ web_deliver = (root / 'editor/web/ui/deliver.js').read_text()
 check('at: window.reel.player.t, width: outW, freeFit: true,' in web_deliver and 'r.fitted ?' in web_deliver, 'The web editor saves the frame at the chosen Resolution, fitted to 1080p for free users')
 check("...(freeFit ? { freeFit: true } : {})" in (root / 'editor/web/engine/export-webcodecs.js').read_text(), 'saveNativeFrame forwards freeFit')
 check('let fitted = b["freeFit"] as? Bool == true' in backend, 'Only freeFit requests are shrunk; others are refused')
+check(backend.index('try validateExportAdmission(width: requested,') < backend.index('let fitted = b["freeFit"]'), 'The requested still size is bounded before freeFit fits it')
 
 # No stale promises in App Store code.
 for name, text in [('NativeSupport.swift', support), ('ReelIOSApp.swift', app), ('EditorView.swift', welcome),

@@ -1234,6 +1234,8 @@ public actor ReelBackend {
             // The renderer takes the requested width as an integer, so admission and the Pro gate do too.
             let requested = (b["width"] as? NSNumber).map { Double($0.intValue) } ?? (view["width"] as? NSNumber)?.doubleValue ?? 1920
             let canvasWidth = (view["width"] as? NSNumber)?.doubleValue ?? 1920, canvasHeight = (view["height"] as? NSNumber)?.doubleValue ?? 1080
+            // Bound the request before fitting, so the Int conversions in stillWidth and requiresPro see at most 8192.
+            try validateExportAdmission(width: requested, height: requested * canvasHeight / canvasWidth, fps: 1, from: 0, to: 1)
             // `freeFit` (the web Deliver page) shrinks a still the gate refuses to the free 1080p fit.
             // Without it the request is refused below, and Pro and ungated builds keep the requested width.
             let fitted = b["freeFit"] as? Bool == true

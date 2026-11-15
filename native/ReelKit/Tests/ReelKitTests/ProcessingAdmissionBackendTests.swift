@@ -298,6 +298,22 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
         XCTAssertEqual(size.0, 540); XCTAssertEqual(size.1, 1920)
     }
 
+    /// A script in the app's web view can send any width. With `freeFit` a huge one is refused by
+    /// admission before fitting, instead of trapping in a Double to Int conversion.
+    func testFreeFitRefusesAHugeWidthBeforeFitting() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let fixture = try await fixture(admission(), canvas: (1080, 3840))
+        for width in [3e18, 1e30, -5] as [Double] {
+            do {
+                _ = try await call(fixture, "/api/frame", ["time": 0, "width": width, "freeFit": true])
+                XCTFail("A still \(width) wide was accepted")
+            } catch let error as ReelBackend.APIError {
+                XCTAssertTrue(error.message.hasPrefix("Export supports at most 8192 pixels per edge"), "\(width): \(error.message)")
+            }
+        }
+    }
+
     /// Save current frame asks for the canvas width. On a 4K canvas a free user saves the 1080p fit
     /// instead of getting the lock error, and Pro keeps the full canvas.
     func testFreeSaveCurrentFrameFitsInside1080p() async throws {
