@@ -173,6 +173,53 @@ final class ProPurchaseTests: XCTestCase {
         XCTAssertEqual(gate, [.free, .free])
     }
 
+    /// Reads access in the order they are answered, not the order they were asked.
+    private final class SlowReadStore: ProStoreClient {
+        var canMakePayments = true
+        var answers: [CheckedContinuation<ProAccess, Never>] = []
+        func products(for ids: [String]) async throws -> [ProProduct] { ProPurchaseTests.catalog }
+        func currentAccess() async -> ProAccess { await withCheckedContinuation { answers.append($0) } }
+        func transactionUpdates() -> AsyncStream<ProTransactionUpdate> { AsyncStream { _ in } }
+        func restore() async throws {}
+    }
+
+    func testAnOlderRefreshThatFinishesLateDoesNotRelockPro() async {
+        let store = SlowReadStore(), controller = ProPurchaseController(client: store)
+        var gate: [ProAccess] = []
+        controller.onAccessChange = { gate.append($0) }
+        // The foreground refresh starts first, then the purchase's refresh.
+        let foreground = Task { await controller.refreshAccess() }
+        while store.answers.count < 1 { await Task.yield() }
+        let purchase = Task { await controller.refreshAccess() }
+        while store.answers.count < 2 { await Task.yield() }
+        // The purchase's read answers first with Pro; the stale foreground read answers last with free.
+        store.answers[1].resume(returning: .subscribed(.yearly))
+        await purchase.value
+        store.answers[0].resume(returning: .free)
+        await foreground.value
+        XCTAssertEqual(controller.access, .subscribed(.yearly), "A stale read must not relock Pro")
+        XCTAssertEqual(gate, [.subscribed(.yearly)])
+    }
+
+    /// Restore and purchase read `access` after their refresh, so a superseded refresh must not
+    /// return until the newest read has landed.
+    func testASupersededRefreshWaitsForTheNewestRead() async {
+        let store = SlowReadStore(), controller = ProPurchaseController(client: store)
+        var olderReturned = false
+        let older = Task { await controller.refreshAccess(); olderReturned = true }
+        while store.answers.count < 1 { await Task.yield() }
+        let newer = Task { await controller.refreshAccess() }
+        while store.answers.count < 2 { await Task.yield() }
+        store.answers[0].resume(returning: .free)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(olderReturned, "The superseded refresh returned before the newest read")
+        store.answers[1].resume(returning: .lifetime)
+        await newer.value
+        await older.value
+        XCTAssertTrue(olderReturned)
+        XCTAssertEqual(controller.access, .lifetime)
+    }
+
     func testRequestedHDRMatchesTheRenderer() {
         XCTAssertEqual(ProExportRule.requestedHDR(["hdr": true]), "pq")
         XCTAssertEqual(ProExportRule.requestedHDR(["hdr": true, "transfer": "hlg"]), "hlg")

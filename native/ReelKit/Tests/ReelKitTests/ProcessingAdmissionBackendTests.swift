@@ -207,6 +207,30 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
         XCTAssertEqual(policy.snapshot().active + policy.snapshot().queued, 0)
     }
 
+    /// Save current frame is an export: a free user gets 1080p stills, and 4K stills need Pro.
+    func testProGateCoversSavedFrames() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let fixture = try await fixture(admission(), canvas: (3840, 2160))
+        func savedSize(_ body: [String: Any]) async throws -> (Int, Int) {
+            let response = try await call(fixture, "/api/frame", body)
+            let png = try Data(contentsOf: fixture.root.appendingPathComponent(try XCTUnwrap(response["path"] as? String)))
+            let be = { (at: Int) in png[at..<at + 4].reduce(0) { $0 << 8 | Int($1) } }
+            return (be(16), be(20))
+        }
+        do {
+            _ = try await call(fixture, "/api/frame", ["time": 0])
+            XCTFail("A free 4K still was saved")
+        } catch let error as ReelBackend.APIError {
+            XCTAssertEqual(error.message, ProExportRule.lockedMessage)
+        }
+        let hd = try await savedSize(["time": 0, "width": 1920])
+        XCTAssertEqual(hd.0, 1920, "A 1080p still must stay free"); XCTAssertEqual(hd.1, 1080)
+        ProExportGate.shared.setUnlocked(true)
+        let uhd = try await savedSize(["time": 0])
+        XCTAssertEqual(uhd.0, 3840, "Pro should allow a 4K still"); XCTAssertEqual(uhd.1, 2160)
+    }
+
     /// `hdr: true` is HDR to the renderer, and GIF and PNG frames take the canvas shape, so
     /// neither a Boolean HDR flag nor a smaller requested height gets past the gate.
     func testProGateReadsHDRFlagsAndTheRenderedFrameSize() async throws {
