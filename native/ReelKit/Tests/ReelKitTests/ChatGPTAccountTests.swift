@@ -571,48 +571,63 @@ final class ChatGPTAccountTests: XCTestCase {
         XCTAssertEqual(next, "at-r4")
     }
 
-    // After a key-set outage the kept refresh token's identity is unconfirmed. A reply that cannot confirm it ends the session.
-    func testUnconfirmedIdentityThenARenewalWithoutAnIdentityTokenEndsTheSession() async throws {
+    // A relaunched service renews while OpenAI's key set is down, so the rotated refresh token is kept with an
+    // unconfirmed identity token for `subject`. Later refresh replies carry no identity token.
+    private func renewThroughKeyOutage(subject: String? = nil) async throws {
         _ = try await signIn(service())
+        clock.advance(3600)
+        openai.set { $0.refreshIDToken = true; $0.jwksStatus = 503; $0.refreshSubject = subject }
         let relaunched = service()
         _ = await relaunched.load(userInitiated: false)
-        clock.advance(3600)
-        openai.set { $0.refreshIDToken = true; $0.jwksStatus = 503 }
         do { _ = try await relaunched.credential(expecting: nil); XCTFail("the identity check should fail") }
         catch { XCTAssertEqual((error as? ChatGPTAccountError)?.code, "chatgpt_identity") }
+        XCTAssertTrue(store.text.contains("identityPending") && store.text.contains("pendingIDToken"))
+        openai.set { $0.refreshIDToken = false; $0.refreshSubject = nil }
+    }
 
-        openai.set { $0.refreshIDToken = false; $0.jwksStatus = 200 }
-        let again = service()
-        _ = await again.load(userInitiated: false)
-        do { _ = try await again.credential(expecting: nil); XCTFail("an unconfirmed identity must not renew without an identity token") }
+    private func relaunch() async -> ChatGPTAccountService {
+        let service = service()
+        _ = await service.load(userInitiated: false)
+        return service
+    }
+
+    func testUnconfirmedIdentityIsConfirmedFromTheStoredTokenWhenTheReplyHasNone() async throws {
+        try await renewThroughKeyOutage()
+        openai.set { $0.jwksStatus = 200 }
+        let service = await relaunch()
+        let token = try await service.credential(expecting: nil).accessToken
+        XCTAssertEqual(token, "at-r3")
+        XCTAssertFalse(store.text.contains("identityPending") || store.text.contains("pendingIDToken"), "a confirmed identity clears both fields")
+        let signedIn = await service.status().signedIn
+        XCTAssertTrue(signedIn)
+    }
+
+    func testUnconfirmedIdentityForAnotherAccountEndsTheSessionWhenTheReplyHasNone() async throws {
+        try await renewThroughKeyOutage(subject: "user-other")
+        openai.set { $0.jwksStatus = 200 }
+        let service = await relaunch()
+        do { _ = try await service.credential(expecting: nil); XCTFail("another account's identity must not renew this one") }
         catch { XCTAssertEqual((error as? ChatGPTAccountError)?.code, "chatgpt_sign_in_required") }
-        let status = await again.status()
+        let status = await service.status()
         XCTAssertFalse(status.signedIn)
-        XCTAssertFalse(store.text.contains("at-r3") || store.text.contains("rt-r3"), "nothing from the unconfirmed reply is saved")
+        XCTAssertFalse(store.text.contains("at-r3") || store.text.contains("rt-r3") || store.text.contains("pendingIDToken"), "nothing from the unconfirmed replies is saved")
         for _ in 0..<200 where !openai.forms("/oauth/revoke").contains(where: { $0["token"] == "rt-r3" }) { try await Task.sleep(nanoseconds: 5_000_000) }
         XCTAssertTrue(openai.forms("/oauth/revoke").contains { $0["token"] == "rt-r3" }, "the rotated token is revoked")
     }
 
-    // A signed refresh reply that names another account proves the rotated token is not this account's.
-    func testRenewalThatReturnsAnotherAccountEndsTheSessionAndRevokesTheRotatedToken() async throws {
-        let service = service()
-        _ = try await signIn(service)
-        clock.advance(3600)
-        openai.set { $0.refreshIDToken = true; $0.refreshSubject = "user-other" }
-        do { _ = try await service.credential(expecting: nil); XCTFail("another account must not renew this one") }
-        catch { XCTAssertEqual((error as? ChatGPTAccountError)?.code, "chatgpt_sign_in_required") }
-        XCTAssertFalse(store.text.contains("rt-r2"), "the other account's refresh token is never saved")
-        XCTAssertFalse(store.text.contains("at-r2"))
-        let status = await service.status()
-        XCTAssertFalse(status.signedIn)
-        for _ in 0..<200 where !openai.forms("/oauth/revoke").contains(where: { $0["token"] == "rt-r2" }) { try await Task.sleep(nanoseconds: 5_000_000) }
-        XCTAssertTrue(openai.forms("/oauth/revoke").contains { $0["token"] == "rt-r2" }, "the rotated token is revoked")
+    func testUnconfirmedIdentityWhileTheKeySetIsStillDownKeepsTheSession() async throws {
+        try await renewThroughKeyOutage()
+        let service = await relaunch()
+        do { _ = try await service.credential(expecting: nil); XCTFail("the identity still cannot be checked") }
+        catch { XCTAssertEqual((error as? ChatGPTAccountError)?.code, "chatgpt_identity") }
+        let signedIn = await service.status().signedIn
+        XCTAssertTrue(signedIn)
+        XCTAssertTrue(store.text.contains("rt-r3") && store.text.contains("identityPending") && store.text.contains("pendingIDToken"), "the newest rotated token is kept and the identity stays pending")
 
-        // A following renewal without an identity token is not accepted under this account.
-        openai.set { $0.refreshIDToken = false; $0.refreshSubject = nil }
-        do { _ = try await service.credential(expecting: nil); XCTFail("the session must stay ended") }
-        catch { XCTAssertEqual((error as? ChatGPTAccountError)?.code, "chatgpt_sign_in_required") }
-        XCTAssertEqual(openai.forms("/oauth/token").filter { $0["grant_type"] == "refresh_token" }.count, 1)
+        openai.set { $0.jwksStatus = 200 }
+        let token = try await service.credential(expecting: nil).accessToken
+        XCTAssertEqual(token, "at-r4")
+        XCTAssertFalse(store.text.contains("identityPending"))
     }
 
     func testSignOutDuringRefreshDiscardsAndRevokesTheLateToken() async throws {

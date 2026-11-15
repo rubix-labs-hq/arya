@@ -117,7 +117,7 @@ export function createChatGPTAccount(options = {}) {
   const byClient = (saved, clientID) => saved.accounts.find(item => item.client_id === clientID) ?? null
   const byID = (saved, id) => saved.accounts.find(item => accountID(item.client_id) === id) ?? null
   const clearSession = (account, { keepHint = false } = {}) => {
-    for (const key of ['access_token', 'refresh_token', 'expires_at', 'earliest_refresh_at', 'identity_pending']) delete account[key]
+    for (const key of ['access_token', 'refresh_token', 'expires_at', 'earliest_refresh_at', 'identity_pending', 'pending_id_token']) delete account[key]
     if (!keepHint) delete account.id_token
     account.scopes = []
   }
@@ -406,19 +406,26 @@ export function createChatGPTAccount(options = {}) {
         throw failure(`OpenAI could not renew your ChatGPT sign-in (${code || response.status}). Try again shortly.`, 503, 'chatgpt_refresh_unavailable')
       }
       const tokens = tokenSet(body, account)
+      const rotated = tokens.refresh_token && tokens.refresh_token !== account.refresh_token ? tokens.refresh_token : undefined
       if (account.identity_pending && body.id_token === undefined) {
-        // The last renewal's identity was never confirmed, and this reply offers no way to confirm it.
-        if (tokens.refresh_token && tokens.refresh_token !== account.refresh_token) revoke({ refresh_token: tokens.refresh_token, client_id: account.client_id }).catch(() => {})
-        clearSession(account, { keepHint: true }); writeFile('accounts.json', saved); emit({ kind: 'expired' })
-        throw signInRequired('Arya could not confirm your ChatGPT account while renewing your sign-in. Continue with ChatGPT to sign in again.')
+        // The last renewal's identity was never confirmed and this reply has no identity token, so check the stored one.
+        try { await verifyIdentity(account.pending_id_token, { clientID: account.client_id, subject: account.subject }) } catch (error) {
+          if (error.unverified) {
+            if (rotated) { account.refresh_token = rotated; writeFile('accounts.json', saved) }
+            throw error
+          }
+          if (rotated) revoke({ refresh_token: rotated, client_id: account.client_id }).catch(() => {})
+          clearSession(account, { keepHint: true }); writeFile('accounts.json', saved); emit({ kind: 'expired' })
+          throw signInRequired('Arya could not confirm your ChatGPT account while renewing your sign-in. Continue with ChatGPT to sign in again.')
+        }
+        delete account.identity_pending; delete account.pending_id_token
       }
       if (body.id_token !== undefined) {
         try { await verifyIdentity(body.id_token, { clientID: account.client_id, subject: account.subject }) } catch (error) {
-          const rotated = tokens.refresh_token && tokens.refresh_token !== account.refresh_token ? tokens.refresh_token : undefined
           if (error.unverified) {
             // The signature could not be checked. OpenAI already spent the old refresh token, so keep the
             // rotated one for the next renewal, but trust nothing else from this reply.
-            if (rotated) { account.refresh_token = rotated; account.identity_pending = true; writeFile('accounts.json', saved) }
+            if (rotated) { account.refresh_token = rotated; account.identity_pending = true; account.pending_id_token = body.id_token; writeFile('accounts.json', saved) }
             throw error
           }
           // A definite rejection: nothing from this reply belongs to this account.
@@ -430,7 +437,7 @@ export function createChatGPTAccount(options = {}) {
           throw error
         }
         account.id_token = body.id_token
-        delete account.identity_pending
+        delete account.identity_pending; delete account.pending_id_token
       }
       Object.assign(account, tokens)
       writeFile('accounts.json', saved)
