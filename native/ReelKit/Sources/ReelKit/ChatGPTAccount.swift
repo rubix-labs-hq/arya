@@ -11,6 +11,8 @@ import Security
 public struct ChatGPTAccountError: Error, LocalizedError, Equatable, Sendable {
     public let message: String
     public let code: String
+    /// True when an identity token could not be checked at all because OpenAI's signing keys were unavailable.
+    var unverified = false
     public init(_ message: String, code: String) { self.message = message; self.code = code }
     public var errorDescription: String? { message }
 }
@@ -584,9 +586,19 @@ public actor ChatGPTAccountService {
         if body["id_token"] != nil {
             do { _ = try await verifyIdentity(body["id_token"], clientID: clientID, nonce: nil, subject: latest.subject) }
             catch {
-                // OpenAI already spent the old refresh token. Keep the rotated one so the next renewal can
-                // still succeed (for example after a key-set fetch fails), but trust nothing else from this reply.
-                keepRotatedRefresh(tokens.refreshToken, replacing: refresh, clientID: clientID, generation: started)
+                let failure = error as? ChatGPTAccountError
+                if failure?.unverified == true {
+                    // The signature could not be checked. OpenAI already spent the old refresh token, so keep
+                    // the rotated one for the next renewal, but trust nothing else from this reply.
+                    keepRotatedRefresh(tokens.refreshToken, replacing: refresh, clientID: clientID, generation: started)
+                    throw error
+                }
+                // A definite rejection: nothing from this reply belongs to this account.
+                if let rotated = tokens.refreshToken, rotated != refresh { Task { _ = await self.revoke(rotated, client: clientID) } }
+                if failure?.code == "chatgpt_account_mismatch", current(clientID, refresh: refresh, generation: started) != nil {
+                    clearAndSave(clientID, keepHint: true)
+                    throw Self.signInRequired("ChatGPT returned a different account while renewing your sign-in. Continue with ChatGPT to sign in again.")
+                }
                 throw error
             }
             idToken = body["id_token"] as? String
@@ -729,15 +741,21 @@ public actor ChatGPTAccountService {
     // endpoint over TLS, once per sign-in or refresh.
     private func signingKey(_ kid: String) async throws -> SecKey {
         if keys[kid] == nil { try await loadKeys() }
-        guard let key = keys[kid] else { throw ChatGPTAccountError("OpenAI sign-in could not be verified. Try again.", code: "chatgpt_identity") }
+        guard let key = keys[kid] else { throw Self.keysUnavailable("OpenAI sign-in could not be verified. Try again.") }
         return key
+    }
+
+    private static func keysUnavailable(_ message: String) -> ChatGPTAccountError {
+        var error = ChatGPTAccountError(message, code: "chatgpt_identity")
+        error.unverified = true
+        return error
     }
 
     private func loadKeys() async throws {
         var request = URLRequest(url: endpoints.jwks)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
-        guard let response = try? await http(request), response.status == 200 else { throw ChatGPTAccountError("OpenAI signing keys are unavailable. Try again shortly.", code: "chatgpt_identity") }
+        guard let response = try? await http(request), response.status == 200 else { throw Self.keysUnavailable("OpenAI signing keys are unavailable. Try again shortly.") }
         var loaded: [String: SecKey] = [:]
         for jwk in (Self.object(response.data, limit: 64 * 1024)["keys"] as? [Any] ?? []).compactMap({ $0 as? [String: Any] }) {
             guard jwk["kty"] as? String == "RSA", let kid = jwk["kid"] as? String, !kid.isEmpty,

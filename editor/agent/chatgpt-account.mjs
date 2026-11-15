@@ -152,9 +152,11 @@ export function createChatGPTAccount(options = {}) {
 
   const post = (url, values, timeout = 20000) => fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: form(values), redirect: 'error', signal: AbortSignal.timeout(timeout) })
 
+  // The identity token could not be checked at all, as opposed to a token that was checked and rejected.
+  const keysUnavailable = message => Object.assign(failure(message, 502), { unverified: true })
   async function loadKeys() {
     const response = await fetchImpl(endpoints.jwks, { headers: { accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(15000) })
-    if (!response.ok) throw failure('OpenAI signing keys are unavailable. Try again shortly.', 502)
+    if (!response.ok) throw keysUnavailable('OpenAI signing keys are unavailable. Try again shortly.')
     const body = await readJSON(response, 64 * 1024), keys = new Map()
     for (const jwk of Array.isArray(body.keys) ? body.keys : []) {
       if (jwk?.kty !== 'RSA' || typeof jwk.kid !== 'string' || jwk.use && jwk.use !== 'sig' || jwk.alg && jwk.alg !== 'RS256') continue
@@ -170,7 +172,7 @@ export function createChatGPTAccount(options = {}) {
   async function signingKey(kid) {
     if (!jwks.has(kid)) await loadKeys()
     const key = jwks.get(kid)
-    if (!key) throw failure('OpenAI sign-in could not be verified. Try again.', 502)
+    if (!key) throw keysUnavailable('OpenAI sign-in could not be verified. Try again.')
     return key
   }
   // Mirrors https://developers.openai.com/siwc/website#6-verify-the-id-token.
@@ -402,9 +404,19 @@ export function createChatGPTAccount(options = {}) {
       const tokens = tokenSet(body, account)
       if (body.id_token !== undefined) {
         try { await verifyIdentity(body.id_token, { clientID: account.client_id, subject: account.subject }) } catch (error) {
-          // OpenAI already spent the old refresh token. Keep the rotated one so the next renewal can still
-          // succeed (for example after a key-set fetch fails), but trust nothing else from this reply.
-          if (tokens.refresh_token && tokens.refresh_token !== account.refresh_token) { account.refresh_token = tokens.refresh_token; writeFile('accounts.json', saved) }
+          const rotated = tokens.refresh_token && tokens.refresh_token !== account.refresh_token ? tokens.refresh_token : undefined
+          if (error.unverified) {
+            // The signature could not be checked. OpenAI already spent the old refresh token, so keep the
+            // rotated one for the next renewal, but trust nothing else from this reply.
+            if (rotated) { account.refresh_token = rotated; writeFile('accounts.json', saved) }
+            throw error
+          }
+          // A definite rejection: nothing from this reply belongs to this account.
+          if (rotated) revoke({ refresh_token: rotated, client_id: account.client_id }).catch(() => {})
+          if (error.code === 'chatgpt_account_mismatch') {
+            clearSession(account, { keepHint: true }); writeFile('accounts.json', saved); emit({ kind: 'expired' })
+            throw signInRequired('ChatGPT returned a different account while renewing your sign-in. Continue with ChatGPT to sign in again.')
+          }
           throw error
         }
         account.id_token = body.id_token

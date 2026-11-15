@@ -21,7 +21,7 @@ export async function startChatGPTFake(options = {}) {
   let kid = null, keyCount = 0
   const fake = {
     violations: [], requests: [], registrations: new Map(), codes: new Map(), refresh: new Map(), access: new Map(),
-    consent: [], refreshFailures: [], refreshIDToken: false, jwksStatus: 200, revokeFailures: 0, responses: [], responseBodies: [], refreshGrants: 0, revocations: [],
+    consent: [], refreshFailures: [], refreshIDToken: false, refreshSubject: undefined, jwksStatus: 200, revokeFailures: 0, responses: [], responseBodies: [], refreshGrants: 0, revocations: [],
     models: [
       { slug: DOC_MODEL, display_name: 'GPT-6.1 Sol', visibility: 'list' },
       { slug: 'gpt-6.1-sol-mini', display_name: 'GPT-6.1 Sol mini', visibility: 'list' },
@@ -120,7 +120,7 @@ export async function startChatGPTFake(options = {}) {
       if (saved.used) return json(response, 400, { error: 'refresh_token_reused' })
       saved.used = true
       const body = grant(saved.client_id, saved.subject, saved.scopes)
-      if (fake.refreshIDToken) body.id_token = fake.idToken({ client_id: saved.client_id, sub: saved.subject })
+      if (fake.refreshIDToken) body.id_token = fake.idToken({ client_id: saved.client_id, sub: fake.refreshSubject ?? saved.subject })
       return json(response, 200, body)
     }
     return violate(response, `token: unexpected grant_type ${p.grant_type}`)

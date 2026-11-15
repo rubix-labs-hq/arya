@@ -85,6 +85,7 @@ final class ChatGPTAccountTests: XCTestCase {
         var refreshGate = false
         var refreshError: String?
         var refreshIDToken = false
+        var refreshSubject: String?
         var jwksStatus = 200
         var revokeStatuses: [Int] = []
         var models: [[String: Any]] = [["slug": "gpt-test", "display_name": "GPT Test", "visibility": "list"], ["slug": "hidden-model", "display_name": "Hidden", "visibility": "hide"], ["slug": "bad slug", "visibility": "list"]]
@@ -130,7 +131,7 @@ final class ChatGPTAccountTests: XCTestCase {
                     while get({ $0.refreshGate }) { try await Task.sleep(nanoseconds: 5_000_000) }
                     if let error = get({ $0.refreshError }) { return json(["error": error], 400) }
                     var reply: [String: Any] = ["access_token": "at-r\(n + 1)", "refresh_token": "rt-r\(n + 1)", "token_type": "Bearer", "expires_in": 3600]
-                    if get({ $0.refreshIDToken }) { reply["id_token"] = idToken(client: form["client_id"]!, nonce: nil) }
+                    if get({ $0.refreshIDToken }) { reply["id_token"] = idToken(client: form["client_id"]!, nonce: nil, subject: get { $0.refreshSubject }) }
                     return json(reply)
                 }
                 return json(["error": "unexpected"], 500)
@@ -560,6 +561,28 @@ final class ChatGPTAccountTests: XCTestCase {
         let token = try await relaunched.credential(expecting: nil).accessToken
         XCTAssertEqual(token, "at-r3")
         XCTAssertEqual(openai.forms("/oauth/token").filter { $0["grant_type"] == "refresh_token" }.map { $0["refresh_token"] }, ["rt-oaiapp_test1-1", "rt-r2"])
+    }
+
+    // A signed refresh reply that names another account proves the rotated token is not this account's.
+    func testRenewalThatReturnsAnotherAccountEndsTheSessionAndRevokesTheRotatedToken() async throws {
+        let service = service()
+        _ = try await signIn(service)
+        clock.advance(3600)
+        openai.set { $0.refreshIDToken = true; $0.refreshSubject = "user-other" }
+        do { _ = try await service.credential(expecting: nil); XCTFail("another account must not renew this one") }
+        catch { XCTAssertEqual((error as? ChatGPTAccountError)?.code, "chatgpt_sign_in_required") }
+        XCTAssertFalse(store.text.contains("rt-r2"), "the other account's refresh token is never saved")
+        XCTAssertFalse(store.text.contains("at-r2"))
+        let status = await service.status()
+        XCTAssertFalse(status.signedIn)
+        for _ in 0..<200 where !openai.forms("/oauth/revoke").contains(where: { $0["token"] == "rt-r2" }) { try await Task.sleep(nanoseconds: 5_000_000) }
+        XCTAssertTrue(openai.forms("/oauth/revoke").contains { $0["token"] == "rt-r2" }, "the rotated token is revoked")
+
+        // A following renewal without an identity token is not accepted under this account.
+        openai.set { $0.refreshIDToken = false; $0.refreshSubject = nil }
+        do { _ = try await service.credential(expecting: nil); XCTFail("the session must stay ended") }
+        catch { XCTAssertEqual((error as? ChatGPTAccountError)?.code, "chatgpt_sign_in_required") }
+        XCTAssertEqual(openai.forms("/oauth/token").filter { $0["grant_type"] == "refresh_token" }.count, 1)
     }
 
     func testSignOutDuringRefreshDiscardsAndRevokesTheLateToken() async throws {
