@@ -427,6 +427,11 @@ function sortTrack(track) {
   track.clips.sort((a, b) => a.start - b.start)
 }
 
+// A reversed media clip reads source second in + (dur - local) * speed, so its right edge owns `in`.
+// A reversed composition still advances in + local * speed and mirrors the result (compTime in
+// render-plan.js), so edits keep the forward rule for it.
+const backward = c => Boolean(c.reverse) && c.kind !== 'comp'
+
 function sourceLength(p, c) {
   if (c.kind === 'comp') return compDuration(p.comps?.[c.comp])
   if (c.kind !== 'video' && c.kind !== 'audio') return Infinity
@@ -491,7 +496,7 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
       const cut = to - c.start
       tail.start = to
       tail.dur = round(end - to)
-      if (c.in !== undefined && c.reverse) c.in = round(c.in + (end - from) * (c.speed ?? 1))
+      if (c.in !== undefined && backward(c)) c.in = round(c.in + (end - from) * (c.speed ?? 1))
       else if (tail.in !== undefined) tail.in = round((c.in ?? 0) + cut * (c.speed ?? 1))
       shiftKeys(tail, -cut)
       delete tail.fadeIn
@@ -505,7 +510,7 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
       continue
     }
     if (c.start < from) {
-      if (c.in !== undefined && c.reverse) c.in = round(c.in + (end - from) * (c.speed ?? 1))
+      if (c.in !== undefined && backward(c)) c.in = round(c.in + (end - from) * (c.speed ?? 1))
       c.dur = round(from - c.start)
       boundCaptionWords(c)
       out.push(c)
@@ -513,7 +518,7 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
     }
     if (end > to) {
       const cut = to - c.start
-      if (c.in !== undefined && !c.reverse) c.in = round((c.in ?? 0) + cut * (c.speed ?? 1))
+      if (c.in !== undefined && !backward(c)) c.in = round((c.in ?? 0) + cut * (c.speed ?? 1))
       shiftKeys(c, -cut)
       c.start = to
       c.dur = round(end - to)
@@ -539,13 +544,13 @@ function edgeBounds(p, track, clip, edge, moving, minDur) {
   let lo = -Infinity, hi = Infinity
   if (edge === 'right') {
     lo = minDur - clip.dur
-    if (clip.in !== undefined && clip.reverse) hi = Math.min(hi, clip.in / speed)
+    if (clip.in !== undefined && backward(clip)) hi = Math.min(hi, clip.in / speed)
     else if (clip.in !== undefined && Number.isFinite(len)) hi = Math.min(hi, (len - clip.in) / speed - clip.dur)
     const next = track.clips.filter(c => c !== clip && !moving.has(c) && c.start >= clipEnd(clip) - EDGE_EPS).reduce((m, c) => Math.min(m, c.start), Infinity)
     hi = Math.min(hi, next - clipEnd(clip))
   } else {
     hi = clip.dur - minDur
-    if (clip.in !== undefined && clip.reverse) { if (Number.isFinite(len)) lo = Math.max(lo, -((len - clip.in) / speed - clip.dur)) }
+    if (clip.in !== undefined && backward(clip)) { if (Number.isFinite(len)) lo = Math.max(lo, -((len - clip.in) / speed - clip.dur)) }
     else if (clip.in !== undefined) lo = Math.max(lo, -clip.in / speed)
     const prev = track.clips.filter(c => c !== clip && !moving.has(c) && clipEnd(c) <= clip.start + EDGE_EPS).reduce((m, c) => Math.max(m, clipEnd(c)), 0)
     lo = Math.max(lo, prev - clip.start)
@@ -562,12 +567,12 @@ function moveBounds(track, clip, moving) {
 }
 
 function moveEdge(clip, edge, d) {
-  // A reversed clip reads its source from the end, so its right edge owns `in`.
+  // A reversed media clip reads its source from the end, so its right edge owns `in`.
   if (edge === 'right') {
-    if (clip.in !== undefined && clip.reverse) clip.in = round(clip.in - d * (clip.speed ?? 1))
+    if (clip.in !== undefined && backward(clip)) clip.in = round(clip.in - d * (clip.speed ?? 1))
     clip.dur = round(clip.dur + d)
   } else {
-    if (clip.in !== undefined && !clip.reverse) clip.in = round(clip.in + d * (clip.speed ?? 1))
+    if (clip.in !== undefined && !backward(clip)) clip.in = round(clip.in + d * (clip.speed ?? 1))
     shiftKeys(clip, -d)
     clip.start = round(clip.start + d)
     clip.dur = round(clip.dur - d)
@@ -850,25 +855,25 @@ export function applyOps(source, ops) {
         const apply = ({ track, clip }, to) => {
           const speed = clip.speed ?? 1
           const end = clipEnd(clip)
-          // A reversed clip reads its source backwards: its left edge is the source out point
+          // A reversed media clip reads its source backwards: its left edge is the source out point
           // and its right edge is the source in point.
           if (op.edge === 'left') {
             let start = Math.min(to, end - minDur)
-            if (clip.reverse) start = Math.max(start, end - (sourceLength(p, clip) - (clip.in ?? 0)) / speed)
+            if (backward(clip)) start = Math.max(start, end - (sourceLength(p, clip) - (clip.in ?? 0)) / speed)
             else if (clip.in !== undefined && clip.in + (start - clip.start) * speed < 0) start = clip.start - clip.in / speed
             if (!op.ripple) start = Math.max(0, start)
             const shift = start - clip.start
-            if (clip.in !== undefined && !clip.reverse) clip.in = round(clip.in + shift * speed)
+            if (clip.in !== undefined && !backward(clip)) clip.in = round(clip.in + shift * speed)
             shiftKeys(clip, -shift)
             const originalStart = clip.start
             clip.start = round(op.ripple ? originalStart : start)
             clip.dur = round(end - start)
             if (op.ripple) shiftAfter(track, end, -shift, clip)
           } else {
-            const maxDur = clip.reverse ? clip.dur + (clip.in ?? 0) / speed : (sourceLength(p, clip) - (clip.in ?? 0)) / speed
+            const maxDur = backward(clip) ? clip.dur + (clip.in ?? 0) / speed : (sourceLength(p, clip) - (clip.in ?? 0)) / speed
             const nextDur = round(Math.max(minDur, Math.min(to - clip.start, maxDur)))
             const change = nextDur - clip.dur
-            if (clip.reverse && clip.in !== undefined) clip.in = round(Math.max(0, clip.in - change * speed))
+            if (backward(clip) && clip.in !== undefined) clip.in = round(Math.max(0, clip.in - change * speed))
             clip.dur = nextDur
             if (op.ripple) shiftAfter(track, end, change, clip)
           }
@@ -959,7 +964,7 @@ export function applyOps(source, ops) {
           tail.start = at
           tail.dur = round(clip.dur - head)
           // A reversed clip plays its source backwards, so its head holds the later footage.
-          if (clip.in !== undefined && clip.reverse) clip.in = round(clip.in + tail.dur * (clip.speed ?? 1))
+          if (clip.in !== undefined && backward(clip)) clip.in = round(clip.in + tail.dur * (clip.speed ?? 1))
           else if (tail.in !== undefined) tail.in = round((clip.in ?? 0) + head * (clip.speed ?? 1))
           shiftKeys(tail, -head)
           delete tail.fadeIn
