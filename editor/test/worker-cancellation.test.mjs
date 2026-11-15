@@ -260,7 +260,7 @@ test('an image deadline settles a load and reset cancels its timer', async () =>
 })
 
 async function audioFixture() {
-  const mock = unique(`export const host={kind:'http'}; export const clipEnd=c=>c.start+c.dur,compView=p=>p,gainAt=()=>1,hasAudio=()=>true,valueAt=()=>1;
+  const mock = unique(`export const host={kind:'http'}; export const clipEnd=c=>c.start+c.dur,compView=p=>p,compDuration=c=>c?.duration??0,gainAt=()=>1,hasAudio=()=>true,valueAt=()=>1;
     export const dbToLin=()=>1,measure=()=>({}),reverbImpulse=()=>({});
     export const activeFx=()=>[],chainLatency=()=>0,DYNAMICS=new Set(),eqBands=()=>[],FX_TYPES={},fxLatency=()=>0,fxParams=()=>({}),legacyEqBands=()=>[],masterChain=()=>({fx:[]});`)
   const source = (await fs.readFile(new URL('../web/engine/audio.js', import.meta.url), 'utf8'))
