@@ -396,13 +396,17 @@ public final class ProExportGate: @unchecked Sendable {
 
     /// The width to save a still at. A still the gate allows keeps `requested`. Otherwise the still
     /// shrinks to the largest free 1080p fit of the canvas, so free users still get a frame instead
-    /// of the lock error. It never grows past `requested`.
+    /// of the lock error. It never grows past `requested`, and the result always passes `allows`
+    /// with the backend's frame height, even on canvases too narrow for an even fit.
     public func stillWidth(requested: Int, canvasWidth: Double, canvasHeight: Double) -> Int {
-        guard canvasWidth > 0, !allows(width: Double(requested), height: Double(requested) * canvasHeight / canvasWidth, preset: "png", hdr: nil),
-              let free = ProExportRule.fittedWidth(canvasWidth: canvasWidth, canvasHeight: canvasHeight,
-                                                   longEdge: Double(ProExportRule.maximumFreeLongEdge), shortEdge: Double(ProExportRule.maximumFreeShortEdge))
-        else { return requested }
-        return min(requested, free)
+        guard canvasWidth > 0, canvasHeight > 0 else { return requested }
+        func allowed(_ width: Int) -> Bool { allows(width: Double(width), height: Double(width) * canvasHeight / canvasWidth, preset: "png", hdr: nil) }
+        guard !allowed(requested) else { return requested }
+        let fit = ProExportRule.fittedWidth(canvasWidth: canvasWidth, canvasHeight: canvasHeight,
+                                            longEdge: Double(ProExportRule.maximumFreeLongEdge), shortEdge: Double(ProExportRule.maximumFreeShortEdge))
+        var width = min(requested, fit ?? requested)
+        while width > 1, !allowed(width) { width -= 1 }
+        return width
     }
 
 }

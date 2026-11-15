@@ -271,6 +271,9 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
             let saved = try await savedStill(fixture, width: width)
             XCTAssertEqual(saved.0, expected.0, "Free still on \(canvas)"); XCTAssertEqual(saved.1, expected.1, "Free still on \(canvas)")
         }
+        // A canvas too narrow for an even 1080p fit still gets a width the frame gate allows.
+        let narrow = ProExportGate.shared.stillWidth(requested: 16, canvasWidth: 16, canvasHeight: 7800)
+        XCTAssertTrue(narrow < 16 && ProExportGate.shared.allows(width: Double(narrow), height: Double(narrow) * 7800 / 16, preset: "png", hdr: nil))
         ProExportGate.shared.setUnlocked(true)
         XCTAssertEqual(ProExportGate.shared.stillWidth(requested: 3840, canvasWidth: 3840, canvasHeight: 2160), 3840, "Pro keeps the canvas width")
         ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false)
