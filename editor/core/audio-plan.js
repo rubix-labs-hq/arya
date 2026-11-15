@@ -1,4 +1,4 @@
-import { clipEnd, compView, duration, gainAt, hasAudio, valueAt } from './project.js'
+import { clipEnd, compDuration, compView, duration, gainAt, hasAudio, valueAt } from './project.js'
 import { activeFx, eqBands, fxParams, legacyEqBands, masterChain } from './audio-fx.js'
 
 const STEP = 1 / 50
@@ -31,14 +31,20 @@ function scope(p, A, B, from, to, depth) {
     const items = []
     for (const c of track.clips) {
       if (c.enabled === false || c.mute) continue
-      let f = Math.max(from, A + B * c.start)
-      let end = Math.min(to, A + B * clipEnd(c))
+      // B is negative inside a reversed composition, so the clip's edges can arrive in either order.
+      let f = Math.max(from, Math.min(A + B * c.start, A + B * clipEnd(c)))
+      let end = Math.min(to, Math.max(A + B * c.start, A + B * clipEnd(c)))
       if (!(end > f)) continue
       const item = { id: c.id, from: f, to: end, chain: [] }
       const speed = c.speed > 0 ? c.speed : 1
       if (c.kind === 'comp' && p.comps?.[c.comp]) {
         item.kind = 'comp'
-        item.buses = scope(compView(p, c.comp), A + B * (c.start - (c.in ?? 0) / speed), B / speed, f, end, depth + 1)
+        // Comp second tau = in + local * speed, mirrored to len - tau when reversed (compTime in render-plan.js).
+        const len = compDuration(p.comps[c.comp])
+        const inner = c.reverse
+          ? [A + B * (c.start + (len - (c.in ?? 0)) / speed), -B / speed]
+          : [A + B * (c.start - (c.in ?? 0) / speed), B / speed]
+        item.buses = scope(compView(p, c.comp), ...inner, f, end, depth + 1)
         if (!item.buses.length) continue
       } else {
         if (!hasAudio(p, c)) continue
@@ -46,11 +52,14 @@ function scope(p, A, B, from, to, depth) {
         item.src = angle?.src ?? c.src
         if (!item.src) continue
         const sourceIn = (c.in ?? 0) + (angle?.offset ?? 0)
-        // A reversed clip plays source second in + (dur - local) * speed, as the browser does.
-        // Its leaf starts at the latest source second and reads backwards at `speed`.
+        // A reversed clip plays source second in + (dur - local) * speed, as the browser does. Inside a
+        // reversed composition (B < 0) the direction flips again. A backwards leaf starts at its latest
+        // source second and reads backwards at `speed`. Nothing sounds before source second 0.
+        const backwards = Boolean(c.reverse) !== (B < 0)
         if (sourceIn < 0) {
-          if (c.reverse) end = Math.min(end, A + B * (clipEnd(c) + sourceIn / speed))
-          else f = Math.max(f, A + B * (c.start - sourceIn / speed))
+          const zero = A + B * (c.start + (c.reverse ? c.dur + sourceIn / speed : -sourceIn / speed))
+          if (backwards) end = Math.min(end, zero)
+          else f = Math.max(f, zero)
         }
         if (!(end > f)) continue
         item.from = f
@@ -58,8 +67,8 @@ function scope(p, A, B, from, to, depth) {
         item.kind = 'leaf'
         const local = (f - A) / B - c.start
         item.sourceIn = sourceIn + (c.reverse ? c.dur - local : local) * speed
-        item.speed = speed / B
-        if (c.reverse) item.reverse = true
+        item.speed = speed / Math.abs(B)
+        if (backwards) item.reverse = true
       }
       const legacy = legacyEqBands(c.eq)
       if (legacy.length) item.chain.push({ type: 'eq', params: { bands: legacy }, curves: {} })
