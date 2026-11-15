@@ -581,7 +581,8 @@ public actor ReelBackend {
         guard let composition = (p["comps"] as? [String: [String: Any]])?[comp] else { throw APIError("No composition \(comp).") }
         p["tracks"] = composition["tracks"]
         p["markers"] = composition["markers"] ?? []
-        for key in ["width", "height", "fps", "background"] { if let value = composition[key] { p[key] = value } }
+        // A JSON null falls back to the project value, like `comp.height ?? p.height` in the renderer.
+        for key in ["width", "height", "fps", "background"] { if let value = composition[key], !(value is NSNull) { p[key] = value } }
         p["compId"] = comp
         return JSON(any: p).text
     }
@@ -2408,7 +2409,7 @@ public actor ReelBackend {
         var found: [ProcessingTarget] = []
         for (scopeID, scope) in scopes {
             var canvas = scope
-            for key in ["width", "height", "fps"] where canvas[key] == nil { canvas[key] = p[key] }
+            for key in ["width", "height", "fps"] where canvas[key] == nil || canvas[key] is NSNull { canvas[key] = p[key] }
             for track in scope["tracks"] as? [[String: Any]] ?? [] {
                 for clip in track["clips"] as? [[String: Any]] ?? [] where clip["id"] as? String == id {
                     found.append(ProcessingTarget(id: id, comp: scopeID, clip: clip, canvas: canvas, track: track))

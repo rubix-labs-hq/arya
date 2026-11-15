@@ -18,12 +18,13 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
     private var fixtures: [Fixture] = []
     private var gates: [ProcessingGate] = []
     private func admission() -> NativeProcessingAdmission { .init(capturedByteLimit: 64 * 1024 * 1024) }
-    private func fixture(_ admission: NativeProcessingAdmission, recognition: ProcessingGate? = nil, canvas: (width: Int, height: Int)? = nil) async throws -> Fixture {
+    private func fixture(_ admission: NativeProcessingAdmission, recognition: ProcessingGate? = nil, canvas: (width: Int, height: Int)? = nil, comps: [String: Any]? = nil) async throws -> Fixture {
         let root = try Support.tempFolder("shared-processing"), folder = ProjectFolder(root: root)
         let core = try ReelCore(scriptURL: Support.core())
         var fields = try JSON.parse(core.newProject(name: "Captured")) as! [String: Any]
         fields["assets"] = ["source.wav": ["kind": "audio", "hasAudio": true, "duration": 1]]
         if let canvas { fields["width"] = canvas.width; fields["height"] = canvas.height }
+        if let comps { fields["comps"] = comps }
         try Data("preserved original".utf8).write(to: root.appendingPathComponent("source.wav"))
         try Data(core.fileText(project: JSON(any: fields).text).utf8).write(to: folder.projectFile)
         let writes = ProjectWriteAdmission()
@@ -296,6 +297,25 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
         XCTAssertEqual(free["fitted"] as? Bool, true)
         let size = try await pngSize(fixture, free)
         XCTAssertEqual(size.0, 540); XCTAssertEqual(size.1, 1920)
+    }
+
+    /// A composition whose height is JSON null renders at the project height, so the frame gate
+    /// must size it that way too, not as the 1920 by 1080 fallback.
+    func testNullCompositionHeightUsesTheProjectSizeForTheFrameGate() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let comp: [String: Any] = ["name": "Tall", "width": 1080, "height": NSNull(), "fps": 30, "tracks": [], "markers": []]
+        let fixture = try await fixture(admission(), canvas: (1080, 3840), comps: ["k1": comp])
+        let size = try await fixture.backend.canvasSize(comp: "k1")
+        XCTAssertEqual(size.width, 1080); XCTAssertEqual(size.height, 3840)
+        do {
+            _ = try await call(fixture, "/api/frame", ["time": 0, "width": 1080, "comp": "k1"])
+            XCTFail("A free 1080 by 3840 still was saved")
+        } catch let error as ReelBackend.APIError {
+            XCTAssertEqual(error.message, ProExportRule.lockedMessage)
+        }
+        let fitted = try await pngSize(fixture, try await call(fixture, "/api/frame", ["time": 0, "width": 1080, "comp": "k1", "freeFit": true]))
+        XCTAssertEqual(fitted.0, 540); XCTAssertEqual(fitted.1, 1920)
     }
 
     /// A script in the app's web view can send any width. With `freeFit` a huge one is refused by
