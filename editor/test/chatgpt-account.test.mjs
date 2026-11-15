@@ -268,13 +268,16 @@ test('a renewal whose identity check fails keeps the rotated refresh token and n
   const relaunched = make()
   clock.now += 61 * 60 * 1000
   fake.refreshIDToken = true
-  fake.jwksStatus = 503
-  await assert.rejects(relaunched.accessToken(), error => /signing keys are unavailable/i.test(error.message))
-  assert.equal(relaunched.status().signedIn, true)
+  // A dropped connection to the key endpoint, then a server error: neither can check the signature.
+  for (const status of [0, 503]) {
+    fake.jwksStatus = status
+    await assert.rejects(relaunched.accessToken(), error => /signing keys are unavailable/i.test(error.message) && error.code === 'chatgpt_identity')
+    assert.equal(relaunched.status().signedIn, true)
+  }
   fake.jwksStatus = 200
   const after = await relaunched.accessToken()
   assert.notEqual(after.accessToken, before.accessToken)
-  assert.equal(fake.refreshGrants, 2)
+  assert.equal(fake.refreshGrants, 3)
   assert.deepEqual(fake.violations, [])
 })
 

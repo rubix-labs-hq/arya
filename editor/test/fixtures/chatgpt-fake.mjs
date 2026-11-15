@@ -183,7 +183,7 @@ export async function startChatGPTFake(options = {}) {
   const server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
-      if (request.method === 'GET' && url.pathname === '/.well-known/jwks.json') return fake.jwksStatus === 200 ? json(response, 200, { keys: [...signing.values()].map(item => item.jwk) }) : json(response, fake.jwksStatus, {})
+      if (request.method === 'GET' && url.pathname === '/.well-known/jwks.json') return fake.jwksStatus === 0 ? response.destroy() : fake.jwksStatus === 200 ? json(response, 200, { keys: [...signing.values()].map(item => item.jwk) }) : json(response, fake.jwksStatus, {})
       if (request.method === 'GET' && url.pathname === '/api/accounts/authorize') return authorize(url, response)
       if (request.method === 'POST' && url.pathname === '/api/accounts/oauth/token') return await tokenEndpoint(request, response)
       if (request.method === 'POST' && url.pathname === '/api/accounts/oauth/revoke') return await revokeEndpoint(request, response)

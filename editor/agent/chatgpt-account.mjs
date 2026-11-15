@@ -153,11 +153,15 @@ export function createChatGPTAccount(options = {}) {
   const post = (url, values, timeout = 20000) => fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: form(values), redirect: 'error', signal: AbortSignal.timeout(timeout) })
 
   // The identity token could not be checked at all, as opposed to a token that was checked and rejected.
-  const keysUnavailable = message => Object.assign(failure(message, 502), { unverified: true })
+  const keysUnavailable = message => Object.assign(failure(message, 502, 'chatgpt_identity'), { unverified: true })
   async function loadKeys() {
-    const response = await fetchImpl(endpoints.jwks, { headers: { accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(15000) })
-    if (!response.ok) throw keysUnavailable('OpenAI signing keys are unavailable. Try again shortly.')
-    const body = await readJSON(response, 64 * 1024), keys = new Map()
+    let body
+    try {
+      const response = await fetchImpl(endpoints.jwks, { headers: { accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(15000) })
+      if (!response.ok) throw new Error('unavailable')
+      body = await readJSON(response, 64 * 1024)
+    } catch { throw keysUnavailable('OpenAI signing keys are unavailable. Try again shortly.') }
+    const keys = new Map()
     for (const jwk of Array.isArray(body.keys) ? body.keys : []) {
       if (jwk?.kty !== 'RSA' || typeof jwk.kid !== 'string' || jwk.use && jwk.use !== 'sig' || jwk.alg && jwk.alg !== 'RS256') continue
       try {
