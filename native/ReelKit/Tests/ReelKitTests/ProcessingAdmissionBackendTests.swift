@@ -251,6 +251,45 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
         }
         XCTAssertEqual(policy.snapshot().active + policy.snapshot().queued, 0)
     }
+
+    private func savedStill(_ fixture: Fixture, width: Int) async throws -> (Int, Int) {
+        let response = try await call(fixture, "/api/frame", ["time": 0, "width": width])
+        let png = try Data(contentsOf: fixture.root.appendingPathComponent(try XCTUnwrap(response["path"] as? String)))
+        let be = { (at: Int) in png[at..<at + 4].reduce(0) { $0 << 8 | Int($1) } }
+        return (be(16), be(20))
+    }
+
+    /// Save current frame asks for the canvas width. On a 4K canvas a free user saves the 1080p fit
+    /// instead of getting the lock error, and Pro keeps the full canvas.
+    func testFreeSaveCurrentFrameFitsInside1080p() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        for (canvas, expected) in [((3840, 2160), (1920, 1080)), ((2160, 3840), (1080, 1920))] {
+            let fixture = try await fixture(admission(), canvas: canvas)
+            let size = try await fixture.backend.canvasSize(comp: nil)
+            let width = ProExportGate.shared.stillWidth(requested: Int(size.width), canvasWidth: size.width, canvasHeight: size.height)
+            let saved = try await savedStill(fixture, width: width)
+            XCTAssertEqual(saved.0, expected.0, "Free still on \(canvas)"); XCTAssertEqual(saved.1, expected.1, "Free still on \(canvas)")
+        }
+        ProExportGate.shared.setUnlocked(true)
+        XCTAssertEqual(ProExportGate.shared.stillWidth(requested: 3840, canvasWidth: 3840, canvasHeight: 2160), 3840, "Pro keeps the canvas width")
+        ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false)
+        XCTAssertEqual(ProExportGate.shared.stillWidth(requested: 3840, canvasWidth: 3840, canvasHeight: 2160), 3840, "The direct Mac app keeps the canvas width")
+    }
+
+    /// The assistant's reel_frame takes any width from 320 to 1920. On a square canvas a free
+    /// 1200-wide request now fits to 1080 and returns a frame, and the default 960 is unchanged.
+    func testFreeAssistantFrameRequestFitsTheCanvas() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let fixture = try await fixture(admission(), canvas: (1080, 1080))
+        let size = try await fixture.backend.canvasSize(comp: nil)
+        for (requested, expected) in [(1200, 1080), (1920, 1080), (960, 960)] {
+            let width = ProExportGate.shared.stillWidth(requested: requested, canvasWidth: size.width, canvasHeight: size.height)
+            let saved = try await savedStill(fixture, width: width)
+            XCTAssertEqual(saved.0, expected, "Request \(requested)"); XCTAssertEqual(saved.1, expected, "Request \(requested)")
+        }
+    }
     // END ARYA PRO GATE
     func testHostedExportCancelNeedsDrainAckAndProgressNeverClaimsCompletionEarly() async throws {
         let policy = admission(), fixture = try await fixture(policy)

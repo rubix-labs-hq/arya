@@ -568,6 +568,12 @@ public actor ReelBackend {
         return owned
     }
 
+    /// The canvas of the main timeline or a composition, read the way `/api/frame` reads it.
+    public func canvasSize(comp: String?) throws -> (width: Double, height: Double) {
+        let view = try JSON.parse(projectView(comp: comp)) as? [String: Any] ?? [:]
+        return ((view["width"] as? NSNumber)?.doubleValue ?? 1920, (view["height"] as? NSNumber)?.doubleValue ?? 1080)
+    }
+
     private func projectView(comp: String?) throws -> String {
         guard let project else { throw APIError("No project yet.") }
         guard let comp else { return project }

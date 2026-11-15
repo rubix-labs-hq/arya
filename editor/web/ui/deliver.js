@@ -86,7 +86,7 @@ export function DeliverPage() {
   const render = () => request.current.run({ preset: choice.preset, name, width: outW, height: outH, fps: fps ?? p.fps, range, ...(composition ? { comp: s.openComp } : {}) }, native ? s.project : null)
   const still = async () => {
     try {
-      const options = { at: window.reel.player.t, width: p.width, ...(composition ? { comp: s.openComp } : {}) }
+      const options = { at: window.reel.player.t, width: outW, ...(composition ? { comp: s.openComp } : {}) }
       const r = native ? await (await import('../engine/export-webcodecs.js')).saveNativeFrame(s.project, options) : await api('/api/frame', options)
       toast(`Saved ${r.path}`)
     } catch (error) {

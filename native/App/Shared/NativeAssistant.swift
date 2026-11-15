@@ -1574,7 +1574,11 @@ final class NativeAssistant: ObservableObject {
         let at = (input["at"] as? NSNumber)?.doubleValue ?? 0
         let width = (input["width"] as? NSNumber)?.intValue ?? 960
         guard at.isFinite, at >= 0, at < 1_000_000 else { throw ReelBackend.APIError("The frame time is out of range.") }
-        let spec = JSON.compact([("at", .number(at)), ("width", .int(max(320, min(1920, width)))), ("comp", JSON.str(input["comp"] as? String))])
+        let comp = input["comp"] as? String
+        // Free App Store users get a frame that fits 1080p rather than the Pro lock error.
+        let canvas = try await backend.canvasSize(comp: comp)
+        let fitted = ProExportGate.shared.stillWidth(requested: max(320, min(1920, width)), canvasWidth: canvas.width, canvasHeight: canvas.height)
+        let spec = JSON.compact([("at", .number(at)), ("width", .int(fitted)), ("comp", JSON.str(comp))])
         let result = (try JSON.parse(try await backend.handle(method: "POST", path: "/api/frame", body: spec.text).text) as? [String: Any]) ?? [:]
         try Task.checkCancellation()
         guard session.backend === backend, let name = result["path"] as? String, name.hasPrefix(".reel/frames/"), name.hasSuffix(".png") else { throw ReelBackend.APIError("The editor did not return a still frame.") }

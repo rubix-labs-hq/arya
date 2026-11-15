@@ -123,6 +123,10 @@ check('settings.pro' in settings and 'NativeProView(store: proStore)' in setting
 check(settings.index('#if os(iOS)\n            Button { supportVisible = true }') < settings.index('settings.pro'), 'Settings entry is iOS-only')
 check('needsPro ? showPro() : export()' in deliver and 'ProExportRule.requiresPro(' in deliver, 'Deliver explains the lock and opens Arya Pro')
 check('deliver.size.4k' in deliver, 'Deliver has a one-tap 4K size')
+assistant = (native / 'App/Shared/NativeAssistant.swift').read_text()
+check('ProExportGate.shared.stillWidth(requested: Int(model.width), canvasWidth: model.width, canvasHeight: model.height)' in deliver, 'Save current frame fits free stills inside 1080p')
+check('ProExportGate.shared.stillWidth(requested: max(320, min(1920, width)), canvasWidth: canvas.width' in assistant, 'Assistant frames fit free stills inside 1080p')
+check('at: window.reel.player.t, width: outW,' in (root / 'editor/web/ui/deliver.js').read_text(), 'The web editor saves the frame at the chosen Resolution')
 
 # No stale promises in App Store code.
 for name, text in [('NativeSupport.swift', support), ('ReelIOSApp.swift', app), ('EditorView.swift', welcome),

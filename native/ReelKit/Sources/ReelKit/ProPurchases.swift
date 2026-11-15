@@ -394,6 +394,17 @@ public final class ProExportGate: @unchecked Sendable {
         return !enforced || unlocked || !ProExportRule.requiresPro(width: width, height: height, preset: preset, hdr: hdr)
     }
 
+    /// The width to save a still at. A still the gate allows keeps `requested`. Otherwise the still
+    /// shrinks to the largest free 1080p fit of the canvas, so free users still get a frame instead
+    /// of the lock error. It never grows past `requested`.
+    public func stillWidth(requested: Int, canvasWidth: Double, canvasHeight: Double) -> Int {
+        guard canvasWidth > 0, !allows(width: Double(requested), height: Double(requested) * canvasHeight / canvasWidth, preset: "png", hdr: nil),
+              let free = ProExportRule.fittedWidth(canvasWidth: canvasWidth, canvasHeight: canvasHeight,
+                                                   longEdge: Double(ProExportRule.maximumFreeLongEdge), shortEdge: Double(ProExportRule.maximumFreeShortEdge))
+        else { return requested }
+        return min(requested, free)
+    }
+
 }
 
 public enum ProMessage {
