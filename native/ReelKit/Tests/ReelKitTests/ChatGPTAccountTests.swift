@@ -650,6 +650,10 @@ final class ChatGPTAccountTests: XCTestCase {
         do { _ = try await service.credential(expecting: nil); XCTFail("the session must stay ended") }
         catch { XCTAssertEqual((error as? ChatGPTAccountError)?.code, "chatgpt_sign_in_required") }
         XCTAssertEqual(openai.forms("/oauth/token").filter { $0["grant_type"] == "refresh_token" }.count, 1)
+        // The rejection keeps this account's identity token, so the next sign-in still carries the hint.
+        try await service.signIn()
+        XCTAssertNotNil(query(try XCTUnwrap(opened.last))["id_token_hint"], "the idToken hint survives the rejection")
+        _ = await service.cancelSignIn()
     }
 
     func testSignOutDuringRefreshDiscardsAndRevokesTheLateToken() async throws {

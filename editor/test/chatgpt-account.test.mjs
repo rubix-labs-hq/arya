@@ -354,6 +354,9 @@ test('a renewal that returns another account ends the session and revokes the ro
   await assert.rejects(account.accessToken(), error => error.code === 'chatgpt_sign_in_required')
   await assert.rejects(make().accessToken(), error => error.code === 'chatgpt_sign_in_required')
   assert.equal(fake.refreshGrants, 1)
+  // The rejection keeps this account's identity token, so the next sign-in still carries the hint.
+  await signIn(account)
+  assert.ok(fake.lastAuthorize.id_token_hint, 'the id_token hint survives the rejection')
   assert.deepEqual(fake.violations, [])
 })
 
