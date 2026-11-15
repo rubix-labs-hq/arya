@@ -124,7 +124,7 @@ check(settings.index('#if os(iOS)\n            Button { supportVisible = true }'
 check('needsPro ? showPro() : export()' in deliver and 'ProExportRule.requiresPro(' in deliver, 'Deliver explains the lock and opens Arya Pro')
 check('deliver.size.4k' in deliver, 'Deliver has a one-tap 4K size')
 assistant = (native / 'App/Shared/NativeAssistant.swift').read_text()
-check('ProExportGate.shared.stillWidth(requested: Int(model.width), canvasWidth: model.width, canvasHeight: model.height)' in deliver, 'Save current frame fits free stills inside 1080p')
+check('ProExportGate.shared.stillWidth(requested: Int(min(max(model.width, 0), 1_000_000)), canvasWidth: model.width, canvasHeight: model.height)' in deliver, 'Save current frame fits free stills inside 1080p')
 check('ProExportGate.shared.stillWidth(requested: max(320, min(1920, width)), canvasWidth: canvas.width' in assistant, 'Assistant frames fit free stills inside 1080p')
 web_deliver = (root / 'editor/web/ui/deliver.js').read_text()
 check('at: window.reel.player.t, width: outW, freeFit: true,' in web_deliver and 'r.fitted ?' in web_deliver, 'The web editor saves the frame at the chosen Resolution, fitted to 1080p for free users')

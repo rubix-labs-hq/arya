@@ -399,12 +399,15 @@ public final class ProExportGate: @unchecked Sendable {
     /// of the lock error. It never grows past `requested`, and the result always passes `allows`
     /// with the backend's frame height, even on canvases too narrow for an even fit.
     public func stillWidth(requested: Int, canvasWidth: Double, canvasHeight: Double) -> Int {
-        guard canvasWidth > 0, canvasHeight > 0 else { return requested }
+        // Sizes far past what /api/frame admits go back unchanged, so admission refuses them there
+        // rather than trapping in an Int conversion here. NaN and infinity fail these comparisons too.
+        guard canvasWidth > 0, canvasHeight > 0, requested <= 1_000_000, Double(requested) * canvasHeight / canvasWidth <= 1_000_000 else { return requested }
         func allowed(_ width: Int) -> Bool { allows(width: Double(width), height: Double(width) * canvasHeight / canvasWidth, preset: "png", hdr: nil) }
         guard !allowed(requested) else { return requested }
         let fit = ProExportRule.fittedWidth(canvasWidth: canvasWidth, canvasHeight: canvasHeight,
                                             longEdge: Double(ProExportRule.maximumFreeLongEdge), shortEdge: Double(ProExportRule.maximumFreeShortEdge))
-        var width = min(requested, fit ?? requested)
+        // A free still is never wider than the free long edge, so the step-down stays short.
+        var width = min(requested, fit ?? ProExportRule.maximumFreeLongEdge)
         while width > 1, !allowed(width) { width -= 1 }
         return width
     }
