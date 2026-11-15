@@ -126,7 +126,10 @@ check('deliver.size.4k' in deliver, 'Deliver has a one-tap 4K size')
 assistant = (native / 'App/Shared/NativeAssistant.swift').read_text()
 check('ProExportGate.shared.stillWidth(requested: Int(model.width), canvasWidth: model.width, canvasHeight: model.height)' in deliver, 'Save current frame fits free stills inside 1080p')
 check('ProExportGate.shared.stillWidth(requested: max(320, min(1920, width)), canvasWidth: canvas.width' in assistant, 'Assistant frames fit free stills inside 1080p')
-check('at: window.reel.player.t, width: outW,' in (root / 'editor/web/ui/deliver.js').read_text(), 'The web editor saves the frame at the chosen Resolution')
+web_deliver = (root / 'editor/web/ui/deliver.js').read_text()
+check('at: window.reel.player.t, width: outW, freeFit: true,' in web_deliver and 'r.fitted ?' in web_deliver, 'The web editor saves the frame at the chosen Resolution, fitted to 1080p for free users')
+check("...(freeFit ? { freeFit: true } : {})" in (root / 'editor/web/engine/export-webcodecs.js').read_text(), 'saveNativeFrame forwards freeFit')
+check('let fitted = b["freeFit"] as? Bool == true' in backend, 'Only freeFit requests are shrunk; others are refused')
 
 # No stale promises in App Store code.
 for name, text in [('NativeSupport.swift', support), ('ReelIOSApp.swift', app), ('EditorView.swift', welcome),

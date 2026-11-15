@@ -253,10 +253,49 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
     }
 
     private func savedStill(_ fixture: Fixture, width: Int) async throws -> (Int, Int) {
-        let response = try await call(fixture, "/api/frame", ["time": 0, "width": width])
+        try await pngSize(fixture, try await call(fixture, "/api/frame", ["time": 0, "width": width]))
+    }
+
+    private func pngSize(_ fixture: Fixture, _ response: [String: Any]) async throws -> (Int, Int) {
         let png = try Data(contentsOf: fixture.root.appendingPathComponent(try XCTUnwrap(response["path"] as? String)))
         let be = { (at: Int) in png[at..<at + 4].reduce(0) { $0 << 8 | Int($1) } }
         return (be(16), be(20))
+    }
+
+    /// The in-app web Deliver page sends its Resolution choice with `freeFit`. On a 4K canvas with the
+    /// default preset that is 3840 wide: a free user gets the 1080p fit and a note, a crafted request
+    /// without `freeFit` is still refused, and Pro keeps 3840.
+    func testWebDeliverStillFitsFreeUsersOnA4KCanvas() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let fixture = try await fixture(admission(), canvas: (3840, 2160))
+        do {
+            _ = try await call(fixture, "/api/frame", ["time": 0, "width": 3840])
+            XCTFail("A free 4K still was saved without freeFit")
+        } catch let error as ReelBackend.APIError {
+            XCTAssertEqual(error.message, ProExportRule.lockedMessage)
+        }
+        let free = try await call(fixture, "/api/frame", ["time": 0, "width": 3840, "freeFit": true])
+        XCTAssertEqual(free["fitted"] as? Bool, true); XCTAssertEqual((free["width"] as? NSNumber)?.intValue, 1920)
+        let freeSize = try await pngSize(fixture, free)
+        XCTAssertEqual(freeSize.0, 1920); XCTAssertEqual(freeSize.1, 1080)
+        ProExportGate.shared.setUnlocked(true)
+        let pro = try await call(fixture, "/api/frame", ["time": 0, "width": 3840, "freeFit": true])
+        XCTAssertNil(pro["fitted"], "Pro keeps the requested width")
+        let proSize = try await pngSize(fixture, pro)
+        XCTAssertEqual(proSize.0, 3840); XCTAssertEqual(proSize.1, 2160)
+    }
+
+    /// On a tall canvas no web Resolution option fits 1080 by 1920 (640 wide is 640 by 2276), so
+    /// `freeFit` shrinks it to the tallest free still.
+    func testWebDeliverStillFitsFreeUsersOnATallCanvas() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let fixture = try await fixture(admission(), canvas: (1080, 3840))
+        let free = try await call(fixture, "/api/frame", ["time": 0, "width": 640, "freeFit": true])
+        XCTAssertEqual(free["fitted"] as? Bool, true)
+        let size = try await pngSize(fixture, free)
+        XCTAssertEqual(size.0, 540); XCTAssertEqual(size.1, 1920)
     }
 
     /// Save current frame asks for the canvas width. On a 4K canvas a free user saves the 1080p fit

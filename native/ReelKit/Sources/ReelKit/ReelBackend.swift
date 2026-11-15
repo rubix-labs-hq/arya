@@ -1232,8 +1232,14 @@ public actor ReelBackend {
             let time = (b["time"] as? NSNumber)?.doubleValue ?? (b["at"] as? NSNumber)?.doubleValue ?? 0
             let view = try JSON.parse(projectView(comp: b["comp"] as? String)) as? [String: Any] ?? [:]
             // The renderer takes the requested width as an integer, so admission and the Pro gate do too.
-            let width = (b["width"] as? NSNumber).map { Double($0.intValue) } ?? (view["width"] as? NSNumber)?.doubleValue ?? 1920
-            let height = width * ((view["height"] as? NSNumber)?.doubleValue ?? 1080) / ((view["width"] as? NSNumber)?.doubleValue ?? 1920)
+            let requested = (b["width"] as? NSNumber).map { Double($0.intValue) } ?? (view["width"] as? NSNumber)?.doubleValue ?? 1920
+            let canvasWidth = (view["width"] as? NSNumber)?.doubleValue ?? 1920, canvasHeight = (view["height"] as? NSNumber)?.doubleValue ?? 1080
+            // `freeFit` (the web Deliver page) shrinks a still the gate refuses to the free 1080p fit.
+            // Without it the request is refused below, and Pro and ungated builds keep the requested width.
+            let fitted = b["freeFit"] as? Bool == true
+                ? ProExportGate.shared.stillWidth(requested: Int(requested), canvasWidth: canvasWidth, canvasHeight: canvasHeight) : nil
+            let width = fitted.map(Double.init) ?? requested
+            let height = width * canvasHeight / canvasWidth
             guard time.isFinite, time >= 0 else { throw APIError("Choose a finite frame time.") }
             try validateExportAdmission(width: width, height: height, fps: 1, from: 0, to: 1)
             // A saved frame is an export too: above 1080p it needs Pro in App Store builds.
@@ -1243,9 +1249,12 @@ public actor ReelBackend {
             guard output.path.hasPrefix(folder.dotDir.appendingPathComponent("frames").path + "/") else { throw APIError("Still outputs must stay under .reel/frames/.") }
             try rejectReferencedMediaOverwrite(output)
             let publication = try NativeExportOutput(folder: folder, destination: output)
-            let path = try await renderer.still(project: project, at: time, comp: b["comp"] as? String, width: (b["width"] as? NSNumber)?.intValue, name: name, out: b["out"] as? String, outputPublication: publication, beforePublish: {}, publishOutput: { publication in
+            let path = try await renderer.still(project: project, at: time, comp: b["comp"] as? String, width: fitted ?? (b["width"] as? NSNumber)?.intValue, name: name, out: b["out"] as? String, outputPublication: publication, beforePublish: {}, publishOutput: { publication in
                 try await self.publishStillOutput(publication, context: context, sources: sources)
             })
+            if let fitted, Double(fitted) < requested {
+                return .object([("path", .string(folder.relative(path))), ("width", .int(fitted)), ("fitted", true)])
+            }
             return .object([("path", .string(folder.relative(path)))])
         case ("GET", "/api/jobs"): return .object([("jobs", .array(jobs.map(\.json)))])
         case ("GET", "/api/jobs/wait"), ("GET", "/api/analysis/jobs/wait"): return try await waitJob(query["id"] ?? "", timeout: Double(query["timeout"] ?? "") ?? 25000)
