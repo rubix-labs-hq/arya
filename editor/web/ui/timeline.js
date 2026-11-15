@@ -715,8 +715,9 @@ export function Timeline() {
       case 'slip':
         state.tip = { x, y, text: `slip ${dt >= 0 ? '+' : '−'}${timecode(Math.abs(dt), p.fps)}` }
 
-        // The footage follows the pointer. A reversed clip runs its source right to left.
-        return [{ op: 'slip', id: d.clip.id, delta: (d.clip.reverse ? dt : -dt) * (d.clip.speed ?? 1), ...(store.linked ? {} : { unlinked: true }) }]
+        // The footage follows the pointer. A reversed media clip runs its source right to left; a reversed
+        // composition mirrors forward comp time, so it slips like a forward clip.
+        return [{ op: 'slip', id: d.clip.id, delta: (d.clip.reverse && d.clip.kind !== 'comp' ? dt : -dt) * (d.clip.speed ?? 1), ...(store.linked ? {} : { unlinked: true }) }]
       case 'slide':
         state.tip = { x, y, text: `slide ${dt >= 0 ? '+' : '−'}${timecode(Math.abs(dt), p.fps)}` }
 
