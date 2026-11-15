@@ -278,6 +278,32 @@ test('a renewal whose identity check fails keeps the rotated refresh token and n
   const after = await relaunched.accessToken()
   assert.notEqual(after.accessToken, before.accessToken)
   assert.equal(fake.refreshGrants, 3)
+  // A verified matching identity clears the flag, so a later renewal without an identity token is accepted.
+  clock.now += 61 * 60 * 1000
+  fake.refreshIDToken = false
+  const later = await make().accessToken()
+  assert.notEqual(later.accessToken, after.accessToken)
+  assert.equal(fake.refreshGrants, 4)
+  assert.deepEqual(fake.violations, [])
+})
+
+test('after a key-set outage, a renewal without an identity token ends the session', async t => {
+  const clock = { now: Date.now() }
+  const { fake, account, make } = await setup(t, { clock })
+  await signIn(account)
+  clock.now += 61 * 60 * 1000
+  fake.refreshIDToken = true
+  fake.jwksStatus = 503
+  await assert.rejects(make().accessToken(), error => error.code === 'chatgpt_identity')
+  fake.refreshIDToken = false
+  fake.jwksStatus = 200
+  const revoked = fake.revocations.length
+  const relaunched = make()
+  await assert.rejects(relaunched.accessToken(), error => error.code === 'chatgpt_sign_in_required' && /could not confirm/i.test(error.message))
+  assert.equal(relaunched.status().signedIn, false)
+  for (let i = 0; i < 100 && fake.revocations.length === revoked; i++) await new Promise(resolve => setTimeout(resolve, 10))
+  assert.equal(fake.revocations.length, revoked + 1, 'the rotated refresh token is revoked')
+  assert.equal(fake.refreshGrants, 2)
   assert.deepEqual(fake.violations, [])
 })
 

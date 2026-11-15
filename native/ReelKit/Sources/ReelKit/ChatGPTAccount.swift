@@ -113,6 +113,9 @@ struct ChatGPTRecord: Codable, Equatable {
     var invalid: Bool
     var session: String?
     var savedAt: Double?
+    /// Set when a renewal kept a rotated refresh token whose identity token could not be checked.
+    /// The next renewal must then return an identity token that verifies as this account.
+    var identityPending: Bool?
 }
 
 struct ChatGPTVault: Codable, Equatable {
@@ -582,6 +585,12 @@ public actor ChatGPTAccountService {
             throw ChatGPTAccountError("OpenAI could not renew your ChatGPT sign-in (\(code.isEmpty ? String(response.status) : code)). Try again shortly.", code: "chatgpt_refresh_unavailable")
         }
         let tokens = try tokenSet(body, previous: latest)
+        if latest.identityPending == true, body["id_token"] == nil {
+            // The last renewal's identity was never confirmed, and this reply offers no way to confirm it.
+            if let rotated = tokens.refreshToken, rotated != refresh { Task { _ = await self.revoke(rotated, client: clientID) } }
+            clearAndSave(clientID, keepHint: true)
+            throw Self.signInRequired("Arya could not confirm your ChatGPT account while renewing your sign-in. Continue with ChatGPT to sign in again.")
+        }
         var idToken: String?
         if body["id_token"] != nil {
             do { _ = try await verifyIdentity(body["id_token"], clientID: clientID, nonce: nil, subject: latest.subject) }
@@ -609,7 +618,7 @@ public actor ChatGPTAccountService {
             throw ChatGPTAccountError("The ChatGPT account changed during this request. Send it again to use the current account.", code: "chatgpt_account_changed")
         }
         tokens.apply(to: &updated.accounts[index])
-        if let idToken { updated.accounts[index].idToken = idToken }
+        if let idToken { updated.accounts[index].idToken = idToken; updated.accounts[index].identityPending = nil }
         updated.accounts[index].savedAt = now().timeIntervalSince1970
         do { try persist(updated); warning = nil } catch {
             // The old refresh token is already spent. Keep the new one for this session.
@@ -628,6 +637,7 @@ public actor ChatGPTAccountService {
             return
         }
         updated.accounts[index].refreshToken = rotated
+        updated.accounts[index].identityPending = true
         do { try persist(updated) } catch { vault = updated }
     }
 
@@ -648,7 +658,7 @@ public actor ChatGPTAccountService {
 
     static func clearSession(_ record: inout ChatGPTRecord, keepHint: Bool) {
         record.accessToken = nil; record.refreshToken = nil; record.expiresAt = nil; record.earliestRefreshAt = nil
-        record.scopes = []; record.session = nil
+        record.scopes = []; record.session = nil; record.identityPending = nil
         if !keepHint { record.idToken = nil }
     }
 

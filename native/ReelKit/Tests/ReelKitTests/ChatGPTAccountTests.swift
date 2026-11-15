@@ -554,6 +554,7 @@ final class ChatGPTAccountTests: XCTestCase {
         XCTAssertTrue(store.text.contains("rt-r2") && !store.text.contains("rt-oaiapp_test1-1"), "the rotated refresh token is saved")
         XCTAssertFalse(store.text.contains("at-r2"), "nothing else from the unverified reply is saved")
         XCTAssertTrue(store.text.contains("at-oaiapp_test1-1"))
+        XCTAssertTrue(store.text.contains("identityPending"), "the unconfirmed identity survives a relaunch")
         let stillSignedIn = await relaunched.status().signedIn
         XCTAssertTrue(stillSignedIn)
 
@@ -561,6 +562,35 @@ final class ChatGPTAccountTests: XCTestCase {
         let token = try await relaunched.credential(expecting: nil).accessToken
         XCTAssertEqual(token, "at-r3")
         XCTAssertEqual(openai.forms("/oauth/token").filter { $0["grant_type"] == "refresh_token" }.map { $0["refresh_token"] }, ["rt-oaiapp_test1-1", "rt-r2"])
+        XCTAssertFalse(store.text.contains("identityPending"), "a verified matching identity clears the flag")
+
+        // Once confirmed, a renewal without an identity token is accepted again.
+        clock.advance(3600)
+        openai.set { $0.refreshIDToken = false }
+        let next = try await relaunched.credential(expecting: nil).accessToken
+        XCTAssertEqual(next, "at-r4")
+    }
+
+    // After a key-set outage the kept refresh token's identity is unconfirmed. A reply that cannot confirm it ends the session.
+    func testUnconfirmedIdentityThenARenewalWithoutAnIdentityTokenEndsTheSession() async throws {
+        _ = try await signIn(service())
+        let relaunched = service()
+        _ = await relaunched.load(userInitiated: false)
+        clock.advance(3600)
+        openai.set { $0.refreshIDToken = true; $0.jwksStatus = 503 }
+        do { _ = try await relaunched.credential(expecting: nil); XCTFail("the identity check should fail") }
+        catch { XCTAssertEqual((error as? ChatGPTAccountError)?.code, "chatgpt_identity") }
+
+        openai.set { $0.refreshIDToken = false; $0.jwksStatus = 200 }
+        let again = service()
+        _ = await again.load(userInitiated: false)
+        do { _ = try await again.credential(expecting: nil); XCTFail("an unconfirmed identity must not renew without an identity token") }
+        catch { XCTAssertEqual((error as? ChatGPTAccountError)?.code, "chatgpt_sign_in_required") }
+        let status = await again.status()
+        XCTAssertFalse(status.signedIn)
+        XCTAssertFalse(store.text.contains("at-r3") || store.text.contains("rt-r3"), "nothing from the unconfirmed reply is saved")
+        for _ in 0..<200 where !openai.forms("/oauth/revoke").contains(where: { $0["token"] == "rt-r3" }) { try await Task.sleep(nanoseconds: 5_000_000) }
+        XCTAssertTrue(openai.forms("/oauth/revoke").contains { $0["token"] == "rt-r3" }, "the rotated token is revoked")
     }
 
     // A signed refresh reply that names another account proves the rotated token is not this account's.
