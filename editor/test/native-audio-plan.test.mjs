@@ -68,6 +68,9 @@ test('native plan reads a reversed clip backwards from the source second the bro
   assert.ok(Math.abs(multi.sourceIn - 1.5) < 1e-12)
   assert.ok(Math.abs(multi.to - 11.5) < 1e-12)
   assert.ok(Math.abs(multi.sourceIn - multi.speed * (multi.to - multi.from)) < 1e-12)
+  // The browser ends the same leaf at second zero too, rather than starting it late.
+  const browserMulti = planLeaves(planAudio(p, 0, 14)).find(i => i.clip.id === 'multi')
+  assert.deepEqual([browserMulti.from, browserMulti.to, browserMulti.reverse], [10, 11.5, true])
   const forward = audioPlan({ ...p, tracks: p.tracks.map(t => ({ ...t, clips: t.clips.map(c => ({ ...c, reverse: false })) })) }, 0, 8)
   assert.equal(forward.buses.flatMap(b => b.items).find(i => i.id === 'rev').reverse, undefined)
 })
