@@ -117,7 +117,7 @@ export function createChatGPTAccount(options = {}) {
   const byClient = (saved, clientID) => saved.accounts.find(item => item.client_id === clientID) ?? null
   const byID = (saved, id) => saved.accounts.find(item => accountID(item.client_id) === id) ?? null
   const clearSession = (account, { keepHint = false } = {}) => {
-    for (const key of ['access_token', 'refresh_token', 'expires_at', 'earliest_refresh_at']) delete account[key]
+    for (const key of ['access_token', 'refresh_token', 'expires_at', 'earliest_refresh_at', 'identity_pending', 'pending_id_token']) delete account[key]
     if (!keepHint) delete account.id_token
     account.scopes = []
   }
@@ -152,10 +152,16 @@ export function createChatGPTAccount(options = {}) {
 
   const post = (url, values, timeout = 20000) => fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: form(values), redirect: 'error', signal: AbortSignal.timeout(timeout) })
 
+  // The identity token could not be checked at all, as opposed to a token that was checked and rejected.
+  const keysUnavailable = message => Object.assign(failure(message, 502, 'chatgpt_identity'), { unverified: true })
   async function loadKeys() {
-    const response = await fetchImpl(endpoints.jwks, { headers: { accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(15000) })
-    if (!response.ok) throw failure('OpenAI signing keys are unavailable. Try again shortly.', 502)
-    const body = await readJSON(response, 64 * 1024), keys = new Map()
+    let body
+    try {
+      const response = await fetchImpl(endpoints.jwks, { headers: { accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(15000) })
+      if (!response.ok) throw new Error('unavailable')
+      body = await readJSON(response, 64 * 1024)
+    } catch { throw keysUnavailable('OpenAI signing keys are unavailable. Try again shortly.') }
+    const keys = new Map()
     for (const jwk of Array.isArray(body.keys) ? body.keys : []) {
       if (jwk?.kty !== 'RSA' || typeof jwk.kid !== 'string' || jwk.use && jwk.use !== 'sig' || jwk.alg && jwk.alg !== 'RS256') continue
       try {
@@ -170,7 +176,7 @@ export function createChatGPTAccount(options = {}) {
   async function signingKey(kid) {
     if (!jwks.has(kid)) await loadKeys()
     const key = jwks.get(kid)
-    if (!key) throw failure('OpenAI sign-in could not be verified. Try again.', 502)
+    if (!key) throw keysUnavailable('OpenAI sign-in could not be verified. Try again.')
     return key
   }
   // Mirrors https://developers.openai.com/siwc/website#6-verify-the-id-token.
@@ -400,7 +406,39 @@ export function createChatGPTAccount(options = {}) {
         throw failure(`OpenAI could not renew your ChatGPT sign-in (${code || response.status}). Try again shortly.`, 503, 'chatgpt_refresh_unavailable')
       }
       const tokens = tokenSet(body, account)
-      if (body.id_token !== undefined) { await verifyIdentity(body.id_token, { clientID: account.client_id, subject: account.subject }); account.id_token = body.id_token }
+      const rotated = tokens.refresh_token && tokens.refresh_token !== account.refresh_token ? tokens.refresh_token : undefined
+      if (account.identity_pending && body.id_token === undefined) {
+        // The last renewal's identity was never confirmed and this reply has no identity token, so check the stored one.
+        try { await verifyIdentity(account.pending_id_token, { clientID: account.client_id, subject: account.subject }) } catch (error) {
+          if (error.unverified) {
+            if (rotated) { account.refresh_token = rotated; writeFile('accounts.json', saved) }
+            throw error
+          }
+          if (rotated) revoke({ refresh_token: rotated, client_id: account.client_id }).catch(() => {})
+          clearSession(account, { keepHint: true }); writeFile('accounts.json', saved); emit({ kind: 'expired' })
+          throw signInRequired('Arya could not confirm your ChatGPT account while renewing your sign-in. Continue with ChatGPT to sign in again.')
+        }
+        delete account.identity_pending; delete account.pending_id_token
+      }
+      if (body.id_token !== undefined) {
+        try { await verifyIdentity(body.id_token, { clientID: account.client_id, subject: account.subject }) } catch (error) {
+          if (error.unverified) {
+            // The signature could not be checked. OpenAI already spent the old refresh token, so keep the
+            // rotated one for the next renewal, but trust nothing else from this reply.
+            if (rotated) { account.refresh_token = rotated; account.identity_pending = true; account.pending_id_token = body.id_token; writeFile('accounts.json', saved) }
+            throw error
+          }
+          // A definite rejection: nothing from this reply belongs to this account.
+          if (rotated) revoke({ refresh_token: rotated, client_id: account.client_id }).catch(() => {})
+          if (error.code === 'chatgpt_account_mismatch') {
+            clearSession(account, { keepHint: true }); writeFile('accounts.json', saved); emit({ kind: 'expired' })
+            throw signInRequired('ChatGPT returned a different account while renewing your sign-in. Continue with ChatGPT to sign in again.')
+          }
+          throw error
+        }
+        account.id_token = body.id_token
+        delete account.identity_pending; delete account.pending_id_token
+      }
       Object.assign(account, tokens)
       writeFile('accounts.json', saved)
       return credential(account)

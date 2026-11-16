@@ -60,6 +60,8 @@ public struct AssistantSharingScope: Equatable, Sendable {
 
 /// A Messages API conversation. Edits go through the host's existing project API.
 public actor Assistant {
+    /// Used only for Manual Anthropic API runs; covers the editor's text limit plus attached references.
+    static let promptCharacterLimit = NativeAssistantRoutingPolicy.promptCharacterLimit(provider: "anthropic", mode: "manual")
     public struct Configuration: Sendable {
         // Anthropic's API primer recommends this model. Users can choose another model.
         // https://platform.claude.com/docs/en/claude_api_primer
@@ -109,7 +111,7 @@ public actor Assistant {
             case .sharingRequired: return "Review and allow AI sharing for the current recipients before sending. Your draft is still here."
             case .unconfigured: return "Add your Anthropic API key in Arya's Assistant settings."
             case .busy: return "The assistant is already working. Cancel that request or wait for it to finish."
-            case .invalidPrompt: return "Enter a message of at most 32,000 characters."
+            case .invalidPrompt: return "This message and its attached references are too long. Shorten the message or select fewer layers."
             case .invalidModel: return "Enter a valid model ID in Assistant settings."
             case .invalidResponse: return "Anthropic returned an unreadable response. Try again."
             case .network: return "Could not reach Anthropic. Check your connection and try again."
@@ -164,7 +166,7 @@ public actor Assistant {
         try Task.checkCancellation()
         guard !running else { throw Failure.busy }
         let prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty, prompt.count <= 32_000 else { throw Failure.invalidPrompt }
+        guard !prompt.isEmpty, prompt.count <= Self.promptCharacterLimit else { throw Failure.invalidPrompt }
         guard !configuration.model.isEmpty, configuration.model.count <= 128,
               configuration.model.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { throw Failure.invalidModel }
         running = true

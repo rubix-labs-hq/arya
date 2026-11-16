@@ -11,6 +11,8 @@ import Security
 public struct ChatGPTAccountError: Error, LocalizedError, Equatable, Sendable {
     public let message: String
     public let code: String
+    /// True when an identity token could not be checked at all because OpenAI's signing keys were unavailable.
+    var unverified = false
     public init(_ message: String, code: String) { self.message = message; self.code = code }
     public var errorDescription: String? { message }
 }
@@ -111,6 +113,11 @@ struct ChatGPTRecord: Codable, Equatable {
     var invalid: Bool
     var session: String?
     var savedAt: Double?
+    /// Set when a renewal kept a rotated refresh token whose identity token could not be checked.
+    /// The next renewal must then confirm the identity, from its own identity token or from `pendingIDToken`.
+    var identityPending: Bool?
+    /// The unverified identity token from that renewal. Never used as the sign-in hint.
+    var pendingIDToken: String?
 }
 
 struct ChatGPTVault: Codable, Equatable {
@@ -294,14 +301,25 @@ public actor ChatGPTAccountService {
         }
         attempt = current
         warning = nil
+        listener.onFailure { [weak self] in Task { await self?.listenerFailed(id) } }
         notify()
         return await opener(url)
     }
 
     /// Opens the same pending attempt's page again. The URL never leaves this actor otherwise.
+    /// A listener the system closed cannot receive the callback, so that attempt ends instead.
     public func reopenSignInPage() async -> Bool {
         guard let current = attempt, current.phase == .waiting else { return false }
+        guard current.listener.isListening else { listenerFailed(current.id); return false }
         return await opener(current.authorizeURL)
+    }
+
+    static let interruptedMessage = "The sign-in connection was interrupted. Continue with ChatGPT to start again."
+
+    private func listenerFailed(_ id: UUID) {
+        guard attempt?.id == id, attempt?.phase == .waiting else { return }
+        finishAttempt(.failed, Self.interruptedMessage, close: true)
+        notify()
     }
 
     @discardableResult public func cancelSignIn() -> Bool {
@@ -569,9 +587,40 @@ public actor ChatGPTAccountService {
             throw ChatGPTAccountError("OpenAI could not renew your ChatGPT sign-in (\(code.isEmpty ? String(response.status) : code)). Try again shortly.", code: "chatgpt_refresh_unavailable")
         }
         let tokens = try tokenSet(body, previous: latest)
+        var confirmed = false
+        if latest.identityPending == true, body["id_token"] == nil {
+            // The last renewal's identity was never confirmed and this reply has no identity token, so check the stored one.
+            do { _ = try await verifyIdentity(latest.pendingIDToken, clientID: clientID, nonce: nil, subject: latest.subject) }
+            catch {
+                if (error as? ChatGPTAccountError)?.unverified == true {
+                    keepRotatedRefresh(tokens.refreshToken, replacing: refresh, clientID: clientID, generation: started, idToken: nil)
+                    throw error
+                }
+                if let rotated = tokens.refreshToken, rotated != refresh { Task { _ = await self.revoke(rotated, client: clientID) } }
+                if current(clientID, refresh: refresh, generation: started) != nil { clearAndSave(clientID, keepHint: true) }
+                throw Self.signInRequired("Arya could not confirm your ChatGPT account while renewing your sign-in. Continue with ChatGPT to sign in again.")
+            }
+            confirmed = true
+        }
         var idToken: String?
         if body["id_token"] != nil {
-            _ = try await verifyIdentity(body["id_token"], clientID: clientID, nonce: nil, subject: latest.subject)
+            do { _ = try await verifyIdentity(body["id_token"], clientID: clientID, nonce: nil, subject: latest.subject) }
+            catch {
+                let failure = error as? ChatGPTAccountError
+                if failure?.unverified == true {
+                    // The signature could not be checked. OpenAI already spent the old refresh token, so keep
+                    // the rotated one for the next renewal, but trust nothing else from this reply.
+                    keepRotatedRefresh(tokens.refreshToken, replacing: refresh, clientID: clientID, generation: started, idToken: body["id_token"] as? String)
+                    throw error
+                }
+                // A definite rejection: nothing from this reply belongs to this account.
+                if let rotated = tokens.refreshToken, rotated != refresh { Task { _ = await self.revoke(rotated, client: clientID) } }
+                if failure?.code == "chatgpt_account_mismatch", current(clientID, refresh: refresh, generation: started) != nil {
+                    clearAndSave(clientID, keepHint: true)
+                    throw Self.signInRequired("ChatGPT returned a different account while renewing your sign-in. Continue with ChatGPT to sign in again.")
+                }
+                throw error
+            }
             idToken = body["id_token"] as? String
         }
         guard var updated = vault, let index = updated.accounts.firstIndex(where: { $0.clientID == clientID }),
@@ -581,6 +630,7 @@ public actor ChatGPTAccountService {
         }
         tokens.apply(to: &updated.accounts[index])
         if let idToken { updated.accounts[index].idToken = idToken }
+        if idToken != nil || confirmed { updated.accounts[index].identityPending = nil; updated.accounts[index].pendingIDToken = nil }
         updated.accounts[index].savedAt = now().timeIntervalSince1970
         do { try persist(updated); warning = nil } catch {
             // The old refresh token is already spent. Keep the new one for this session.
@@ -589,6 +639,19 @@ public actor ChatGPTAccountService {
             notify()
         }
         return credential(updated.accounts[index])
+    }
+
+    private func keepRotatedRefresh(_ rotated: String?, replacing refresh: String, clientID: String, generation started: Int, idToken: String?) {
+        guard let rotated, rotated != refresh else { return }
+        guard var updated = vault, let index = updated.accounts.firstIndex(where: { $0.clientID == clientID }),
+              current(clientID, refresh: refresh, generation: started) != nil else {
+            Task { _ = await self.revoke(rotated, client: clientID) }
+            return
+        }
+        updated.accounts[index].refreshToken = rotated
+        updated.accounts[index].identityPending = true
+        if let idToken { updated.accounts[index].pendingIDToken = idToken }
+        do { try persist(updated) } catch { vault = updated }
     }
 
     private func current(_ clientID: String, refresh: String, generation started: Int) -> ChatGPTRecord? {
@@ -608,7 +671,7 @@ public actor ChatGPTAccountService {
 
     static func clearSession(_ record: inout ChatGPTRecord, keepHint: Bool) {
         record.accessToken = nil; record.refreshToken = nil; record.expiresAt = nil; record.earliestRefreshAt = nil
-        record.scopes = []; record.session = nil
+        record.scopes = []; record.session = nil; record.identityPending = nil; record.pendingIDToken = nil
         if !keepHint { record.idToken = nil }
     }
 
@@ -701,15 +764,21 @@ public actor ChatGPTAccountService {
     // endpoint over TLS, once per sign-in or refresh.
     private func signingKey(_ kid: String) async throws -> SecKey {
         if keys[kid] == nil { try await loadKeys() }
-        guard let key = keys[kid] else { throw ChatGPTAccountError("OpenAI sign-in could not be verified. Try again.", code: "chatgpt_identity") }
+        guard let key = keys[kid] else { throw Self.keysUnavailable("OpenAI sign-in could not be verified. Try again.") }
         return key
+    }
+
+    private static func keysUnavailable(_ message: String) -> ChatGPTAccountError {
+        var error = ChatGPTAccountError(message, code: "chatgpt_identity")
+        error.unverified = true
+        return error
     }
 
     private func loadKeys() async throws {
         var request = URLRequest(url: endpoints.jwks)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
-        guard let response = try? await http(request), response.status == 200 else { throw ChatGPTAccountError("OpenAI signing keys are unavailable. Try again shortly.", code: "chatgpt_identity") }
+        guard let response = try? await http(request), response.status == 200 else { throw Self.keysUnavailable("OpenAI signing keys are unavailable. Try again shortly.") }
         var loaded: [String: SecKey] = [:]
         for jwk in (Self.object(response.data, limit: 64 * 1024)["keys"] as? [Any] ?? []).compactMap({ $0 as? [String: Any] }) {
             guard jwk["kty"] as? String == "RSA", let kid = jwk["kid"] as? String, !kid.isEmpty,

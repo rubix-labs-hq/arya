@@ -21,7 +21,7 @@ export async function startChatGPTFake(options = {}) {
   let kid = null, keyCount = 0
   const fake = {
     violations: [], requests: [], registrations: new Map(), codes: new Map(), refresh: new Map(), access: new Map(),
-    consent: [], refreshFailures: [], revokeFailures: 0, responses: [], responseBodies: [], refreshGrants: 0, revocations: [],
+    consent: [], refreshFailures: [], refreshIDToken: false, refreshSubject: undefined, jwksStatus: 200, revokeFailures: 0, responses: [], responseBodies: [], refreshGrants: 0, revocations: [],
     models: [
       { slug: DOC_MODEL, display_name: 'GPT-6.1 Sol', visibility: 'list' },
       { slug: 'gpt-6.1-sol-mini', display_name: 'GPT-6.1 Sol mini', visibility: 'list' },
@@ -119,7 +119,9 @@ export async function startChatGPTFake(options = {}) {
       if (saved.client_id !== p.client_id) return violate(response, 'refresh: client_id must be the one saved with this token set')
       if (saved.used) return json(response, 400, { error: 'refresh_token_reused' })
       saved.used = true
-      return json(response, 200, grant(saved.client_id, saved.subject, saved.scopes))
+      const body = grant(saved.client_id, saved.subject, saved.scopes)
+      if (fake.refreshIDToken) body.id_token = fake.idToken({ client_id: saved.client_id, sub: fake.refreshSubject ?? saved.subject })
+      return json(response, 200, body)
     }
     return violate(response, `token: unexpected grant_type ${p.grant_type}`)
   }
@@ -181,7 +183,7 @@ export async function startChatGPTFake(options = {}) {
   const server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://127.0.0.1')
-      if (request.method === 'GET' && url.pathname === '/.well-known/jwks.json') return json(response, 200, { keys: [...signing.values()].map(item => item.jwk) })
+      if (request.method === 'GET' && url.pathname === '/.well-known/jwks.json') return fake.jwksStatus === 0 ? response.destroy() : fake.jwksStatus === 200 ? json(response, 200, { keys: [...signing.values()].map(item => item.jwk) }) : json(response, fake.jwksStatus, {})
       if (request.method === 'GET' && url.pathname === '/api/accounts/authorize') return authorize(url, response)
       if (request.method === 'POST' && url.pathname === '/api/accounts/oauth/token') return await tokenEndpoint(request, response)
       if (request.method === 'POST' && url.pathname === '/api/accounts/oauth/revoke') return await revokeEndpoint(request, response)

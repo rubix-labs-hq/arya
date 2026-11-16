@@ -259,6 +259,107 @@ test('tokens refresh near expiry once across two editor processes, and rotation 
   assert.deepEqual(fake.violations, [])
 })
 
+test('a renewal whose identity check fails keeps the rotated refresh token and nothing else', async t => {
+  const clock = { now: Date.now() }
+  const { fake, account, make } = await setup(t, { clock })
+  await signIn(account)
+  const before = await account.accessToken()
+  // A new process has no cached signing keys, and OpenAI's key endpoint is failing.
+  const relaunched = make()
+  clock.now += 61 * 60 * 1000
+  fake.refreshIDToken = true
+  // A dropped connection to the key endpoint, then a server error: neither can check the signature.
+  for (const status of [0, 503]) {
+    fake.jwksStatus = status
+    await assert.rejects(relaunched.accessToken(), error => /signing keys are unavailable/i.test(error.message) && error.code === 'chatgpt_identity')
+    assert.equal(relaunched.status().signedIn, true)
+  }
+  fake.jwksStatus = 200
+  const after = await relaunched.accessToken()
+  assert.notEqual(after.accessToken, before.accessToken)
+  assert.equal(fake.refreshGrants, 3)
+  // A verified matching identity clears the flag, so a later renewal without an identity token is accepted.
+  clock.now += 61 * 60 * 1000
+  fake.refreshIDToken = false
+  const later = await make().accessToken()
+  assert.notEqual(later.accessToken, after.accessToken)
+  assert.equal(fake.refreshGrants, 4)
+  assert.deepEqual(fake.violations, [])
+})
+
+// A new process renews while OpenAI's key set is down, so the rotated refresh token is kept with an
+// unconfirmed identity token for `subject`. Later refresh replies carry no identity token.
+async function renewThroughKeyOutage(t, subject) {
+  const clock = { now: Date.now() }
+  const context = await setup(t, { clock })
+  await signIn(context.account)
+  clock.now += 61 * 60 * 1000
+  Object.assign(context.fake, { refreshIDToken: true, refreshSubject: subject, jwksStatus: 503 })
+  await assert.rejects(context.make().accessToken(), error => error.code === 'chatgpt_identity')
+  Object.assign(context.fake, { refreshIDToken: false, refreshSubject: undefined })
+  return context
+}
+
+test('after a key-set outage, a reply without an identity token is confirmed from the stored one', async t => {
+  const { fake, make } = await renewThroughKeyOutage(t)
+  fake.jwksStatus = 200
+  const relaunched = make()
+  const current = await relaunched.accessToken()
+  assert.ok(current.accessToken)
+  assert.equal(relaunched.status().signedIn, true)
+  assert.equal(fake.refreshGrants, 2)
+  assert.deepEqual(fake.violations, [])
+})
+
+test('after a key-set outage, a stored identity token for another account ends the session', async t => {
+  const { fake, make } = await renewThroughKeyOutage(t, 'sub-someone-else')
+  fake.jwksStatus = 200
+  const revoked = fake.revocations.length
+  const relaunched = make()
+  await assert.rejects(relaunched.accessToken(), error => error.code === 'chatgpt_sign_in_required' && /could not confirm/i.test(error.message))
+  assert.equal(relaunched.status().signedIn, false)
+  for (let i = 0; i < 100 && fake.revocations.length === revoked; i++) await new Promise(resolve => setTimeout(resolve, 10))
+  assert.equal(fake.revocations.length, revoked + 1, 'the rotated refresh token is revoked')
+  assert.equal(fake.refreshGrants, 2)
+  assert.deepEqual(fake.violations, [])
+})
+
+test('while the key set stays down, an unconfirmed identity keeps the session', async t => {
+  const { fake, make } = await renewThroughKeyOutage(t)
+  const relaunched = make()
+  await assert.rejects(relaunched.accessToken(), error => error.code === 'chatgpt_identity')
+  assert.equal(relaunched.status().signedIn, true)
+  fake.jwksStatus = 200
+  const current = await make().accessToken()
+  assert.ok(current.accessToken)
+  assert.equal(fake.refreshGrants, 3)
+  assert.deepEqual(fake.violations, [])
+})
+
+test('a renewal that returns another account ends the session and revokes the rotated token', async t => {
+  const clock = { now: Date.now() }
+  const { fake, account, make } = await setup(t, { clock })
+  await signIn(account)
+  clock.now += 61 * 60 * 1000
+  fake.refreshIDToken = true
+  fake.refreshSubject = 'sub-someone-else'
+  const revoked = fake.revocations.length
+  await assert.rejects(account.accessToken(), error => error.code === 'chatgpt_sign_in_required' && /different account/i.test(error.message))
+  assert.equal(account.status().signedIn, false)
+  for (let i = 0; i < 100 && fake.revocations.length === revoked; i++) await new Promise(resolve => setTimeout(resolve, 10))
+  assert.equal(fake.revocations.length, revoked + 1, 'the rotated refresh token is revoked')
+  // A following renewal without an identity token is not accepted under this account, in this process or a new one.
+  fake.refreshIDToken = false
+  fake.refreshSubject = undefined
+  await assert.rejects(account.accessToken(), error => error.code === 'chatgpt_sign_in_required')
+  await assert.rejects(make().accessToken(), error => error.code === 'chatgpt_sign_in_required')
+  assert.equal(fake.refreshGrants, 1)
+  // The rejection keeps this account's identity token, so the next sign-in still carries the hint.
+  await signIn(account)
+  assert.ok(fake.lastAuthorize.id_token_hint, 'the id_token hint survives the rejection')
+  assert.deepEqual(fake.violations, [])
+})
+
 test('an unusable refresh token ends the session but keeps the registration and hint', async t => {
   const clock = { now: Date.now() }
   const { fake, account } = await setup(t, { clock })

@@ -116,6 +116,23 @@ final class ChatGPTAssistantTests: XCTestCase {
         XCTAssertEqual(image["image_url"] as? String, "data:image/png;base64,AQID")
     }
 
+    // A 40k script with a full reference selection is what the editor accepts in Manual ChatGPT mode.
+    func testLongScriptsWithReferencesReachTheProvider() async throws {
+        let script = Script()
+        script.replies = [(200, Self.completed([["type": "message", "id": "m_1", "role": "assistant", "content": [["type": "output_text", "text": "Done."]]]]))]
+        let longest = NativeAssistantRoutingPolicy.composePrompt(String(repeating: "s", count: 128_000), referenceText: String(repeating: "r", count: NativeAssistantRoutingPolicy.referenceByteLimit))
+        let reply = try await assistant(script).run(longest, sharing: scope(), authorize: {})
+        XCTAssertEqual(reply.text, "Done.")
+        XCTAssertEqual(script.bodies.count, 1)
+        let forty = NativeAssistantRoutingPolicy.composePrompt(String(repeating: "s", count: 40_000), referenceText: "{}")
+        script.replies = [(200, Self.completed([["type": "message", "id": "m_2", "role": "assistant", "content": [["type": "output_text", "text": "Done."]]]]))]
+        _ = try await assistant(script).run(forty, sharing: scope(), authorize: {})
+        XCTAssertEqual(script.bodies.count, 2)
+        do { _ = try await assistant(script).run(longest + "x", sharing: scope(), authorize: {}); XCTFail("over the limit") }
+        catch { XCTAssertEqual(error as? Assistant.Failure, .invalidPrompt) }
+        XCTAssertEqual(script.bodies.count, 2)
+    }
+
     func testRefusesWithoutTheExactSharingScope() async throws {
         let script = Script()
         for sharing in [nil, try scope("other-model"), try AssistantSharingScope(models: [.init(provider: "anthropic", model: "gpt-test")], companion: URL(string: "https://api.anthropic.com/")!)] {
