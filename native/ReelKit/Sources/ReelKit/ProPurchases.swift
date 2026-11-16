@@ -364,9 +364,16 @@ public enum ProExportRule {
         guard canvasWidth.isFinite, canvasHeight.isFinite, canvasWidth > 0, canvasHeight > 0 else { return nil }
         let scale = min(longEdge / max(canvasWidth, canvasHeight), shortEdge / min(canvasWidth, canvasHeight))
         guard scale.isFinite else { return nil }
+        // On a huge canvas width * canvasHeight overflows to infinity before the division, so that case
+        // multiplies by the ratio instead. Other canvases keep the product, so their rounding is unchanged.
+        let ratio = canvasHeight / canvasWidth
+        guard ratio.isFinite, ratio > 0 else { return nil }
         var width = Int((canvasWidth * scale / 2).rounded(.down)) * 2
         while width >= 2 {
-            let height = Int((Double(width) * canvasHeight / canvasWidth).rounded())
+            let product = Double(width) * canvasHeight
+            let exact = (product.isFinite ? product / canvasWidth : Double(width) * ratio).rounded()
+            guard exact.isFinite, exact <= Double(Int.max) else { return nil }
+            let height = Int(exact)
             if height >= 2, height % 2 == 0, max(width, height) <= Int(longEdge), min(width, height) <= Int(shortEdge) { return width }
             width -= 2
         }
