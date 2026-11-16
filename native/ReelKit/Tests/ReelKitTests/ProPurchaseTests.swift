@@ -308,6 +308,25 @@ final class ProPurchaseTests: XCTestCase {
     }
 
     /// The Deliver "1080p" choice must never need Pro, and "4K" must fit UHD, on any canvas shape.
+    /// Composition sizes are unbounded in the project, so stillWidth must not trap or spin on a free
+    /// App Store build. Out-of-range sizes come back unchanged for /api/frame admission to refuse.
+    func testStillWidthStaysFastAndSafeOnUnboundedCanvases() {
+        let gate = ProExportGate()
+        gate.enforce(true)
+        let started = Date()
+        XCTAssertEqual(gate.stillWidth(requested: 16, canvasWidth: 16, canvasHeight: 1e18), 16, "A tall canvas past admission goes back unchanged")
+        XCTAssertEqual(gate.stillWidth(requested: 1920, canvasWidth: 16, canvasHeight: 1e18), 1920)
+        let wide = gate.stillWidth(requested: 1_000_000, canvasWidth: 1e9, canvasHeight: 16)
+        XCTAssertTrue(wide <= ProExportRule.maximumFreeLongEdge && gate.allows(width: Double(wide), height: Double(wide) * 16 / 1e9, preset: "png", hdr: nil))
+        XCTAssertEqual(gate.stillWidth(requested: 1920, canvasWidth: .infinity, canvasHeight: 16), 1920)
+        XCTAssertEqual(gate.stillWidth(requested: 1920, canvasWidth: 16, canvasHeight: .nan), 1920)
+        XCTAssertNil(ProExportRule.fittedWidth(canvasWidth: 1e-306, canvasHeight: 3e-306, longEdge: 1920, shortEdge: 1080), "A tiny canvas has no finite fit")
+        let tiny = gate.stillWidth(requested: 960, canvasWidth: 1e-306, canvasHeight: 3e-306)
+        XCTAssertTrue(tiny > 1 && gate.allows(width: Double(tiny), height: Double(tiny) * 3e-306 / 1e-306, preset: "png", hdr: nil), "tiny canvas -> \(tiny)")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 1, "stillWidth spun on a huge canvas")
+        XCTAssertEqual(gate.stillWidth(requested: 1080, canvasWidth: 1080, canvasHeight: 3840), 540, "A normal tall canvas still fits")
+    }
+
     func testFittedSizesStayFreeAt1080pAndFitUHDForEveryAspect() throws {
         let canvases: [(Double, Double)] = [(1920, 1080), (1080, 1920), (1080, 1080), (1080, 1350), (1440, 1080),
                                             (2560, 1080), (1080, 2560), (3840, 2160), (1280, 720), (4096, 2160), (1001, 999), (720, 1280)]

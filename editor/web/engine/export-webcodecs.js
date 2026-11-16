@@ -166,8 +166,8 @@ export async function runNativeExport(project, job) {
 }
 
 /** Saves a native still through the backend's shared processing admission. */
-export async function saveNativeFrame(project, { at, width = project.width, comp } = {}) {
-  return api('/api/frame', { at: at ?? 0, width, comp, expectedProject: JSON.stringify(project), name: `frame-${Date.now()}-${crypto.randomUUID()}.png` })
+export async function saveNativeFrame(project, { at, width = project.width, comp, freeFit } = {}) {
+  return api('/api/frame', { at: at ?? 0, width, comp, ...(freeFit ? { freeFit: true } : {}), expectedProject: JSON.stringify(project), name: `frame-${Date.now()}-${crypto.randomUUID()}.png` })
 }
 
 /** The host awaits this before invalidating the current page's message session. */

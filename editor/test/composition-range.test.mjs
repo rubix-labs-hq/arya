@@ -91,7 +91,7 @@ test('actual Deliver render and still requests carry selected marks/duration/com
   const click=async text=>{const button=buttons(DeliverPage()).find(v=>label(v)===text);assert.ok(button,text);await button.props.onClick()}
   await click('Render');assert.deepEqual(calls.at(-1),{route:'/api/export',body:{preset:'h264-high',name:'Five seconds',width:1920,height:1080,fps:25,range:{in:0,out:5},comp:'k1'}})
   await edit({op:'range',in:2,out:4});await click('Render');assert.deepEqual(calls.at(-1).body.range,{in:2,out:4})
-  await click('Save still frame');assert.deepEqual(calls.at(-1).body,{at:3,width:1920,comp:'k1'})
+  await click('Save still frame');assert.deepEqual(calls.at(-1).body,{at:3,width:1920,freeFit:true,comp:'k1'})
   set({openComp:null});await click('Render');assert.deepEqual(calls.at(-1).body.range,{in:1,out:7});assert.equal(Object.hasOwn(calls.at(-1).body,'comp'),false)
 })
 test('actual native bundle bridge applies scoped ops equivalently to ES modules',async t=>{

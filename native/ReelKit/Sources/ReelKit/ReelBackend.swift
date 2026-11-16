@@ -568,6 +568,12 @@ public actor ReelBackend {
         return owned
     }
 
+    /// The canvas of the main timeline or a composition, read the way `/api/frame` reads it.
+    public func canvasSize(comp: String?) throws -> (width: Double, height: Double) {
+        let view = try JSON.parse(projectView(comp: comp)) as? [String: Any] ?? [:]
+        return ((view["width"] as? NSNumber)?.doubleValue ?? 1920, (view["height"] as? NSNumber)?.doubleValue ?? 1080)
+    }
+
     private func projectView(comp: String?) throws -> String {
         guard let project else { throw APIError("No project yet.") }
         guard let comp else { return project }
@@ -575,7 +581,10 @@ public actor ReelBackend {
         guard let composition = (p["comps"] as? [String: [String: Any]])?[comp] else { throw APIError("No composition \(comp).") }
         p["tracks"] = composition["tracks"]
         p["markers"] = composition["markers"] ?? []
-        for key in ["width", "height", "fps", "background"] { if let value = composition[key] { p[key] = value } }
+        // Like compView in the editor: a null or missing size or rate falls back to the project value,
+        // and a null or missing background is transparent, never the project color.
+        for key in ["width", "height", "fps"] { if let value = composition[key], !(value is NSNull) { p[key] = value } }
+        p["background"] = composition["background"].flatMap { $0 is NSNull ? nil : $0 } ?? "transparent"
         p["compId"] = comp
         return JSON(any: p).text
     }
@@ -734,6 +743,7 @@ public actor ReelBackend {
     #if DEBUG
     private var processingTestBarrier: (@Sendable () async throws -> Void)?
     func setProcessingTestBarrier(_ barrier: (@Sendable () async throws -> Void)?) { processingTestBarrier = barrier }
+    func projectViewForTesting(comp: String?) throws -> String { try projectView(comp: comp) }
     func processingWorkersForTesting() -> Int { nativeTasks.count + directProcessingCancellations.count }
     #endif
     private func processingTestStage() async throws {
@@ -1226,8 +1236,16 @@ public actor ReelBackend {
             let time = (b["time"] as? NSNumber)?.doubleValue ?? (b["at"] as? NSNumber)?.doubleValue ?? 0
             let view = try JSON.parse(projectView(comp: b["comp"] as? String)) as? [String: Any] ?? [:]
             // The renderer takes the requested width as an integer, so admission and the Pro gate do too.
-            let width = (b["width"] as? NSNumber).map { Double($0.intValue) } ?? (view["width"] as? NSNumber)?.doubleValue ?? 1920
-            let height = width * ((view["height"] as? NSNumber)?.doubleValue ?? 1080) / ((view["width"] as? NSNumber)?.doubleValue ?? 1920)
+            let requested = (b["width"] as? NSNumber).map { Double($0.intValue) } ?? (view["width"] as? NSNumber)?.doubleValue ?? 1920
+            let canvasWidth = (view["width"] as? NSNumber)?.doubleValue ?? 1920, canvasHeight = (view["height"] as? NSNumber)?.doubleValue ?? 1080
+            // Bound the request before fitting, so the Int conversions in stillWidth and requiresPro see at most 8192.
+            try validateExportAdmission(width: requested, height: requested * canvasHeight / canvasWidth, fps: 1, from: 0, to: 1)
+            // `freeFit` (the web Deliver page) shrinks a still the gate refuses to the free 1080p fit.
+            // Without it the request is refused below, and Pro and ungated builds keep the requested width.
+            let fitted = b["freeFit"] as? Bool == true
+                ? ProExportGate.shared.stillWidth(requested: Int(requested), canvasWidth: canvasWidth, canvasHeight: canvasHeight) : nil
+            let width = fitted.map(Double.init) ?? requested
+            let height = width * canvasHeight / canvasWidth
             guard time.isFinite, time >= 0 else { throw APIError("Choose a finite frame time.") }
             try validateExportAdmission(width: width, height: height, fps: 1, from: 0, to: 1)
             // A saved frame is an export too: above 1080p it needs Pro in App Store builds.
@@ -1237,9 +1255,12 @@ public actor ReelBackend {
             guard output.path.hasPrefix(folder.dotDir.appendingPathComponent("frames").path + "/") else { throw APIError("Still outputs must stay under .reel/frames/.") }
             try rejectReferencedMediaOverwrite(output)
             let publication = try NativeExportOutput(folder: folder, destination: output)
-            let path = try await renderer.still(project: project, at: time, comp: b["comp"] as? String, width: (b["width"] as? NSNumber)?.intValue, name: name, out: b["out"] as? String, outputPublication: publication, beforePublish: {}, publishOutput: { publication in
+            let path = try await renderer.still(project: project, at: time, comp: b["comp"] as? String, width: fitted ?? (b["width"] as? NSNumber)?.intValue, name: name, out: b["out"] as? String, outputPublication: publication, beforePublish: {}, publishOutput: { publication in
                 try await self.publishStillOutput(publication, context: context, sources: sources)
             })
+            if let fitted, Double(fitted) < requested {
+                return .object([("path", .string(folder.relative(path))), ("width", .int(fitted)), ("fitted", true)])
+            }
             return .object([("path", .string(folder.relative(path)))])
         case ("GET", "/api/jobs"): return .object([("jobs", .array(jobs.map(\.json)))])
         case ("GET", "/api/jobs/wait"), ("GET", "/api/analysis/jobs/wait"): return try await waitJob(query["id"] ?? "", timeout: Double(query["timeout"] ?? "") ?? 25000)
@@ -2391,7 +2412,7 @@ public actor ReelBackend {
         var found: [ProcessingTarget] = []
         for (scopeID, scope) in scopes {
             var canvas = scope
-            for key in ["width", "height", "fps"] where canvas[key] == nil { canvas[key] = p[key] }
+            for key in ["width", "height", "fps"] where canvas[key] == nil || canvas[key] is NSNull { canvas[key] = p[key] }
             for track in scope["tracks"] as? [[String: Any]] ?? [] {
                 for clip in track["clips"] as? [[String: Any]] ?? [] where clip["id"] as? String == id {
                     found.append(ProcessingTarget(id: id, comp: scopeID, clip: clip, canvas: canvas, track: track))

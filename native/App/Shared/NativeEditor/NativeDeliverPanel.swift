@@ -409,7 +409,9 @@ struct NativeDeliverPanel: View {
     }
     private func still() {
         model.perform {
-            var body: [String: Any] = ["at": model.time, "width": model.width]
+            // Free App Store users save at most a 1080p still; Pro and the direct Mac app keep the canvas width.
+            let width = ProExportGate.shared.stillWidth(requested: Int(min(max(model.width, 0), 1_000_000)), canvasWidth: model.width, canvasHeight: model.height)
+            var body: [String: Any] = ["at": model.time, "width": width]
             if let comp = model.composition { body["comp"] = comp }
             let result = try await model.call("/api/frame", body)
             lastFile = try model.mediaURL(result.string("path", result.string("file")))

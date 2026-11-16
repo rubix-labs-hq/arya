@@ -363,6 +363,7 @@ public enum ProExportRule {
     public static func fittedWidth(canvasWidth: Double, canvasHeight: Double, longEdge: Double, shortEdge: Double) -> Int? {
         guard canvasWidth.isFinite, canvasHeight.isFinite, canvasWidth > 0, canvasHeight > 0 else { return nil }
         let scale = min(longEdge / max(canvasWidth, canvasHeight), shortEdge / min(canvasWidth, canvasHeight))
+        guard scale.isFinite else { return nil }
         var width = Int((canvasWidth * scale / 2).rounded(.down)) * 2
         while width >= 2 {
             let height = Int((Double(width) * canvasHeight / canvasWidth).rounded())
@@ -392,6 +393,24 @@ public final class ProExportGate: @unchecked Sendable {
     public func allows(width: Double, height: Double, preset: String, hdr: String?) -> Bool {
         lock.lock(); defer { lock.unlock() }
         return !enforced || unlocked || !ProExportRule.requiresPro(width: width, height: height, preset: preset, hdr: hdr)
+    }
+
+    /// The width to save a still at. A still the gate allows keeps `requested`. Otherwise the still
+    /// shrinks to the largest free 1080p fit of the canvas, so free users still get a frame instead
+    /// of the lock error. It never grows past `requested`, and the result always passes `allows`
+    /// with the backend's frame height, even on canvases too narrow for an even fit.
+    public func stillWidth(requested: Int, canvasWidth: Double, canvasHeight: Double) -> Int {
+        // Sizes far past what /api/frame admits go back unchanged, so admission refuses them there
+        // rather than trapping in an Int conversion here. NaN and infinity fail these comparisons too.
+        guard canvasWidth > 0, canvasHeight > 0, requested <= 1_000_000, Double(requested) * canvasHeight / canvasWidth <= 1_000_000 else { return requested }
+        func allowed(_ width: Int) -> Bool { allows(width: Double(width), height: Double(width) * canvasHeight / canvasWidth, preset: "png", hdr: nil) }
+        guard !allowed(requested) else { return requested }
+        let fit = ProExportRule.fittedWidth(canvasWidth: canvasWidth, canvasHeight: canvasHeight,
+                                            longEdge: Double(ProExportRule.maximumFreeLongEdge), shortEdge: Double(ProExportRule.maximumFreeShortEdge))
+        // A free still is never wider than the free long edge, so the step-down stays short.
+        var width = min(requested, fit ?? ProExportRule.maximumFreeLongEdge)
+        while width > 1, !allowed(width) { width -= 1 }
+        return width
     }
 
 }

@@ -18,12 +18,13 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
     private var fixtures: [Fixture] = []
     private var gates: [ProcessingGate] = []
     private func admission() -> NativeProcessingAdmission { .init(capturedByteLimit: 64 * 1024 * 1024) }
-    private func fixture(_ admission: NativeProcessingAdmission, recognition: ProcessingGate? = nil, canvas: (width: Int, height: Int)? = nil) async throws -> Fixture {
+    private func fixture(_ admission: NativeProcessingAdmission, recognition: ProcessingGate? = nil, canvas: (width: Int, height: Int)? = nil, comps: [String: Any]? = nil) async throws -> Fixture {
         let root = try Support.tempFolder("shared-processing"), folder = ProjectFolder(root: root)
         let core = try ReelCore(scriptURL: Support.core())
         var fields = try JSON.parse(core.newProject(name: "Captured")) as! [String: Any]
         fields["assets"] = ["source.wav": ["kind": "audio", "hasAudio": true, "duration": 1]]
         if let canvas { fields["width"] = canvas.width; fields["height"] = canvas.height }
+        if let comps { fields["comps"] = comps }
         try Data("preserved original".utf8).write(to: root.appendingPathComponent("source.wav"))
         try Data(core.fileText(project: JSON(any: fields).text).utf8).write(to: folder.projectFile)
         let writes = ProjectWriteAdmission()
@@ -250,6 +251,128 @@ final class ProcessingAdmissionBackendTests: XCTestCase {
             }
         }
         XCTAssertEqual(policy.snapshot().active + policy.snapshot().queued, 0)
+    }
+
+    private func savedStill(_ fixture: Fixture, width: Int) async throws -> (Int, Int) {
+        try await pngSize(fixture, try await call(fixture, "/api/frame", ["time": 0, "width": width]))
+    }
+
+    private func pngSize(_ fixture: Fixture, _ response: [String: Any]) async throws -> (Int, Int) {
+        let png = try Data(contentsOf: fixture.root.appendingPathComponent(try XCTUnwrap(response["path"] as? String)))
+        let be = { (at: Int) in png[at..<at + 4].reduce(0) { $0 << 8 | Int($1) } }
+        return (be(16), be(20))
+    }
+
+    /// The in-app web Deliver page sends its Resolution choice with `freeFit`. On a 4K canvas with the
+    /// default preset that is 3840 wide: a free user gets the 1080p fit and a note, a crafted request
+    /// without `freeFit` is still refused, and Pro keeps 3840.
+    func testWebDeliverStillFitsFreeUsersOnA4KCanvas() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let fixture = try await fixture(admission(), canvas: (3840, 2160))
+        do {
+            _ = try await call(fixture, "/api/frame", ["time": 0, "width": 3840])
+            XCTFail("A free 4K still was saved without freeFit")
+        } catch let error as ReelBackend.APIError {
+            XCTAssertEqual(error.message, ProExportRule.lockedMessage)
+        }
+        let free = try await call(fixture, "/api/frame", ["time": 0, "width": 3840, "freeFit": true])
+        XCTAssertEqual(free["fitted"] as? Bool, true); XCTAssertEqual((free["width"] as? NSNumber)?.intValue, 1920)
+        let freeSize = try await pngSize(fixture, free)
+        XCTAssertEqual(freeSize.0, 1920); XCTAssertEqual(freeSize.1, 1080)
+        ProExportGate.shared.setUnlocked(true)
+        let pro = try await call(fixture, "/api/frame", ["time": 0, "width": 3840, "freeFit": true])
+        XCTAssertNil(pro["fitted"], "Pro keeps the requested width")
+        let proSize = try await pngSize(fixture, pro)
+        XCTAssertEqual(proSize.0, 3840); XCTAssertEqual(proSize.1, 2160)
+    }
+
+    /// On a tall canvas no web Resolution option fits 1080 by 1920 (640 wide is 640 by 2276), so
+    /// `freeFit` shrinks it to the tallest free still.
+    func testWebDeliverStillFitsFreeUsersOnATallCanvas() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let fixture = try await fixture(admission(), canvas: (1080, 3840))
+        let free = try await call(fixture, "/api/frame", ["time": 0, "width": 640, "freeFit": true])
+        XCTAssertEqual(free["fitted"] as? Bool, true)
+        let size = try await pngSize(fixture, free)
+        XCTAssertEqual(size.0, 540); XCTAssertEqual(size.1, 1920)
+    }
+
+    /// A composition whose height is JSON null renders at the project height, so the frame gate
+    /// must size it that way too, not as the 1920 by 1080 fallback.
+    func testNullCompositionHeightUsesTheProjectSizeForTheFrameGate() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let comp: [String: Any] = ["name": "Tall", "width": 1080, "height": NSNull(), "fps": 30, "background": NSNull(), "tracks": [], "markers": []]
+        var plain = comp; plain["background"] = nil; plain["name"] = "Plain"
+        let fixture = try await fixture(admission(), canvas: (1080, 3840), comps: ["k1": comp, "k2": plain])
+        let size = try await fixture.backend.canvasSize(comp: "k1")
+        XCTAssertEqual(size.width, 1080); XCTAssertEqual(size.height, 3840)
+        // A null or missing composition background is transparent, as compView makes it, not the project color.
+        for id in ["k1", "k2"] {
+            let view = try JSON.parse(try await fixture.backend.projectViewForTesting(comp: id)) as? [String: Any]
+            XCTAssertEqual(view?["background"] as? String, "transparent", id)
+        }
+        do {
+            _ = try await call(fixture, "/api/frame", ["time": 0, "width": 1080, "comp": "k1"])
+            XCTFail("A free 1080 by 3840 still was saved")
+        } catch let error as ReelBackend.APIError {
+            XCTAssertEqual(error.message, ProExportRule.lockedMessage)
+        }
+        let fitted = try await pngSize(fixture, try await call(fixture, "/api/frame", ["time": 0, "width": 1080, "comp": "k1", "freeFit": true]))
+        XCTAssertEqual(fitted.0, 540); XCTAssertEqual(fitted.1, 1920)
+    }
+
+    /// A script in the app's web view can send any width. With `freeFit` a huge one is refused by
+    /// admission before fitting, instead of trapping in a Double to Int conversion.
+    func testFreeFitRefusesAHugeWidthBeforeFitting() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let fixture = try await fixture(admission(), canvas: (1080, 3840))
+        for width in [3e18, 1e30, -5] as [Double] {
+            do {
+                _ = try await call(fixture, "/api/frame", ["time": 0, "width": width, "freeFit": true])
+                XCTFail("A still \(width) wide was accepted")
+            } catch let error as ReelBackend.APIError {
+                XCTAssertTrue(error.message.hasPrefix("Export supports at most 8192 pixels per edge"), "\(width): \(error.message)")
+            }
+        }
+    }
+
+    /// Save current frame asks for the canvas width. On a 4K canvas a free user saves the 1080p fit
+    /// instead of getting the lock error, and Pro keeps the full canvas.
+    func testFreeSaveCurrentFrameFitsInside1080p() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        for (canvas, expected) in [((3840, 2160), (1920, 1080)), ((2160, 3840), (1080, 1920))] {
+            let fixture = try await fixture(admission(), canvas: canvas)
+            let size = try await fixture.backend.canvasSize(comp: nil)
+            let width = ProExportGate.shared.stillWidth(requested: Int(size.width), canvasWidth: size.width, canvasHeight: size.height)
+            let saved = try await savedStill(fixture, width: width)
+            XCTAssertEqual(saved.0, expected.0, "Free still on \(canvas)"); XCTAssertEqual(saved.1, expected.1, "Free still on \(canvas)")
+        }
+        // A canvas too narrow for an even 1080p fit still gets a width the frame gate allows.
+        let narrow = ProExportGate.shared.stillWidth(requested: 16, canvasWidth: 16, canvasHeight: 7800)
+        XCTAssertTrue(narrow < 16 && ProExportGate.shared.allows(width: Double(narrow), height: Double(narrow) * 7800 / 16, preset: "png", hdr: nil))
+        ProExportGate.shared.setUnlocked(true)
+        XCTAssertEqual(ProExportGate.shared.stillWidth(requested: 3840, canvasWidth: 3840, canvasHeight: 2160), 3840, "Pro keeps the canvas width")
+        ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false)
+        XCTAssertEqual(ProExportGate.shared.stillWidth(requested: 3840, canvasWidth: 3840, canvasHeight: 2160), 3840, "The direct Mac app keeps the canvas width")
+    }
+
+    /// The assistant's reel_frame takes any width from 320 to 1920. On a square canvas a free
+    /// 1200-wide request now fits to 1080 and returns a frame, and the default 960 is unchanged.
+    func testFreeAssistantFrameRequestFitsTheCanvas() async throws {
+        ProExportGate.shared.enforce(true); ProExportGate.shared.setUnlocked(false)
+        defer { ProExportGate.shared.enforce(false); ProExportGate.shared.setUnlocked(false) }
+        let fixture = try await fixture(admission(), canvas: (1080, 1080))
+        let size = try await fixture.backend.canvasSize(comp: nil)
+        for (requested, expected) in [(1200, 1080), (1920, 1080), (960, 960)] {
+            let width = ProExportGate.shared.stillWidth(requested: requested, canvasWidth: size.width, canvasHeight: size.height)
+            let saved = try await savedStill(fixture, width: width)
+            XCTAssertEqual(saved.0, expected, "Request \(requested)"); XCTAssertEqual(saved.1, expected, "Request \(requested)")
+        }
     }
     // END ARYA PRO GATE
     func testHostedExportCancelNeedsDrainAckAndProgressNeverClaimsCompletionEarly() async throws {
