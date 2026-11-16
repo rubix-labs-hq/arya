@@ -12,7 +12,7 @@
 // compensated: sources start early by the latency below them, and the master's latency is
 // absorbed by `when` (live) or trimmed (offline), so timeline time t sounds at `when + t - t0`.
 
-import { clipEnd, compView, gainAt, hasAudio, valueAt } from '/core/project.js'
+import { clipEnd, compDuration, compView, gainAt, hasAudio, valueAt } from '/core/project.js'
 import { host } from '../host.js'
 import { dbToLin, measure as measureChannels, reverbImpulse } from './audio-worklets/dsp.js'
 import { activeFx, chainLatency, DYNAMICS, eqBands, FX_TYPES, fxLatency, fxParams, legacyEqBands, masterChain } from './audio-worklets/fx.js'
@@ -73,22 +73,33 @@ export function planScope(p, A, B, w0, w1, depth = 0) {
     const items = []
     for (const c of track.clips) {
       if (!sounds(p, c, depth)) continue
-      const from = Math.max(w0, A + B * c.start)
-      const to = Math.min(w1, A + B * clipEnd(c))
+      // B is negative inside a reversed composition, so the clip's edges can arrive in either order.
+      const from = Math.max(w0, Math.min(A + B * c.start, A + B * clipEnd(c)))
+      const to = Math.min(w1, Math.max(A + B * c.start, A + B * clipEnd(c)))
       if (!(to > from + 1e-9)) continue
       if (c.kind === 'comp') {
         const s = c.speed > 0 ? c.speed : 1
-        const inner = planScope(compView(p, c.comp), A + B * (c.start - (c.in ?? 0) / s), B / s, from, to, depth + 1)
+        // Comp second tau = in + local * speed, mirrored to len - tau when reversed (compTime in render-plan.js).
+        const len = compDuration(p.comps?.[c.comp])
+        const map = c.reverse ? [A + B * (c.start + (len - (c.in ?? 0)) / s), -B / s] : [A + B * (c.start - (c.in ?? 0) / s), B / s]
+        const inner = planScope(compView(p, c.comp), ...map, from, to, depth + 1)
         if (inner.length) items.push({ kind: 'comp', clip: c, view: p, A, B, from, to, buses: inner })
         continue
       }
       const leaf = leafSource(c)
       if (!leaf || !(leaf.speed > 0)) continue
-      // A source has nothing before its first sample: an angle with a negative offset starts late.
-      const first = leaf.srcIn < 0 ? A + B * (c.start - leaf.srcIn / leaf.speed) : -Infinity
-      const f = Math.max(from, first)
-      if (!(to > f + 1e-9)) continue
-      items.push({ kind: 'leaf', clip: c, view: p, A, B, from: f, to, ...leaf })
+      // A reversed clip reads its source backwards, and a reversed composition (B < 0) flips that again.
+      const reverse = Boolean(c.reverse) !== (B < 0)
+      // A source has nothing before its first sample: an angle with a negative offset is silent until
+      // (forwards) or after (backwards) the moment it reaches source second 0.
+      let f = from, end = to
+      if (leaf.srcIn < 0) {
+        const zero = A + B * (c.start + (c.reverse ? c.dur + leaf.srcIn / leaf.speed : -leaf.srcIn / leaf.speed))
+        if (reverse) end = Math.min(end, zero)
+        else f = Math.max(f, zero)
+      }
+      if (!(end > f + 1e-9)) continue
+      items.push({ kind: 'leaf', clip: c, view: p, A, B, from: f, to: end, reverse, ...leaf })
     }
     if (items.length) buses.push({ track, items })
   }
@@ -114,7 +125,7 @@ export function planLeaves(plan) {
 
 /** Clip-local seconds and source seconds of a plan item at main-timeline time T. */
 export const itemLocal = (item, T) => (T - item.A) / item.B - item.clip.start
-export const itemSource = (item, T) => item.srcIn + itemLocal(item, T) * item.speed
+export const itemSource = (item, T) => item.srcIn + (item.clip.reverse ? item.clip.dur - itemLocal(item, T) : itemLocal(item, T)) * item.speed
 
 /**
  * How a leaf's buffer source plays: the context time it starts (`latency` early, so it is heard
@@ -123,14 +134,14 @@ export const itemSource = (item, T) => item.srcIn + itemLocal(item, T) * item.sp
  * a start before `now` is moved to now and the offset advanced to match.
  */
 export function leafTiming(item, { t0, when, rate = 1, latency = 0, bufferFrom = 0, bufferDur, now = -Infinity }) {
-  const playbackRate = (item.speed / item.B) * rate
+  const playbackRate = Math.abs(item.speed / item.B) * rate
   let at = when + (item.from - t0) / rate - latency
-  // A reversed clip reads its source from the end (source = in + (dur - local) * speed) and plays
-  // a reversed copy of its buffer, whose second r holds source second bufferFrom + bufferDur - r.
-  let offset = item.clip.reverse && bufferDur !== undefined
-    ? bufferFrom + bufferDur - (item.srcIn + (item.clip.dur - itemLocal(item, item.from)) * item.speed)
+  // A backwards leaf (a reversed clip, or a forward clip in a reversed composition) plays a reversed
+  // copy of its buffer, whose second r holds source second bufferFrom + bufferDur - r.
+  let offset = item.reverse && bufferDur !== undefined
+    ? bufferFrom + bufferDur - itemSource(item, item.from)
     : itemSource(item, item.from) - bufferFrom
-  let dur = ((item.to - item.from) * item.speed) / item.B
+  let dur = (item.to - item.from) * Math.abs(item.speed / item.B)
   if (at < now) {
     const skip = (now - at) * playbackRate
     at = now
@@ -548,10 +559,10 @@ export class AudioEngine {
       const got = loaded.get(item)
       if (!got?.buffer) return
       const lat = chainLatency(item.clip.fx, fs)
-      // A reversed clip plays a reversed copy of just the source span it reads.
+      // A backwards leaf plays a reversed copy of just the source span its clip reads.
       const from = item.srcIn - got.from
-      const rev = item.clip.reverse ? reversedBuffer(ctx, got.buffer, from, from + item.clip.dur * item.speed) : null
-      if (item.clip.reverse && !rev) return
+      const rev = item.reverse ? reversedBuffer(ctx, got.buffer, from, from + item.clip.dur * item.speed) : null
+      if (item.reverse && !rev) return
       const buffer = rev?.buffer ?? got.buffer
       const tm = leafTiming(item, { t0, when, rate, latency: down + lat, bufferFrom: rev ? got.from + rev.from : got.from, bufferDur: rev?.dur, now: env.now })
       if (tm.dur <= 1e-6 || tm.offset >= buffer.duration) return

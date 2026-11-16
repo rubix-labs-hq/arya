@@ -218,7 +218,7 @@ test('reversedBuffer copies only the span a reversed clip reads', async () => {
   assert.equal(span.buffer.length, 20, 'two seconds, not the whole source')
   assert.deepEqual([span.from, span.dur], [3, 2])
   // The clip reads source 3 to 5 backwards; at clip time 0.5 s it plays source 4.5 s.
-  const item = { clip: { reverse: true, start: 0, dur: 2 }, srcIn: 3, speed: 1, A: 0, B: 1, from: 0.5, to: 2 }
+  const item = { clip: { reverse: true, start: 0, dur: 2 }, reverse: true, srcIn: 3, speed: 1, A: 0, B: 1, from: 0.5, to: 2 }
   const tm = leafTiming(item, { t0: 0.5, when: 0, bufferFrom: span.from, bufferDur: span.dur })
   assert.ok(Math.abs(span.buffer.getChannelData(0)[Math.round(tm.offset * 10)] - 4.5) < 0.11)
   assert.equal(reversedBuffer(ctx, buffer, 5, 5), null)
