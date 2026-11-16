@@ -363,6 +363,7 @@ public enum ProExportRule {
     public static func fittedWidth(canvasWidth: Double, canvasHeight: Double, longEdge: Double, shortEdge: Double) -> Int? {
         guard canvasWidth.isFinite, canvasHeight.isFinite, canvasWidth > 0, canvasHeight > 0 else { return nil }
         let scale = min(longEdge / max(canvasWidth, canvasHeight), shortEdge / min(canvasWidth, canvasHeight))
+        guard scale.isFinite else { return nil }
         var width = Int((canvasWidth * scale / 2).rounded(.down)) * 2
         while width >= 2 {
             let height = Int((Double(width) * canvasHeight / canvasWidth).rounded())
