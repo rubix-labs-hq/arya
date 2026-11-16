@@ -321,6 +321,10 @@ final class ProPurchaseTests: XCTestCase {
         XCTAssertEqual(gate.stillWidth(requested: 1920, canvasWidth: .infinity, canvasHeight: 16), 1920)
         XCTAssertEqual(gate.stillWidth(requested: 1920, canvasWidth: 16, canvasHeight: .nan), 1920)
         XCTAssertNil(ProExportRule.fittedWidth(canvasWidth: 1e-306, canvasHeight: 3e-306, longEdge: 1920, shortEdge: 1080), "A tiny canvas has no finite fit")
+        for huge in [1e306, 1e308] {
+            let fit = ProExportRule.fittedWidth(canvasWidth: huge, canvasHeight: huge, longEdge: 1920, shortEdge: 1080)
+            XCTAssertTrue(fit.map { $0 <= 1080 && !ProExportRule.requiresPro(width: Double($0), height: Double($0), preset: "h264-high", hdr: nil) } ?? true, "\(huge) square -> \(String(describing: fit))")
+        }
         let tiny = gate.stillWidth(requested: 960, canvasWidth: 1e-306, canvasHeight: 3e-306)
         XCTAssertTrue(tiny > 1 && gate.allows(width: Double(tiny), height: Double(tiny) * 3e-306 / 1e-306, preset: "png", hdr: nil), "tiny canvas -> \(tiny)")
         XCTAssertLessThan(Date().timeIntervalSince(started), 1, "stillWidth spun on a huge canvas")
