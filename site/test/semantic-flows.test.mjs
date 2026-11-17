@@ -146,6 +146,7 @@ test('page copy, metadata and guide artwork follow release and public-source con
       const pages = await generated(config);
       assert.equal(pages.download.includes('The public installer is not ready.'), !releaseReady);
       assert.equal(pages.home.includes('data-direct-download'), releaseReady);
+      assert.doesNotMatch(pages.home, /Mac app \(v(?:null|undefined)\)/);
       assert.equal(pages.support.includes('Private beta by invitation'), !releaseReady);
       assert.equal(pages.support.includes('Mac release available'), releaseReady);
       assert.equal(pages.project.includes('Public source to follow'), !sourcePublic);

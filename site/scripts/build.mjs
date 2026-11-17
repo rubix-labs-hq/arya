@@ -34,7 +34,7 @@ const button = (href, label, style = '') => `<a class="button ${style}" href="${
 const mobileURL = mobileReleaseDestination(config);
 const mobileReady = Boolean(mobileURL);
 const mobile = config.mobileRelease;
-const mobileVersion = mobile?.version || '1.0.5';
+const mobileVersion = mobile?.version;
 const mobileBuild = mobile?.build ? ` (build ${esc(mobile.build)})` : '';
 // Arya Pro copy appears only once the App Store release that sells it is live and the owner sets
 // mobileRelease.pro to the JSON boolean true. Until then every page describes the tip-era release.
@@ -46,7 +46,7 @@ const storeDetails = pro
 const mobileSection = `<section class="edition" aria-labelledby="mobile">
 <h2 id="mobile">App Store</h2>
 <p class="edition-meta">${mobilePlatforms}${mobileReady ? ` · Version ${esc(mobileVersion)}` : ''}</p>
-<p>${mobileReady ? (pro ? proCopy.store : 'Free to edit and export. Optional tips support development.') : (mobile ? `Version ${esc(mobileVersion)}${mobileBuild} is waiting for App Review. It will be free to download once approved.` : 'Public downloads are coming later.')}</p>
+<p>${mobileReady ? (pro ? proCopy.store : 'Free to edit and export. Optional tips support development.') : (mobileVersion ? `Version ${esc(mobileVersion)}${mobileBuild} is waiting for App Review. It will be free to download once approved.` : 'Public downloads are coming later.')}</p>
 <div id="mobile-action">${mobileReady ? button(esc(mobileURL), 'Download on the App Store', 'secondary') : ''}</div>
 ${storeDetails}
 </section>`;

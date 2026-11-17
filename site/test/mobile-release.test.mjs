@@ -161,6 +161,13 @@ test('validated live mobile release enables the conditional App Store CTA and up
   assert.ok(download.includes('Download Arya for Mac'));
 });
 
+test('an unversioned App Store configuration does not invent a release or offer a download', async () => {
+  const { result, pages } = await buildFixture({ ...pending, mobileRelease: { ...pending.mobileRelease, version: null } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(pages.download, /Public downloads are coming later\./);
+  assert.doesNotMatch(pages.download, /waiting for App Review|Download on the App Store/);
+});
+
 test('invalid mobile release readiness or malformed App Store URL fails build closed', async () => {
   // ready is true, but URL is invalid or malformed
   for (const badURL of [

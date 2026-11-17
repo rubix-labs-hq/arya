@@ -82,7 +82,7 @@ export function nativeCaptureNote({ native, shown = null, releaseReady = false, 
   return `Captured from Arya ${native.version} on ${devices}, ${native.captured}, with the ${listed(projects)} sample project${projects.length > 1 ? 's' : ''}.${media ? ` ${media}` : ''}${current}`;
 }
 
-export function productHome({ button, link, faq, stage, shots, figures, native, film = null, releaseURL = null, releaseReady = Boolean(releaseURL), publicSource = null, accessURL = null, browserEditor = null, mobileURL = null, mobileVersion = null, pro = false, contributionsConfigured = false, version = '1.0.0', size = '104 MB', minimumOS = 'macOS 14', architectures = 'Apple silicon and Intel' }) {
+export function productHome({ button, link, faq, stage, shots, figures, native, film = null, releaseURL = null, releaseReady = Boolean(releaseURL), publicSource = null, accessURL = null, browserEditor = null, mobileURL = null, mobileVersion = null, pro = false, contributionsConfigured = false, version = null, size = '104 MB', minimumOS = 'macOS 14', architectures = 'Apple silicon and Intel' }) {
   if (!Array.isArray(shots) || shots.length !== 4 || shots[0].id !== 'edit') throw new Error('The home gallery needs four verified captures, starting with Edit');
   const nativeIds = ['mac-color', 'mac-edit', 'ipad-color', 'iphone-edit', 'mac-color-inspector', 'mac-motion-inspector', 'mac-media-panel', 'ipad-color-inspector', 'iphone-deliver'];
   if (!native?.images || nativeIds.some(id => !native.images[id])) throw new Error('The home page needs every native capture listed in assets/product/native.json');
@@ -280,7 +280,7 @@ ${figure('assistant')}
 </section>
 <section class="editions-section wrap" id="editions" aria-labelledby="editions-heading">
 <div class="section-head"><h2 id="editions-heading">What works where.</h2><p>Arya runs as a native Mac app, a local browser editor run from source, and a hosted browser preview at <code>/editor/</code>. The hosted preview keeps projects in browser storage and exports H.264, HEVC, WAV and AAC up to five minutes.</p></div>
-<div class="table-wrap" tabindex="0" role="region" aria-label="What works in each Arya edition"><table class="editions-table" role="table"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Capability</th><th scope="col" role="columnheader">Mac app (v${version})</th><th scope="col" role="columnheader">Local browser editor (from source)</th><th scope="col" role="columnheader">Hosted browser editor (/editor/)</th></tr></thead><tbody role="rowgroup">${whatWorksWhere}</tbody></table></div>
+<div class="table-wrap" tabindex="0" role="region" aria-label="What works in each Arya edition"><table class="editions-table" role="table"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Capability</th><th scope="col" role="columnheader">Mac app${releaseReady ? ` (v${version})` : ''}</th><th scope="col" role="columnheader">Local browser editor (from source)</th><th scope="col" role="columnheader">Hosted browser editor (/editor/)</th></tr></thead><tbody role="rowgroup">${whatWorksWhere}</tbody></table></div>
 </section>
 <section class="switching wrap" id="switch" aria-labelledby="switch-heading">
 <div class="section-head"><h2 id="switch-heading">Bring your timeline with you.</h2><p>Move timelines with FCPXML or OpenTimelineIO, and captions with SRT or WebVTT. This is what carries over from the tool you use now, and what does not yet.</p></div>
