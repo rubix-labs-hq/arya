@@ -188,3 +188,11 @@
 @media (max-width: 1100px) {
   .mo-upper { grid-template-columns: minmax(180px, 24%) 1fr minmax(200px, 26%); }
 }
+
+.page.motion .mo-tools > :is(.seg, .mo-swatch) { flex: none; }
+.page.motion .mo-tools { max-height: 35%; overflow: auto; }
+.mo-comp-text { overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .mo-upper { grid-template-columns: minmax(148px, 23%) minmax(0, 1fr) minmax(158px, 24%); }
+  .mt-bar { flex-wrap: wrap; }
+}

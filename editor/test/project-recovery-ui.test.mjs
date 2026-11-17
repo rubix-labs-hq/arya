@@ -7,7 +7,8 @@ import { createRequire } from 'node:module'
 import test from 'node:test'
 import { createRecoveryController, openProjectRecovery } from '../web/ui/project-recovery.js'
 import { assistantDraft, assistantDraftContext, assistantDraftIsCurrent } from '../web/ui/assistant-script.js'
-import { assistantPrompt } from '../web/ui/assistant-state.js'
+import { assistantPrompt, assistantState } from '../web/ui/assistant-state.js'
+import { assistantActivity } from '../web/ui/assistant-activity.js'
 
 const family = '11111111-1111-4111-8111-111111111111', copyID = '22222222-2222-4222-8222-222222222222'
 const listing = patch => ({ protocol: 1, familyID: family, version: 7, rootIdentity: { device: '1', inode: '2' }, observed: { status: 'invalid', token: 'a'.repeat(64), writable: true }, snapshots: [{ id: copyID, host: 'browser', name: 'Saved project', createdAt: '2026-10-04T00:00:00Z', bytes: 900, sha256: 'c'.repeat(64) }], preservedOriginals: 0, warning: null, ...patch })
@@ -180,7 +181,7 @@ const nodes = (value, output = []) => { if (Array.isArray(value)) value.forEach(
 const nodeText = node => [node.props.children].flat(Infinity).filter(value => typeof value === 'string').join('')
 function shell(status, kind = 'http', history) {
   const store = { project: null, version: 7, root: '/selected', recovery: { status, history }, jobs: [], claude: { state: 'idle' }, refs: [] }, requests = [], opened = []
-  const context = vm.createContext({ html: htm.bind(h), h, Icon, store, host: { kind }, useStore: () => store, useState: value => [value, () => {}], useRef: value => ({ current: value }), showRecovery: () => opened.push(true), api: async route => { requests.push(route); return {} }, set: value => Object.assign(store, value), toast() {}, PAGES: [], registry: { pages: [] }, ScrollTabs() {}, LayoutMenu() {} })
+  const context = vm.createContext({ html: htm.bind(h), h, Icon, assistantState, assistantActivity, store, host: { kind }, useStore: () => store, useState: value => [value, () => {}], useRef: value => ({ current: value }), showRecovery: () => opened.push(true), api: async route => { requests.push(route); return {} }, set: value => Object.assign(store, value), toast() {}, PAGES: [], registry: { pages: [] }, ScrollTabs() {}, LayoutMenu() {} })
   vm.runInContext(storeSource.match(/export function chatHistoryStatus\([^]*?\n}\n/)[0].replace('export ', ''), context)
   for (const name of ['Welcome', 'TopBar']) vm.runInContext(app.match(new RegExp(`function ${name}\\([^]*?\\n}\\n`))[0], context)
   return { context, store, requests, opened }

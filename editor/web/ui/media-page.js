@@ -15,7 +15,7 @@ function Details() {
   const s = useStore()
   const src = s.source?.src
   const a = src ? s.project.assets[src] : null
-  if (!a) return html`<div class="empty-hint">Click a clip in the media list to see its format, codec and audio.</div>`
+  if (!a) return html`<div class="empty-hint">Select media to see its file details and analysis tools.</div>`
   const rows = [
     ['File', src],
     ['Duration', a.duration ? timecode(a.duration, Math.round(a.fps || 30)) : 'still'],

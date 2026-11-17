@@ -67,7 +67,7 @@ test('tool panel actions read as buttons, and Deliver presets take one line each
   assert.match(css, /\.deliver-preset > \.muted \{ flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;/)
   const deliver = read('ui/deliver.js')
   assert.match(deliver, /title=\$\{`\$\{pr\.name\}: \$\{detail\}`\}/)
-  assert.match(deliver, /Nothing rendered yet\. Choose a preset, then press Render\./)
+  assert.match(deliver, /The queue is empty\. Select Render to add a job\./)
 })
 
 test('narrow inspectors keep numeric fields and keyframe buttons on one line', () => {

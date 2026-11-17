@@ -81,7 +81,7 @@ export function Toolbar() {
   const group = (tools, label) => html`<div class="seg tools" role="group" aria-label=${label}>${tools.map(([k, icon, title]) => html`<${ToolButton} key=${k} id=${k} icon=${icon} title=${title} active=${s.tool === k} />`)}</div>`
 
   return html`
-    <div class="tl-toolbar">
+    <div class="tl-toolbar" role="group" aria-label="Timeline tools">
       <${Breadcrumb} />
       ${group(TOOLS, 'Edit tools')}
       ${plugins.length ? group(plugins, 'Drawing and tracking tools') : null}

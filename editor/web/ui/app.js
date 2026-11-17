@@ -99,7 +99,7 @@ function TopBar() {
       <span class="topbar-sep" aria-hidden="true"></span>
       <div class="topbar-utility"><${LayoutMenu} /></div>` : null}
       ${host.kind === 'http' ? html`<button class="ghost recovery-entry" aria-haspopup="dialog" disabled=${s.assistantSharingReviewOpen === true} title=${s.recovery?.warning ?? 'Review verified saved project copies'} onClick=${() => openActionDialog(showRecovery)}>Recovery</button>` : null}
-      <button class="ghost topbar-utility" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick=${() => set({ showKeys: !s.showKeys })}><${Icon} name="keyboard" /><span class="action-label">Shortcuts</span></button>
+      <button class="ghost topbar-utility" aria-label="Keyboard shortcuts" aria-haspopup="dialog" title="Keyboard shortcuts (?)" onClick=${() => openActionDialog(() => set({ showKeys: !s.showKeys }))}><${Icon} name="keyboard" /><span class="action-label">Shortcuts</span></button>
       <button class="ghost settings-entry" aria-haspopup="dialog" title="Settings (⌘,)" disabled=${s.assistantSharingReviewOpen === true} onClick=${() => openActionDialog(() => set({ settingsOpen: true }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"/><circle cx="12" cy="12" r="3"/></svg><span class="action-label">Settings</span></button>
       <button type="button" class="ghost compact-actions-done" onClick=${closeActions}>Close actions</button>
       </div></div>
@@ -211,11 +211,12 @@ function Welcome() {
     <div class="welcome">
       <div class="welcome-card">
         <div class="brand big"><img src="/assets/brand/wordmark.svg" alt="Arya" width="166" height="77" /></div>
-        <p>${host.kind === 'browser-local' ? 'Create a project, import your own footage, edit it and download the finished export. Projects and media stay in this browser. The AI assistant, Figma import and transcription need the Mac app or the local editor.' : 'A video editor you can direct.'}${host.kind === 'browser-local' ? '' : (s.assistantStatus ?? s.caps?.assistant)?.configured ? ' Edit by hand on the timeline, or ask your connected assistant to work with the current selection and references. Review its changes with undo.' : ' Edit by hand on the timeline, or connect an assistant (optional) to work with the current selection and references. Review its changes with undo.'}</p>
+        <h1>Start a project</h1>
+        <p>${host.kind === 'browser-local' ? 'Choose a format. Your project and media stay in this browser.' : 'Choose a format, then add footage to your timeline.'}</p>
         ${needsRecovery ? html`<p role="alert">The project file could not be opened. Preserve its original and choose a verified recovery copy, or repair the file and refresh recovery.</p>` : missing ? html`<p>The project file is missing. You can recover a saved copy or create a new project.</p>` : null}
-        ${host.kind === 'http' && !fresh ? html`<button class="ghost" aria-haspopup="dialog" disabled=${s.assistantSharingReviewOpen === true} onClick=${showRecovery}>Choose a recovery copy</button>` : null}
+        ${host.kind === 'http' && !fresh ? html`<button class="ghost welcome-recovery" aria-haspopup="dialog" disabled=${s.assistantSharingReviewOpen === true} onClick=${showRecovery}>Choose a recovery copy</button>` : null}
         ${s.recovery?.warning ? html`<p role="status">${s.recovery.warning}</p>` : null}
-        <div class="row gap">
+        <div class="welcome-formats" role="group" aria-label="Project format">
           <button class="primary" disabled=${busy || needsRecovery} onClick=${() => start({ name: 'Untitled' })}>New 1080p project</button>
           <button class="ghost" disabled=${busy || needsRecovery} onClick=${() => start({ name: 'Vertical', width: 1080, height: 1920 })}>New 9:16 project</button>
           <button class="ghost" disabled=${busy || needsRecovery} onClick=${() => start({ name: '4K UHD', width: 3840, height: 2160 })}>New 4K UHD project</button>
@@ -228,20 +229,36 @@ function Welcome() {
 }
 
 function KeysSheet() {
+  const close = useRef(null), list = useRef(null)
+  useEffect(() => {
+    const opener = document.activeElement
+    close.current?.focus()
+    return () => { if (opener?.getClientRects().length) opener.focus() }
+  }, [])
+  const keyboard = event => {
+    if (event.key === 'Escape' || event.key === '?') return
+    event.stopPropagation()
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      if (document.activeElement === close.current) list.current?.focus()
+      else close.current?.focus()
+    }
+  }
   return html`
     <div class="modal-back" onClick=${() => set({ showKeys: false })}>
-      <div class="modal keys" onClick=${e => e.stopPropagation()}>
-        <h3>Keyboard</h3>
-        <div class="keys-grid">${SHORTCUTS.map(([k, d]) => html`<kbd>${k}</kbd><span>${d}</span>`)}</div>
-      </div>
+      <section class="modal keys" role="dialog" aria-modal="true" aria-labelledby="keyboard-title" onClick=${e => e.stopPropagation()} onKeyDown=${keyboard}>
+        <header><h3 id="keyboard-title">Keyboard shortcuts</h3><button ref=${close} class="ghost" aria-label="Close keyboard shortcuts" onClick=${() => set({ showKeys: false })}><${Icon} name="close" /></button></header>
+        <ul class="keys-grid" tabIndex="0" aria-label="Shortcut list" ref=${list}>${SHORTCUTS.map(([key, description]) => html`<li><kbd>${key}</kbd><span>${description}</span></li>`)}</ul>
+      </section>
     </div>
   `
 }
 
 function Toasts() {
   const s = useStore()
-
-  return html`<div class="toasts">${s.toasts.map(t => html`<div class=${`toast ${t.kind}`} key=${t.id}>${t.text}</div>`)}</div>`
+  return html`<div class="toasts" aria-live="polite">${s.toasts.map(t => html`<div class=${`toast ${t.kind}`} key=${t.id}>
+    <span class="toast-symbol" aria-hidden="true">${t.kind === 'error' ? '!' : '•'}</span><span>${t.text}</span>
+  </div>`)}</div>`
 }
 
 function App() {

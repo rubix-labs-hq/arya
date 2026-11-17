@@ -73,7 +73,9 @@
 @media (max-width: 480px) {
   /* <picture> in the top bar switches to the cut-A mark here. */
   .topbar .brand img { width: 24px; height: 24px; }
-  .topbar-actions .claude-btn { font-size: 0; gap: 0; min-width: 40px; justify-content: center; }
-  .topbar-actions .claude-btn .ico { width: 18px; height: 18px; }
-  .topbar-actions .claude-btn .count { font-size: 11px; margin-left: 4px; }
 }
+
+/* A single swipeable tool row leaves more height for clips on the phone timeline. */
+.page.phone-edit .tl-toolbar { flex-wrap: nowrap; gap: 6px; padding-bottom: 5px; scrollbar-width: thin; }
+.page.phone-edit .tl-toolbar > button { min-width: 44px; min-height: 44px; }
+.page.phone-edit .tl-toolbar .grow { flex: none; width: 0; }

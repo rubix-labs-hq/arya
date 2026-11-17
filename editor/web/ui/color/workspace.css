@@ -140,3 +140,9 @@
 @media (max-height: 520px) {
   .page.color .color-head { position: static; }
 }
+
+@media (max-width: 720px) {
+  .page.color .color-side { height: 262px; grid-template-rows: minmax(118px, 1fr) minmax(118px, 1fr); }
+  .page.color .color-bottom { max-height: none; }
+  .page.color .palette-tabs { scrollbar-width: thin; }
+}

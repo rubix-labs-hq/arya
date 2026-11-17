@@ -7,12 +7,12 @@ import htm from 'htm'
 const media = fs.readFileSync(new URL('../web/ui/media-page.js', import.meta.url), 'utf8')
 const transcript = fs.readFileSync(new URL('../web/ui/transcript.js', import.meta.url), 'utf8')
 
-test('Details with nothing selected says what to click', () => {
+test('Details with nothing selected explains how to see file details', () => {
   const body = media.slice(media.indexOf('function Details()'), media.indexOf('export function MediaPage'))
   const Details = new Function('html', 'useStore', 'timecode', 'analyzeMenu', `${body}\nreturn Details`)(htm.bind(h), () => ({ source: null, project: { assets: {} }, caps: {} }), () => '', () => [])
   const tree = Details()
   assert.equal(tree.props.class, 'empty-hint')
-  assert.equal(tree.props.children, 'Click a clip in the media list to see its format, codec and audio.')
+  assert.equal(tree.props.children, 'Select media to see its file details and analysis tools.')
 })
 
 test('an empty transcript shows one next step, and the import details sit in the disclosure', () => {

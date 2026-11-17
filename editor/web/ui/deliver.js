@@ -95,15 +95,30 @@ export function DeliverPage() {
     }
   }
 
+  const choosePreset = preset => { setChoice(preset); setWidth(null) }
+  const presetDetail = preset => {
+    if (!native) return preset.note
+    if (preset.preset === 'audio-wav') return '16-bit stereo mix'
+    return preset.preset.startsWith('audio') ? 'AAC stereo mix' : 'WebCodecs encode with AAC stereo'
+  }
+
   return html`
     <div class="page deliver">
       <div class="panel deliver-settings">
         <h3>Render settings</h3>
         ${composition ? html`<div class="hint">Exporting composition: <b>${composition.name}</b></div>` : null}
+        <label class="deliver-preset-picker">
+          <span>Preset</span>
+          <select value=${choice.id} onChange=${event => {
+            const preset = presets.find(item => item.id === event.target.value)
+            if (preset) choosePreset(preset)
+          }}>${presets.map(preset => html`<option value=${preset.id}>${preset.name}</option>`)}</select>
+          <small class="muted">${presetDetail(choice)}</small>
+        </label>
         <div class="preset-list">
           ${presets.map(pr => {
-            const detail = native ? pr.preset === 'audio-wav' ? '16-bit stereo mix' : pr.preset.startsWith('audio') ? 'AAC stereo mix' : 'WebCodecs encode with AAC stereo' : pr.note
-            return html`<button type="button" class=${`deliver-preset ${choice.id === pr.id ? 'on' : ''}`} aria-pressed=${choice.id === pr.id} title=${`${pr.name}: ${detail}`} onClick=${() => (setChoice(pr), setWidth(null))}><b>${pr.name}</b><span class="muted">${detail}</span></button>`
+            const detail = presetDetail(pr)
+            return html`<button type="button" class=${`deliver-preset ${choice.id === pr.id ? 'on' : ''}`} aria-pressed=${choice.id === pr.id} title=${`${pr.name}: ${detail}`} onClick=${() => choosePreset(pr)}><b>${pr.name}</b><span class="muted">${detail}</span></button>`
           })}
         </div>
         <div class="field"><label>File name</label><input value=${name} onInput=${e => setName(e.target.value)} onKeyDown=${e => e.stopPropagation()} /></div>
@@ -127,7 +142,7 @@ export function DeliverPage() {
       <div class="panel deliver-queue">
         <h3>Render queue</h3>
         ${requestPending ? html`<div class="hint" role="status" aria-live="polite">${renderRequest.phase === 'stale-pending' ? 'A render request for the previous timeline is still waiting for confirmation. Wait for confirmation before starting another.' : 'Preparing the render. Waiting for confirmation.'}</div>` : null}
-        ${!requestPending && exportJobs.length === 0 ? html`<div class="empty-hint">Nothing rendered yet. Choose a preset, then press Render.</div>` : null}
+        ${!requestPending && exportJobs.length === 0 ? html`<div class="empty-hint">The queue is empty. Select Render to add a job.</div>` : null}
         ${[...exportJobs].reverse().map(j => html`
           <div class=${`job ${j.state}`}>
             <div class="job-name"><b>${(j.output ?? j.spec?.out ?? '').split('/').pop()}</b><span class="muted">${j.spec?.preset} · ${j.spec?.width}×${j.spec?.height}</span></div>
