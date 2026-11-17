@@ -167,7 +167,12 @@ struct ReelMacApp: App {
 
     private func launch() {
         NSApp.setActivationPolicy(.regular)
+        #if DEBUG
+        // Screenshot runs launch in the background so they never take focus from the person at the Mac.
+        if !CommandLine.arguments.contains("--no-activate") { NSApp.activate(ignoringOtherApps: true) }
+        #else
         NSApp.activate(ignoringOtherApps: true)
+        #endif
         appDelegate.installTextCommandGuard(session: session)
         #if DEBUG
         Automation.start(session) { NSApp.terminate(nil) }

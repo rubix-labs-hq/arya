@@ -134,6 +134,11 @@ struct ReelIOSApp: App {
                     NativeMobileExport.shared.attach(session)
                     #if DEBUG
                     Automation.start(session) {}
+                    switch Automation.value("--present") {
+                    case "pro": presentation.presentSheet(.support)
+                    case "assistantSettings": presentation.presentSheet(.assistantSettings)
+                    default: break
+                    }
                     NativeEditorSmoke.start(session) {}
                     #endif
                 }

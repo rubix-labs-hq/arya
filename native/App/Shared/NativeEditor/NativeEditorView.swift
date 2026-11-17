@@ -482,6 +482,11 @@ struct NativeEditorView: View {
         }
         #endif
         .background { mediaImportPresentation() }
+        #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: Automation.presentNotification)) { note in
+            if note.object as? String == "settings" { settingsVisible = true }
+        }
+        #endif
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.requestFrame() } else { model.releasePreview() } }
         .onChange(of: session.projectReadOnlyReason) { old, next in if old != nil && next == nil { model.projectWritable() } }
         .onDisappear { model.discardRenderPreview(); model.pause(); model.pauseSource() }

@@ -170,6 +170,9 @@ final class NativeAssistant: ObservableObject {
     @Published private(set) var suggestions: [NativeAssistantSuggestion] = []
     /// The pending preview no longer matches the open project, checked by backend, version and text.
     @Published private(set) var proposalStale = false
+    #if DEBUG
+    private(set) var fixtureMode = false
+    #endif
     private var previewRunID: UUID?
     private var runBaseline: (id: UUID, project: String, version: Int)?
     // END ASSISTANT PREVIEW STATE
@@ -648,6 +651,9 @@ final class NativeAssistant: ObservableObject {
 
     #if os(macOS)
     func checkSavedConnection() async {
+        #if DEBUG
+        if fixtureMode { return }
+        #endif
         guard task == nil, stoppingTask == nil, !checking, !Task.isCancelled else { return }
         guard credentialRecoveryKeys.isEmpty else { refreshConfiguration(); return }
         hasRequestedCredentialAccess = true
@@ -669,6 +675,9 @@ final class NativeAssistant: ObservableObject {
     #endif
 
     func refreshStatus(refresh: Bool = false, access: NativeCredentialReadAccess = .passive) async {
+        #if DEBUG
+        if fixtureMode { return }
+        #endif
         #if os(macOS)
         guard hasRequestedCredentialAccess else { refreshConfiguration(); return }
         guard !checking else { return }
@@ -1175,6 +1184,9 @@ final class NativeAssistant: ObservableObject {
     }
 
     func send(_ text: String, refs: Any? = nil, inputKind: String? = nil) throws {
+        #if DEBUG
+        if fixtureMode { throw ReelBackend.APIError("This is a debug fixture. Sending is off.") }
+        #endif
         if let inputKind, !["prompt", "script", "screenplay"].contains(inputKind) { throw Assistant.Failure.invalidPrompt }
         refreshConfiguration()
         guard configured else { throw ReelBackend.APIError(reason) }
@@ -1341,6 +1353,9 @@ final class NativeAssistant: ObservableObject {
     }
 
     private func refreshConfiguration() {
+        #if DEBUG
+        if fixtureMode { return }
+        #endif
         guard credentialRecoveryKeys.isEmpty else {
             configured = false; reason = AssistantCredentialTransaction.Failure.rollbackFailed.localizedDescription
             return
@@ -3493,6 +3508,37 @@ extension NativeAssistant {
     }
 
     #if DEBUG
+    /// Debug builds: shows a display-only conversation for screenshots. Nothing is sent or saved,
+    /// and account checks stop changing the state while it is shown.
+    func stageFixtureConversation(_ kind: String) async {
+        for _ in 0..<100 where historyBackend == nil || historyBackend !== session?.backend { try? await Task.sleep(for: .milliseconds(100)) }
+        fixtureMode = true
+        let now = (Date().timeIntervalSince1970 * 1000).rounded(.down)
+        func row(_ role: String, _ text: String, _ refs: Any? = nil) -> JSON {
+            JSON(any: ["role": role, "text": text, "provider": provider, "at": now, "refs": refs ?? NSNull()] as [String: Any])
+        }
+        if kind == "setup" {
+            configured = false
+            reason = "Choose your signed-in subscription agent in Assistant settings."
+            return
+        }
+        configured = true
+        chat = [
+            row("you", "Tighten the opening and add a title over the first clip.", ["clip": "c1", "clips": ["c1"], "inputKind": "prompt"]),
+            row("assistant", "I trimmed the first 0.8 seconds of clip.mp4 so it starts on movement, and added a Launch day title from 1 s to 5 s on Video 2. Undo removes both changes together."),
+            row("you", "Make the title rise in more slowly."),
+        ]
+        if kind == "working" {
+            state = "working"; startedAt = Date().addingTimeInterval(-14); updatedAt = Date(); finishedAt = nil
+            progress = "Updating the title animation"
+            partialReply = "I'm lengthening the rise on the Launch day title to 1.2 seconds"
+        } else {
+            chat.append(row("assistant", "Done. The title now rises over 1.2 seconds instead of 0.5."))
+            state = "done"; startedAt = Date().addingTimeInterval(-21); finishedAt = Date(); updatedAt = finishedAt
+            outcome = "Changed 1 layer."
+        }
+    }
+
     /// Debug builds: stages a preview from a JSON body through the agent's own path, so the
     /// card can be checked without a model request.
     func stageFixtureProposal(_ body: String) async {
