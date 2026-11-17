@@ -44,7 +44,7 @@ struct NativeGettingStartedView: View {
                 #else
                 if NativeChatGPT.supported {
                     section("Connect ChatGPT when you need it", [
-                        "Open the Assistant, or Settings then Assistant accounts, and choose Continue with ChatGPT. Sign in on the OpenAI page that opens. Arya uses eligible requests from your ChatGPT plan or credits balance, subject to your account's usage limits.",
+                        "Choose Ask Arya, or Settings then Assistant accounts, and choose Continue with ChatGPT. Sign in on the OpenAI page that opens. Arya uses eligible requests from your ChatGPT plan or credits balance, subject to your account's usage limits.",
                         "Choose an available model and review what you share before your first request. Nothing else needs to be installed. You can manage usage or sign out in the same settings."
                     ])
                 }

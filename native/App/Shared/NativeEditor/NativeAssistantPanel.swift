@@ -5,83 +5,110 @@ import UniformTypeIdentifiers
 enum NativeAssistantLayout {
     struct Regions {
         let header: Double
-        let chat: Double
-        let composer: Double
-        let footer: Double
+        let history: Double
+        let context: Double
         let editor: Double
-        let separator: Double
-    }
-
-    static func segmentedInput(width: Double, accessibilityText: Bool) -> Bool { width >= 400 && !accessibilityText }
-
-    static func stackedFooter(width: Double, actionHeight: Double, accessibilityText: Bool) -> Bool {
-        accessibilityText || width < 280 * max(1, actionHeight / 44)
-    }
-
-    static func footerBudget(actionHeight: Double, stacked: Bool, working: Bool) -> Double {
-        actionHeight * (stacked ? 2 : 1) + (stacked ? 24 : 16)
-    }
-
-    struct FooterRegions {
-        let activity: Double
         let actions: Double
-        let gap: Double
-    }
-
-    /// Give actions their own viewport; preserve intrinsic targets inside its scroll content.
-    static func footerRegions(height: Double, actionHeight: Double, hasRun: Bool) -> FooterRegions {
-        let height = height.isFinite ? max(0, height) : 0
-        let actionHeight = actionHeight.isFinite ? max(0, actionHeight) : 0
-        let actions = min(height, actionHeight + 16)
-        let remaining = max(0, height - actions)
-        let gap = hasRun ? min(8, remaining) : 0
-        return FooterRegions(activity: hasRun ? remaining - gap : 0, actions: actions, gap: gap)
-    }
-
-    struct CompactRegions {
-        let header: Double
-        let content: Double
-        let footer: Double
         let separator: Double
     }
 
-    static func compactComposer(width: Double, compactSizeClass: Bool) -> Bool {
-        compactSizeClass || !width.isFinite || width < 600
+    /// Large text or a narrow pane puts Send or Stop on its own row, above the model menu.
+    static func stackedActions(width: Double, actionHeight: Double, accessibilityText: Bool) -> Bool {
+        accessibilityText || !width.isFinite || width < 300 * max(1, actionHeight / 44)
     }
 
-    /// Keep the draft first and reserve a scrollable action row when the keyboard shortens the pane.
-    static func compactRegions(height: Double, requestedFooter: Double) -> CompactRegions {
-        let height = height.isFinite ? max(0, height) : 0
-        let requestedFooter = requestedFooter.isFinite ? max(0, requestedFooter) : 0
-        let header = min(height, 44)
-        let separator = min(1, max(0, height - header) / 2)
-        let available = max(0, height - header - 2 * separator)
-        let footer = min(requestedFooter, available * 0.4)
-        return CompactRegions(header: header, content: available - footer, footer: footer, separator: separator)
+    /// The composer's action rows, their spacing and the scroll content's vertical padding.
+    static func actionBudget(actionHeight: Double, stacked: Bool) -> Double {
+        let actionHeight = actionHeight.isFinite ? max(0, actionHeight) : 0
+        return actionHeight * (stacked ? 2 : 1) + (stacked ? 8 : 0) + 16
     }
 
-    static func compactEditorHeight(contentHeight: Double, actionHeight: Double) -> Double {
-        let contentHeight = contentHeight.isFinite ? max(0, contentHeight) : 0
-        let actionHeight = actionHeight.isFinite ? max(44, actionHeight) : 44
-        return min(150, max(80, contentHeight - actionHeight - 42))
+    /// The draft grows with its lines, from two lines to about seven, then scrolls.
+    static func preferredEditorHeight(text: String, width: Double, lineHeight: Double) -> Double {
+        let lineHeight = lineHeight.isFinite ? max(10, lineHeight) : 17
+        let width = width.isFinite ? max(40, width) : 240
+        let perLine = max(8, width / (lineHeight * 0.5))
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .reduce(0.0) { $0 + max(1, (Double($1.count) / perLine).rounded(.up)) }
+        return min(lineHeight * 7 + 24, max(lineHeight * 2 + 24, lines * lineHeight + 24))
     }
 
-    /// Pin actions; scroll their viewport too if scaled actions exceed a short pane.
-    static func regions(height: Double, controlHeight: Double, requestedFooter: Double? = nil) -> Regions {
-        let height = height.isFinite ? max(0, height) : 0
-        let controlHeight = controlHeight.isFinite ? max(0, controlHeight) : 0
-        let header = min(height, controlHeight)
-        let separator = min(1, max(0, height - header) / 2)
-        let afterHeader = max(0, height - header - 2 * separator)
-        let requested = requestedFooter ?? controlHeight + 12
-        // Leave usable history and drafting viewports even with large working actions.
-        let retainedContent = min(104, afterHeader * 0.6)
-        let footer = min(afterHeader - retainedContent, max(0, requested.isFinite ? requested : controlHeight + 12))
-        let available = afterHeader - footer
-        let composer = min(246, available * 0.65)
-        let chat = available - composer
-        return Regions(header: header, chat: chat, composer: composer, footer: footer,
-                       editor: min(150, max(80, composer - 112)), separator: separator)
+    /// Send and Stop are reserved first so they stay reachable, then the context chips and the
+    /// draft. History takes the rest. Every region scrolls inside its own bounds, so the parts
+    /// always add up to the pane height and a run starting or ending never moves the composer.
+    static func regions(height: Double, header: Double, actions: Double, context: Double, preferredEditor: Double) -> Regions {
+        func clean(_ value: Double) -> Double { value.isFinite ? max(0, value) : 0 }
+        let height = clean(height)
+        let header = min(height, clean(header))
+        let separator = min(1, (height - header) / 2)
+        let body = height - header - 2 * separator
+        // Leave history and the draft usable before the actions take their full rows.
+        let retained = min(120, body * 0.55)
+        let actions = min(clean(actions), body - retained)
+        var rest = body - actions
+        let context = min(clean(context), rest * 0.25)
+        rest -= context
+        let editor = min(max(44, clean(preferredEditor)), rest * 0.6)
+        return Regions(header: header, history: rest - editor, context: context, editor: editor, actions: actions, separator: separator)
+    }
+}
+
+/// The one labelled way into the assistant: it reads like the start of a request and shows
+/// whether the assistant is ready, working or still needs setup.
+struct NativeAssistantEntry: View {
+    @ObservedObject var assistant: NativeAssistant
+    let open: Bool
+    /// A phone header: a 44-point target and no status text beside the label.
+    var phone = false
+    /// Wide Mac windows show the keyboard shortcut inside the control.
+    var shortcut = false
+    let action: () -> Void
+
+    private var statusText: String {
+        if assistant.state == "cancelling" { return "Stopping" }
+        if assistant.isWorking { return "Working" }
+        if assistant.proposal != nil { return "Preview ready" }
+        if !assistant.configured { return "Set up" }
+        return "Ready"
+    }
+
+    private var dot: Color {
+        if assistant.isWorking || assistant.proposal != nil { return NativeEditorStyle.accent }
+        return assistant.configured ? NativeEditorStyle.success : NativeEditorStyle.muted
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if assistant.isWorking {
+                    ProgressView().controlSize(.small).frame(width: 16, height: 16)
+                } else {
+                    Image(systemName: "text.bubble").overlay(alignment: .topTrailing) {
+                        Circle().fill(dot).frame(width: 6, height: 6)
+                            .overlay { Circle().stroke(NativeEditorStyle.background, lineWidth: 1) }
+                            .offset(x: 3, y: -2)
+                    }
+                }
+                Text("Ask Arya").fontWeight(.medium).lineLimit(1).fixedSize()
+                if !phone && statusText != "Ready" {
+                    Text(statusText).font(.caption).foregroundStyle(NativeEditorStyle.muted).lineLimit(1).fixedSize()
+                }
+                if shortcut {
+                    Text("⌥⌘A").font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize()
+                }
+            }
+            .padding(.horizontal, phone ? 12 : 10)
+            .frame(minHeight: phone ? 44 : 30)
+            .background(Capsule().fill(open ? NativeEditorStyle.selectionFill : NativeEditorStyle.background))
+            .overlay { Capsule().stroke(open ? NativeEditorStyle.accent.opacity(0.55) : NativeEditorStyle.line) }
+            .foregroundStyle(open ? NativeEditorStyle.accent : NativeEditorStyle.text)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Ask Arya")
+        .accessibilityValue("\(open ? "Open" : "Closed"), \(statusText)")
+        .accessibilityHint("Opens the assistant with the request field ready.")
+        .help(open ? "Hide the assistant (⌥⌘A)" : "Ask Arya to edit or explain (⌥⌘A)")
     }
 }
 
@@ -120,43 +147,70 @@ struct NativeAssistantPanel: View {
     @ObservedObject private var chatGPT = NativeChatGPTAccount.shared
     var openSettings: (() -> Void)?
     var close: (() -> Void)?
+    /// Set by the Ask Arya entry. The panel focuses the draft once and clears it, so restoring a
+    /// saved layout or a programmatic page change never takes the keyboard.
+    var focusRequest: Binding<Bool> = .constant(false)
+    /// Presented as the phone sheet, whose navigation bar carries the title and settings.
+    var inSheet = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @FocusState private var draftFocused: Bool
     #endif
+    @FocusState private var draftFocused: Bool
     @ScaledMetric(relativeTo: .body) private var scaledActionHeight = 44.0
     private var actionHeight: Double { max(44, scaledActionHeight) }
     @ScaledMetric(relativeTo: .caption) private var activityFontSize = 11.0
+    @ScaledMetric(relativeTo: .caption) private var scaledChipHeight = 26.0
+    @ScaledMetric(relativeTo: .body) private var editorLineHeight = Self.touch ? 22.0 : 17.0
     @State private var reviewingSharing = false
     @State private var settings = false
     @State private var scriptImportContext: NativeScriptImportContext?
     @State private var scriptImportRequestID: UUID?
     @State private var inspectedReceipt: NativeChangeReceipt?
     @State private var inspectedReferences: NativeAssistantReferenceInspection?
+    @State private var activityExpanded = false
+    @State private var signingIn = false
+    @State private var setupNotice: String?
+
+    private var chipHeight: Double { Self.touch ? actionHeight : max(26, scaledChipHeight) }
+    private var headerHeight: Double { max(Double(NativeEditorStyle.minimumControlHeight), Self.touch ? actionHeight : 0) }
 
     var body: some View {
         GeometryReader { geometry in
-            let stackedFooter = NativeAssistantLayout.stackedFooter(width: geometry.size.width, actionHeight: actionHeight, accessibilityText: dynamicTypeSize.isAccessibilitySize)
-            let hasRun = assistant.startedAt != nil
-            let actionBudget = NativeAssistantLayout.footerBudget(actionHeight: actionHeight, stacked: stackedFooter, working: assistant.isWorking)
-            let footerBudget = actionBudget + (hasRun ? 68 * max(1, activityFontSize / 11) : 0)
-            let regions = NativeAssistantLayout.regions(height: geometry.size.height, controlHeight: NativeEditorStyle.minimumControlHeight, requestedFooter: footerBudget)
-            let footerRegions = NativeAssistantLayout.footerRegions(height: regions.footer, actionHeight: actionBudget - 16, hasRun: hasRun)
-            #if os(iOS)
-            if NativeAssistantLayout.compactComposer(width: geometry.size.width, compactSizeClass: horizontalSizeClass == .compact) {
-                compactPanel(height: geometry.size.height, actionBudget: actionBudget, stackedFooter: stackedFooter, hasRun: hasRun)
-            } else {
-                regularPanel(width: geometry.size.width, height: geometry.size.height, regions: regions, footerRegions: footerRegions, stackedFooter: stackedFooter, hasRun: hasRun)
-            }
-            #else
-            regularPanel(width: geometry.size.width, height: geometry.size.height, regions: regions, footerRegions: footerRegions, stackedFooter: stackedFooter, hasRun: hasRun)
-            #endif
+            let width = geometry.size.width
+            let stacked = NativeAssistantLayout.stackedActions(width: width, actionHeight: actionHeight, accessibilityText: dynamicTypeSize.isAccessibilitySize)
+            let regions = NativeAssistantLayout.regions(height: geometry.size.height, header: inSheet ? 0 : headerHeight,
+                actions: NativeAssistantLayout.actionBudget(actionHeight: actionHeight, stacked: stacked),
+                context: chipHeight + 12,
+                preferredEditor: NativeAssistantLayout.preferredEditorHeight(text: model.assistantDraft, width: width - 40, lineHeight: editorLineHeight))
+            VStack(alignment: .leading, spacing: 0) {
+                if regions.header > 0 {
+                    assistantHeader.frame(height: regions.header).clipped()
+                }
+                Rectangle().fill(NativeEditorStyle.line).frame(height: regions.separator)
+                conversationScroll.frame(height: regions.history)
+                Rectangle().fill(NativeEditorStyle.line).frame(height: regions.separator)
+                composer(width: width, regions: regions, stacked: stacked)
+            }.frame(width: width, height: geometry.size.height, alignment: .topLeading)
         }
         .foregroundStyle(NativeEditorStyle.text).tint(NativeEditorStyle.accent)
         .background(NativeEditorStyle.panel)
+        #if os(iOS)
+        .transaction { transaction in if reduceMotion { transaction.disablesAnimations = true } }
+        .toolbar {
+            if inSheet {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showSettings() } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Assistant account settings")
+                }
+            }
+        }
+        .navigationBarTitleDisplayMode(inSheet ? .inline : .automatic)
+        #endif
+        .onAppear { takeFocusRequest() }
+        .onChange(of: focusRequest.wrappedValue) { _, requested in if requested { takeFocusRequest() } }
         .task { await refreshAccountsIfIdle() }
         .task(id: suggestionKey) { await assistant.refreshSuggestions(selection: model.selectedIDs, composition: model.composition) }
         .task(id: proposalKey) { await assistant.refreshProposalCurrency() }
@@ -214,22 +268,70 @@ struct NativeAssistantPanel: View {
         }
     }
 
-    private var conversationContent: some View {
-        LazyVStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Circle().fill(assistant.configured ? NativeEditorStyle.success : NativeEditorStyle.muted).frame(width: 6, height: 6)
-                Text(assistant.providerName).font(.system(size: 11, weight: .medium))
-                Text(assistant.state == "cancelling" ? "Stopping" : assistant.isWorking ? "Working" : assistant.state == "done" ? "Response finished" : assistant.state == "cancelled" ? "Stopped" : assistant.state == "error" ? "Failed" : assistant.configured ? "Ready" : "Setup needed").font(.system(size: 11)).foregroundStyle(NativeEditorStyle.muted)
-                Spacer(minLength: 0)
+    private func takeFocusRequest() {
+        guard focusRequest.wrappedValue else { return }
+        focusRequest.wrappedValue = false
+        // A phone keeps the viewer above the medium sheet, so the keyboard waits for a tap there.
+        #if os(iOS)
+        if horizontalSizeClass == .compact { return }
+        #endif
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            draftFocused = true
+        }
+    }
+
+    private var assistantHeader: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "text.bubble").foregroundStyle(NativeEditorStyle.accent)
+            Text("Assistant").font(.system(size: 13, weight: .semibold)).lineLimit(1)
+            HStack(spacing: 4) {
+                Circle().fill(statusColor).frame(width: 6, height: 6)
+                Text(requestStatusLabel).font(.caption).foregroundStyle(NativeEditorStyle.muted).lineLimit(1)
             }.accessibilityElement(children: .combine)
-            if !assistant.route.isEmpty { routeSummary }
-            if !assistant.configured {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(assistant.reason).font(.system(size: 12)).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
-                    Button("Open account settings") { showSettings() }.controlSize(.small)
-                }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 6))
+            Spacer(minLength: 0)
+            Button { showSettings() } label: { Image(systemName: "gearshape") }
+                .accessibilityLabel("Assistant account settings").help("Assistant settings")
+            if let close {
+                Button(action: close) { Image(systemName: "xmark") }
+                    .accessibilityLabel("Close Assistant").help("Close Assistant (⌥⌘A)")
             }
+        }
+        .buttonStyle(NativeToolbarButtonStyle()).padding(.leading, 12).padding(.trailing, 4)
+    }
+
+    private var statusColor: Color {
+        if assistant.isWorking { return NativeEditorStyle.accent }
+        if assistant.state == "error" { return NativeEditorStyle.error }
+        return assistant.configured ? NativeEditorStyle.success : NativeEditorStyle.muted
+    }
+
+    private var requestStatusLabel: String {
+        assistant.state == "cancelling" ? "Stopping" : assistant.isWorking ? "Working" : assistant.configured ? "Ready" : "Not set up"
+    }
+
+    // MARK: History
+
+    private var conversationScroll: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                conversationContent.padding(12)
+            }.frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+            #if os(iOS)
+            .scrollDismissesKeyboard(.interactively)
+            #endif
+            .onAppear { proxy.scrollTo("end", anchor: .bottom) }
+            .onChange(of: assistant.state) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+            .onChange(of: assistant.partialReply) { _, _ in if assistant.isWorking { proxy.scrollTo("end", anchor: .bottom) } }
+            .onChange(of: assistant.chat.count) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+            .onChange(of: model.changeReceipts.count) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+            .onChange(of: assistant.proposal?.id) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+        }
+    }
+
+    private var conversationContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if !assistant.configured { setupCard }
             if let diagnostic = assistant.localDiagnostic {
                 VStack(alignment: .leading, spacing: 5) {
                     Label("Latest local tool failure", systemImage: "exclamationmark.triangle").font(.system(size: 11, weight: .semibold))
@@ -249,100 +351,350 @@ struct NativeAssistantPanel: View {
             if history.number("restored") > 0 {
                 Text("Saved display history · previous messages and reference labels. Runs and permissions are checked again.").font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
             }
-            if assistant.chat.isEmpty {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("Edit with your agent").font(.system(size: 12, weight: .semibold))
-                    Text(assistant.previewChanges ? "Ask for a change to the selection or the open timeline. With Preview changes on, you see what will change and apply it yourself." : "Describe a change to the selected clip or the open timeline. Review the result in the viewer and undo it with Undo this change.")
-                    .font(.system(size: 12)).foregroundStyle(NativeEditorStyle.muted)
-                }.padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading)
-            }
+            if assistant.chat.isEmpty { emptyState }
             ForEach(Array(assistant.chat.enumerated()), id: \.offset) { index, message in
-                let fields = (try? JSON.parse(message.text) as? [String: Any]) ?? [:]
-                let fromUser = ["you", "user"].contains(fields.string("role"))
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(fromUser ? "You" : fields.string("provider").isEmpty ? "Assistant" : NativeAssistant.providerName(fields.string("provider")))
-                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(NativeEditorStyle.muted)
-                    Text(fields.string("text")).font(.system(size: 12)).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    if fromUser {
-                        Button("Edit request") {
-                            model.assistantDraft = fields.string("text")
-                            let labels = fields["refs"] as? [[String: Any]] ?? []
-                            let kind = fields.dictionary("refs").string("inputKind", labels.first { $0.string("kind") == "input_kind" }?.string("id") ?? "prompt")
-                            model.assistantInputKind = ["prompt", "script", "screenplay"].contains(kind) ? kind : "prompt"
-                        }.controlSize(.small).frame(minHeight: 44)
-                        .disabled(assistant.isWorking || !model.assistantDraft.isEmpty || fields.string("text").isEmpty)
-                        .help("Use this text as a draft with the current selection. Clear the existing draft first.")
-                        .accessibilityHint("Review the current selection before sending. Attached context is not copied.")
-                    }
-                    if let labels = fields["refs"] as? [[String: Any]], !labels.isEmpty {
-                        Button { inspectedReferences = NativeAssistantReferenceInspection(text: JSON(any: labels).text) } label: {
-                            Label("Inspect historical reference labels", systemImage: "paperclip").font(.system(size: 11))
-                        }.buttonStyle(.plain).foregroundStyle(NativeEditorStyle.accent)
-                            .accessibilityHint("Read-only labels from a previous request. Current selection and sharing are reviewed when sending.")
-                    }
-                    if let refs = fields["refs"] as? [String: Any], !refs.isEmpty {
-                        Button { inspectedReferences = NativeAssistantReferenceInspection(text: JSON(any: refs).text) } label: {
-                            let count = refs.dictionary("sourceSelection")["nativeLayerIDs"] as? [String] ?? refs["clips"] as? [String] ?? []
-                            Label(count.isEmpty ? "Inspect attached context" : "Inspect \(count.count) attached layers", systemImage: "paperclip")
-                            .font(.system(size: 11))
-                        }.buttonStyle(.plain).foregroundStyle(NativeEditorStyle.accent)
-                    }
-                }
-                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(fromUser ? NativeEditorStyle.panelRaised : NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 6))
-                .id(index)
+                messageRow((try? JSON.parse(message.text) as? [String: Any]) ?? [:]).id(index)
             }
-            if !model.changeReceipts.isEmpty {
-                HStack {
-                    Text("Committed assistant edits").font(.system(size: 12, weight: .semibold)).accessibilityAddTraits(.isHeader)
-                    Spacer(minLength: 0)
-                    Button("Undo latest edit") { model.undo() }.controlSize(.small)
-                }.id("receipts")
-                Text("These receipts record project changes. Review playback and the timeline to verify the requested result.")
-                    .font(.system(size: 11)).foregroundStyle(NativeEditorStyle.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Undo reverts the latest committed edit in the project.")
-                .font(.system(size: 11)).foregroundStyle(NativeEditorStyle.muted)
-                ForEach(model.changeReceipts.reversed()) { receipt in
-                    receiptRow(receipt)
-                }
-            }
-            // On a phone the cards sit above the draft, where a pending preview is seen first.
-            if !phoneComposer { changeCards }
             if assistant.isWorking && !assistant.partialReply.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Response in progress").font(.caption).foregroundStyle(NativeEditorStyle.muted)
-                    Text(assistant.partialReply).font(.system(size: 12)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                }.id("stream")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Writing…").font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                    Text(assistant.partialReply).font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine).accessibilityLabel("Reply in progress: \(assistant.partialReply)")
+                .id("stream")
             }
-            if assistant.isWorking {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text(assistant.progress.isEmpty ? "Processing the request" : assistant.progress)
-                    .font(.system(size: 11)).lineLimit(3).fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }.id("progress")
-            }
+            if assistant.startedAt != nil { runActivity.id("progress") }
+            changeCards
+            Color.clear.frame(height: 1).id("end")
         }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
-    private var conversationScroll: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                conversationContent
-            }.frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
-            .onChange(of: assistant.state) { _, state in if state == "working" { proxy.scrollTo("progress", anchor: .bottom) } }
-            .onChange(of: assistant.partialReply) { _, _ in if assistant.isWorking { proxy.scrollTo("progress", anchor: .bottom) } }
-            .onChange(of: assistant.chat.count) { _, count in if assistant.isWorking { proxy.scrollTo("progress", anchor: .bottom) } else if count > 0 { proxy.scrollTo(count - 1, anchor: .bottom) } }
-            .onChange(of: model.changeReceipts.count) { _, count in if count > 0 { proxy.scrollTo("receipts", anchor: .top) } }
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(model.selectedIDs.isEmpty ? "Ask for an edit to the open timeline, or a question about it." : "Ask for an edit to the selection, or a question about it.")
+                .font(.callout).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+            // Suggestions only fill an empty draft, so one never replaces typed text.
+            // Each one is sent as a prompt, not as a script or screenplay.
+            if !assistant.suggestions.isEmpty && model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(assistant.suggestions) { item in
+                        Button { useSuggestion(item) } label: {
+                            Label(item.label, systemImage: "arrow.turn.down.right")
+                                .font(.callout).frame(maxWidth: .infinity, minHeight: Self.touch ? 44 : 30, alignment: .leading)
+                                .padding(.horizontal, 10).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 7))
+                            .overlay { RoundedRectangle(cornerRadius: 7).stroke(NativeEditorStyle.line) }
+                            .disabled(assistant.isWorking)
+                            .help(item.prompt + " It goes into the draft for you to review before sending.")
+                    }
+                }.accessibilityElement(children: .contain).accessibilityLabel("Suggested requests")
+            }
+        }.padding(.top, 4).frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func useSuggestion(_ item: NativeAssistantSuggestion) {
+        guard model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        model.assistantInputKind = "prompt"; model.assistantDraft = item.prompt
+        #if os(macOS)
+        draftFocused = true
+        #endif
+    }
+
+    @ViewBuilder private func messageRow(_ fields: [String: Any]) -> some View {
+        let fromUser = ["you", "user"].contains(fields.string("role"))
+        let text = fields.string("text")
+        if fromUser {
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(text).font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay { RoundedRectangle(cornerRadius: 12).stroke(NativeEditorStyle.line) }
+                HStack(spacing: 2) {
+                    attachedContextButton(fields)
+                    Menu {
+                        Button("Edit request", systemImage: "pencil") { editRequest(fields) }
+                            .disabled(assistant.isWorking || !model.assistantDraft.isEmpty || text.isEmpty)
+                        if let labels = fields["refs"] as? [[String: Any]], !labels.isEmpty {
+                            Button("Inspect historical reference labels", systemImage: "paperclip") {
+                                inspectedReferences = NativeAssistantReferenceInspection(text: JSON(any: labels).text)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis").frame(width: Self.touch ? 44 : 24, height: Self.touch ? 44 : 20).contentShape(Rectangle())
+                    }
+                    #if os(macOS)
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    #endif
+                    .foregroundStyle(NativeEditorStyle.muted)
+                    .accessibilityLabel("Request actions")
+                    .help("Edit this request as a new draft. Clear the current draft first.")
+                }
+            }.frame(maxWidth: .infinity, alignment: .trailing).padding(.leading, 28)
+        } else {
+            let failed = fields["error"] as? Bool == true
+            VStack(alignment: .leading, spacing: 4) {
+                Label(fields.string("provider").isEmpty ? "Assistant" : NativeAssistant.providerName(fields.string("provider")),
+                      systemImage: failed ? "exclamationmark.triangle.fill" : "text.bubble")
+                    .font(.caption).foregroundStyle(failed ? NativeEditorStyle.error : NativeEditorStyle.muted)
+                Text(text).font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
         }
+    }
+
+    @ViewBuilder private func attachedContextButton(_ fields: [String: Any]) -> some View {
+        if let refs = fields["refs"] as? [String: Any], !refs.isEmpty {
+            let layers = refs.dictionary("sourceSelection")["nativeLayerIDs"] as? [String] ?? refs["clips"] as? [String] ?? []
+            Button { inspectedReferences = NativeAssistantReferenceInspection(text: JSON(any: refs).text) } label: {
+                Label(layers.isEmpty ? "Context" : layers.count == 1 ? "1 layer" : "\(layers.count) layers", systemImage: "paperclip")
+                    .font(.caption).frame(minHeight: Self.touch ? 44 : 20).contentShape(Rectangle())
+            }.buttonStyle(.plain).foregroundStyle(NativeEditorStyle.muted)
+                .accessibilityLabel(layers.isEmpty ? "Inspect attached context" : "Inspect \(layers.count) attached layer\(layers.count == 1 ? "" : "s")")
+        }
+    }
+
+    private func editRequest(_ fields: [String: Any]) {
+        guard !assistant.isWorking, model.assistantDraft.isEmpty, !fields.string("text").isEmpty else { return }
+        model.assistantDraft = fields.string("text")
+        let labels = fields["refs"] as? [[String: Any]] ?? []
+        let kind = fields.dictionary("refs").string("inputKind", labels.first { $0.string("kind") == "input_kind" }?.string("id") ?? "prompt")
+        model.assistantInputKind = ["prompt", "script", "screenplay"].contains(kind) ? kind : "prompt"
+    }
+
+    // MARK: Setup
+
+    /// ChatGPT is the one-tap path when no other connection is set up. Otherwise the existing
+    /// connection is fixed in Assistant settings.
+    private var chatGPTPrimary: Bool {
+        NativeChatGPT.supported && !chatGPT.status.signedIn && (assistant.provider == "chatgpt" || assistant.endpoint.isEmpty)
+    }
+
+    private var chatGPTWaiting: Bool { chatGPT.status.phase == .waiting || chatGPT.status.phase == .exchanging }
+
+    private var setupCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Set up the assistant").font(.callout.weight(.semibold))
+            Text(assistant.reason).font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+            if chatGPTPrimary && chatGPTWaiting {
+                Label("Finish signing in on the ChatGPT page.", systemImage: "hourglass")
+                    .font(.caption).fixedSize(horizontal: false, vertical: true)
+            } else if chatGPTPrimary, [.failed, .cancelled, .expired].contains(chatGPT.status.phase), !chatGPT.status.message.isEmpty {
+                Text(chatGPT.status.message).font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            if chatGPTPrimary && !chatGPTWaiting {
+                Button { startChatGPT() } label: {
+                    Text(signingIn ? "Opening ChatGPT…" : "Continue with ChatGPT").frame(maxWidth: .infinity, minHeight: Self.touch ? 30 : 20)
+                }.buttonStyle(.borderedProminent).disabled(signingIn || assistant.isWorking)
+                Button("Other ways to connect") { showSettings() }.buttonStyle(.plain).font(.caption)
+                    .foregroundStyle(NativeEditorStyle.accent).frame(minHeight: Self.touch ? 44 : 20)
+            } else {
+                Button { showSettings() } label: {
+                    Text("Assistant settings").frame(maxWidth: .infinity, minHeight: Self.touch ? 30 : 20)
+                }.buttonStyle(.borderedProminent)
+            }
+            if let setupNotice {
+                Text(setupNotice).font(.caption).foregroundStyle(NativeEditorStyle.error).fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Editing works without an account. Your draft is kept.")
+                .font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).stroke(NativeEditorStyle.line) }
+        .accessibilityElement(children: .contain).accessibilityLabel("Assistant setup")
+    }
+
+    /// The same sign-in Assistant settings starts. Waiting, reopening the page and cancelling stay there.
+    private func startChatGPT() {
+        guard !signingIn, !assistant.isWorking else { return }
+        signingIn = true; setupNotice = nil
+        Task { @MainActor in
+            assistant.beginChatGPTChoice()
+            do {
+                if !(try await chatGPT.signIn()) { setupNotice = "Arya could not open the sign-in page. Try again from Assistant settings." }
+            } catch {
+                assistant.abandonChatGPTChoice()
+                setupNotice = error.localizedDescription
+            }
+            signingIn = false
+        }
+    }
+
+    // MARK: Run status and results
+
+    /// One quiet line while a request runs or after it ends. Details and the route expand from it.
+    private var runActivity: some View {
+        TimelineView(.animation(minimumInterval: 1, paused: !assistant.isWorking)) { context in
+            let working = assistant.isWorking
+            let label = assistant.state == "cancelling" ? "Stopping" : working ? "Working" : assistant.state == "done" ? "Done" : assistant.state == "cancelled" ? "Stopped" : "Failed"
+            let seconds = Int(max(0, (assistant.finishedAt ?? context.date).timeIntervalSince(assistant.startedAt ?? context.date)))
+            let elapsed = seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
+            let quiet = working && context.date.timeIntervalSince(assistant.updatedAt ?? context.date) >= 20
+            let stage = working ? (assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress) : assistant.state == "done" ? (assistant.outcome.isEmpty ? "Results not verified" : assistant.outcome) : ""
+            let detail = working ? quiet ? "No update for 20 seconds. Last confirmed stage: \(assistant.progress.isEmpty ? "Working" : assistant.progress)." : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress : assistant.state == "done" ? assistant.outcome.isEmpty ? "Edit results have not been verified." : assistant.outcome : assistant.state == "cancelled" ? "Stopped. Review or undo any committed edits." : assistant.progress.isEmpty ? "Request failed. Review the error before retrying." : assistant.progress
+            DisclosureGroup(isExpanded: $activityExpanded) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(detail).foregroundStyle(NativeEditorStyle.muted).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !assistant.route.isEmpty { routeSummary }
+                }.padding(.top, 4)
+            } label: {
+                HStack(spacing: 6) {
+                    if working { ProgressView().controlSize(.small).frame(width: 14, height: 14) }
+                    else { Image(systemName: assistant.state == "done" ? "checkmark.circle" : assistant.state == "cancelled" ? "stop.circle" : "exclamationmark.circle")
+                        .foregroundStyle(assistant.state == "error" ? NativeEditorStyle.error : NativeEditorStyle.muted) }
+                    Text(label).fontWeight(.semibold)
+                    if !stage.isEmpty { Text(stage).foregroundStyle(NativeEditorStyle.muted).lineLimit(1).truncationMode(.tail) }
+                    Spacer(minLength: 4)
+                    Text(elapsed).monospacedDigit().foregroundStyle(NativeEditorStyle.muted)
+                }.frame(minHeight: Self.touch ? 44 : 22)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(label), \(quiet ? detail : stage), \(elapsed)")
+            }
+            .font(.system(size: activityFontSize))
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .contain).accessibilityLabel("Current request status")
+        }
+    }
+
+    /// The pending preview, a preview being applied, and the result of the latest change.
+    @ViewBuilder private var changeCards: some View {
+        if let proposal = assistant.proposal {
+            NativeAssistantPreviewCard(proposal: proposal, stale: assistant.proposalStale || proposal.baseVersion != model.version, running: assistant.isWorking,
+                                       newRequest: assistant.isWorking && proposal.runID != assistant.currentRunID,
+                                       apply: { Task { await assistant.applyProposal() } }, discard: { assistant.discardProposal() }).id("preview")
+        }
+        if let applying = assistant.applyingProposal {
+            NativeAssistantApplyingCard(applying: applying, dismiss: { assistant.dismissApplyFailure() })
+        }
+        if assistant.lastChange != nil && !assistant.isWorking && (assistant.applyingProposal.map { $0.finished } ?? true) && !assistant.canUndoLastChange(version: model.version) {
+            Text("Can't undo this run: the project changed after it. Use Undo in the editor.")
+                .font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+        }
+        if assistant.canUndoLastChange(version: model.version) || !model.changeReceipts.isEmpty { resultCard.id("receipts") }
+    }
+
+    private var resultCard: some View {
+        let undoable = assistant.lastChange.flatMap { assistant.canUndoLastChange(version: model.version) ? $0 : nil }
+        let latest = model.changeReceipts.last
+        let changed = (latest?.clips ?? []).filter { $0.status != "deleted" && model.receiptSelection($0) != nil }
+        let title = undoable.map { $0.kind == "preview" ? "Applied the preview" : "Made \($0.edits) edit\($0.edits == 1 ? "" : "s")" }
+            ?? "\(model.changeReceipts.count) assistant edit\(model.changeReceipts.count == 1 ? "" : "s") in this project"
+        return VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: "checkmark.circle.fill").font(.callout.weight(.semibold))
+                .foregroundStyle(NativeEditorStyle.text)
+            if let latest, !latest.summary.isEmpty {
+                Text(latest.summary).font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 8) {
+                if undoable != nil {
+                    Button("Undo this change") { Task { await assistant.undoLastChange() } }
+                        .controlSize(Self.touch ? .regular : .small).frame(minHeight: Self.touch ? 44 : nil)
+                        .help("Restore the project from before this assistant change. Undo restores it again.")
+                        .accessibilityIdentifier("editor.assistant.undoChange")
+                }
+                if changed.count == 1, let clip = changed.first {
+                    Button("Select \(clip.name)") { model.selectReceiptClip(clip) }
+                        .controlSize(Self.touch ? .regular : .small).frame(minHeight: Self.touch ? 44 : nil)
+                        .accessibilityLabel("Select \(clip.name) in \(clip.compositionName)")
+                } else if changed.count > 1 {
+                    Menu("Select changed layer") {
+                        ForEach(changed) { clip in Button("\(clip.name) · \(clip.compositionName)") { model.selectReceiptClip(clip) } }
+                    }.controlSize(Self.touch ? .regular : .small).fixedSize().frame(minHeight: Self.touch ? 44 : nil)
+                }
+            }
+            if !model.changeReceipts.isEmpty {
+                DisclosureGroup("Details") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Receipts record what changed in the project. Check playback and the timeline for the result you asked for.")
+                            .font(.system(size: 11)).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+                        ForEach(model.changeReceipts.reversed()) { receipt in receiptRow(receipt) }
+                    }.padding(.top, 6)
+                }.font(.caption).frame(minHeight: Self.touch ? 44 : nil)
+            }
+        }
+        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+        .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).stroke(NativeEditorStyle.line) }
+        .accessibilityElement(children: .contain).accessibilityLabel("Assistant changes")
+    }
+
+    // MARK: Composer
+
+    /// Touch devices get 44-point targets.
+    private static var touch: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
+    }
+
+    private func composer(width: Double, regions: NativeAssistantLayout.Regions, stacked: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            contextRow.frame(height: regions.context).clipped()
+            draftEditor(height: max(0, regions.editor - 8))
+                .padding(.horizontal, 10)
+            ScrollView(.vertical) {
+                composerActions(width: width, stacked: stacked)
+                    .frame(minWidth: 0, maxWidth: .infinity)
+                    .padding(.vertical, 8).padding(.horizontal, 10)
+            }.frame(height: regions.actions)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(NativeEditorStyle.panelRaised)
+        #if os(iOS)
+        .accessibilityIdentifier("editor.assistant.compactComposer")
+        #endif
+    }
+
+    /// What Send attaches, as chips: the selection or timeline, the playhead, the input kind and
+    /// any look reference. Send captures the selection again when pressed.
+    private var contextRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                Button { inspectCurrentRequestContext() } label: {
+                    chip { Label(contextLabel, systemImage: "scope").lineLimit(1) }
+                }.buttonStyle(.plain)
+                    .foregroundStyle(model.selectedIDs.isEmpty ? NativeEditorStyle.text : NativeEditorStyle.accent)
+                    .disabled(model.project == nil || model.renderPreviewBackendID == nil)
+                    .help("Inspect the current selection and request context. Send captures the current selection again.")
+                    .accessibilityLabel("Inspect current request context: \(contextLabel)")
+                    .accessibilityIdentifier("editor.assistant.composerContext")
+                chip { footerTimecode }.accessibilityLabel("Playhead \(nativeTimecode(model.time, fps: model.fps))")
+                if model.assistantInputKind != "prompt" {
+                    Button { model.assistantInputKind = "prompt" } label: {
+                        chip { HStack(spacing: 4) { Text(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script"); Image(systemName: "xmark").font(.caption2) } }
+                    }.buttonStyle(.plain)
+                        .accessibilityLabel("\(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script") input. Switch back to prompt")
+                }
+                if let reference = model.lookReference {
+                    Button { model.lookReference = nil } label: {
+                        chip { HStack(spacing: 4) { Label((reference as NSString).lastPathComponent, systemImage: "photo").lineLimit(1).truncationMode(.middle); Image(systemName: "xmark").font(.caption2) } }
+                    }.buttonStyle(.plain).accessibilityLabel("Look reference \((reference as NSString).lastPathComponent). Remove")
+                }
+                if model.assistantDraft.count > assistant.inputCharacterLimit {
+                    chip { Text("\(model.assistantDraft.count) of \(assistant.inputCharacterLimit)").monospacedDigit() }
+                        .foregroundStyle(NativeEditorStyle.error)
+                        .accessibilityLabel(draftLimitExplanation)
+                }
+            }.padding(.horizontal, 10).frame(maxHeight: .infinity)
+        }
+    }
+
+    private func chip<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content().font(.caption.weight(.medium))
+            .padding(.horizontal, 9).frame(minHeight: chipHeight)
+            .background(NativeEditorStyle.background, in: Capsule())
+            .overlay { Capsule().stroke(NativeEditorStyle.line) }
+            .contentShape(Capsule())
     }
 
     private func draftEditor(height: Double) -> some View {
         TextEditor(text: $model.assistantDraft)
-        #if os(iOS)
         .focused($draftFocused)
+        #if os(iOS)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -354,8 +706,8 @@ struct NativeAssistantPanel: View {
         #endif
         .font(.body).scrollContentBackground(.hidden)
         .frame(height: height)
-        .padding(4).background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 6))
-        .overlay { RoundedRectangle(cornerRadius: 6).stroke(NativeEditorStyle.line) }
+        .padding(4).background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).stroke(draftFocused ? NativeEditorStyle.accent.opacity(0.5) : NativeEditorStyle.line) }
         .overlay(alignment: .topLeading) {
             if model.assistantDraft.isEmpty {
                 Text(model.assistantInputKind == "prompt" ? "Describe the edit" : "Paste a script to build editable scenes")
@@ -379,268 +731,111 @@ struct NativeAssistantPanel: View {
         }
     }
 
-    /// Touch devices get full-size suggestion buttons with a 44-point target.
-    private static var touch: Bool {
-        #if os(iOS)
-        true
-        #else
-        false
-        #endif
-    }
-
-    private var phoneComposer: Bool {
-        #if os(iOS)
-        horizontalSizeClass == .compact
-        #else
-        false
-        #endif
-    }
-
-    /// The pending preview, a preview being applied, and one-step undo of the latest change.
-    @ViewBuilder private var changeCards: some View {
-            if let proposal = assistant.proposal {
-                NativeAssistantPreviewCard(proposal: proposal, stale: assistant.proposalStale || proposal.baseVersion != model.version, running: assistant.isWorking,
-                                           newRequest: assistant.isWorking && proposal.runID != assistant.currentRunID,
-                                           apply: { Task { await assistant.applyProposal() } }, discard: { assistant.discardProposal() }).id("preview")
-            }
-            if let applying = assistant.applyingProposal {
-                NativeAssistantApplyingCard(applying: applying, dismiss: { assistant.dismissApplyFailure() })
-            }
-            if assistant.lastChange != nil && !assistant.isWorking && (assistant.applyingProposal.map { $0.finished } ?? true) && !assistant.canUndoLastChange(version: model.version) {
-                Text("Can't undo this run: the project changed after it. Use Undo in the editor.")
-                    .font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
-            }
-            if let change = assistant.lastChange, assistant.canUndoLastChange(version: model.version) {
-                HStack(spacing: 8) {
-                    Text(change.kind == "preview" ? "Applied the assistant preview." : "The last request made \(change.edits) edit\(change.edits == 1 ? "" : "s").")
-                        .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+    /// Input, preview, model and the one primary control. Stacked, Send or Stop comes first.
+    @ViewBuilder private func composerActions(width: Double, stacked: Bool) -> some View {
+        if stacked {
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    inputMenu
+                    previewToggle(iconOnly: width < 260)
                     Spacer(minLength: 0)
-                    Button("Undo this change") { Task { await assistant.undoLastChange() } }.controlSize(.small).frame(minHeight: 44)
-                        .help("Restore the project from before this assistant change. Undo restores it again.")
-                }.padding(.horizontal, 10).background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 6))
-                .accessibilityElement(children: .contain).accessibilityIdentifier("editor.assistant.undoChange")
+                    primaryAction
+                }
+                modelControls
+            }.frame(maxWidth: .infinity)
+        } else {
+            HStack(spacing: 6) {
+                inputMenu
+                previewToggle(iconOnly: width < 360)
+                modelControls
+                primaryAction
             }
-    }
-
-    /// Suggested requests and the Preview changes switch, above the draft.
-    private var composerAssists: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Suggestions show only while the draft is empty, so one never replaces typed text.
-            // Each one is sent as a prompt, not as a script or screenplay.
-            if !assistant.suggestions.isEmpty && model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(assistant.suggestions) { item in
-                            Button(item.label) { model.assistantInputKind = "prompt"; model.assistantDraft = item.prompt }
-                                .buttonStyle(.bordered).controlSize(Self.touch ? .regular : .small).tint(NativeEditorStyle.text).fixedSize(horizontal: true, vertical: false).disabled(assistant.isWorking)
-                                .frame(minHeight: Self.touch ? 44 : nil)
-                                .help(item.prompt + " It goes into the draft for you to review before sending.")
-                        }
-                    }
-                }.overlay(alignment: .trailing) {
-                    LinearGradient(colors: [.clear, NativeEditorStyle.background], startPoint: .leading, endPoint: .trailing)
-                        .frame(width: 14).allowsHitTesting(false)
-                }.accessibilityElement(children: .contain).accessibilityLabel("Suggested requests")
-            }
-            Toggle("Preview changes", isOn: $assistant.previewChanges)
-                .toggleStyle(.switch).controlSize(.small).font(.caption).disabled(assistant.isWorking)
-                .help("Show the clips, settings and processing a request will change, and apply them only when you choose.")
-                .accessibilityIdentifier("editor.assistant.previewChanges")
         }
     }
 
-    private var suggestionKey: String { "\(model.selectedIDs.sorted().joined(separator: ","))|\(model.composition ?? "")|\(model.version)" }
-    private var proposalKey: String { "\(assistant.proposal?.id.uuidString ?? "")|\(model.version)" }
-
-    private func regularPanel(width: Double, height: Double, regions: NativeAssistantLayout.Regions, footerRegions: NativeAssistantLayout.FooterRegions, stackedFooter: Bool, hasRun: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            #if os(iOS)
-            ScrollView(.vertical) {
-                assistantHeader.frame(minHeight: max(Double(NativeEditorStyle.minimumControlHeight), actionHeight), alignment: .top)
-            }.frame(height: regions.header)
-            #else
-            assistantHeader.frame(height: regions.header)
-            #endif
-            Rectangle().fill(NativeEditorStyle.line).frame(height: regions.separator)
-            conversationScroll
-            .padding(.horizontal, 12).frame(height: regions.chat)
-            Rectangle().fill(NativeEditorStyle.line).frame(height: regions.separator)
-            if hasRun && footerRegions.activity > 0 {
-                ScrollView(.vertical) { runActivity.padding(.horizontal, 12) }
-                    .frame(height: footerRegions.activity)
-            }
-            if footerRegions.gap > 0 { Color.clear.frame(height: footerRegions.gap) }
-            VStack(spacing: 0) {
-                ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        #if os(iOS)
-                        composerContext
-                        Button { inspectCurrentContext() } label: {
-                            Label("Inspect current source context", systemImage: "paperclip")
-                                .font(.caption).frame(minHeight: actionHeight, alignment: .leading)
-                        }.buttonStyle(.plain).foregroundStyle(NativeEditorStyle.accent)
-                            .disabled(model.selectedIDs.isEmpty && model.composition == nil)
-                            .accessibilityHint("Preview the selected layers and source references before sending.")
-                        #else
-                        HStack(alignment: .top, spacing: 6) {
-                            Button { inspectCurrentRequestContext() } label: {
-                            Label(contextLabel, systemImage: "scope")
-                                .font(.caption.weight(.medium)).lineLimit(2)
-                                .foregroundStyle(NativeEditorStyle.accent)
-                                .fixedSize(horizontal: false, vertical: true)
-                            }.buttonStyle(.plain).foregroundStyle(NativeEditorStyle.accent)
-                                .frame(minHeight: 30, alignment: .leading)
-                                .disabled(model.project == nil || model.renderPreviewBackendID == nil)
-                                .help("Inspect the current selection and request context. Send captures the current selection again.")
-                                .accessibilityLabel("Inspect current request context: \(contextLabel)")
-                            Spacer(minLength: 0)
-                            footerTimecode
-                        }.accessibilityElement(children: .combine)
-                        #endif
-                        #if os(iOS)
-                        HStack(spacing: 6) {
-                            if NativeAssistantLayout.segmentedInput(width: width, accessibilityText: dynamicTypeSize.isAccessibilitySize) {
-                                inputPicker.pickerStyle(.segmented)
-                            } else {
-                                inputPicker.pickerStyle(.menu)
-                            }
-                            Button { requestScriptImport() } label: { Image(systemName: "doc.badge.plus") }
-                            .buttonStyle(NativeToolbarButtonStyle()).fixedSize().help("Import a text script").accessibilityLabel("Import a text script")
-                            .disabled(scriptImportContext != nil || model.renderPreviewBackendID == nil || model.folder == nil)
-                        }
-                        #endif
-                        composerAssists
-                        VStack(alignment: .leading, spacing: 6) {
-                            draftEditor(height: regions.editor)
-                        }
-                        if let reference = model.lookReference {
-                            HStack(spacing: 6) {
-                                Image(systemName: "photo").foregroundStyle(NativeEditorStyle.muted)
-                                Text((reference as NSString).lastPathComponent).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
-                                Spacer(minLength: 0)
-                                Button("Clear") { model.lookReference = nil }.controlSize(.small)
-                            }
-                        }
-                    }.padding(12).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                }.frame(height: regions.composer)
-                footerActionViewport(height: footerRegions.actions, stacked: stackedFooter)
-                    .padding(.horizontal, 12)
-            }.background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 10))
-                .overlay { RoundedRectangle(cornerRadius: 10).stroke(NativeEditorStyle.line) }
-                .padding(.horizontal, 8)
-
-        }.frame(width: width, height: height, alignment: .topLeading)
+    @ViewBuilder private var primaryAction: some View {
+        if assistant.isWorking { cancelButton } else { sendButton }
     }
 
-    #if os(iOS)
-    private func compactPanel(height: Double, actionBudget: Double, stackedFooter: Bool, hasRun: Bool) -> some View {
-        let regions = NativeAssistantLayout.compactRegions(height: height, requestedFooter: actionBudget)
-        let editorHeight = NativeAssistantLayout.compactEditorHeight(contentHeight: regions.content, actionHeight: actionHeight)
-        return VStack(alignment: .leading, spacing: 0) {
-            ScrollView(.vertical) {
-                assistantHeader.frame(minHeight: max(44, actionHeight), alignment: .top)
-            }.frame(height: regions.header)
-            Rectangle().fill(NativeEditorStyle.line).frame(height: regions.separator)
-            VStack(spacing: 0) {
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            compactContextPill
-                            if phoneComposer { changeCards }
-                            composerAssists
-                            draftEditor(height: editorHeight)
-                            if hasRun { runActivity }
-                            conversationContent
-                        }.padding(12).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                    }
-                    .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: assistant.state) { _, state in
-                        if state == "working" && model.assistantDraft.isEmpty && !draftFocused { proxy.scrollTo("progress", anchor: .bottom) }
-                    }
-                    .onChange(of: assistant.chat.count) { _, count in
-                        guard model.assistantDraft.isEmpty && !draftFocused else { return }
-                        if assistant.isWorking { proxy.scrollTo("progress", anchor: .bottom) }
-                        else if count > 0 { proxy.scrollTo(count - 1, anchor: .bottom) }
-                    }
-                    .onChange(of: model.changeReceipts.count) { _, count in
-                        if count > 0 && model.assistantDraft.isEmpty && !draftFocused { proxy.scrollTo("receipts", anchor: .top) }
-                    }
-                }.frame(height: regions.content)
-                Rectangle().fill(NativeEditorStyle.line).frame(height: regions.separator)
-                footerActionViewport(height: regions.footer, stacked: stackedFooter, compactInput: true).padding(.horizontal, 12)
-            }.background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 10))
-                .overlay { RoundedRectangle(cornerRadius: 10).stroke(NativeEditorStyle.line) }
-                .padding(.horizontal, 8)
-        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .accessibilityIdentifier("editor.assistant.compactComposer")
-            .transaction { transaction in if reduceMotion { transaction.disablesAnimations = true } }
+    private var sendButton: some View {
+        Button { sendDraft() } label: { Label("Send", systemImage: "arrow.up").frame(minWidth: 56) }
+        .buttonStyle(.borderedProminent).controlSize(.regular)
+        .disabled(!assistant.configured || assistant.isWorking || model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.assistantDraft.count > assistant.inputCharacterLimit)
+        .help(assistant.configured ? "Send (Return). Scripts send with Command-Return." : "Set up the assistant to send. Your draft is kept.")
+        .accessibilityHint(draftLimitExplanation)
+            .frame(minHeight: actionHeight)
     }
 
-    private var compactContextPill: some View {
-        Button { inspectCurrentRequestContext() } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "scope")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(contextLabel).font(.caption.weight(.medium)).lineLimit(1)
-                    Text(requestStatusLabel).font(.caption2).foregroundStyle(NativeEditorStyle.muted).lineLimit(1)
-                }
-            }
-                .frame(minWidth: 44, maxWidth: .infinity, minHeight: actionHeight, alignment: .leading)
-                .padding(.horizontal, 8).contentShape(Rectangle())
-        }.buttonStyle(.plain)
-            .foregroundStyle(NativeEditorStyle.accent)
-            .background(model.selectedIDs.isEmpty ? NativeEditorStyle.background : NativeEditorStyle.selectionFill, in: RoundedRectangle(cornerRadius: 6))
-            .overlay { RoundedRectangle(cornerRadius: 6).stroke(model.selectedIDs.isEmpty ? NativeEditorStyle.line : NativeEditorStyle.accent.opacity(0.3)) }
-            .disabled(model.project == nil || model.renderPreviewBackendID == nil)
-            .accessibilityLabel("Inspect current request context: \(contextLabel)")
-            .accessibilityValue(requestStatusLabel)
-            .accessibilityHint("Preview the selection and time. Send captures the current context again.")
-            .accessibilityIdentifier("editor.assistant.composerContext")
+    @ViewBuilder private var cancelButton: some View {
+        if assistant.isWorking {
+            Button { assistant.cancel() } label: { Label(assistant.state == "cancelling" ? "Stopping…" : "Stop", systemImage: "stop.fill").frame(minWidth: 56) }
+                .buttonStyle(.borderedProminent).controlSize(.regular)
+                .disabled(assistant.state == "cancelling")
+                .accessibilityLabel(assistant.state == "cancelling" ? "Stopping request" : "Stop request")
+                .help("Stop this request. Edits it already made stay and can be undone.")
+                .frame(minHeight: actionHeight)
+        }
     }
 
-    private var compactInputMenu: some View {
+    private func previewToggle(iconOnly: Bool) -> some View {
+        Toggle(isOn: $assistant.previewChanges) {
+            if iconOnly { Image(systemName: "eye") } else { Label("Preview", systemImage: "eye") }
+        }
+        .toggleStyle(.button).controlSize(Self.touch ? .regular : .small).fixedSize()
+        .frame(minHeight: Self.touch ? actionHeight : nil)
+        .disabled(assistant.isWorking)
+        .help("Preview changes: see what a request will change, then apply it yourself.")
+        .accessibilityLabel("Preview changes")
+        .accessibilityIdentifier("editor.assistant.previewChanges")
+    }
+
+    /// Input kind, script import, suggestions and context inspection, from the composer.
+    private var inputMenu: some View {
         Menu {
-            Picker("Request input", selection: $model.assistantInputKind) {
-                Text("Prompt").tag("prompt")
-                Text("Script").tag("script")
-                Text("Screenplay").tag("screenplay")
-            }
-            Divider()
+            inputPicker.pickerStyle(.inline)
             Button("Import a text script…", systemImage: "doc.badge.plus") { requestScriptImport() }
                 .disabled(scriptImportContext != nil || model.renderPreviewBackendID == nil || model.folder == nil)
-            if let reference = model.lookReference {
-                Section("Look reference") {
-                    Text((reference as NSString).lastPathComponent)
-                    Button("Remove look reference") { model.lookReference = nil }
+            if !assistant.suggestions.isEmpty && model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !assistant.chat.isEmpty {
+                Section("Suggestions") {
+                    ForEach(assistant.suggestions) { item in Button(item.label) { useSuggestion(item) }.disabled(assistant.isWorking) }
+                }
+            }
+            Section {
+                Button("Inspect current context", systemImage: "scope") { inspectCurrentRequestContext() }
+                    .disabled(model.project == nil || model.renderPreviewBackendID == nil)
+                if model.lookReference != nil {
+                    Button("Remove look reference", systemImage: "photo") { model.lookReference = nil }
                 }
             }
         } label: {
-            Label(model.assistantInputKind == "screenplay" ? "Screenplay" : model.assistantInputKind == "script" ? "Script" : "Prompt", systemImage: "paperclip")
-                .font(.caption.weight(.medium)).lineLimit(1)
-                .frame(minWidth: 44, minHeight: actionHeight).padding(.horizontal, 8)
-                .contentShape(Rectangle())
+            Image(systemName: "plus").frame(width: Self.touch ? 44 : 26, height: Self.touch ? actionHeight : 26).contentShape(Rectangle())
         }
+        #if os(macOS)
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        #endif
+        .help("Choose prompt, script or screenplay, import a text script, or use a suggestion")
         .accessibilityLabel("Request input and script attachment")
         .accessibilityValue(model.assistantInputKind + (model.lookReference == nil ? "" : ", look reference attached"))
         .accessibilityIdentifier("editor.assistant.inputAttachments")
     }
-    #endif
 
-    private var requestStatusLabel: String {
-        assistant.state == "cancelling" ? "Stopping" : assistant.isWorking ? "Working" : assistant.state == "done" ? "Response finished" : assistant.state == "cancelled" ? "Stopped" : assistant.state == "error" ? "Failed" : assistant.configured ? "Ready" : "Setup needed"
+    private func sendDraft() {
+        do {
+            let selection = NativeSelectionAIContext.make(project: model.project?.fields ?? [:], clipID: model.selectedID, clipIDs: model.selectedIDs, composition: model.composition, time: model.time, version: model.version, folder: model.folder?.standardizedFileURL.path)
+            guard model.selectedIDs.isEmpty || selection != nil else { throw ReelBackend.APIError("The selection is too large or changed. Select fewer layers before sending.") }
+            var refs = selection?.refs ?? ["clip": "", "clips": [], "time": model.time, "composition": model.composition ?? "main", "editableNativeObjects": true, "sourceProjectVersion": model.version]
+            refs["inputKind"] = model.assistantInputKind
+            if let reference = model.lookReference { refs["reference"] = reference }
+            try assistant.send(model.assistantDraft, refs: refs); model.assistantDraft = ""
+            #if os(iOS)
+            // The reply and the viewer are what matter now, so the keyboard steps aside.
+            if horizontalSizeClass == .compact { draftFocused = false }
+            #endif
+        } catch { model.status = error.localizedDescription; assistant.recordSendFailure(error); if assistant.sharingReview != nil { reviewingSharing = true } }
     }
 
-    private func inspectCurrentContext() {
-        guard let selection = NativeSelectionAIContext.make(project: model.project?.fields ?? [:], clipID: model.selectedID, clipIDs: model.selectedIDs, composition: model.composition, time: model.time, version: model.version, folder: model.folder?.standardizedFileURL.path) else {
-            model.status = "The source selection is unavailable or too large. Select fewer layers before inspecting."
-            return
-        }
-        var refs = selection.refs
-        refs["inputKind"] = model.assistantInputKind
-        if let reference = model.lookReference { refs["reference"] = reference }
-        inspectedReferences = NativeAssistantReferenceInspection(text: JSON(any: refs).text, title: "Current source context",
-            note: "This preview captures the selection and time when opened. Send uses the current selection and time, plus project context allowed by AI sharing.")
-    }
+    private var suggestionKey: String { "\(model.selectedIDs.sorted().joined(separator: ","))|\(model.composition ?? "")|\(model.version)" }
+    private var proposalKey: String { "\(assistant.proposal?.id.uuidString ?? "")|\(model.version)" }
 
     private func invalidateScriptImport() {
         scriptImportContext = nil
@@ -679,61 +874,6 @@ struct NativeAssistantPanel: View {
     private func finishScriptImport(_ context: NativeScriptImportContext) {
         if scriptImportRequestID == context.id { scriptImportRequestID = nil }
     }
-    private var assistantHeader: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "text.bubble").foregroundStyle(NativeEditorStyle.accent)
-            Text("Assistant").font(.system(size: 13, weight: .semibold)).lineLimit(1)
-            Spacer(minLength: 0)
-            Button { showSettings() } label: { Image(systemName: "gearshape") }
-            .accessibilityLabel("Assistant account settings").help("Assistant account settings")
-            if let close {
-                Button(action: close) { Image(systemName: "xmark") }
-                .accessibilityLabel("Close Assistant").help("Close Assistant")
-            }
-        }
-        .buttonStyle(NativeToolbarButtonStyle()).padding(.leading, 12).padding(.trailing, 4)
-    }
-
-    #if os(iOS)
-    private var composerContext: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(contextLabel, systemImage: "scope")
-                .font(.caption.weight(.medium)).lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(alignment: .top, spacing: 6) {
-                Label(assistant.routingLabel, systemImage: assistant.routingMode == "auto" ? "arrow.triangle.branch" : "cpu")
-                    .font(.caption2).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-                footerTimecode
-            }
-        }
-        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-        .background(model.selectedIDs.isEmpty ? NativeEditorStyle.background : NativeEditorStyle.selectionFill, in: RoundedRectangle(cornerRadius: 6))
-        .overlay { RoundedRectangle(cornerRadius: 6).stroke(model.selectedIDs.isEmpty ? NativeEditorStyle.line : NativeEditorStyle.accent.opacity(0.3)) }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("editor.assistant.composerContext")
-    }
-    #endif
-
-    #if os(macOS)
-    private var desktopInputMenu: some View {
-        Menu {
-            Picker("Request input", selection: $model.assistantInputKind) {
-                Text("Prompt").tag("prompt")
-                Text("Script").tag("script")
-                Text("Screenplay").tag("screenplay")
-            }
-            Divider()
-            Button("Import a text script…", systemImage: "doc.badge.plus") { requestScriptImport() }
-                .disabled(scriptImportContext != nil || model.renderPreviewBackendID == nil || model.folder == nil)
-        } label: { Image(systemName: "paperclip") }
-            .menuStyle(.borderlessButton).frame(width: 40, height: actionHeight)
-            .help("Choose prompt, script or screenplay, or attach a text script")
-            .accessibilityLabel("Request input and script attachment")
-            .accessibilityValue(model.assistantInputKind)
-    }
-
-    #endif
 
     private func requestScriptImport() {
         guard scriptImportContext == nil,
@@ -762,7 +902,6 @@ struct NativeAssistantPanel: View {
         return !assistant.modelOptions.contains { $0.string("provider") == "claude-code" && $0.flag("isDefault") }
     }
 
-    /// Models OpenAI lists for the signed-in ChatGPT account, when plan usage is on.
     private var chatGPTMenuModels: [ChatGPTModel] {
         guard NativeChatGPT.supported, chatGPT.status.signedIn, chatGPT.status.planUsage,
               !assistant.modelOptions.contains(where: { $0.string("provider") == "chatgpt" }) else { return [] }
@@ -848,7 +987,7 @@ struct NativeAssistantPanel: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: assistant.routingMode == "auto" ? "arrow.triangle.branch" : "cpu")
-                    Text(assistant.routingLabel).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    Text(assistant.routingLabel).lineLimit(1).truncationMode(.tail)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.up.chevron.down").font(.caption)
                 }.font(.caption.weight(.medium)).padding(.horizontal, 6)
@@ -897,69 +1036,13 @@ struct NativeAssistantPanel: View {
         #endif
     }
 
-    private var runActivity: some View {
-        TimelineView(.animation(minimumInterval: 1, paused: !assistant.isWorking)) { context in
-            let working = assistant.isWorking
-            let label = assistant.state == "cancelling" ? "Stopping" : working ? "Working" : assistant.state == "done" ? "Response finished" : assistant.state == "cancelled" ? "Stopped" : "Failed"
-            let seconds = Int(max(0, (assistant.finishedAt ?? context.date).timeIntervalSince(assistant.startedAt ?? context.date)))
-            let elapsed = seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
-            let quiet = working && context.date.timeIntervalSince(assistant.updatedAt ?? context.date) >= 20
-            let detail = working ? quiet ? "No update for 20 seconds. Last confirmed stage: \(assistant.progress.isEmpty ? "Working" : assistant.progress)." : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress : assistant.state == "done" ? assistant.outcome.isEmpty ? "Edit results have not been verified." : assistant.outcome : assistant.state == "cancelled" ? "Stopped. Review or undo any committed edits." : assistant.progress.isEmpty ? "Request failed. Review the error before retrying." : assistant.progress
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    if working { ProgressView().controlSize(.small) }
-                    else { Image(systemName: assistant.state == "done" ? "text.bubble" : assistant.state == "cancelled" ? "stop.circle" : "exclamationmark.circle") }
-                    Text(label).fontWeight(.semibold)
-                    Spacer(minLength: 0)
-                    Text(elapsed).monospacedDigit().foregroundStyle(NativeEditorStyle.muted)
-                }.accessibilityElement(children: .combine)
-                Text(detail).foregroundStyle(NativeEditorStyle.muted).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true).accessibilityLabel(detail)
-            }.font(.system(size: activityFontSize)).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                .padding(10).background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 6))
-                .accessibilityElement(children: .contain).accessibilityLabel("Current request status")
-        }
-    }
-
     private var footerTimecode: some View {
         Text(nativeTimecode(model.time, fps: model.fps))
             .font(.system(size: 11, design: .monospaced)).foregroundStyle(NativeEditorStyle.muted).monospacedDigit()
     }
 
-    @ViewBuilder private var cancelButton: some View {
-        if assistant.isWorking {
-            Button(assistant.state == "cancelling" ? "Stopping…" : "Stop request") { assistant.cancel() }.disabled(assistant.state == "cancelling").controlSize(.small).frame(minHeight: actionHeight)
-        }
-    }
-
     private var canSendDraft: Bool {
         assistant.configured && !assistant.isWorking && (assistant.applyingProposal.map { $0.finished } ?? true) && !model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && model.assistantDraft.count <= assistant.inputCharacterLimit
-    }
-
-    private func sendDraft() {
-        do {
-            let selection = NativeSelectionAIContext.make(project: model.project?.fields ?? [:], clipID: model.selectedID, clipIDs: model.selectedIDs, composition: model.composition, time: model.time, version: model.version, folder: model.folder?.standardizedFileURL.path)
-            guard model.selectedIDs.isEmpty || selection != nil else { throw ReelBackend.APIError("The selection is too large or changed. Select fewer layers before sending.") }
-            var refs = selection?.refs ?? ["clip": "", "clips": [], "time": model.time, "composition": model.composition ?? "main", "editableNativeObjects": true, "sourceProjectVersion": model.version]
-            refs["inputKind"] = model.assistantInputKind
-            if let reference = model.lookReference { refs["reference"] = reference }
-            try assistant.send(model.assistantDraft, refs: refs); model.assistantDraft = ""
-        } catch { model.status = error.localizedDescription; assistant.recordSendFailure(error); if assistant.sharingReview != nil { reviewingSharing = true } }
-    }
-
-    private var sendButton: some View {
-        Button("Send") { sendDraft() }.buttonStyle(.borderedProminent).controlSize(.regular)
-        .disabled(!assistant.configured || assistant.isWorking || model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.assistantDraft.count > assistant.inputCharacterLimit)
-        .accessibilityHint(draftLimitExplanation)
-            .frame(minHeight: actionHeight)
-    }
-
-    private func footerActionViewport(height: Double, stacked: Bool, compactInput: Bool = false) -> some View {
-        ScrollView(.vertical) {
-            footerActions(stacked: stacked, compactInput: compactInput)
-                .frame(minWidth: 0, maxWidth: .infinity)
-                .padding(.vertical, 8)
-        }.frame(height: height)
     }
 
     private var draftLimitExplanation: String {
@@ -970,53 +1053,6 @@ struct NativeAssistantPanel: View {
             return "Too long to send: \(count) of \(limit) characters. Remove \(overage) character\(overage == 1 ? "" : "s") to send."
         }
         return "\(count) of \(limit) characters."
-    }
-
-    @ViewBuilder private var draftLimitNotice: some View {
-        if !assistant.configured {
-            Text("Set up an assistant to send. Your draft is kept.").font(.caption).foregroundStyle(NativeEditorStyle.muted)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Set up assistant") { settings = true }.controlSize(.small).frame(minHeight: 44)
-        }
-        if model.assistantDraft.count > assistant.inputCharacterLimit {
-            Text(draftLimitExplanation)
-                .font(.caption).foregroundStyle(NativeEditorStyle.error)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    @ViewBuilder private func footerActions(stacked: Bool, compactInput: Bool = false) -> some View {
-        if stacked {
-            VStack(spacing: 8) {
-                HStack {
-                    Spacer(minLength: 0)
-                    if assistant.isWorking { cancelButton } else { sendButton }
-                }
-                if !assistant.isWorking { draftLimitNotice }
-                #if os(macOS)
-                HStack(spacing: 6) { desktopInputMenu; modelControls }
-                #else
-                HStack(spacing: 6) {
-                    if compactInput { compactInputMenu }
-                    modelControls
-                }
-                #endif
-            }.frame(maxWidth: .infinity)
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    #if os(macOS)
-                    desktopInputMenu
-                    #else
-                    if compactInput { compactInputMenu }
-                    #endif
-                    modelControls
-                    if assistant.isWorking { cancelButton } else { sendButton }
-                }
-                if !assistant.isWorking { draftLimitNotice }
-            }
-        }
     }
 
     private var inputPicker: some View {
