@@ -114,8 +114,9 @@ export function ChatPanel() {
     globalThis.document?.getElementById('ask-arya')?.focus()
   }
   useEffect(() => {
-    if (list.current && follow.current) list.current.scrollTop = list.current.scrollHeight
-  }, [s.chat, s.claude.state, s.claude.text, s.activity, s.receipts, s.assistantReview])
+    const hasUpdates = s.chat.length || s.activity.length || s.receipts.length || activity.active || activity.terminal || s.assistantReview
+    if (hasUpdates && list.current && follow.current) list.current.scrollTop = list.current.scrollHeight
+  }, [s.chat, s.claude.text, activity.state, s.activity, s.receipts, s.assistantReview])
 
   const send = async (msg = text) => {
     if (!assistantDraftIsCurrent(draftContext, store)) return
@@ -359,7 +360,7 @@ export function ChatPanel() {
               <${AssistantControls} status=${connection} active=${inputLocked} text=${text} selectionCount=${s.selection.length} />
             </div>
           </details>
-          <label><select aria-label="Assistant input kind" value=${draft.inputKind} disabled=${inputLocked} onChange=${e => setText(text, e.target.value)}><option value="prompt">Prompt</option><option value="script">Script</option><option value="screenplay">Screenplay</option></select></label>
+          <label class="assistant-input-kind"><select aria-label="Assistant input kind" value=${draft.inputKind} disabled=${inputLocked} onChange=${e => setText(text, e.target.value)}><option value="prompt">Prompt</option><option value="script">Script</option><option value="screenplay">Screenplay</option></select></label>
           <label class="assistant-script-import"><span>Import text</span><input type="file" aria-label="Import script or screenplay" accept=".txt,.md,.fountain,.script,.screenplay,text/plain,text/markdown" disabled=${inputLocked || importing || !s.project}
             onClick=${() => { scriptPicker.current = scriptImport.current.begin() }}
             onChange=${e => { const captured = scriptPicker.current; scriptPicker.current = null; const file = e.target.files?.[0]; e.target.value = ''; return scriptImport.current.consume(file, captured) }}

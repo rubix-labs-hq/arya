@@ -109,6 +109,12 @@
 .chat .composer textarea:focus-visible { border-color: var(--accent); }
 .chat .assistant-input-tools { gap: 5px; padding: 0; }
 .chat .assistant-input-tools > label { font-size: .88em; }
+.chat .assistant-input-kind { position: relative; }
+.chat .assistant-input-kind select { appearance: none; padding-inline-end: 25px; }
+.chat .assistant-input-kind::after {
+  content: ''; position: absolute; top: calc(50% - 5px); right: 11px; width: 6px; height: 6px; pointer-events: none;
+  border: solid currentColor; border-width: 0 1px 1px 0; transform: rotate(45deg);
+}
 .chat .assistant-input-tools :is(select, .assistant-script-import, summary) { min-height: 34px; }
 .chat .assistant-input-tools details { margin: 0; }
 .chat .assistant-input-tools summary {
@@ -147,7 +153,8 @@
 }
 @media (pointer: coarse), (max-width: 720px) {
   .topbar .assistant-entry { min-height: 44px; min-width: 0; }
-  .chat :is(.chat-head button, .assistant-setup-actions > *, .assistant-suggestion, .assistant-input-tools :is(select, summary, .assistant-script-import), .assistant-primary-action button, .assistant-preview-toggle, .receipt-actions button) { min-height: 44px; }
+  .chat :is(.chat-head button, .assistant-setup-actions > *, .assistant-suggestion, .assistant-input-tools :is(select, summary, .assistant-script-import), .assistant-primary-action button, .assistant-preview-toggle, .receipt-actions button, .assistant-preview-actions button, .assistant-change button) { min-height: 44px; }
+  .chat .chat-head button { min-width: 44px; }
   .chat .assistant-input-help summary { justify-content: center; min-width: 44px; }
 }
 @media (max-width: 720px) {
