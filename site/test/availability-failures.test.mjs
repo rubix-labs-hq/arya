@@ -29,9 +29,12 @@ class Element {
 }
 
 function fixture(fetch) {
-  const elements = Object.fromEntries(['#release-state', '#release-heading', '#release-description', '#release-action', '#contribution-form', '#custom-amount', '#contribution-state'].map(selector => [selector, new Element()]));
+  const elements = Object.fromEntries(['#release-state', '#release-description', '#release-action', '#contribution-form', '#custom-amount', '#contribution-state'].map(selector => [selector, new Element()]));
   elements['#release-action'].append(new Element({ href: ready.release.macURL }));
-  elements['#release-heading'].textContent = 'The official Mac release is available.';
+  elements['#release-action a'] = elements['#release-action'].children[0];
+  elements['[data-direct-download]'] = new Element({ href: ready.release.macURL, textContent: 'Download Arya for Mac' });
+  elements['#release-details'] = new Element();
+  elements['#release-checksum'] = new Element();
   const submit = new Element();
   const input = elements['#custom-amount']; input.value = '15';
   const amounts = [5, 15, 30].map(amount => new Element({ dataset: { amount: String(amount) } }));
@@ -48,7 +51,9 @@ function fixture(fetch) {
 function assertUnavailable(f) {
   assert.equal(f.elements['#release-action'].children.length, 0);
   assert.equal(f.elements['#release-state'].textContent, 'Release status unavailable');
-  assert.equal(f.elements['#release-heading'].textContent, 'We could not check the current release.');
+  assert.equal(f.elements['[data-direct-download]'].href, '/download/#mac');
+  assert.equal(f.elements['[data-direct-download]'].textContent, 'Check Mac availability');
+  assert.equal(f.elements['#release-details'].hidden, true);
   assert.match(f.elements['#release-description'].textContent, /Reload/);
   assert.match(f.elements['#contribution-state'].textContent, /could not be loaded/);
 }
@@ -113,7 +118,7 @@ test('unsupported configuration does not offer release or contribution options',
 test('valid unavailable configuration remains distinct from a load failure', async () => {
   const f = fixture(async () => ({ ok: true, json: async () => defaults }));
   await f.loaded;
-  assert.equal(f.elements['#release-heading'].textContent, 'The public installer is not ready.');
+  assert.equal(f.elements['#release-description'].textContent, 'The public installer is not ready.');
   await f.submitAmount();
   assert.match(f.elements['#contribution-state'].textContent, /Contributions are not open yet/);
   assert.doesNotMatch(f.elements['#contribution-state'].textContent, /could not be loaded/);
@@ -123,7 +128,11 @@ test('valid approved configuration still offers its exact release and checkout d
   const config = { ...ready, contributions: { ...defaults.contributions, allowedHosts: ['example.com'], checkoutURLs: { '15': 'https://example.com/support-fifteen' } } };
   const f = fixture(async () => ({ ok: true, json: async () => config }));
   await f.loaded;
+  assert.equal(f.elements['#release-action'].children[0], f.elements['#release-action a']);
   assert.equal(f.elements['#release-action'].children[0].href, config.release.macURL);
+  assert.equal(f.elements['[data-direct-download]'].href, config.release.macURL);
+  assert.equal(f.elements['#release-checksum'].textContent, config.release.sha256);
+  assert.equal(f.elements['#release-details'].hidden, false);
   await f.submitAmount();
   assert.equal(f.elements['#contribution-state'].children[1].href, config.contributions.checkoutURLs['15']);
   assert.match(f.elements['#contribution-state'].textContent, /one-time contribution/);
@@ -143,4 +152,17 @@ test('changing an amount removes an offered checkout before a new check', async 
     assert.match(f.elements['#contribution-state'].textContent, /There is no checkout for \$5\.00/);
     assert.doesNotMatch(f.elements['#contribution-state'].textContent, /Contributions are not open yet/);
   }
+});
+
+test('direct links stay on the site while checking configuration and after a paid release is rejected', async () => {
+  let respond;
+  const pending = new Promise(resolve => { respond = resolve; });
+  const f = fixture(() => pending);
+  assert.equal(f.elements['[data-direct-download]'].href, '/download/#mac');
+  assert.equal(f.elements['#release-action a'].href, '#release-state');
+  respond({ ok: true, json: async () => ({ ...ready, contributions: { ...ready.contributions, policy: 'paid-download' } }) });
+  await f.loaded;
+  assert.equal(f.elements['[data-direct-download]'].href, '/download/#mac');
+  assert.equal(f.elements['#release-action'].children.length, 0);
+  assert.equal(f.elements['#release-details'].hidden, true);
 });

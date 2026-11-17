@@ -8,19 +8,16 @@ export const footageCredit = 'Footage: <cite>Tears of Steel</cite>, (CC) Blender
 export const betaRequestsClosed = 'Beta requests open when the form on the download page is connected.';
 
 // Every assistant claim on the home page is in this object, so it can be reviewed and changed in
-// one place. It covers the Mac app and the local browser editor only. The home page makes no
-// assistant claim for iPhone and iPad; add that wording here once the supported sign-in routes
-// are confirmed.
+// one place. It distinguishes the local editor from the hosted browser editor.
 const assistantProviders = 'Claude Code, Codex or Google Antigravity';
 export const assistantCopy = {
   providers: assistantProviders,
   scope: 'In the Mac app and the local browser editor',
-  heading: 'Ask in plain words. Undo like any edit.',
-  lead: 'Select clips, a title or a range and describe what should change. The assistant reads your selection, playhead, transcript and rendered frames, then edits through the same timeline operations you use by hand.',
+  heading: 'Edit with your AI account.',
+  lead: 'Ask the built-in assistant to change a cut, title or layer. Review the changes, refine them on the timeline or undo them.',
   points: [
-    ['Ordinary edits, not a black box.', 'Every change comes with a receipt of what changed and reverses with Undo.'],
-    ['Bring your own account.', `Connect ${assistantProviders} through the provider’s official sign-in. Arya includes no AI credits.`],
-    ['Always optional.', 'Every timeline, color, motion and audio tool works offline without an assistant.'],
+    ['Use your own account.', 'Connect ChatGPT where offered, or choose another supported provider in Assistant settings. Arya includes no AI credits.'],
+    ['Always optional.', 'You can edit and export without connecting an account.'],
   ],
   link: ['/install/#accounts', 'How assistant sign-in works'],
   // The "AI assistant" row of What works where: Mac app, local browser editor, hosted browser editor.
@@ -85,7 +82,7 @@ export function nativeCaptureNote({ native, shown = null, releaseReady = false, 
   return `Captured from Arya ${native.version} on ${devices}, ${native.captured}, with the ${listed(projects)} sample project${projects.length > 1 ? 's' : ''}.${media ? ` ${media}` : ''}${current}`;
 }
 
-export function productHome({ button, link, faq, stage, shots, figures, native, film = null, releaseReady = false, publicSource = null, accessURL = null, browserEditor = null, mobileURL = null, mobileVersion = null, pro = false, contributionsConfigured = false, version = '1.0.0', size = '104 MB', minimumOS = 'macOS 14', architectures = 'Apple silicon and Intel' }) {
+export function productHome({ button, link, faq, stage, shots, figures, native, film = null, releaseURL = null, releaseReady = Boolean(releaseURL), publicSource = null, accessURL = null, browserEditor = null, mobileURL = null, mobileVersion = null, pro = false, contributionsConfigured = false, version = '1.0.0', size = '104 MB', minimumOS = 'macOS 14', architectures = 'Apple silicon and Intel' }) {
   if (!Array.isArray(shots) || shots.length !== 4 || shots[0].id !== 'edit') throw new Error('The home gallery needs four verified captures, starting with Edit');
   const nativeIds = ['mac-color', 'mac-edit', 'ipad-color', 'iphone-edit', 'mac-color-inspector', 'mac-motion-inspector', 'mac-media-panel', 'ipad-color-inspector', 'iphone-deliver'];
   if (!native?.images || nativeIds.some(id => !native.images[id])) throw new Error('The home page needs every native capture listed in assets/product/native.json');
@@ -108,7 +105,7 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
     return `<figure class="chapter-figure figure-${id}"><a href="${item.src}" class="figure-link"><img src="${item.src}" alt="${item.alt}" width="${item.width}" height="${item.height}" loading="lazy" decoding="async"></a><figcaption>${label ? `<span class="plate-label">${label}</span> ` : ''}${item.caption}</figcaption></figure>`;
   };
   // A native capture, labelled with its device. `small` swaps in a detail of the same screen on phones.
-  const picture = (item, { small = null, eager = false } = {}) => `<picture>${small ? `<source media="(max-width:760px)" srcset="${small.src}" width="${small.width}" height="${small.height}">` : ''}<img src="${item.src}" alt="${item.alt}" width="${item.width}" height="${item.height}"${eager ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async"></picture>`;
+  const picture = (item, { small = null, eager = false, priority = false } = {}) => `<picture>${small ? `<source media="(max-width:760px)" srcset="${small.src}" width="${small.width}" height="${small.height}">` : ''}<img src="${item.src}" alt="${item.alt}" width="${item.width}" height="${item.height}"${eager ? '' : ' loading="lazy"'}${priority ? ' fetchpriority="high"' : ''} decoding="async"></picture>`;
   const plate = id => {
     const item = shot(id);
     return `<figure class="plate plate-${id}"><div class="plate-frame">${picture(item)}</div><figcaption><span class="plate-label">${item.label}</span> ${item.caption}${pictured(item)}</figcaption></figure>`;
@@ -134,13 +131,12 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
     : `Private beta for Mac, by invitation. The public download is not available yet.${accessURL ? '' : ` ${betaRequestsClosed}`}`;
   const captureNote = nativeCaptureNote({ native, shown: shownIds, releaseReady, version, mobileURL, mobileVersion });
 
-  // Availability: one row per place Arya runs, with the state it is really in.
-  const ledger = [
-    `<li class="ledger-row ledger-mac"><div class="ledger-what"><strong>Mac</strong><span>${releaseReady ? `Arya ${version}. ${minimumOS} or later, ${architectures}. Free.` : releaseLine}</span></div>${button(action.href, action.label)}</li>`,
-    mobileURL
-      ? `<li class="ledger-row ledger-ios"><div class="ledger-what"><strong>iPhone and iPad</strong><span>Arya ${mobileVersion} on the App Store. ${pro ? proCopy.short : 'Free core editor.'}</span></div>${button(mobileURL, 'Download on the App Store')}</li>`
-      : '<li class="ledger-row ledger-later"><div class="ledger-what"><strong>iPhone and iPad</strong><span>Coming later. There is no public download yet.</span></div></li>',
-    browserEditor ? `<li class="ledger-row ledger-browser"><div class="ledger-what"><strong>Browser</strong><span>No install. No AI assistant, Figma import or transcription.</span></div>${button(browserEditor, 'Try in your browser <span class="button-badge">Limited</span>', 'secondary')}</li>` : '',
+  const heroActions = [
+    releaseReady && releaseURL
+      ? `<a class="button" href="${releaseURL}" data-direct-download>Download Arya for Mac</a>`
+      : button(action.href, action.label),
+    mobileURL ? button(mobileURL, 'Download on the App Store', 'secondary') : '',
+    browserEditor ? link(browserEditor, 'Open browser editor') : '',
   ].join('');
 
   // The app on each device. iPad and iPhone screens appear only while the App Store release is live.
@@ -149,7 +145,7 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
 <div class="family-stage">
 ${mobileURL ? `${layer('iphone-edit', 'iphone', { eager: true })}
 ${layer('ipad-color', 'ipad', { small: shot('ipad-color-inspector'), eager: true })}
-` : ''}${layer('mac-color', 'mac', { small: shot('mac-color-inspector'), eager: true })}
+` : ''}${layer('mac-color', 'mac', { small: shot('mac-color-inspector'), eager: true, priority: true })}
 </div>
 <figcaption class="credit">${captureNote}</figcaption>
 </figure>`;
@@ -205,14 +201,14 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
     ['Shorts and transcription', '9:16, 1:1 and 16:9 compositions, reframing, four caption styles, and transcription with Apple Speech, on device where the Mac supports it.', 'Included, with local transcription when whisper.cpp is installed.', 'Vertical and square projects only. No transcription, captions or shorts tools.'],
     ['AI assistant', ...assistantCopy.editions],
     ['Figma import', 'Import frames as editable text, shape and nested layers with a personal access token, or paste Figma MCP node data.', 'Import frames with a personal access token, or ask Claude Code with the Figma MCP server through /reel.', 'Not available in the hosted browser editor.'],
-  ].map(([feature, mac, local, hosted]) => `<tr><th scope="row">${feature}</th><td data-label="Mac app">${mac}</td><td data-label="Local browser editor">${local}</td><td data-label="Hosted browser editor">${hosted}</td></tr>`).join('');
+  ].map(([feature, mac, local, hosted]) => `<tr role="row"><th scope="row" role="rowheader">${feature}</th><td role="cell"><span class="comparison-label" aria-hidden="true">Mac app</span>${mac}</td><td role="cell"><span class="comparison-label" aria-hidden="true">Local browser editor</span>${local}</td><td role="cell"><span class="comparison-label" aria-hidden="true">Hosted browser editor</span>${hosted}</td></tr>`).join('');
   const switching = [
     ['Final Cut Pro', 'Import FCPXML files and .fcpxmld bundles, and export FCPXML.', 'Generators arrive as solid colors, multicam clips as their active angle and variable speed as one constant speed.'],
     ['DaVinci Resolve', 'Move timelines as FCPXML or OpenTimelineIO. Grades use a node graph with wheels, curves, qualifiers and windows.', 'Resolve grades and Fusion compositions do not import.'],
     ['Premiere Pro', 'Bring captions as SRT or WebVTT. Send a cut list as a CMX 3600 EDL from the local browser editor.', 'Premiere XML and AAF are not supported, and EDL is export only.'],
     ['After Effects', 'Precompose, parenting, track mattes, masks and expressions such as wiggle and loopOut.', 'No planar tracking and no third-party plug-ins.'],
     ['Opus Clip', 'Passage suggestions quote the transcript they come from. Each short stays an editable composition.', 'Suggestion scores rank structure only. They do not predict views.'],
-  ].map(([from, carries, missing]) => `<tr><th scope="row">${from}</th><td data-label="Carries over">${carries}</td><td data-label="Not yet">${missing}</td></tr>`).join('');
+  ].map(([from, carries, missing]) => `<tr role="row"><th scope="row" role="rowheader">${from}</th><td role="cell"><span class="comparison-label" aria-hidden="true">Carries over</span>${carries}</td><td role="cell"><span class="comparison-label" aria-hidden="true">Not yet</span>${missing}</td></tr>`).join('');
   const downloadAnswer = releaseReady
     ? `Yes. Arya ${version} for Mac is on the download page with its version, requirements and SHA-256 checksum. It is free, signed, notarized and licensed under MIT. ${mobileURL ? `Arya ${mobileVersion} is also available on the App Store for iPhone and iPad.${pro ? ` ${proCopy.store}` : ''}` : 'iPhone and iPad builds are coming later.'}`
     : `Not yet. Arya is in a private beta by invitation. The Mac app needs final interface checks, a signed package and Apple notarization before a public download. ${accessURL ? 'You can request beta access on the download page.' : betaRequestsClosed}`;
@@ -221,22 +217,23 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
   const platforms = [
     `<article class="platform"><h3>Mac</h3><p class="platform-state">${releaseReady ? `Arya ${version}, a ${size} notarized universal DMG for ${minimumOS} or later.` : 'Private beta, by invitation.'}</p><ul><li>Local project folders with automatic proxies.</li><li>FCPXML and OpenTimelineIO interchange, with ProRes 4444 and PNG alpha export.</li><li>Assistant connections, Figma import and transcription with Apple Speech.</li></ul>${link(action.href, action.label)}</article>`,
     mobileURL
-      ? `<article class="platform"><h3>iPhone and iPad</h3><p class="platform-state">Arya ${mobileVersion} on the App Store. ${pro ? proCopy.short : 'Free core editor.'}</p><ul>${pro ? `<li>${proCopy.free} ${proCopy.adds}</li><li>${proCopy.plans} ${proCopy.early}</li>` : ''}<li>Add media from Files or Photos.</li><li>New projects are saved in Arya’s Projects folder in Files. You can also open project folders you choose.</li><li>Export from Deliver. Keep Arya active until the export finishes if your device does not support background export.</li></ul>${link(mobileURL, 'Download on the App Store')}</article>`
+      ? `<article class="platform"><h3>${pro ? 'App Store' : 'iPhone and iPad'}</h3><p class="platform-state">Arya ${mobileVersion} for ${pro ? 'iPhone, iPad and Mac' : 'iPhone and iPad'}. ${pro ? proCopy.short : 'Free core editor.'}</p><ul>${pro ? `<li>${proCopy.free} ${proCopy.adds}</li><li>${proCopy.plans} ${proCopy.early}</li>` : ''}<li>Add media from Files or Photos.</li><li>New projects are saved in Arya’s Projects folder in Files. You can also open project folders you choose.</li><li>Export from Deliver. Keep Arya active until the export finishes if your device does not support background export.</li></ul>${link(mobileURL, 'Download on the App Store')}</article>`
       : '<article class="platform"><h3>iPhone and iPad</h3><p class="platform-state">Coming later. There is no public mobile download or TestFlight link yet.</p><ul><li>iPad and iPhone builds share the project format.</li></ul></article>',
-    browserEditor ? `<article class="platform"><h3>Browser</h3><p class="platform-state">A hosted preview at <code>/editor/</code>, with no install.</p><ul><li>Runs in current Chrome and Edge.</li><li>Timeline editing, color grading, motion and audio, with projects kept in your browser profile.</li><li>No AI assistant, Figma import, transcription or captions.</li></ul>${link(browserEditor, 'Try in your browser')}</article>` : '',
+    browserEditor ? `<article class="platform"><h3>Browser</h3><p class="platform-state">Free editing and export in Chrome and Edge. No install.</p><ul><li>Exports up to five minutes in supported formats.</li><li>Timeline editing, color grading, motion and audio, with projects kept in your browser profile.</li><li>No AI assistant, Figma import, transcription or captions.</li></ul>${link(browserEditor, 'Open browser editor')}</article>` : '',
   ].join('');
 
   return `<section class="hero">
 <div class="wrap hero-grid">
-<h1>One AI-native suite for editing, color, motion and shorts. <em>Your edit. Every layer.</em></h1>
+<h1>Video editing, color, motion and shorts. <em>Your edit. Every layer.</em></h1>
 <div class="hero-side">
-<p class="lead">Work by hand on a timeline, or say what should change. Every change is an ordinary edit you can adjust and undo.</p>
-<ul class="ledger" aria-label="Where you can get Arya">${ledger}</ul>
+<p class="lead">Cut on the timeline. On Mac, ask the built-in assistant to make edits you can adjust and undo.</p>
+<div class="actions hero-actions">${heroActions}</div>
+<p class="hero-meta">${releaseReady ? `Free Mac download · ${minimumOS} or later` : releaseLine} ${link('/download/', 'Compare editions')}</p>
 </div>
 </div>
 <div class="wrap">${family}</div>
 </section>
-${launchFilm}<section class="pages" id="suite" aria-labelledby="suite-heading">
+${launchFilm}<section class="pages" id="suite" tabindex="-1" aria-labelledby="suite-heading">
 <div class="wrap">
 <div class="section-head"><h2 id="suite-heading">Six pages. One project.</h2><p>Cut, grade, animate, mix and deliver without round trips. Every workspace edits the same project file, so a grade, a title or a short stays live and editable.</p></div>
 <div class="pages-grid">
@@ -254,7 +251,7 @@ ${chapters}
 <div class="workspace">
 <div class="workspace-tabs" role="group" aria-label="Show an Arya workspace">${gallery}</div>
 <div class="workspace-frame"><img id="workspace-image" src="${shots[0].src}" alt="${shots[0].alt}" width="${shots[0].width}" height="${shots[0].height}" loading="lazy" decoding="async"></div>
-<div class="workspace-meta"><p class="workspace-caption" id="workspace-caption" aria-live="polite">${shots[0].caption}</p><a class="workspace-full" id="workspace-full" href="${shots[0].src}">Open full size <span aria-hidden="true">↗</span></a></div>
+<div class="workspace-meta"><p class="workspace-caption" id="workspace-caption" aria-live="polite" aria-live="polite">${shots[0].caption}</p><a class="workspace-full" id="workspace-full" href="${shots[0].src}">Open full size <span aria-hidden="true">↗</span></a></div>
 <p class="credit">Captured from the Arya browser editor, October 2026. ${footageCredit}</p>
 </div>
 </div>
@@ -269,7 +266,7 @@ ${figure('shorts', '')}
 <ul class="figma-limits"><li><strong>Editable layers</strong>Text, rectangles and ellipses with a solid or gradient fill, and nested frames arrive as live Arya layers.</li><li><strong>Rendered images</strong>Complex vectors, boolean shapes, stars, polygons, lines, image fills, shadows and masked groups arrive as images you can still animate.</li><li><strong>Local token</strong>Your Figma personal access token stays on your device. Hosted OAuth sign-in is planned for a later release.</li></ul>
 </article>
 </section>
-<section class="assistant" id="ai" aria-labelledby="ai-heading">
+<section class="assistant" id="ai" tabindex="-1" aria-labelledby="ai-heading">
 <div class="wrap assistant-grid">
 <div class="chapter-copy"><p class="where">${assistantCopy.scope}</p><h2 id="ai-heading">${assistantCopy.heading}</h2><p>${assistantCopy.lead}</p>
 <ul class="points">${assistantCopy.points.map(([lead, text]) => `<li><strong>${lead}</strong> ${text}</li>`).join('')}</ul>
@@ -283,11 +280,11 @@ ${figure('assistant')}
 </section>
 <section class="editions-section wrap" id="editions" aria-labelledby="editions-heading">
 <div class="section-head"><h2 id="editions-heading">What works where.</h2><p>Arya runs as a native Mac app, a local browser editor run from source, and a hosted browser preview at <code>/editor/</code>. The hosted preview keeps projects in browser storage and exports H.264, HEVC, WAV and AAC up to five minutes.</p></div>
-<div class="table-wrap" tabindex="0" role="region" aria-label="What works in each Arya edition"><table class="editions-table"><thead><tr><th scope="col">Capability</th><th scope="col">Mac app (v${version})</th><th scope="col">Local browser editor (from source)</th><th scope="col">Hosted browser editor (/editor/)</th></tr></thead><tbody>${whatWorksWhere}</tbody></table></div>
+<div class="table-wrap" tabindex="0" role="region" aria-label="What works in each Arya edition"><table class="editions-table" role="table"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Capability</th><th scope="col" role="columnheader">Mac app (v${version})</th><th scope="col" role="columnheader">Local browser editor (from source)</th><th scope="col" role="columnheader">Hosted browser editor (/editor/)</th></tr></thead><tbody role="rowgroup">${whatWorksWhere}</tbody></table></div>
 </section>
 <section class="switching wrap" id="switch" aria-labelledby="switch-heading">
 <div class="section-head"><h2 id="switch-heading">Bring your timeline with you.</h2><p>Move timelines with FCPXML or OpenTimelineIO, and captions with SRT or WebVTT. This is what carries over from the tool you use now, and what does not yet.</p></div>
-<div class="table-wrap" tabindex="0" role="region" aria-label="What carries over from other tools"><table><thead><tr><th scope="col">Coming from</th><th scope="col">What carries over</th><th scope="col">What does not, yet</th></tr></thead><tbody>${switching}</tbody></table></div>
+<div class="table-wrap" tabindex="0" role="region" aria-label="What carries over from other tools"><table role="table"><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Coming from</th><th scope="col" role="columnheader">What carries over</th><th scope="col" role="columnheader">What does not, yet</th></tr></thead><tbody role="rowgroup">${switching}</tbody></table></div>
 </section>
 <section class="faq-section wrap" id="faq" aria-labelledby="faq-heading">
 <h2 id="faq-heading">Questions before you start</h2>
@@ -302,7 +299,7 @@ ${faq([
 <section class="layer-study-section wrap"><details class="layer-study"><summary>Explore the editable-layer illustration<span>An interactive brand study</span></summary><div class="layer-study-body"><noscript><p>Layer controls need JavaScript. The artwork remains available to view.</p></noscript><p>Afterlight is a separate illustration of editable layers. It does not run the Arya application or call an agent.</p>${stage}</div></details></section>
 <section class="closing wrap" aria-labelledby="closing-heading">
 <div class="closing-copy"><h2 id="closing-heading">${mobileURL ? 'Start your first cut.' : 'Start cutting on your Mac.'}</h2><p class="closing-meta">${releaseReady ? `Arya ${version} for Mac is a ${size} notarized universal DMG for ${minimumOS} or later.${mobileURL ? ` Arya ${mobileVersion} for iPhone and iPad is on the App Store.` : ''}${pro && mobileURL ? ` Arya is MIT licensed, and the Mac download is free. ${proCopy.store}` : ' Arya is free and MIT licensed.'}` : releaseLine}</p></div>
-<div class="closing-actions">${button(action.href, action.label)}${mobileURL ? button(mobileURL, 'Download on the App Store', 'secondary closing-ios') : ''}${browserEditor ? button(browserEditor, 'Try in your browser (limited)', 'secondary') : ''}</div>
+<div class="closing-actions">${button(action.href, action.label)}${mobileURL ? button(mobileURL, 'Download on the App Store', 'secondary closing-ios') : ''}${browserEditor ? button(browserEditor, 'Open browser editor', 'secondary') : ''}</div>
 ${contributionsConfigured ? (pro && mobileURL ? '<p class="closing-support">The Mac download and the browser editor are free to use. If Arya helps your work, you can <a href="/support/">support its development</a> with a one-time contribution. In the App Store edition, Arya Pro also funds development.</p>' : '<p class="closing-support">Arya is free to use. If it helps your work, you can <a href="/support/">support its development</a> with a one-time contribution.</p>') : ''}
 </section>`;
 }

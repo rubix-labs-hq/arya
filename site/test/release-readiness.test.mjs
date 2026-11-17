@@ -54,9 +54,9 @@ test('configured release, contact, source and social metadata survive static gen
   // A ready release sends every primary action to the download, not to the beta access form.
   for (const [name, html] of Object.entries(pages)) {
     assert.ok(!html.includes('href="/download/#access"'), `${name} still links to beta access`);
-    assert.ok(html.includes('<a class="button small" href="/download/#mac">Download for Mac</a>'), `${name} header action`);
+    assert.match(html, /class="button small header-download" href="\/download\/"[^>]*>Downloads<\/a>/, `${name} header action`);
   }
-  assert.equal([...pages.home.matchAll(/<a class="button " href="\/download\/#mac">Download for Mac<\/a>/g)].length, 2);
+  assert.match(pages.home, /href="https:\/\/example\.com\/Arya\.dmg" data-direct-download>Download Arya for Mac/);
   assert.ok(!pages.download.includes('id="access-form"'));
 });
 
@@ -141,7 +141,7 @@ class ImageElement extends Element {
 }
 
 async function browserFixture(config, load, initialImage = {}) {
-  const selectors = Object.fromEntries(['.menu-button', '#site-nav', '#release-state', '#release-heading', '#release-description', '#release-action', '#workspace-image', '#workspace-caption', '#workspace-full', '#contribution-form', '#custom-amount', '#contribution-state'].map(key => [key, new Element()]));
+  const selectors = Object.fromEntries(['.menu-button', '#site-nav', '#release-state', '#release-description', '#release-action', '#workspace-image', '#workspace-caption', '#workspace-full', '#contribution-form', '#custom-amount', '#contribution-state'].map(key => [key, new Element()]));
   const navigationLinks = [new Element()];
   selectors['#site-nav'].querySelectorAll = () => navigationLinks;
   const galleries = ['edit', 'motion', 'color', 'audio'].map(id => new Element({ dataset: { src: `/assets/product/${id}.jpg`, alt: `${id} workspace`, caption: `${id} caption` } }));
@@ -189,7 +189,7 @@ test('runtime navigation, gallery and withdrawal use their real event handlers',
   withdrawn.selectors['#release-action'].children.push(new Element({ href: ready.release.macURL }));
   await withdrawn.configLoaded;
   assert.equal(withdrawn.selectors['#release-action'].children.length, 0);
-  assert.equal(withdrawn.selectors['#release-heading'].textContent, 'The public installer is not ready.');
+  assert.equal(withdrawn.selectors['#release-description'].textContent, 'The public installer is not ready.');
 });
 
 test('gallery failures announce the missing capture and recover after another capture loads', async () => {
@@ -291,6 +291,7 @@ test('static pages offer gallery links and keep forms inert until handlers exist
   assert.ok(pages.support.includes('<input disabled id="custom-amount"'));
   assert.ok(pages.support.includes('type="submit" disabled'));
   const css = await readFile(join(root, 'assets/site.css'), 'utf8');
-  assert.ok(css.includes('.menu-button{display:none}.nav{display:flex;position:static;'));
+  assert.match(css, /\.menu-button\{display:none/);
+  assert.match(css, /html:not\(\.has-navigation\) \.site-header\{position:static\}/);
   assert.ok(css.includes('.has-navigation .nav{display:none;position:absolute}'));
 });

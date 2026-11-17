@@ -21,7 +21,15 @@ document.addEventListener('keydown', event => {
 navigationHeader?.addEventListener('focusout', event => {
   if (menuButton?.getAttribute('aria-expanded') === 'true' && !navigationHeader.contains(event.relatedTarget)) closeNavigation();
 });
-menu?.querySelectorAll('a').forEach(anchor => anchor.addEventListener('click', closeNavigation));
+menu?.querySelectorAll('a').forEach(anchor => anchor.addEventListener('click', event => {
+  if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  if (menuButton?.getAttribute('aria-expanded') !== 'true') return;
+  if (anchor.pathname === location.pathname && anchor.hash) {
+    const target = document.getElementById(anchor.hash.slice(1));
+    target?.focus({ preventScroll: true });
+  }
+  closeNavigation();
+}));
 if (menu && menuButton) document.documentElement.classList.add('has-navigation');
 const stage = document.querySelector('.stage');
 const layerDescription = document.querySelector('#layer-description');
@@ -61,6 +69,14 @@ if (stage && artboard && layerDescription && layerAction) {
   layerAction.disabled=false;
 }
 let config;
+const directDownload = document.querySelector('[data-direct-download]');
+const releaseAction = document.querySelector('#release-action');
+const releaseDetails = document.querySelector('#release-details');
+const currentDownload = document.querySelector('#release-action a');
+// The generated links also work without JavaScript. While refreshing their destinations,
+// send early clicks to the release information instead of an installer that may be stale.
+if (directDownload) directDownload.href = '/download/#mac';
+if (currentDownload) currentDownload.href = '#release-state';
 const configController=new AbortController();
 const configTimeout=setTimeout(()=>configController.abort(),8000);
 const configLoad=fetch('/config.json',{cache:'no-store',signal:configController.signal}).then(async response=>{
@@ -72,27 +88,36 @@ const configLoad=fetch('/config.json',{cache:'no-store',signal:configController.
     throw new Error('Unsupported configuration');
   }
   config=loaded;
-  const releaseURL=releaseDestination(config);
+  const releaseURL = config.contributions.policy === 'optional-support' ? releaseDestination(config) : null;
   if(releaseURL){
+    if (directDownload) directDownload.href = releaseURL;
     document.querySelector('#release-state')?.replaceChildren(document.createTextNode(`Version ${config.release.version}`));
-    document.querySelector('#release-heading')?.replaceChildren(document.createTextNode('The official Mac release is available.'));
-    const description=document.querySelector('#release-description');
-    if(description)description.textContent=`Signed and notarized Mac build${config.release.size?`. Download size ${config.release.size}`:''}. SHA-256: ${config.release.sha256}`;
-    const action=document.querySelector('#release-action');
-    if(action){const anchor=document.createElement('a');anchor.href=releaseURL;anchor.className='button';anchor.textContent='Download Arya for Mac';anchor.rel='noopener noreferrer';action.replaceChildren(anchor);}
+    document.querySelector('#release-description')?.replaceChildren(document.createTextNode('Free to edit and export in every format the Mac app supports.'));
+    document.querySelector('#release-checksum')?.replaceChildren(document.createTextNode(config.release.sha256));
+    document.querySelector('#release-size')?.replaceChildren(document.createTextNode(config.release.size ? ` · ${config.release.size}` : ''));
+    if (releaseDetails) releaseDetails.hidden = false;
+    if (releaseAction) {
+      const anchor = currentDownload || document.createElement('a');
+      anchor.href = releaseURL;
+      anchor.className = 'button';
+      anchor.textContent = 'Download Arya for Mac';
+      if (!currentDownload) releaseAction.replaceChildren(anchor);
+    }
   } else {
+    if (directDownload) directDownload.textContent = 'Check Mac availability';
     document.querySelector('#release-state')?.replaceChildren(document.createTextNode('Release validation in progress'));
-    document.querySelector('#release-heading')?.replaceChildren(document.createTextNode('The public installer is not ready.'));
-    document.querySelector('#release-description')?.replaceChildren(document.createTextNode('There is no approved public Mac download in the current release configuration.'));
-    document.querySelector('#release-action')?.replaceChildren();
+    document.querySelector('#release-description')?.replaceChildren(document.createTextNode('The public installer is not ready.'));
+    if (releaseDetails) releaseDetails.hidden = true;
+    releaseAction?.replaceChildren();
   }
   return config;
 }).catch(()=>{
   config=null;
+  if (directDownload) directDownload.textContent = 'Check Mac availability';
   document.querySelector('#release-state')?.replaceChildren(document.createTextNode('Release status unavailable'));
-  document.querySelector('#release-heading')?.replaceChildren(document.createTextNode('We could not check the current release.'));
   document.querySelector('#release-description')?.replaceChildren(document.createTextNode('Reload this page to check the release status before downloading.'));
-  document.querySelector('#release-action')?.replaceChildren();
+  if (releaseDetails) releaseDetails.hidden = true;
+  releaseAction?.replaceChildren();
   const state=document.querySelector('#contribution-state');
   if(state)state.textContent='Contribution setup could not be loaded. No payment has been taken. Try reloading this page.';
   return null;

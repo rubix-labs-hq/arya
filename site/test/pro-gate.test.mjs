@@ -66,7 +66,13 @@ test('with pro true, the App Store copy names the free tier, Arya Pro and the fr
   assert.ok(download.includes('before version 1.2.0, Arya Pro is included at no charge'));
 
   // The Mac download and the browser editor stay free.
-  assert.ok(download.includes('The Mac download from this site and the browser editor stay free and never need Arya Pro.'));
+  const mac = text(on['download/index.html'].match(/<section class="edition" aria-labelledby="mac">[\s\S]*?<\/section>/)[0]);
+  const browser = text(on['download/index.html'].match(/<section class="edition" aria-labelledby="browser">[\s\S]*?<\/section>/)[0]);
+  assert.ok(mac.includes('Free to edit and export in every format the Mac app supports.'));
+  assert.ok(browser.includes('Free editing and export. Supports H.264, HEVC, WAV and AAC exports up to five minutes.'));
+  assert.match(download, /App Store iPhone, iPad and Mac · Version/);
+  assert.match(download, /Arya Pro in Settings.*Restore Purchases/);
+  assert.doesNotMatch(mac + browser, /1080p|Arya Pro/);
   assert.ok(support.includes('The Mac download from this site and the browser editor stay free and never need Arya Pro.'));
   assert.ok(full.includes('The Mac download and the browser editor are free and never need Arya Pro.'));
 

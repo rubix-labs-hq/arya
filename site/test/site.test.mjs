@@ -76,11 +76,11 @@ test('375px phone layout prevents horizontal overflow and keeps tap targets at l
   const download=await readFile(join(root,'download/index.html'),'utf8');
   assert.ok(css.includes('.article-layout{grid-template-columns:minmax(0,1fr)}'),'.article-layout must use minmax(0,1fr) to prevent mobile overflow');
   assert.ok(css.includes('.hash,#release-description{overflow-wrap:anywhere;word-break:break-word}'),'SHA-256 hash and release description must wrap on narrow screens');
-  assert.ok(download.includes('<code class="hash">'),'download page SHA-256 must use .hash class');
-  assert.ok(css.includes('.button.small{min-height:44px;padding:0 16px;font-size:14.5px;border-radius:7px}'),'.button.small must be at least 44px tall');
+  assert.ok(download.includes('<code class="hash" id="release-checksum">'),'download page SHA-256 must use .hash class');
+  assert.ok(css.includes('.button.small{min-height:44px;padding:8px 14px;font-size:14.5px;border-radius:7px}'),'.button.small must be at least 44px tall');
   assert.ok(css.includes('.footer-nav a{display:inline-flex;align-items:center;min-height:44px;min-width:44px'),'.footer-nav links must meet 44x44 tap target');
   assert.ok(css.includes('.article-aside a{display:flex;align-items:center;min-height:44px;min-width:44px'),'.article-aside links must meet 44x44 tap target');
-  assert.ok(download.includes('<a class="button small" href="/download/#mac">Download for Mac</a>'),'navigation CTA must state Download for Mac');
+  assert.match(download, /class="button small header-download" href="\/download\/" aria-current="page">Downloads<\/a>/);
 });
 test('font distributions include their actual licenses',async()=>{
   for(const family of ['manrope','newsreader']){
@@ -105,7 +105,7 @@ test('configured tips expose only reviewed HTTPS checkout links and keep downloa
 
 test('App Store help is reachable without a payment call to action', async () => {
   const help = await readFile(join(root, 'help/index.html'), 'utf8');
-  assert.match(help, /Keep your edit moving/);
+  assert.match(help, /<h1>Arya Help<\/h1>/);
   assert.match(help, /rubix-labs-hq\/arya\/issues/);
   assert.ok(!help.includes('buy.stripe.com'));
   assert.ok(!help.includes('href="/support/"'));
