@@ -44,7 +44,7 @@ test('saved-only actual asset renders as Media registration and exposes separate
   assert.equal(receipt.scopes[0].asset, path)
   assert.equal(receipt.scopes[0].status, 'added')
   const { tree } = render(receipt, after), displayed = text(tree)
-  assert.match(displayed, /Edit 4 · 1 Media asset changed/)
+  assert.match(displayed, /^1 Media asset changedEdit 4View changes/)
   assert.match(displayed, /Media registration · added/)
   assert.doesNotMatch(displayed, /Project settings changed|Project or composition settings/)
   assert.ok(displayed.includes(path))
@@ -62,7 +62,7 @@ test('saved-only actual asset renders as Media registration and exposes separate
 test('the actual saved-only component headline does not classify registration as project settings', () => {
   const after = saved(), receipt = changeReceipt(actualBefore, after, { version: 4, who: 'agent' })
   const displayed = text(render(receipt, after).tree)
-  assert.match(displayed, /Edit 4 · 1 Media asset changed/)
+  assert.match(displayed, /^1 Media asset changedEdit 4View changes/)
   assert.doesNotMatch(displayed, /Project settings changed/)
 })
 

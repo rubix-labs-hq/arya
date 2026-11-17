@@ -6,6 +6,8 @@ import htm from 'htm'
 import { duration } from '/core/project.js'
 import { Browser, installDropImport } from './browser.js'
 import { ChatPanel } from './chat.js'
+import { assistantActivity } from './assistant-activity.js'
+import { assistantState } from './assistant-state.js'
 import { player } from './engine-host.js'
 import { Inspector } from './inspector.js'
 import { installKeys, SHORTCUTS } from './keys.js'
@@ -65,6 +67,19 @@ function TopBar() {
     if (actionsOpen) closeActions()
     return action()
   }
+  const hosted = host.kind === 'browser-local'
+  const assistant = assistantState(s.assistantStatus ?? s.caps?.assistant)
+  const working = assistantActivity(s.claude, { pending: s.assistantSharingReviewOpen === true }).active
+  const assistantLabel = hosted ? 'Unavailable in beta' : !s.connected ? 'Reconnecting' : working ? 'Working' : assistant.ready ? 'Ready' : assistant.refreshRequired ? 'Needs refresh' : 'Not set up'
+  const openAssistant = () => {
+    if (store.assistantSharingReviewOpen) return
+    const focus = () => globalThis.document?.querySelector('#editor-assistant :is(textarea, .assistant-setup a.primary)')?.focus()
+    if (s.chatOpen) focus()
+    else {
+      set({ chatOpen: true })
+      queueMicrotask(focus)
+    }
+  }
   const running = s.jobs.filter(j => j.state === 'running' || j.state === 'queued' || host.kind === 'browser-local' && ['cancelling', 'committing'].includes(j.state))
 
   return html`
@@ -89,7 +104,9 @@ function TopBar() {
       <button type="button" class="ghost compact-actions-done" onClick=${closeActions}>Close actions</button>
       </div></div>
       <span class="topbar-sep before-assistant" aria-hidden="true"></span>
-      <button class=${`claude-btn ${s.chatOpen ? 'on' : ''} ${['thinking', 'working', 'running', 'queued', 'cancelling'].includes(s.claude.state) ? 'busy' : ''}`} aria-label=${!(s.assistantStatus ?? s.caps?.assistant)?.configured && !(s.assistantStatus ?? s.caps?.assistant)?.chatgpt?.signedIn && !(s.assistantStatus ?? s.caps?.assistant)?.providers?.some(provider => provider.authenticated) ? 'Assistant, not set up' : 'Assistant'} aria-expanded=${s.chatOpen} onClick=${() => set({ chatOpen: !s.chatOpen })}><${Icon} name="assistant" />Assistant<span class="assistant-setup-indicator" hidden=${!(!(s.assistantStatus ?? s.caps?.assistant)?.configured && !(s.assistantStatus ?? s.caps?.assistant)?.chatgpt?.signedIn && !(s.assistantStatus ?? s.caps?.assistant)?.providers?.some(provider => provider.authenticated))}>Not set up</span>${s.refs.length ? html` <span class="count">${s.refs.length}</span>` : ''}</button>
+      <button type="button" id="ask-arya" class=${`assistant-entry ${s.chatOpen ? 'on' : ''}`} data-state=${!hosted && s.connected && working ? 'working' : !hosted && s.connected && assistant.ready ? 'ready' : 'idle'} aria-expanded=${Boolean(s.chatOpen)} aria-controls=${s.chatOpen ? 'editor-assistant' : undefined} disabled=${s.assistantSharingReviewOpen === true} onClick=${openAssistant}>
+        <${Icon} name="assistant" /><span class="assistant-entry-label">Ask Arya</span><span class="assistant-entry-state"><i aria-hidden="true"></i>${assistantLabel}</span><kbd aria-hidden="true">/</kbd>
+      </button>
       ${/* Shown only when the editor loses its server, so a dot beside Assistant never reads as AI status. */ s.connected ? null : html`<span class="conn" role="status" aria-label="Disconnected from the Arya server" title="Disconnected from the Arya server"></span>`}
       </div>
     </div>

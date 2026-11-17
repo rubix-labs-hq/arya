@@ -1,3 +1,5 @@
+import { assistantActivity } from '../web/ui/assistant-activity.js'
+import { assistantState } from '../web/ui/assistant-state.js'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -73,8 +75,8 @@ function fixture(t, { saved = defaults, width = 1200, focusDocument = null, open
   const registry = { pages: [{ id: 'motion', label: 'Motion', order: 30, key: '⇧3', component: () => null }] }
   const phone = new Function('deps', `const { h, htm, useState, useRef, useEffect, matchMedia, useStore, viewProject } = deps;\n${phoneSource}\nreturn { PhonePanelControls, usePhoneLayout, compactPanelToPhone, phonePanelToCompact };`)(
     { h, htm, useState, useRef, useEffect, matchMedia, useStore: () => state, viewProject: () => state.openComp == null ? state.project : state.project.comps[state.openComp] })
-  const app = new Function('deps', `const { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, PhonePanelControls, usePhoneLayout, compactPanelToPhone, phonePanelToCompact, useStore, store, set, api, duration, timecode, registry, host, openProjectRecovery, useLayout, useCompactEditPanel, useWorkspaceWidth, editPaneSizes, editGridColumns, Divider, LayoutMenu, Browser, Inspector, Viewer, Timeline, Toolbar, ScrollTabs } = deps;\n${appSource}\nreturn { TopBar, EditPage };`)(
-    { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, ...phone, useStore: () => state, store: state, set, api, duration, timecode, registry, host: { kind: 'http' }, openProjectRecovery: openRecovery, ...layout, ...components })
+  const app = new Function('deps', `const { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, PhonePanelControls, usePhoneLayout, compactPanelToPhone, phonePanelToCompact, useStore, store, set, api, duration, timecode, registry, host, openProjectRecovery, useLayout, useCompactEditPanel, useWorkspaceWidth, editPaneSizes, editGridColumns, Divider, LayoutMenu, Browser, Inspector, Viewer, Timeline, Toolbar, ScrollTabs, assistantState, assistantActivity } = deps;\n${appSource}\nreturn { TopBar, EditPage };`)(
+    { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, ...phone, useStore: () => state, store: state, set, api, duration, timecode, registry, host: { kind: 'http' }, openProjectRecovery: openRecovery, ...layout, ...components, assistantState, assistantActivity })
   function render(name) {
     if (!groups.has(name)) groups.set(name, [])
     active = groups.get(name); index = 0
@@ -232,7 +234,7 @@ test('queued delivery progress stays visible on More and routes through the exis
 })
 test('Assistant and keyboard controls keep their existing state transitions', t => {
   const f = fixture(t), before = copy(f.state.project)
-  const assistant = nodes(f.top()).find(node => node.type === 'button' && cls(node, 'claude-btn')); assistant.props.onClick()
+  const assistant = nodes(f.top()).find(node => node.type === 'button' && cls(node, 'assistant-entry')); assistant.props.onClick()
   assert.equal(f.state.chatOpen, true); f.button('Keyboard shortcuts').props.onClick(); assert.equal(f.state.showKeys, true)
   assert.deepEqual(f.state.project, before); assert.deepEqual(f.state.selection, ['c1']); assert.deepEqual(f.requests, [])
 })

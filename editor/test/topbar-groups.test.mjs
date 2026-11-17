@@ -5,6 +5,8 @@ import test from 'node:test'
 import { h } from 'preact'
 import htm from 'htm'
 import { Icon } from '../web/ui/icons.js'
+import { assistantState } from '../web/ui/assistant-state.js'
+import { assistantActivity } from '../web/ui/assistant-activity.js'
 
 const app = fs.readFileSync(new URL('../web/ui/app.js', import.meta.url), 'utf8')
 const css = fs.readFileSync(new URL('../web/styles.css', import.meta.url), 'utf8')
@@ -13,9 +15,9 @@ const text = value => Array.isArray(value) ? value.map(text).join('') : value &&
 const cls = (node, name) => String(node.props?.class ?? '').split(/\s+/).includes(name)
 const LayoutMenu = function LayoutMenu() {}
 
-function shell(project) {
-  const store = { project, version: 7, root: '/selected', recovery: { status: 'valid' }, jobs: [], caps: {}, claude: { state: 'idle' }, refs: [], page: 'edit' }
-  const context = vm.createContext({ html: htm.bind(h), h, Icon, store, host: { kind: 'http' }, useStore: () => store, useState: value => [value, () => {}], useRef: value => ({ current: value }), showRecovery() {}, api: async () => ({}), set: value => Object.assign(store, value), toast() {}, PAGES: [['edit', 'Edit', '⇧2', 20]], registry: { pages: [] }, ScrollTabs() {}, LayoutMenu })
+function shell(project, kind = 'http', focus = () => {}) {
+  const store = { project, version: 7, root: '/selected', recovery: { status: 'valid' }, jobs: [], caps: {}, claude: { state: 'idle' }, connected: true, refs: [], page: 'edit' }
+  const context = vm.createContext({ html: htm.bind(h), h, Icon, assistantState, assistantActivity, store, host: { kind }, queueMicrotask: callback => callback(), globalThis: { document: { querySelector: () => ({ focus }) } }, useStore: () => store, useState: value => [value, () => {}], useRef: value => ({ current: value }), showRecovery() {}, api: async () => ({}), set: value => Object.assign(store, value), toast() {}, PAGES: [['edit', 'Edit', '⇧2', 20]], registry: { pages: [] }, ScrollTabs() {}, LayoutMenu })
   for (const name of ['Welcome', 'TopBar']) vm.runInContext(app.match(new RegExp(`function ${name}\\([^]*?\\n}\\n`))[0], context)
   return context
 }
@@ -64,15 +66,43 @@ test('the welcome screen marks New 1080p project as the primary action', () => {
 })
 
 
-test('the no-account assistant button keeps a visible indicator and accessible name', () => {
-  const context = shell(null)
-  context.store.caps = {}
-  context.store.assistantStatus = { configured: false, providers: [] }
-  let assistant = nodes(context.TopBar()).find(node => cls(node, 'claude-btn'))
-  assert.equal(assistant.props['aria-label'], 'Assistant, not set up')
-  assert.equal(nodes(assistant).find(node => cls(node, 'assistant-setup-indicator')).props.hidden, false)
-  context.store.assistantStatus = { configured: true }
-  assistant = nodes(context.TopBar()).find(node => cls(node, 'claude-btn'))
-  assert.equal(assistant.props['aria-label'], 'Assistant')
-  assert.equal(nodes(assistant).find(node => cls(node, 'assistant-setup-indicator')).props.hidden, true)
+test('Ask Arya is outside More and reports setup, ready, run, refresh and connection states', () => {
+  const context = shell(project)
+  const check = (state, label) => {
+    Object.assign(context.store, state)
+    const tree = nodes(context.TopBar())
+    const entry = tree.find(node => node.props?.id === 'ask-arya')
+    assert.equal(entry.type, 'button')
+    assert.match(text(entry), /Ask Arya/)
+    assert.equal(text(nodes(entry).find(node => cls(node, 'assistant-entry-state'))), label)
+    assert.equal(nodes(tree.find(node => node.props?.id === 'editor-action-list')).includes(entry), false)
+  }
+  check({}, 'Not set up')
+  check({ assistantStatus: { provider: 'codex', configured: true } }, 'Ready')
+  check({ claude: { state: 'working' } }, 'Working')
+  check({ claude: { state: 'idle' }, assistantSharingReviewOpen: true }, 'Working')
+  check({ assistantSharingReviewOpen: false, connected: false }, 'Reconnecting')
+  check({ connected: true, assistantStatus: { provider: 'codex', configured: false, mode: 'auto',
+    autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } } }, 'Needs refresh')
+  const hosted = nodes(shell(project, 'browser-local').TopBar()).find(node => node.props?.id === 'ask-arya')
+  assert.match(text(hosted), /Unavailable in beta/)
+})
+
+test('Ask Arya opens and focuses the composer and keeps sharing review in control', () => {
+  let focusCount = 0
+  const context = shell(project, 'http', () => focusCount++)
+  const entry = () => nodes(context.TopBar()).find(node => node.props?.id === 'ask-arya')
+  assert.equal(entry().props['aria-expanded'], false)
+  entry().props.onClick()
+  assert.equal(entry().props['aria-expanded'], true)
+  assert.equal(entry().props['aria-controls'], 'editor-assistant')
+  assert.equal(focusCount, 1)
+  context.store.assistantSharingReviewOpen = true
+  assert.equal(entry().props.disabled, true)
+  entry().props.onClick()
+  assert.equal(entry().props['aria-expanded'], true)
+  context.store.assistantSharingReviewOpen = false
+  entry().props.onClick()
+  assert.equal(entry().props['aria-expanded'], true)
+  assert.equal(focusCount, 2, 'an already open conversation returns focus to its composer')
 })

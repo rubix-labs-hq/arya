@@ -44,19 +44,22 @@ function ChangeReceipt({ receipt }) {
     set({ openComp: current.comp, selection: current.ids, page: 'edit', viewerMode: 'timeline' })
     player.seek(current.start)
   }
-  return html`<details class="change-receipt"><summary>${receipt.undone ? 'Undone · Edit' : 'Edit'} ${receipt.version} · ${headline}</summary>
-    ${receipt.projectChanges.length ? html`<p class="receipt-meta">${receipt.projectChanges.join(', ')}</p>` : null}
-    ${(receipt.scopes ?? []).map(scope => html`<div class="receipt-layer"><b>${scope.name}</b><span class="receipt-meta">${scopeLabel(scope)} · ${scope.status}</span>${scope.asset != null ? html`<p class="receipt-meta">${scope.asset}</p>` : null}<dl>${scope.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
-    ${receipt.clips.map(clip => html`<div class="receipt-layer"><b>${clip.name}</b><span class="receipt-meta">${clip.compositionName} · ${clip.id} · ${clip.status}</span><dl>${clip.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
-    ${receipt.truncated ? html`<p class="receipt-meta">Some changes or values are shortened. Showing ${receipt.clips.length} of ${receipt.total} changed layers${receipt.totalScopes == null ? '' : ` and ${(receipt.scopes ?? []).length} of ${receipt.totalScopes} ${receipt.totalAssets ? 'Media and settings' : 'settings'} groups`}.</p>` : null}
-    <div class="receipt-actions">${groups.map(comp => {
+  return html`<section class="assistant-result-card" aria-label=${receipt.undone ? 'Undone edit result' : 'Committed edit result'}>
+    <div class="receipt-heading"><b>${headline}</b><small>${receipt.undone ? 'Undone · Edit' : 'Edit'} ${receipt.version}</small></div>
+    <details class="change-receipt"><summary>View changes</summary>
+      ${receipt.projectChanges.length ? html`<p class="receipt-meta">${receipt.projectChanges.join(', ')}</p>` : null}
+      ${(receipt.scopes ?? []).map(scope => html`<div class="receipt-layer"><b>${scope.name}</b><span class="receipt-meta">${scopeLabel(scope)} · ${scope.status}</span>${scope.asset != null ? html`<p class="receipt-meta">${scope.asset}</p>` : null}<dl>${scope.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
+      ${receipt.clips.map(clip => html`<div class="receipt-layer"><b>${clip.name}</b><span class="receipt-meta">${clip.compositionName} · ${clip.id} · ${clip.status}</span><dl>${clip.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
+      ${receipt.truncated ? html`<p class="receipt-meta">Some changes or values are shortened. Showing ${receipt.clips.length} of ${receipt.total} changed layers${receipt.totalScopes == null ? '' : ` and ${(receipt.scopes ?? []).length} of ${receipt.totalScopes} ${receipt.totalAssets ? 'Media and settings' : 'settings'} groups`}.</p>` : null}
+      <details class="receipt-json"><summary>Read-only JSON diff</summary><pre>${JSON.stringify({ clips: receipt.clips, scopes: receipt.scopes, projectChanges: receipt.projectChanges, totalLayers: receipt.total, totalScopes: receipt.totalScopes, totalAssets: receipt.totalAssets, truncated: receipt.truncated }, null, 2)}</pre></details>
+      <p class="receipt-meta">Undo in the toolbar reverts the latest committed edit.</p>
+    </details>
+    ${groups.length ? html`<div class="receipt-actions">${groups.map(comp => {
       const selectable = receiptSelection(receipt, store.project, comp)
       const name = comp == null ? 'main timeline' : store.project?.comps?.[comp]?.name ?? comp
       return html`<button class="ghost tiny" disabled=${!selectable} onClick=${() => select(comp)}>Select changed layers${groups.length > 1 ? ` · ${name}` : ''}</button>`
-    })}</div>
-    <details class="receipt-json"><summary>Read-only JSON diff</summary><pre>${JSON.stringify({ clips: receipt.clips, scopes: receipt.scopes, projectChanges: receipt.projectChanges, totalLayers: receipt.total, totalScopes: receipt.totalScopes, totalAssets: receipt.totalAssets, truncated: receipt.truncated }, null, 2)}</pre></details>
-    <p class="receipt-meta">Undo in the toolbar reverts the latest committed edit.</p>
-  </details>`
+    })}</div>` : null}
+  </section>`
 }
 
 function AssistantHistoryNotice({ status }) {
@@ -104,10 +107,15 @@ export function ChatPanel() {
   }, [activity.active])
   const native = s.caps.host === 'native'
   const list = useRef(null)
-  const composing = useRef(false)
+  const composing = useRef(false), composer = useRef(null), follow = useRef(true)
+  const closePanel = () => {
+    scriptImport.current.cancel()
+    set({ chatOpen: false })
+    globalThis.document?.getElementById('ask-arya')?.focus()
+  }
   useEffect(() => {
-    if (list.current) list.current.scrollTop = list.current.scrollHeight
-  }, [s.chat.length, s.claude.state, s.activity.length, s.receipts.length])
+    if (list.current && follow.current) list.current.scrollTop = list.current.scrollHeight
+  }, [s.chat, s.claude.state, s.claude.text, s.activity, s.receipts, s.assistantReview])
 
   const send = async (msg = text) => {
     if (!assistantDraftIsCurrent(draftContext, store)) return
@@ -185,8 +193,6 @@ export function ChatPanel() {
   const chatgptPlan = Boolean(chatgpt?.planUsage) && connection?.provider === 'chatgpt' && connection?.mode !== 'auto'
   const chatgptCode = typeof s.claude?.errorCode === 'string' && s.claude.errorCode.startsWith('chatgpt_') ? s.claude.errorCode : ''
   const chatgptTask = action => async () => { try { await action() } catch (error) { toast(error.message, 'error') } }
-  const transitions = s.selection.filter(id => id.startsWith('tr:')).length
-  const context = s.selection.length ? transitions ? `${s.selection.length} selected items · ${transitions} ${transitions === 1 ? 'transition' : 'transitions'}` : `${s.selection.length} selected ${s.selection.length === 1 ? 'clip' : 'clips'}` : s.openComp ? s.project?.comps?.[s.openComp]?.name ?? 'Current composition' : 'Current timeline'
   const timeline = s.openComp ? s.project?.comps?.[s.openComp] : s.project
   const selectedObjects = (timeline?.tracks ?? []).flatMap(track => (track.clips ?? []).map(clip => ({ clip, track })))
   const selection = s.selection.map(id => {
@@ -198,8 +204,8 @@ export function ChatPanel() {
       track: object ? object.track.name ? `${object.track.name} (${object.track.id})` : object.track.id : null }
   })
   const quick = assistantPanel.suggestions(s.project, { selection: s.selection, comp: s.openComp })
-  // Suggestions show only while the box is empty, so one never replaces typed text. Each is sent as a prompt.
-  const showSuggestions = canSend && quick.length > 0 && !text.trim()
+  // Suggestions populate an empty draft as a prompt.
+  const showSuggestions = canSend && quick.length > 0 && !text.trim() && !s.chat.length
   const lastRequest = [...s.chat].reverse().find(m => ['user', 'you'].includes(m.role) && m.text)?.text ?? ''
   const view = assistantPanel.focus(s.project, { comp: s.openComp, playhead })
   const scopeName = s.openComp ? s.project?.comps?.[s.openComp]?.name ? `${s.project.comps[s.openComp].name} (${s.openComp})` : s.openComp : 'Main timeline'
@@ -218,7 +224,7 @@ export function ChatPanel() {
     catch (error) { toast(error.message, 'error') }
     finally { setReviewBusy('') }
   }
-  const focusComposer = () => list.current?.parentElement.querySelector('.composer textarea')?.focus()
+  const focusComposer = () => composer.current?.focus()
   const setPreview = on => {
     set({ assistantPreview: on })
     try { globalThis.localStorage?.setItem('arya.assistant.preview', on ? 'on' : 'off') } catch { /* The choice still applies to this session. */ }
@@ -229,100 +235,155 @@ export function ChatPanel() {
     ...s.receipts.map(receipt => ({ type: 'receipt', receipt, at: receipt.at })),
   ].sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
 
-  if (hosted) return html`<div class="panel chat"><div class="chat-head"><b>Assistant</b><span class="grow"></span><button class="ghost tiny" aria-label="Close assistant" onClick=${() => set({ chatOpen: false })}><${Icon} name="close" /></button></div><div class="assistant-setup"><b>Not available in the browser beta</b><p>The assistant can edit clips, titles and audio with your own AI account. That needs the Arya Mac app or the editor running on your computer.</p><a class="button primary" href="https://editwitharya.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a><a class="settings-link" href="https://editwitharya.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run locally</a></div></div>`
+  // Collapse consecutive tool updates without moving them past a message or edit.
+  const conversation = []
+  for (const entry of feed) {
+    const previous = conversation.at(-1)
+    if (entry.type !== 'act') conversation.push(entry)
+    else if (previous?.type === 'tools') previous.updates.push(entry)
+    else conversation.push({ ...entry, type: 'tools', updates: [entry] })
+  }
+  const inputLocked = working || Boolean(sharingReview)
+  const needsRefresh = status.refreshRequired || providerFailure
+  const openSettings = (other = false) => {
+    if (!store.assistantSharingReviewOpen) set({ settingsOpen: true, ...(other ? { settingsOtherWays: true } : {}) })
+  }
+  const closeComposerMenu = event => {
+    if (event.key !== 'Escape' || !event.currentTarget.open) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.open = false
+    event.currentTarget.querySelector('summary')?.focus()
+  }
+
+  if (hosted) return html`<section class="panel chat assistant-unavailable" id="editor-assistant" aria-label="Assistant">
+    <div class="chat-head"><b>Assistant</b><span class="muted">Unavailable in beta</span><button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button></div>
+    <div class="chat-list"><div class="assistant-setup"><b>Use Assistant in Arya for Mac</b><p>Assistant is also available in the local editor.</p><div class="assistant-setup-actions"><a class="button primary" href="https://editwitharya.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a><a class="settings-link" href="https://editwitharya.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run locally</a></div></div></div>
+  </section>`
 
   return html`
-    <div class="panel chat">
-      <${AssistantHistoryNotice} status=${s.chatHistory} />
+    <section class="panel chat" id="editor-assistant" aria-label="Assistant">
       <div class="chat-head">
         <span class=${`claude-dot ${working ? 'busy' : status.ready ? 'ok' : 'off'}`}></span>
         <b>Assistant</b>
         <span class="muted">${activity.terminal || working || !s.connected ? activity.label : status.ready ? name : status.refreshRequired ? 'Needs refresh' : 'Not connected'}</span>
         <span class="grow"></span>
-        <button class="ghost tiny" aria-label="Assistant settings" title="Assistant settings" disabled=${pending || Boolean(sharingReview)} onClick=${() => { if (!store.assistantSharingReviewOpen) set({ settingsOpen: true }) }}>Settings</button>
-        <button class="ghost tiny" aria-label="Close assistant" onClick=${() => { scriptImport.current.cancel(); set({ chatOpen: false }) }}><${Icon} name="close" /></button>
+        <button class="ghost tiny" aria-label="Assistant settings" title="Assistant settings" disabled=${pending || Boolean(sharingReview)} onClick=${() => openSettings()}>Settings</button>
+        <button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button>
       </div>
-      ${s.caps.assistant?.pluginSession ? html`<p class="assistant-plugin-note">Typing here starts a separate ${name} run. To use this Claude session, ask in the terminal.</p>` : null}
-      ${!status.ready && (!chatgpt || providerFailure || status.refreshRequired) ? html`<div class="assistant-setup"><b>${status.refreshRequired ? status.label : providerFailure ? `${name}: ${status.label}` : 'Connect your editing assistant'}</b><p>${status.refreshRequired || providerFailure ? status.reason : connection?.reason ?? (s.assistantStatusError || 'Choose an assistant in Settings.')}</p>${!status.refreshRequired && !providerFailure ? html`<p>Arya includes no AI credits. Editing works without an account. Settings lists the assistants this editor can use.</p>` : null}${status.refreshRequired || providerFailure ? html`<button disabled=${refreshing || connection?.loading || working || !s.connected} onClick=${refreshAvailability}>${refreshing || connection?.loading ? 'Refreshing…' : status.refreshRequired ? 'Refresh availability' : 'Refresh status'}</button>` : null}<button onClick=${() => set({ settingsOpen: true })}>${status.refreshRequired || providerFailure ? 'Assistant settings' : 'Set up assistant'}</button></div>` : null}
-      ${!status.ready && chatgpt ? html`<div class="assistant-setup"><b>${chatgptWaiting ? 'Waiting for ChatGPT sign-in' : providerFailure || status.refreshRequired ? 'Or use ChatGPT' : 'Connect your editing assistant'}</b><p>${chatgptWaiting ? 'Finish signing in on the ChatGPT page in your browser. Arya never sees your password.' : chatgpt.signedIn && !chatgpt.planUsage ? `Signed in to ChatGPT as ${chatgpt.email || 'your account'}, but plan usage is off for this sign-in.` : chatgpt.signedIn && connection.provider === 'chatgpt' && connection.mode !== 'auto' ? connection.reason ?? 'ChatGPT is not ready yet. Refresh status in Settings.' : chatgpt.signedIn ? `Signed in to ChatGPT as ${chatgpt.email || 'your account'}.` : 'Use your ChatGPT plan for eligible requests. Arya includes no AI credits, and editing works without an account.'}</p>${showSignInNotice && !chatgptWaiting && ['failed', 'cancelled', 'expired'].includes(chatgpt.attempt?.state) && chatgpt.attempt.message ? html`<p role="status">${chatgpt.attempt.message}</p>` : null}${chatgptWaiting ? html`${chatgpt.attempt?.startURL ? html`<a class="button" href=${chatgpt.attempt.startURL} target="_blank" rel="noopener noreferrer">Open the sign-in page ↗</a>` : null}<button onClick=${chatgptTask(() => chatgptAccountAction('cancel'))}>Cancel sign-in</button>` : !chatgpt.signedIn ? html`<button class="primary" disabled=${working} onClick=${chatgptTask(() => startChatGPTSignIn({}))}>Continue with ChatGPT</button>` : !chatgpt.planUsage ? html`<button class="primary" disabled=${working} onClick=${chatgptTask(() => startChatGPTSignIn({ ...(chatgptCurrent ? { account: chatgptCurrent.id } : {}), enablePlan: true }))}>Turn on ChatGPT plan usage</button>` : connection.provider !== 'chatgpt' || connection.mode === 'auto' ? html`<button class="primary" disabled=${working} onClick=${chatgptTask(() => chooseChatGPTAssistant(connection))}>Use ChatGPT</button>` : null}<button onClick=${() => set({ settingsOpen: true, settingsOtherWays: true })}>Other ways to connect</button></div>` : null}
-      ${chatgpt?.welcome ? html`<section class="assistant-setup chatgpt-welcome" aria-labelledby="chatgpt-welcome-heading"><b id="chatgpt-welcome-heading">You’re using your ChatGPT plan</b><p>Eligible AI requests in Arya use your ChatGPT plan or credits balance. Check and manage usage in your ChatGPT settings.</p><button class="primary" onClick=${chatgptTask(() => chatgptAccountAction('welcome'))}>Got it</button><a class="button" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></section>` : null}
-      <div class="chat-list" ref=${list}>
-        ${feed.length === 0 ? html`<div class="chat-empty">
-          <p>${native ? 'Describe the edit you want. Your assistant works with native clips, titles, audio and motion, with undo.' : 'Ask for an edit or a question about this project. With Preview changes on, you see what will change and apply it yourself.'}</p>
+      <div class="chat-list" role="group" aria-label="Conversation" tabIndex="0" ref=${list} onScroll=${event => {
+        const el = event.currentTarget
+        follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+      }}>
+        <${AssistantHistoryNotice} status=${s.chatHistory} />
+        ${s.caps.assistant?.pluginSession ? html`<p class="assistant-plugin-note">Typing here starts a separate ${name} run. To use this Claude session, ask in the terminal.</p>` : null}
+        ${chatgpt?.welcome ? html`<section class="assistant-setup chatgpt-welcome" aria-labelledby="chatgpt-welcome-heading"><b id="chatgpt-welcome-heading">You’re using your ChatGPT plan</b><p>Eligible AI requests in Arya use your ChatGPT plan or credits balance. Check and manage usage in your ChatGPT settings.</p><button class="primary" onClick=${chatgptTask(() => chatgptAccountAction('welcome'))}>Got it</button><a class="button" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></section>` : null}
+        ${status.ready && !working && !conversation.length ? html`<div class="chat-empty">
+          <p>Ask for an edit or a question about this project.</p>
         </div>` : null}
-        ${feed.map(m => m.type === 'receipt' ? html`<section class="assistant-result-card" aria-label="Committed edit result"><span class="assistant-card-label">${m.receipt.undone ? 'Undone' : 'Committed edit'}</span><${ChangeReceipt} receipt=${m.receipt} /></section>` : m.type === 'act'
-          ? html`<article class="assistant-tool-card" aria-label="Assistant update"><span class="assistant-card-label">Assistant update</span><p>${m.text}</p></article>`
-          : html`<div class=${`msg ${m.role}`}>
+        ${showSuggestions ? html`<div class="assistant-suggestions" role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${item.prompt} onClick=${() => { setText(item.prompt, 'prompt'); focusComposer() }}>${item.label}</button>`)}</div>` : null}
+        ${conversation.map(m => m.type === 'receipt' ? html`<${ChangeReceipt} key=${`edit-${m.receipt.version}-${m.at}`} receipt=${m.receipt} />` : m.type === 'tools'
+          ? html`<details class="assistant-tool-card" key=${`tools-${m.at}-${m.text}`}><summary>${m.updates.length} tool ${m.updates.length === 1 ? 'update' : 'updates'}</summary>
+              <ul>${m.updates.map(update => html`<li>${update.text}</li>`)}</ul>
+            </details>`
+          : html`<div class=${`msg ${['user', 'you'].includes(m.role) ? 'user' : 'claude'}`}>
+              <span class="sr-only">${['user', 'you'].includes(m.role) ? 'You' : 'Assistant'}</span>
               ${m.refs?.length ? html`<div class="msg-refs">${m.refs.map(r => html`<span class="chip small"><${Icon} name="attach" size=${14} /> ${r.label}</span>`)}</div>` : null}
               <div dangerouslySetInnerHTML=${{ __html: md(m.text) }}></div>
               ${['user', 'you'].includes(m.role) ? html`<button class="ghost tiny assistant-edit-request" disabled=${working || Boolean(text) || !m.text} title="Restore this text as a draft with the current selection. Clear the existing draft first." onClick=${() => { setText(m.text); focusComposer() }}>Edit request</button>` : null}
             </div>`)}
         ${working && runActive && s.claude.text ? html`<div class="msg claude assistant-stream"><small>Response in progress</small><div dangerouslySetInnerHTML=${{ __html: md(s.claude.text) }}></div></div>` : null}
+        ${working || activity.terminal || !s.connected ? html`<div class=${`assistant-run ${working ? 'active' : activity.state}`}>
+          <div class="assistant-run-heading"><span class="assistant-run-symbol" aria-hidden="true">${!s.connected ? '↻' : working ? '◌' : activity.state === 'done' ? '↵' : activity.state === 'error' ? '!' : '■'}</span><b role="status">${activity.label}</b>${activity.elapsed ? html`<span class="assistant-run-time">${activity.elapsed}</span>` : null}</div>
+          ${activity.detail ? html`<p>${activity.detail}</p>` : null}
+          ${activity.connectionNotice ? html`<p>${activity.connectionNotice}</p>` : null}
+          ${!working && activity.state === 'error' && chatgptCode === 'chatgpt_usage_limit' ? html`<div class="assistant-plan-error"><b>Usage limit reached</b><p>ChatGPT account: ${chatgpt?.email || 'your signed-in account'}. Check your usage, then try again later.</p><a class="button primary" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></div>` : null}
+          ${!working && activity.state === 'error' && ['chatgpt_sign_in_required', 'chatgpt_not_authorized', 'chatgpt_plan_disabled', 'chatgpt_account_changed', 'chatgpt_not_eligible'].includes(chatgptCode) ? html`<div class="assistant-plan-error"><button class="ghost tiny" onClick=${() => set({ settingsOpen: true })}>Review ChatGPT sign-in</button></div>` : null}
+          ${activity.state === 'error' && !working && lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title="Put the failed request back in the text box to edit or send again. Clear the current draft first." onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
+        </div>` : null}
+        ${(!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><small class="muted">${runActive ? 'Current request route' : 'Last request route'}</small><${RoutingReceipt} value=${s.claude.routing} /></div>` : null}
+        ${review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy}
+          onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
+        ${review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
+        ${review?.change && !runActive && !(review?.applying && !review.applying.finished) ? html`<${assistantPanel.ChangeBar} change=${review.change} busy=${reviewBusy} onUndo=${() => decide('undo', '/api/assistant/change/undo', { id: review.change.id })} />` : null}
+        ${!status.ready ? html`<section class="assistant-setup" aria-label="Assistant setup">
+          <b>${chatgptWaiting ? 'Waiting for ChatGPT sign-in' : status.refreshRequired ? status.label : providerFailure ? `${name}: ${status.label}` : 'Connect your editing assistant'}</b>
+          <p>${chatgptWaiting ? 'Finish signing in on the ChatGPT page.' : needsRefresh ? status.reason
+            : chatgpt?.signedIn && !chatgpt.planUsage ? 'Turn on ChatGPT plan usage for this sign-in.'
+            : chatgpt?.signedIn && connection.provider === 'chatgpt' && connection.mode !== 'auto' ? connection.reason ?? 'Refresh ChatGPT status in Settings.'
+            : chatgpt ? 'Use your ChatGPT plan for eligible requests. You can keep editing without an account.'
+            : connection?.reason ?? (s.assistantStatusError || 'Choose a provider in Assistant settings. You can keep editing without an account.')}</p>
+          ${showSignInNotice && !chatgptWaiting && ['failed', 'cancelled', 'expired'].includes(signInState) && chatgpt.attempt.message ? html`<p role="status">${chatgpt.attempt.message}</p>` : null}
+          ${text.trim() ? html`<p>Your draft is kept.</p>` : null}
+          <div class="assistant-setup-actions">
+            ${chatgptWaiting ? html`${chatgpt.attempt?.startURL ? html`<a class="button primary" href=${chatgpt.attempt.startURL} target="_blank" rel="noopener noreferrer">Open the sign-in page ↗</a>` : null}<button onClick=${chatgptTask(() => chatgptAccountAction('cancel'))}>Cancel sign-in</button>`
+            : needsRefresh ? html`<button class="primary" disabled=${refreshing || connection?.loading || working || !s.connected} onClick=${refreshAvailability}>${refreshing || connection?.loading ? 'Refreshing…' : status.refreshRequired ? 'Refresh availability' : 'Refresh status'}</button>`
+            : chatgpt && !chatgpt.signedIn ? html`<button class="primary" disabled=${working} onClick=${chatgptTask(() => startChatGPTSignIn({}))}>Continue with ChatGPT</button>`
+            : chatgpt && !chatgpt.planUsage ? html`<button class="primary" disabled=${working} onClick=${chatgptTask(() => startChatGPTSignIn({ ...(chatgptCurrent ? { account: chatgptCurrent.id } : {}), enablePlan: true }))}>Turn on ChatGPT plan usage</button>`
+            : chatgpt && (connection.provider !== 'chatgpt' || connection.mode === 'auto') ? html`<button class="primary" disabled=${working} onClick=${chatgptTask(() => chooseChatGPTAssistant(connection))}>Use ChatGPT</button>`
+            : html`<button class="primary" onClick=${() => openSettings()}>Assistant settings</button>`}
+            ${chatgpt ? html`<button class="ghost settings-link" onClick=${() => openSettings(true)}>Other ways to connect</button>`
+            : needsRefresh ? html`<button class="ghost settings-link" onClick=${() => openSettings()}>Assistant settings</button>` : null}
+          </div>
+        </section>` : null}
       </div>
-      ${working || activity.terminal || !s.connected ? html`<div class=${`assistant-run ${working ? 'active' : activity.state}`} aria-busy=${working}>
-        <div class="assistant-run-heading"><span class="assistant-run-symbol" aria-hidden="true">${!s.connected ? '↻' : working ? '◌' : activity.state === 'done' ? '↵' : activity.state === 'error' ? '!' : '■'}</span><b role="status">${activity.label}</b>${activity.elapsed ? html`<span class="assistant-run-time">${activity.elapsed}</span>` : null}</div>
-        ${activity.detail ? html`<p>${activity.detail}</p>` : null}
-        ${activity.connectionNotice ? html`<p>${activity.connectionNotice}</p>` : null}
-        ${!working && activity.state === 'error' && chatgptCode === 'chatgpt_usage_limit' ? html`<div class="assistant-plan-error"><b>Usage limit reached</b><p>ChatGPT account: ${chatgpt?.email || 'your signed-in account'}. Check your usage, then try again later.</p><a class="button primary" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></div>` : null}
-        ${!working && activity.state === 'error' && ['chatgpt_sign_in_required', 'chatgpt_not_authorized', 'chatgpt_plan_disabled', 'chatgpt_account_changed', 'chatgpt_not_eligible'].includes(chatgptCode) ? html`<div class="assistant-plan-error"><button class="ghost tiny" onClick=${() => set({ settingsOpen: true })}>Review ChatGPT sign-in</button></div>` : null}
-        ${activity.state === 'error' && !working && lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title="Put the failed request back in the text box to edit or send again. Clear the current draft first." onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
-      </div>` : null}
-      ${(!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><small class="muted">${runActive ? 'Current request route' : 'Last request route'}</small><${RoutingReceipt} value=${s.claude.routing} /></div>` : null}
-      ${review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy}
-        onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
-      ${review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
-      ${review?.change && !runActive && !(review?.applying && !review.applying.finished) ? html`<${assistantPanel.ChangeBar} change=${review.change} busy=${reviewBusy} onUndo=${() => decide('undo', '/api/assistant/change/undo', { id: review.change.id })} />` : null}
-      <div class="assistant-composer-card" aria-label="Assistant composer">
-      <div class="assistant-composer-content">
-      <div class="assistant-context"><span class="context-label">${working ? 'Next request context' : 'Editing context'}</span><b>${context}</b><span class="muted">${scopeName} · Playhead ${view.time}${view.under.length ? ` over ${view.under.slice(0, 2).join(', ')}${view.under.length > 2 ? ` and ${view.under.length - 2} more` : ''}` : ''}</span><span class="muted">${s.refs.length ? `${s.refs.length} references attached` : 'Selection and playhead included'}</span></div>
-      ${selection.length ? html`<div class="assistant-selection-chips" aria-label="Current selection included when sending">${selection.map(item => html`<span class="chip small" key=${item.id}><b>${item.label}</b><small>${item.id}${item.track ? ` · ${item.track}` : ''}</small></span>`)}</div>` : null}
-      ${s.refs.length ? html`<div class="refs" aria-label="Attached references">${s.refs.map(r => html`<span class="chip"><${Icon} name="attach" size=${14} /> ${r.label}<button aria-label=${`Remove reference ${r.label}`} onClick=${() => set({ refs: s.refs.filter(x => x !== r) })}><${Icon} name="close" size=${14} /></button></span>`)}</div>` : null}
-      ${showSuggestions ? html`<div class="assistant-suggestions" role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${`${item.prompt} It goes into the box for you to review before sending.`} onClick=${() => { setText(item.prompt, 'prompt'); focusComposer() }}>${item.label}</button>`)}</div>` : null}
+      <div class="assistant-composer-card" role="group" aria-label="Assistant composer">
+        <div class="assistant-composer-content" role="group" tabIndex="0" aria-label=${working ? 'Next request context' : 'Editing context'}>
+          <div class="assistant-context-chips">
+            <span class="chip small" title=${scopeName}>${s.openComp ? s.project?.comps?.[s.openComp]?.name ?? 'Current composition' : 'Main timeline'}</span>
+            <span class="chip small" title=${view.under.join(', ') || undefined}>${!view.time || view.time === 'unavailable' ? 'Playhead unavailable' : `Playhead ${view.time}`}</span>
+          </div>
+          ${selection.length ? html`<div class="assistant-selection-chips" role="group" aria-label="Current selection included when sending">${selection.map(item => html`<span class="chip small" key=${item.id}><b>${item.label}</b>${item.track || item.id !== item.label ? html`<small>${item.id}${item.track ? ` · ${item.track}` : ''}</small>` : null}</span>`)}</div>` : null}
+          ${s.refs.length ? html`<div class="refs" role="group" aria-label="Attached references">${s.refs.map(r => html`<span class="chip"><${Icon} name="attach" size=${14} /> ${r.label}<button aria-label=${`Remove reference ${r.label}`} onClick=${() => set({ refs: s.refs.filter(x => x !== r) })}><${Icon} name="close" size=${14} /></button></span>`)}</div>` : null}
+        </div>
+        <div class="composer">
+          <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'} value=${text}
+            onInput=${e => setText(e.target.value)}
+            onCompositionStart=${() => { composing.current = true }} onCompositionEnd=${() => { composing.current = false }}
+            onKeyDown=${e => {
+              e.stopPropagation()
+              if (composing.current || e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) return
+              // As in the Mac Assistant: ⌘Return always sends; Return sends a prompt but adds a line in a
+              // script or screenplay. Shift-Return adds a line.
+              if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && (e.metaKey || draft.inputKind === 'prompt')) {
+                e.preventDefault()
+                if (canSend) send()
+                else if (text.trim() && !working) { toast('Connect an assistant to send. Your draft is kept.'); list.current?.querySelector('.assistant-setup :is(button:enabled, a[href])')?.focus() }
+              }
+            }}></textarea>
+        </div>
+        <div class="assistant-input-tools" role="group" aria-label="Assistant input">
+          <details class="assistant-model-menu" name="assistant-composer-menu" onKeyDown=${closeComposerMenu}>
+            <summary>Model</summary>
+            <div class="assistant-model-popover">
+              <${AssistantControls} status=${connection} active=${inputLocked} text=${text} selectionCount=${s.selection.length} />
+            </div>
+          </details>
+          <label><select aria-label="Assistant input kind" value=${draft.inputKind} disabled=${inputLocked} onChange=${e => setText(text, e.target.value)}><option value="prompt">Prompt</option><option value="script">Script</option><option value="screenplay">Screenplay</option></select></label>
+          <label class="assistant-script-import"><span>Import text</span><input type="file" aria-label="Import script or screenplay" accept=".txt,.md,.fountain,.script,.screenplay,text/plain,text/markdown" disabled=${inputLocked || importing || !s.project}
+            onClick=${() => { scriptPicker.current = scriptImport.current.begin() }}
+            onChange=${e => { const captured = scriptPicker.current; scriptPicker.current = null; const file = e.target.files?.[0]; e.target.value = ''; return scriptImport.current.consume(file, captured) }}
+            onCancel=${() => { scriptImport.current.cancel(scriptPicker.current); scriptPicker.current = null }} /></label>
+          <details class="assistant-input-help" name="assistant-composer-menu" onKeyDown=${closeComposerMenu}><summary aria-label="Input tips">?</summary>
+            <div class="assistant-model-popover">
+              <p class="assistant-composer-hint">⌥-click a clip, keyframe, track, marker or inspector field to attach it.</p>
+              <p class="assistant-composer-hint">Press / anywhere to type here · ${draft.inputKind === 'prompt' ? 'Return to send · Shift+Return for a new line' : '⌘Return to send · Return for a new line'} · ${inputLimit.toLocaleString()} character limit.</p>
+              <p class="assistant-composer-hint">Import UTF-8 text up to 512 KiB. Files stay in the draft until you send.</p>
+            </div>
+          </details>
+        </div>
+        ${importing ? html`<div class="assistant-import-status"><span role="status">Reading text file…</span><button class="ghost tiny" onClick=${() => scriptImport.current.cancel()}>Cancel import</button></div>` : null}
+        <div class="assistant-composer-footer">
+          ${chatgptPlan && status.ready ? html`<span class="assistant-plan-note">Using ChatGPT plan · <a href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></span>` : null}
+          ${native ? null : html`<label class="assistant-preview-toggle" title="Show the clips and settings a request will change, and apply them only when you choose"><input type="checkbox" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview changes</span></label>`}
+          <span class="grow"></span>
+          <div class="assistant-primary-action"><button
+            class=${working ? 'assistant-stop' : 'send'}
+            aria-label=${working ? activity.state === 'cancelling' ? 'Stopping…' : 'Stop request' : 'Send message'}
+            disabled=${working ? !pending && !activity.canStop : Boolean(sharingReview) || !canSend || text.length > inputLimit || !text.trim() && !s.refs.length}
+            onClick=${working ? stop : () => send()}>${working ? activity.state === 'cancelling' ? 'Stopping…' : 'Stop' : 'Send'}</button></div>
+        </div>
       </div>
-      <div class="composer">
-        <textarea rows="3" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'} value=${text}
-          onInput=${e => setText(e.target.value)}
-          onCompositionStart=${() => { composing.current = true }} onCompositionEnd=${() => { composing.current = false }}
-          onKeyDown=${e => {
-            e.stopPropagation()
-            if (composing.current || e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) return
-            // As in the Mac Assistant: ⌘Return always sends; Return sends a prompt but adds a line in a
-            // script or screenplay. Shift-Return adds a line.
-            if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && (e.metaKey || draft.inputKind === 'prompt')) {
-              e.preventDefault()
-              if (canSend) send()
-              else if (text.trim() && !working) { toast('Connect an assistant to send. Your draft is kept.'); list.current?.parentElement.querySelector('.assistant-setup button.primary, .assistant-setup button:last-child')?.focus() }
-            }
-          }}></textarea>
-      </div>
-      ${!canSend && !working ? html`<div class="assistant-send-reason"><span>${!s.connected ? 'Reconnect to send. Your draft is kept.' : status.refreshRequired ? 'Refresh model availability to send. Your draft is kept.' : 'Set up an assistant to send. Your draft is kept.'}</span>${s.connected ? html`<button onClick=${status.refreshRequired ? refreshAvailability : () => set({ settingsOpen: true })}>${status.refreshRequired ? 'Refresh availability' : 'Set up assistant'}</button>` : null}</div>` : null}
-      <div class="assistant-composer-footer">
-        ${chatgptPlan && status.ready ? html`<span class="assistant-plan-note">Using ChatGPT plan · <a href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></span>` : null}
-        ${native ? null : html`<label class="assistant-preview-toggle" title="Show the clips and settings a request will change, and apply them only when you choose"><input type="checkbox" checked=${preview} disabled=${working || Boolean(sharingReview)} onChange=${e => setPreview(e.target.checked)} /><span>Preview changes</span></label>`}
-        <span class="grow"></span>
-        <div class="assistant-primary-action">${working
-          ? html`<button class="assistant-stop" disabled=${!pending && !activity.canStop} onClick=${stop}>${activity.state === 'cancelling' ? 'Stopping…' : 'Stop request'}</button>`
-          : html`<button class="send" aria-label="Send message" disabled=${Boolean(sharingReview) || !canSend || text.length > inputLimit || !text.trim() && !s.refs.length} onClick=${() => send()}>↑</button>`}</div>
-      </div>
-      <details class="assistant-options"><summary>Input, model and tips</summary>
-      <div class="assistant-input-tools" aria-label="Assistant input">
-        <label>Input <select aria-label="Assistant input kind" value=${draft.inputKind} disabled=${working || Boolean(sharingReview)} onChange=${e => setText(text, e.target.value)}><option value="prompt">Prompt</option><option value="script">Script</option><option value="screenplay">Screenplay</option></select></label>
-        <label class="assistant-script-import"><span>Import text</span><input type="file" aria-label="Import script or screenplay" accept=".txt,.md,.fountain,.script,.screenplay,text/plain,text/markdown" disabled=${working || Boolean(sharingReview) || importing || !s.project}
-          onClick=${() => { scriptPicker.current = scriptImport.current.begin() }}
-          onChange=${e => { const captured = scriptPicker.current; scriptPicker.current = null; const file = e.target.files?.[0]; e.target.value = ''; return scriptImport.current.consume(file, captured) }}
-          onCancel=${() => { scriptImport.current.cancel(scriptPicker.current); scriptPicker.current = null }} /></label>
-      </div>
-      <${AssistantControls} status=${connection} active=${working || Boolean(sharingReview)} text=${text} selectionCount=${s.selection.length} />
-      <details class="assistant-input-help"><summary>Input tips</summary>
-        <p class="assistant-composer-hint">⌥-click a clip, keyframe, track, marker or inspector field to attach it.</p>
-        <p class="assistant-composer-hint">Press / anywhere to type here · ${draft.inputKind === 'prompt' ? 'Return to send · Shift+Return for a new line' : '⌘Return to send · Return for a new line'} · ${inputLimit.toLocaleString()} character limit.</p>
-        <p class="assistant-composer-hint">Import UTF-8 text up to 512 KiB. Files stay in the draft until you send.</p>
-        <p class="assistant-composer-hint">If the assistant asks a question, type your choice and the edit you want here, then send a new request.</p>
-      </details>
-      </details>
-      ${importing ? html`<div class="assistant-import-status"><span role="status">Reading text file…</span><button class="ghost tiny" onClick=${() => scriptImport.current.cancel()}>Cancel import</button></div>` : null}
-      ${['script', 'screenplay'].includes(draft.inputKind) ? html`<p class="assistant-input-kind-note">Sending as ${draft.inputKind === 'script' ? 'a script' : 'a screenplay'}. Change it in Input, model and tips.</p>` : null}
-      </div>
-    </div>
+    </section>
   `
 }

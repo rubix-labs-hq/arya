@@ -83,15 +83,14 @@ test('route previews render when ready and stay hidden when not ready', () => {
 })
 
 test('the empty state has one sentence and Input tips retains the attachment hint', () => {
-  const tree = render()
+  const tree = render(readyStatus)
   const empty = find(tree, 'chat-empty'), card = find(tree, 'assistant-composer-card')
-  assert.equal(text([empty]).trim(), 'Ask for an edit or a question about this project. With Preview changes on, you see what will change and apply it yourself.')
-  assert.equal(text([find(render(setupStatus, { caps: { host: 'native' } }), 'chat-empty')]).trim(), 'Describe the edit you want. Your assistant works with native clips, titles, audio and motion, with undo.')
+  assert.equal(text([empty]).trim(), 'Ask for an edit or a question about this project.')
+  assert.equal(text([find(render(readyStatus, { caps: { host: 'native' } }), 'chat-empty')]).trim(), text([empty]).trim())
   assert.equal(walk([empty]).filter(node => node.type === 'p').length, 1)
-  const options = find([card], 'assistant-options')
-  const help = find([options], 'assistant-input-help')
+  const help = find([card], 'assistant-input-help')
   assert.ok(help)
-  assert.equal(text(help.props.children.filter(node => node?.type === 'summary')), 'Input tips')
+  assert.equal(walk([help]).find(node => node.type === 'summary').props['aria-label'], 'Input tips')
   const hint = '⌥-click a clip, keyframe, track, marker or inspector field to attach it.'
   assert.equal(text([help]).split(hint).length - 1, 1)
   assert.ok(text([find(render(readyStatus, { chat: [{ role: 'user', text: 'Earlier edit' }] }), 'assistant-input-help')]).includes(hint))
@@ -121,10 +120,10 @@ test('assistant update cards retain their labels and reference chips use drawn i
   const drawing = svg => svg.props.children.map(path => path.props.d)
   const expected = name => drawing(expand(Icon({ name }))[0])
   const update = find(tree, 'assistant-tool-card')
-  assert.equal(update.type, 'article')
-  assert.equal(update.props['aria-label'], 'Assistant update')
-  assert.equal(text([update]), 'Assistant updateInspecting clips')
-  const chips = all.filter(node => ['chip', 'chip small'].includes(node.props.class))
+  assert.equal(update.type, 'details')
+  assert.equal(update.props.open, undefined)
+  assert.equal(text([update]), '1 tool updateInspecting clips')
+  const chips = all.filter(node => ['chip', 'chip small'].includes(node.props.class) && iconsIn(node).length)
   assert.equal(chips.length, 2)
   for (const chip of chips) {
     assert.equal(iconsIn(chip)[0].props.width, 14)
@@ -146,7 +145,7 @@ test('assistant update cards retain their labels and reference chips use drawn i
 
 test('hosted assistant explains the limit with working destinations and no composer', () => {
   const tree = render(setupStatus, { caps: { host: 'browser-local' } })
-  assert.match(text(tree), /Not available in the browser beta/)
+  assert.match(text(tree), /Unavailable in beta/)
   assert.equal(walk(tree).some(node => node.type === 'textarea'), false)
   assert.equal(find(tree, 'assistant-composer-card'), undefined)
   assert.deepEqual(walk(tree).filter(node => node.type === 'a').map(node => node.props.href), [
@@ -154,12 +153,14 @@ test('hosted assistant explains the limit with working destinations and no compo
   ])
 })
 
-test('disconnected composer keeps Send disabled and explains how to keep the draft', () => {
-  const tree = render()
+test('unconfigured composer preserves the editable draft and shows one setup action', () => {
+  const tree = render(setupStatus, { assistantDraft: { root: '/copy-fixture', text: 'Keep this draft', inputKind: 'prompt' } })
   assert.equal(walk(tree).find(node => node.props['aria-label'] === 'Send message').props.disabled, true)
-  const reason = find(tree, 'assistant-send-reason')
-  assert.match(text([reason]), /Your draft is kept/)
-  assert.ok(walk([reason]).some(node => node.type === 'button' && text([node]) === 'Set up assistant'))
+  assert.equal(walk(tree).find(node => node.type === 'textarea').props.value, 'Keep this draft')
+  const setup = find(tree, 'assistant-setup')
+  assert.match(text([setup]), /Your draft is kept/)
+  assert.ok(walk([setup]).some(node => node.type === 'button' && text([node]) === 'Assistant settings'))
+  assert.equal(walk(tree).filter(node => node.props.class === 'assistant-setup').length, 1)
 })
 
 test('plugin chat discloses a separate provider run', () => {
@@ -168,9 +169,8 @@ test('plugin chat discloses a separate provider run', () => {
 })
 
 
-test('the empty intro keeps its natural height above the composer', async () => {
-  const css = await fs.readFile(new URL('assistant.css', ui), 'utf8')
-  assert.match(css, /\.chat > \.chat-list:has\(> \.chat-empty:only-child\)\s*\{\s*flex: 0 0 auto;/)
-  assert.ok(find(render(), 'chat-empty'))
-  assert.ok(find(render(), 'assistant-composer-card'))
+test('the empty intro belongs to the conversation, ahead of the pinned composer', () => {
+  const tree = render(readyStatus)
+  assert.ok(find([find(tree, 'chat-list')], 'chat-empty'))
+  assert.equal(find([find(tree, 'assistant-composer-card')], 'chat-empty'), undefined)
 })

@@ -36,22 +36,29 @@ function fixture(overrides = {}, draft = 'Refine this title') {
 const input = tree => nodes(tree).find(node => node.type === 'textarea')
 const event = values => { const result = { key: 'Enter', stopped: 0, prevented: 0, stopPropagation() { this.stopped++ }, preventDefault() { this.prevented++ }, ...values }; return result }
 
-test('actual activity entries render truthful update cards without inferred tool success', () => {
-  const f = fixture({ activity: [{ who: 'agent', text: 'Inspecting the current frame', at: 3 }, { who: 'you', text: 'Hidden user activity', at: 1 }, { who: 'assistant', text: 'Tool reported an error', at: 2 }] })
-  const cards = nodes(f.draw()).filter(node => node.props?.class === 'assistant-tool-card')
+test('consecutive tool updates are collapsed by default and preserve conversation order', () => {
+  const f = fixture({ chat: [{ role: 'claude', text: 'The result', at: 4 }], activity: [
+    { who: 'agent', text: 'Inspecting the current frame', at: 3 },
+    { who: 'you', text: 'Hidden user activity', at: 1 },
+    { who: 'assistant', text: 'Tool reported an error', at: 2 },
+    { who: 'agent', text: 'Read saved output', at: 5 },
+  ] })
+  const list = nodes(f.draw()).find(node => node.props?.class === 'chat-list')
+  const cards = nodes(list).filter(node => node.props?.class === 'assistant-tool-card')
   assert.equal(cards.length, 2)
-  assert.match(text(cards[0]), /Assistant update Tool reported an error/)
-  assert.match(text(cards[1]), /Inspecting the current frame/)
-  assert.doesNotMatch(cards.map(text).join(' '), /Success|Tool completed|Hidden user activity/)
+  assert.ok(cards.every(node => node.type === 'details' && !node.props.open))
+  assert.match(text(cards[0]), /2 tool updates Tool reported an error Inspecting the current frame/)
+  assert.match(text(cards[1]), /1 tool update Read saved output/)
+  const order = flatten(list.props.children)
+  assert.ok(order.indexOf(cards[0]) < order.findIndex(node => node?.props?.class === 'msg claude'))
+  assert.ok(order.indexOf(cards[1]) > order.findIndex(node => node?.props?.class === 'msg claude'))
+  assert.doesNotMatch(text(list), /Success|Tool completed|Hidden user activity/)
 })
 
-test('committed receipt card retains the exact receipt and existing result component', () => {
+test('the exact committed receipt is passed to the compact result component', () => {
   const receipt = { version: 7, total: 0, clips: [], projectChanges: ['Saved asset media/cue.wav'], at: 4 }
-  const card = nodes(fixture({ receipts: [receipt] }).draw()).find(node => node.props?.class === 'assistant-result-card')
-  assert.ok(card); assert.match(text(card), /Committed edit/)
-  const component = nodes(card).find(node => typeof node.type === 'function')
+  const component = nodes(fixture({ receipts: [receipt] }).draw()).find(node => node.type?.name === 'ChangeReceipt')
   assert.equal(component.props.receipt, receipt)
-  assert.equal(component.type.name, 'ChangeReceipt')
 })
 
 test('selection chips visibly distinguish duplicate labels, tracks and exact transition IDs in the current composition', () => {
@@ -60,8 +67,8 @@ test('selection chips visibly distinguish duplicate labels, tracks and exact tra
   assert.ok(group)
   assert.equal(group.props['aria-label'], 'Current selection included when sending')
   const chips = nodes(group).filter(node => node.props?.class === 'chip small')
-  assert.deepEqual(chips.map(text), ['Opening title c1 · Titles (T1)', 'Opening title c2 · V2', 'Transition into Opening title tr:c2 · V2', 'missing missing'])
-  assert.match(text(tree), /Opening \(k1\) · Playhead/)
+  assert.deepEqual(chips.map(text), ['Opening title c1 · Titles (T1)', 'Opening title c2 · V2', 'Transition into Opening title tr:c2 · V2', 'missing'])
+  assert.match(text(tree), /Opening Playhead/)
   assert.doesNotMatch(text(group), /Wrong main title/)
   assert.equal(nodes(group).some(node => node.type === 'button'), false)
 })
@@ -92,7 +99,7 @@ test('historical references remain separate from current selection and explicit 
 
 test('playhead context reads the time hook on each render without fabricating unavailable time', () => {
   const f = fixture()
-  assert.match(text(f.draw()), /Main timeline · Playhead 00:00:12:08/)
+  assert.match(text(f.draw()), /Main timeline Playhead 00:00:12:08/)
   f.clock.t = 28.75
   assert.match(text(f.draw()), /Playhead 00:00:28:23/)
   assert.equal(f.timeReads, 2)
@@ -101,8 +108,9 @@ test('playhead context reads the time hook on each render without fabricating un
 })
 
 test('busy composer labels current attachments as next request context', () => {
-  assert.match(text(fixture({ claude: { state: 'working' } }).draw()), /Next request context/)
-  assert.match(text(fixture().draw()), /Editing context/)
+  const label = patch => nodes(fixture(patch).draw()).find(node => node.props?.class === 'assistant-composer-content').props['aria-label']
+  assert.equal(label({ claude: { state: 'working' } }), 'Next request context')
+  assert.equal(label({}), 'Editing context')
 })
 
 test('named reference removal changes only the actual refs', () => {
@@ -194,7 +202,7 @@ test('live terminal labels and inline model controls retain their current contra
     const controls = nodes(tree).find(node => node.type === f.Controls)
     assert.equal(controls.props.status, f.state.assistantStatus)
     assert.equal(controls.props.active, ['working', 'cancelling'].includes(state))
-    if (state === 'working') { await nodes(tree).find(node => node.type === 'button' && text(node) === 'Stop request').props.onClick(); assert.deepEqual(f.calls.map(call => call.route), ['/api/assistant/cancel']) }
+    if (state === 'working') { await nodes(tree).find(node => node.type === 'button' && node.props['aria-label'] === 'Stop request').props.onClick(); assert.deepEqual(f.calls.map(call => call.route), ['/api/assistant/cancel']) }
   }
 })
 
@@ -212,23 +220,29 @@ for (const [name, clip, selected, expected] of [
 })
 
 
-for (const referenceCount of [0, 12]) test(`context leads the composer and input kind waits in the options with ${referenceCount} references, preserving the draft`, () => {
+for (const referenceCount of [0, 12]) test(`context leads the composer with its controls directly reachable with ${referenceCount} references, preserving the draft`, () => {
   const refs = Array.from({ length: referenceCount }, (_, index) => ({ kind: 'clip', id: `ref${index}`, label: `Reference ${index}` }))
   const f = fixture({ refs, selection: ['c1'], project: { tracks: [{ id: 'V1', name: 'Picture', clips: [{ id: 'c1', label: 'Opening title' }] }], comps: {} } })
   const tree = f.draw(), content = nodes(tree).find(node => node.props?.class === 'assistant-composer-content')
   assert.ok(content)
   const children = flatten(content.props.children).filter(child => child && typeof child === 'object')
-  assert.equal(children[0].props.class, 'assistant-context')
-  const options = nodes(tree).find(node => node.props?.class === 'assistant-options')
-  assert.ok(options); assert.equal(Boolean(options.props.open), false)
+  assert.equal(children[0].props.class, 'assistant-context-chips')
+  const options = nodes(tree).find(node => node.props?.class === 'assistant-input-tools')
+  assert.ok(options)
+  const model = nodes(options).find(node => node.props?.class === 'assistant-model-menu')
+  assert.equal(model.type, 'details')
+  assert.equal(Boolean(model.props.open), false)
+  assert.equal(text(nodes(model).find(node => node.type === 'summary')), 'Model')
+  assert.ok(nodes(model).some(node => node.type === f.Controls))
   assert.equal(nodes(content).some(node => node.props?.['aria-label'] === 'Assistant input kind'), false)
   const kind = nodes(options).find(node => node.props?.['aria-label'] === 'Assistant input kind')
   const file = nodes(options).find(node => node.props?.['aria-label'] === 'Import script or screenplay')
   assert.ok(kind); assert.ok(file)
+  for (const control of [kind, file]) assert.equal(nodes(options).some(node => node.type === 'details' && nodes(node).includes(control)), false)
   assert.deepEqual(nodes(kind).filter(node => node.type === 'option').map(node => node.props.value), ['prompt', 'script', 'screenplay'])
   assert.equal(kind.props.disabled, false); assert.equal(file.props.disabled, false)
-  assert.equal(children.filter(node => node.props?.class === 'assistant-context').length, 1)
-  assert.match(text(content), /Main timeline · Playhead 00:00:12:08/)
+  assert.equal(children.filter(node => node.props?.class === 'assistant-context-chips').length, 1)
+  assert.match(text(content), /Main timeline Playhead 00:00:12:08/)
   assert.match(text(content), /Opening title c1 · Picture \(V1\)/)
   assert.equal(nodes(content).filter(node => node.props?.['aria-label']?.startsWith('Remove reference ')).length, referenceCount)
   assert.equal(nodes(content).some(node => node.type === 'textarea'), false)
@@ -236,7 +250,7 @@ for (const referenceCount of [0, 12]) test(`context leads the composer and input
     const current = nodes(f.draw()).find(node => node.props?.['aria-label'] === 'Assistant input kind')
     current.props.onChange({ target: { value: inputKind } })
     assert.equal(f.state.assistantDraft.inputKind, inputKind)
-    assert.equal(text(f.draw()).includes(`Sending as ${inputKind === 'script' ? 'a script' : 'a screenplay'}`), inputKind !== 'prompt')
+    assert.equal(nodes(f.draw()).find(node => node.props?.['aria-label'] === 'Assistant input kind').props.value, inputKind)
     assert.equal(input(f.draw()).props.value, 'Refine this title')
     assert.deepEqual(f.state.selection, ['c1']); assert.deepEqual(f.state.refs, refs)
     assert.deepEqual(f.calls, [])

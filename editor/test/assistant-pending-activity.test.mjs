@@ -149,7 +149,7 @@ test('Stop cancels a submitted request before the first run status event arrives
   await tick()
   assert.equal(f.calls.at(-1).url, '/api/bridge/send')
   assert.equal(f.state.claude.state, 'idle', 'the stream has not confirmed admission yet')
-  const stop = nodes(f.render()).find(node => node.type === 'button' && text(node) === 'Stop request')
+  const stop = nodes(f.render()).find(node => node.type === 'button' && node.props['aria-label'] === 'Stop request')
   assert.equal(stop.props.disabled, false)
   await stop.props.onClick()
   assert.equal(f.calls.at(-1).url, '/api/assistant/cancel')
