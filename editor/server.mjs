@@ -78,8 +78,9 @@ let claude = { state: 'idle', text: '' }
 let uiState = { playhead: 0, selection: [], page: 'edit' }
 // The latest assistant change for one-step undo, and the pending preview in Preview changes mode.
 const assistantReview = createAssistantReview({ getVersion: () => version, getEpoch: () => projectEpoch, getProject: () => project, onChange: value => broadcast('assistantReview', value, 'ui'),
-  // Redo brought an undone preview back, so its request no longer says the preview was undone.
-  onRestore: change => { if (change.kind === 'preview') assistantService.settlePreview('applied') } })
+  // Redo brought an undone preview back, so a request that says its preview was undone says
+  // applied again. A later request that shows another outcome keeps it.
+  onRestore: change => { if (change.kind === 'preview') assistantService.settlePreview('applied', 'undone') } })
 // One per server process. The version counter, the undo history and the assistant's change cards
 // start again with each one, so a page can tell a restart from a continued session.
 const session = { id: randomUUID(), startedAt: Date.now() }

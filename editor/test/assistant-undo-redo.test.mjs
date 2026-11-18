@@ -76,6 +76,22 @@ test('the change can be undone again after Redo, and the preview outcome follows
   assert.equal(await outcome(), 'You undid the applied preview.')
 })
 
+test('Redo of an earlier preview leaves a later request\'s own outcome alone', async t => {
+  const server = await runningServer(t, [{ method: 'POST', path: '/api/assistant/propose', body: { ops: [{ op: 'add_title', track: 'V3', text: 'From a request', dur: 2 }], summary: 'Add a title' } }])
+  const outcome = async () => (await server.api('GET', '/api/state')).body.assistant.outcome
+  await server.ask('Add a title.', { review: true })
+  const first = (await server.api('GET', '/api/assistant/review')).body.proposal
+  const change = (await server.api('POST', '/api/assistant/proposal/apply', { id: first.id })).body.change
+  await server.api('POST', '/api/assistant/change/undo', { id: change.id })
+  // A second request ends with its own preview waiting. Nothing was committed, so Redo still works.
+  await server.ask('Add another title.', { review: true })
+  assert.equal(await outcome(), 'Preview mode was on. Proposed edits are applied only when you choose Apply.')
+  const redo = (await server.api('POST', '/api/redo', {})).body
+  assert.equal(redo.moved, true); assert.equal(titleOf(redo.project), 'From a request')
+  assert.equal((await server.api('GET', '/api/assistant/review')).body.change.id, change.id)
+  assert.equal(await outcome(), 'Preview mode was on. Proposed edits are applied only when you choose Apply.', 'the second request did not apply anything')
+})
+
 test('a new edit after "Undo this change" drops the redo, as after any undo', async t => {
   const server = await runningServer(t)
   const change = await appliedPreview(server)

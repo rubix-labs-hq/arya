@@ -795,8 +795,10 @@ export function createBrowserAssistant(options) {
   }
   // The finished request's outcome still describes its preview after the user applies,
   // discards or undoes it, so the chat would claim nothing was applied. Update it then.
-  const settlePreview = kind => {
+  // `from` limits the update to a request that currently shows that outcome.
+  const settlePreview = (kind, from) => {
     if (closed || active || state.state !== 'done' || !Object.values(PREVIEW_OUTCOMES).includes(state.outcome) || !PREVIEW_OUTCOMES[kind]) return
+    if (from && state.outcome !== PREVIEW_OUTCOMES[from]) return
     publish({ outcome: PREVIEW_OUTCOMES[kind] })
   }
   const close = async () => {
