@@ -84,7 +84,8 @@ function TopBar() {
       queueMicrotask(focus)
     }
   }
-  const running = s.jobs.filter(j => j.state === 'running' || j.state === 'queued' || host.kind === 'browser-local' && ['cancelling', 'committing'].includes(j.state))
+  // Only exports are deliveries. A still frame or a loudness measurement is a job too, and is not shown here.
+  const running = s.jobs.filter(j => j.kind === 'export' && (j.state === 'running' || j.state === 'queued' || host.kind === 'browser-local' && ['cancelling', 'committing'].includes(j.state)))
 
   return html`
     <div class="topbar">

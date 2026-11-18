@@ -15,8 +15,8 @@ const text = value => Array.isArray(value) ? value.map(text).join('') : value &&
 const cls = (node, name) => String(node.props?.class ?? '').split(/\s+/).includes(name)
 const LayoutMenu = function LayoutMenu() {}
 
-function shell(project, kind = 'http', focus = () => {}) {
-  const store = { project, version: 7, root: '/selected', recovery: { status: 'valid' }, jobs: [], caps: {}, claude: { state: 'idle' }, connected: true, refs: [], page: 'edit' }
+function shell(project, kind = 'http', focus = () => {}, state = {}) {
+  const store = { project, version: 7, root: '/selected', recovery: { status: 'valid' }, jobs: [], caps: {}, claude: { state: 'idle' }, connected: true, refs: [], page: 'edit', ...state }
   const context = vm.createContext({ html: htm.bind(h), h, Icon, assistantState, assistantActivity, store, host: { kind }, queueMicrotask: callback => callback(), globalThis: { document: { querySelector: () => ({ focus }) } }, useStore: () => store, useState: value => [value, () => {}], useRef: value => ({ current: value }), showRecovery() {}, api: async () => ({}), set: value => Object.assign(store, value), toast() {}, PAGES: [['edit', 'Edit', '⇧2', 20]], registry: { pages: [] }, ScrollTabs() {}, LayoutMenu })
   for (const name of ['Welcome', 'TopBar']) vm.runInContext(app.match(new RegExp(`function ${name}\\([^]*?\\n}\\n`))[0], context)
   return context
@@ -107,4 +107,16 @@ test('Ask Arya opens and focuses the composer and keeps sharing review in contro
   entry().props.onClick()
   assert.equal(context.store.chatOpen, true)
   assert.equal(focusCount, 2, 'an already open conversation returns focus to its composer')
+})
+
+test('the delivery pill counts exports only, never a still frame or a loudness measurement', () => {
+  const pill = jobs => nodes(shell(project, 'http', () => {}, { jobs }).TopBar()).find(node => cls(node, 'job-pill'))
+  const more = jobs => nodes(shell(project, 'http', () => {}, { jobs }).TopBar()).find(node => cls(node, 'compact-actions-toggle'))
+  assert.equal(pill([{ id: 'f1', kind: 'frame', state: 'running', progress: 0.2 }, { id: 'm1', kind: 'measure-mix', state: 'queued', progress: 0 }]), undefined)
+  assert.equal(more([{ id: 'f1', kind: 'frame', state: 'running', progress: 0.2 }]).props['aria-label'], 'More editor actions')
+  const mixed = [{ id: 'm1', kind: 'measure-mix', state: 'running', progress: 0.9 }, { id: 'e1', kind: 'export', state: 'running', progress: 0.37 }]
+  assert.equal(pill(mixed).props['aria-label'], 'Open delivery progress, 37%')
+  assert.equal(more(mixed).props['aria-label'], 'More editor actions, delivery 37%')
+  assert.equal(pill([{ id: 'e2', kind: 'export', state: 'queued' }]).props['aria-label'], 'Open delivery progress, 0%')
+  assert.equal(pill([{ id: 'e3', kind: 'export', state: 'done', progress: 1 }]), undefined)
 })
