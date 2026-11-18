@@ -377,10 +377,16 @@ struct NativeEditorView: View {
                 NavigationStack {
                     NativePanelView(panel: panel, model: model, session: session, inSheet: true)
                         .navigationTitle(panel.name)
+                        #if os(iOS)
+                        // Every panel sheet uses the inline title, so the picker under it is not repeated.
+                        .navigationBarTitleDisplayMode(.inline)
+                        #endif
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { model.mobilePanel = nil } } }
                 }
                 .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
-                .presentationDetents([.medium, .large])
+                // From the third accessibility text size up, the assistant's chips, draft and actions
+                // no longer fit the medium sheet, so it opens at full height. Smaller sizes keep the viewer visible.
+                .presentationDetents(panel == .assistant && dynamicTypeSize >= .accessibility3 ? [.large] : [.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .background { mediaImportPresentation(panel: panel) }
@@ -1098,7 +1104,7 @@ struct NativeEditorView: View {
                 .help("Settings (⌘,)").accessibilityLabel("Settings")
             NativeAssistantEntry(assistant: session.assistant, open: assistantVisible, shortcut: width >= 1320, action: toggleAssistant)
                 .keyboardShortcut("a", modifiers: [.command, .option])
-                .padding(.leading, 4)
+                .padding(.horizontal, 4)
             workspaceMenu(compact: false)
         }.buttonStyle(NativeDesktopChromeButtonStyle())
     }
@@ -1217,6 +1223,7 @@ struct NativeEditorView: View {
                         select(.assistant, compact: true)
                     }
                         .accessibilityIdentifier("editor.compactAssistant")
+                        .keyboardShortcut("a", modifiers: [.command, .option])
                 } else {
                 NativeAssistantEntry(assistant: session.assistant, open: assistantVisible, action: toggleAssistant)
                     .keyboardShortcut("a", modifiers: [.command, .option])
@@ -1481,6 +1488,26 @@ private struct NativeResizeDivider: View {
     }
 }
 
+/// Three segments do not fit a phone, where "Assistant accounts" was cut short. There the
+/// category is a menu that shows the whole name.
+private struct NativeSettingsCategoryStyle: ViewModifier {
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if horizontalSizeClass == .compact {
+            content.pickerStyle(.menu).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        } else {
+            content.pickerStyle(.segmented)
+        }
+        #else
+        content.pickerStyle(.segmented)
+        #endif
+    }
+}
+
 private struct NativeEditorPreferences: View {
     @ObservedObject var session: EditorSession
     @Environment(\.dismiss) private var dismiss
@@ -1504,7 +1531,7 @@ private struct NativeEditorPreferences: View {
                 #if os(iOS)
                 Text("Interaction").tag("interaction")
                 #endif
-            }.pickerStyle(.segmented).labelsHidden().padding(.horizontal, 18).padding(.vertical, 12)
+            }.modifier(NativeSettingsCategoryStyle()).labelsHidden().padding(.horizontal, 18).padding(.vertical, 12)
             // Plain rows with a chevron read as places to go, not as a selected list item.
             Button { gettingStartedVisible = true } label: {
                 HStack {
