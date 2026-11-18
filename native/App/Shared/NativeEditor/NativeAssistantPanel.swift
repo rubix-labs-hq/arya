@@ -63,6 +63,11 @@ struct NativeAssistantEntry: View {
     /// Wide Mac windows show the keyboard shortcut inside the control.
     var shortcut = false
     let action: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// At accessibility text sizes a phone header has no room for the label, so the entry
+    /// keeps only its icon. VoiceOver still reads "Ask Arya".
+    private var showsLabel: Bool { !(phone && dynamicTypeSize.isAccessibilitySize) }
 
     private var statusText: String {
         if assistant.state == "cancelling" { return "Stopping" }
@@ -89,7 +94,7 @@ struct NativeAssistantEntry: View {
                             .offset(x: 3, y: -2)
                     }
                 }
-                Text("Ask Arya").fontWeight(.medium).lineLimit(1).fixedSize()
+                if showsLabel { Text("Ask Arya").fontWeight(.medium).lineLimit(1).fixedSize() }
                 if !phone && statusText != "Ready" {
                     Text(statusText).font(.caption).foregroundStyle(NativeEditorStyle.muted).lineLimit(1).fixedSize()
                 }
