@@ -441,7 +441,7 @@ export function ChatPanel() {
     <section class=${`panel chat${collapsed ? ' collapsed' : ''}`} id="editor-assistant" aria-label="Assistant">
       <div class="chat-head">
         <div class="chat-title" onClick=${collapsed ? () => set({ chatCollapsed: false }) : undefined}>
-          <span class=${`claude-dot ${working ? 'busy' : status.ready ? 'ok' : 'off'}`}></span>
+          <span class=${`claude-dot ${working ? 'busy' : headStatus === 'Failed' ? 'failed' : s.connected && status.ready ? 'ok' : 'off'}`}></span>
           <b>Assistant</b>
           <span class="muted">${headStatus}</span>
           ${collapsed && text.trim() ? html`<span class="muted chat-draft-note">Draft kept</span>` : null}

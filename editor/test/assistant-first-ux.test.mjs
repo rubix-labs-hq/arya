@@ -441,6 +441,17 @@ test('until the first status check answers, the entry and panel say Checking and
   assert.match(app, /setInterval\(poll, checkingAssistant \? 1000 : 4000\)[^]*?\}, \[checkingAssistant\]\)/, 'the status is asked again sooner while the first check runs')
 })
 
+test('the header dot uses the entry colours: green when ready, amber while working, red after a failure', t => {
+  const dot = state => byClass(panel(t, state).draw(), 'claude-dot').props.class
+  assert.equal(dot({}), 'claude-dot ok')
+  assert.equal(dot({ claude: { state: 'working', startedAt: 1000 } }), 'claude-dot busy')
+  assert.equal(dot({ claude: { state: 'error', startedAt: 1000, finishedAt: 2000 } }), 'claude-dot failed')
+  assert.equal(dot({ connected: false }), 'claude-dot off', 'Reconnecting is not shown as ready')
+  const base = fs.readFileSync(new URL('../web/styles.css', import.meta.url), 'utf8')
+  assert.match(base, /\n\.claude-dot\.ok \{ background: var\(--good\); \}\n\.claude-dot\.busy \{ background: var\(--accent\); \}\n\.claude-dot\.failed \{ background: var\(--danger\); \}/)
+  assert.match(base, /\n\.job \.row > button \{ flex: none; \}/, 'Cancel and Dismiss keep their width beside a wrapped status')
+})
+
 test('the preview sentence shows only while this request has a proposal to apply', t => {
   const server = fs.readFileSync(new URL('../agent/browser-assistant.mjs', import.meta.url), 'utf8')
   assert.equal(server.match(/pending: '([^']+)'/)?.[1], PREVIEW_OUTCOME, 'the panel and the server agree on the sentence')
