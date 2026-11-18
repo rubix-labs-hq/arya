@@ -46,6 +46,7 @@ export const store = {
   caps: {},
   settingsOpen: false,
   settingsOtherWays: false, // the assistant panel's "Other ways to connect" opens that Settings section expanded
+  chatCollapsed: false, // the phone sheet reduced to a one-line bar; kept in memory only
   assistantStatus: null,
   assistantStatusError: '',
   assistantReview: null, // { proposal, change } from the server: the pending preview and the latest assistant change
@@ -269,6 +270,6 @@ export function selectedClips() {
 
 export function addRef(ref) {
   const captured = ref.kind === 'marker' ? { ...ref, comp: Object.hasOwn(ref, 'comp') ? ref.comp : store.openComp ?? null, context: ref.context ?? { projectRoot: store.root, projectVersion: store.version } } : ref
-  set(s => ({ refs: [...s.refs.filter(r => !(r.kind === captured.kind && r.id === captured.id && (r.kind !== 'marker' || r.comp === captured.comp))), captured].slice(-16), chatOpen: true }))
+  set(s => ({ refs: [...s.refs.filter(r => !(r.kind === captured.kind && r.id === captured.id && (r.kind !== 'marker' || r.comp === captured.comp))), captured].slice(-16), chatOpen: true, chatCollapsed: false }))
   toast(`${ref.label} added to the Assistant context`)
 }
