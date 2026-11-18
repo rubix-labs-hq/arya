@@ -370,7 +370,11 @@ export function ChatPanel() {
     finally { setReviewBusy('') }
   }
   const focusComposer = () => composer.current?.focus()
-  const undoChange = () => decide('undo', '/api/assistant/change/undo', { id: store.assistantReview?.change?.id })
+  // Undoing an earlier change is an edit, so it waits until the viewer stops showing a preview.
+  const undoChange = () => {
+    if (store.previewShown) { toast('Undo is off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.', 'error'); return }
+    return decide('undo', '/api/assistant/change/undo', { id: store.assistantReview?.change?.id })
+  }
   // "Show in viewer": on a phone the sheet covers the viewer, so it drops to its bar; the banner over the viewer has Apply and Discard.
   // The store stamps the project it was shown over and forgets it once it no longer applies.
   const showInViewer = on => {
