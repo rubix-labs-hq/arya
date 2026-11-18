@@ -542,6 +542,7 @@ export function createBrowserAssistant(options) {
       : call.method === 'POST' && ['/api/ops', '/api/undo', '/api/redo', '/api/new', '/api/luts/apply'].includes(url.pathname) && result && typeof result === 'object' && !Array.isArray(result) ? Object.fromEntries(Object.entries(result).filter(([key]) => key !== 'project')) : result
     return bounded({ result: reply ?? {} }, 512 * 1024, 'The tool result exceeded 512 KiB. Use outline or bounded transcript pages.')
   }
+  const executedRouting = run => run.executedModel ? { ...run.routing, executedModel: run.executedModel, executedModelSource: 'cli' } : run.routing
   const drive = async (owner, run) => {
     let cursor = 0, text = ''
     const live = () => !closed && !run.cancelled
@@ -569,7 +570,15 @@ export function createBrowserAssistant(options) {
           } else if (event.type === 'route') {
             run.routing = event.routing
             // The route arrives once the run is admitted. The agent has not answered yet, and the phase says so.
-            publish({ routing: event.routing, ...(run.stepped ? {} : { phase: `Requested ${event.routing.modelName ?? event.routing.model ?? names[event.routing.provider]}. Waiting for its first step` }) })
+            publish({ routing: executedRouting(run), ...(run.stepped ? {} : { phase: `Requested ${event.routing.modelName ?? event.routing.model ?? names[event.routing.provider]}. Waiting for its first step` }) })
+          } else if (event.type === 'model') {
+            // The model the CLI says it is running, which can differ from the one requested when
+            // the provider default was chosen. The first one is the run's own; a CLI may name a
+            // small helper model later.
+            if (!run.executedModel && typeof event.model === 'string' && /^[\x21-\x7e][\x20-\x7e]{0,199}$/.test(event.model)) {
+              run.executedModel = redact(event.model, [owner.token])
+              if (run.routing) publish({ routing: executedRouting(run) })
+            }
           } else if (event.type === 'text') {
             text += String(event.text ?? '')
             if (Buffer.byteLength(text) > 512 * 1024) throw failure('The assistant reply exceeded 512 KiB.')

@@ -152,3 +152,18 @@ test('a provider error lists what was saved, and a new run starts with an empty 
   const first = await waitFor(() => f.states[start])
   assert.deepEqual(first.committed, []); assert.equal(first.retryable, false); assert.equal(first.state, 'thinking')
 })
+
+test('the model a CLI reports is published with the route, and only a plain model name is accepted', async t => {
+  const f = await host(t, { events: [route, { type: 'model', model: 'fixture-model-4-5' }, { type: 'model', model: 'fixture-helper-1' }, { type: 'done', text: 'All done.' }] })
+  const final = await f.send()
+  assert.equal(final.state, 'done')
+  assert.deepEqual(final.routing, { provider: 'claude-code', model: '', modelName: 'Provider default', executedModel: 'fixture-model-4-5', executedModelSource: 'cli' }, 'the first reported model is the run\'s own; a helper model does not replace it')
+  for (const model of ['', 'x'.repeat(201), 'two\nlines', 7, null]) {
+    const g = await host(t, { events: [route, { type: 'model', model }, { type: 'done', text: 'All done.' }] })
+    const done = await g.send()
+    assert.equal(done.state, 'done'); assert.equal(Object.hasOwn(done.routing, 'executedModel'), false, JSON.stringify(model))
+  }
+  // A later run does not inherit the earlier run's model.
+  const h = await host(t, { events: [route, { type: 'done', text: 'All done.' }] })
+  assert.equal(Object.hasOwn((await h.send()).routing, 'executedModel'), false)
+})
