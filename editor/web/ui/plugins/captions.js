@@ -44,6 +44,7 @@ const CSS = `
 .cap-preview div { padding: 2px 0; border-bottom: 1px solid var(--line); white-space: pre-wrap; }
 .cap-preview div:last-child { border-bottom: none; }
 .cap-dialog .field > label { width: 110px; }
+@media (pointer: coarse) { .cap-dialog .modal-actions button { min-height: 44px; } }
 `
 if (typeof document !== 'undefined' && !document.getElementById('reel-captions-css')) {
   const style = document.createElement('style')
@@ -336,7 +337,7 @@ function TranscriptDialog({ onClose }) {
           <${Num} label="Characters/line" value=${maxChars} step=${1} min=${16} max=${80} onCommit=${setMaxChars} />
           <${Num} label="Lines" value=${maxLines} step=${1} min=${1} max=${3} onCommit=${setMaxLines} />
           <div class="hint">Uses the saved transcript revision and maps its words to the clip's timeline positions. Save word corrections in Transcript before previewing captions.</div>
-          ${!local && !(s.caps.analysis?.transcript ?? s.caps.whisper) ? html`<div class="cap-warn">${setup ? `${setup.text} You can also import a timed transcript.` : s.caps.host === 'native' ? 'Apple Speech is unavailable on this device. You can import a timed transcript.' : 'Install whisper.cpp and a model to transcribe, or import a timed transcript.'}</div>${setup?.commands.map(command => html`<div class="cap-warn">Run in Terminal: <code>${command}</code></div>`)}` : null}
+          ${!local?.words?.length && !(s.caps.analysis?.transcript ?? s.caps.whisper) ? html`<div class="cap-warn">${setup ? `${setup.text} You can also import a timed transcript.` : s.caps.host === 'native' ? 'Apple Speech is unavailable on this device. You can import a timed transcript.' : 'Install whisper.cpp and a model to transcribe, or import a timed transcript.'}</div>${setup?.commands.map(command => html`<div class="cap-warn">Run in Terminal: <code>${command}</code></div>`)}` : null}
           ${notes.map(note => html`<div class="cap-warn" role="status">${note}</div>`)}`
         : html`<div class="empty-hint">Put a clip with sound on the timeline first.</div>`}
         <div class="modal-actions">

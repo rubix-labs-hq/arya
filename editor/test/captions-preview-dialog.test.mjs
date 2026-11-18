@@ -141,11 +141,19 @@ test('dialog shows the warning a preview carries when a cut removes words', asyn
   assert.match(confirm, /\(warnings \?\? \[\]\)\.map\(warning => html`<div class="cap-warn" role="status">\$\{warning\}<\/div>`\)/)
 })
 
+test('the dialog buttons are full touch targets on a touch screen', () => {
+  assert.match(source, /@media \(pointer: coarse\) \{ \.cap-dialog \.modal-actions button \{ min-height: 44px; \} \}/)
+})
+
 test('dialog says transcription is not installed with the server next step', async t => {
   const f = await fixture(t, c => { c.s.transcript = null; c.s.caps = { whisper: false, transcription: { available: false, provider: 'whisper.cpp', reason: 'Install whisper.cpp to transcribe locally.', install: ['brew install whisper-cpp'] } } })
   const shown = strings(f.render())
   assert.ok(shown.includes('Transcription is not installed on this computer. Install whisper.cpp to transcribe locally. You can also import a timed transcript.'))
   assert.ok(shown.includes('brew install whisper-cpp'))
+  // The Media page opens the dialog after the Transcript panel loaded an empty record for this source.
+  const empty = await fixture(t, c => { c.s.transcript = { src: 'synthetic.wav', status: 'missing', words: [], ownerRoot: 'synthetic-project' }; c.s.caps = { whisper: false, transcription: { available: false, provider: 'whisper.cpp', reason: 'Install whisper.cpp to transcribe locally.', install: ['brew install whisper-cpp'] } } })
+  assert.ok(strings(empty.render()).includes('Transcription is not installed on this computer. Install whisper.cpp to transcribe locally. You can also import a timed transcript.'))
+  assert.ok(strings(empty.render()).includes('brew install whisper-cpp'))
   const native = await fixture(t, c => { c.s.transcript = null; c.s.caps = { host: 'native' } })
   assert.ok(strings(native.render()).includes('Apple Speech is unavailable on this device.'))
 })
