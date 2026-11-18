@@ -131,7 +131,9 @@ export async function prepareExportCohort(root, captured, check = () => {}) {
     // Keep proxy bytes admitted for integrity, but render the immutable originals.
     for (const asset of Object.values(snapshot.assets)) delete asset.proxy
     const receipt = { id: path.basename(dir), projectSHA256: createHash('sha256').update(JSON.stringify(captured.project)).digest('hex'), sourcesSHA256: createHash('sha256').update(JSON.stringify(records.map(({ value, identity, digest }) => ({ path: value, identity, digest })))).digest('hex'), count: records.length }
-    return { project: snapshot, receipt, cleanup, assertCurrentSync, async assertCurrent(check = () => {}) {
+    // Each copy with the SHA-256 of its bytes, so work derived from a copy can be cached by content.
+    const copies = records.map(record => ({ file: record.copy, digest: record.digest }))
+    return { project: snapshot, receipt, copies, cleanup, assertCurrentSync, async assertCurrent(check = () => {}) {
       assertDirectory()
       for (const record of records) {
         check()

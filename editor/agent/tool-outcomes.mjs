@@ -52,3 +52,25 @@ export function recordCompletedJobOutcome(outcomes, result) {
   if (result.assetRegistered !== true) outcomes.unconfirmedCompletedFailure = true
   recordToolOutcome(outcomes, null, { applied: false, assetRegistered: result.assetRegistered === true })
 }
+
+const JOB_REASON_LIMIT = 160
+const jobLabel = failure => failure.kind === 'export' ? `The export${failure.name ? ` ${failure.name}` : ''}` : failure.kind === 'frame' ? 'The frame render' : `The ${failure.kind} job`
+
+function jobReason(failure) {
+  if (typeof failure?.kind !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(failure.kind)) return null
+  const error = typeof failure.error === 'string' ? failure.error.replace(/\s+/g, ' ').trim() : ''
+  if (failure.state === 'cancelled' || /^(export |processing )?cancelled\.?$/i.test(error)) return `${jobLabel(failure)} was cancelled.`
+  if (!error) return null
+  const short = error.length > JOB_REASON_LIMIT ? `${error.slice(0, JOB_REASON_LIMIT - 3).trimEnd()}...` : error
+  return `${jobLabel(failure)} failed: ${short}${/[.!?]$/.test(short) ? '' : '.'}`
+}
+
+// The sentence a request ends with when jobs it started failed or were cancelled. Each failure is
+// { state, kind?, name?, error? }. The count is always kept. Up to two jobs also say what happened,
+// in the server's own words, so the user does not have to find the job to learn why.
+export function unfinishedJobsOutcome(failures) {
+  const count = failures.length
+  const reasons = failures.map(jobReason).filter(Boolean)
+  const shown = reasons.slice(0, 2), more = reasons.length - shown.length
+  return [`${count} processing job${count === 1 ? '' : 's'} did not finish.`, ...shown, ...(more ? [`${more} more ${more === 1 ? 'is' : 'are'} not listed here.`] : []), 'Review any committed edits.'].join(' ')
+}

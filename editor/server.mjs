@@ -22,9 +22,10 @@ import { DeliveryHistory, deliveryOpenArguments } from './core/delivery-history.
 import { writeProjectAtomic } from './core/project-persistence.mjs'
 import { storeMediaUpload } from './core/media-upload.mjs'
 import { colorCapabilities } from './routes/color.mjs'
+import { createDerivativeWaiters } from './core/derivative-waiters.mjs'
 import { createProcessingAdmission, captureProcessingIdentity, processingCancelled } from './core/processing-admission.mjs'
 import { runProcessingProcess } from './core/processing-process.mjs'
-import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, processingWorkerConnected, retireProcessingWorkerClients, createWorkerWatchdog, noteWorkerActivity, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
+import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, createProcessingWorkerHost, workerClosedMessage, createWorkerWatchdog, noteWorkerActivity, noteWorkerSetupStep, frameJobDeadline, ASSISTANT_FRAME_QUEUE_MS, queuedJobWait, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
 import { validateExportSpec } from './core/processing-export.js'
 import { ProjectRecovery, recoveryProject } from './core/project-recovery.mjs'
 import { runRecoveryJournal } from './core/project-recovery-bridge.mjs'
@@ -187,6 +188,10 @@ function admit(work, options = {}) { return processing.run(work, { ...capturePro
 // Filmstrips, waveform peaks and preview audio are cached by source content and never written
 // into the project. An edit made while one renders must not discard it; capacity still applies.
 function admitSourceDerivative(work) { return processing.run(work) }
+// Filmstrips and waveform peaks wait for a slot instead of being refused: an import of 16 files asks
+// for 16 filmstrips at once and the processing queue holds 8. Work already inside a reservation runs there.
+const derivativeWaiters = createDerivativeWaiters({ admit: admitSourceDerivative })
+function waitForSourceDerivative(work) { return processing.current() ? admitSourceDerivative(work) : derivativeWaiters.run(work) }
 
 // Only composition may retain a completed asset after an ordinary edit. Its private
 // scope cannot place clips or change the generic processing/assistant write policy.
@@ -436,6 +441,8 @@ async function cacheKey(abs, ...extra) {
 }
 
 const inflight = new Map()
+// Export source copies that are alive now: absolute path of the copy to the SHA-256 of its bytes.
+const exportCopyDigests = new Map()
 function once(key, fn) {
   if (!inflight.has(key)) inflight.set(key, fn().finally(() => inflight.delete(key)))
 
@@ -478,7 +485,14 @@ async function probe(rel) {
   return asset
 }
 
-async function ensureProxy(rel, asset) { return processing.submit(() => makeProxy(rel, asset), captureProcessing()).promise }
+// A proxy waits for a processing slot. An import of more than 8 files used to fill the queue in one
+// tick: the proxies past the eighth were refused and never made, and an export started in the same
+// second was refused too. At most 2 proxies sit in the queue at a time; a file that needs none takes no slot.
+const proxyWaiters = createDerivativeWaiters({ what: 'proxies', share: 2, maxWait: Infinity, admit: work => processing.submit(work, captureProcessing()).promise })
+async function ensureProxy(rel, asset) {
+  if (!asset?.proxy || fs.existsSync(path.join(ROOT, asset.proxy))) return
+  return proxyWaiters.run(() => makeProxy(rel, asset))
+}
 
 async function makeProxy(rel, asset) {
   if (!asset.proxy) return
@@ -500,13 +514,27 @@ async function makeProxy(rel, asset) {
   })
 }
 
-async function filmstrip(rel, high = false) {
-  const asset = project?.assets[rel] ?? (await probe(rel))
+async function filmstripCache(asset, rel, high) {
   const abs = resolveMedia(asset.proxy && asset.proxy.endsWith('.mp4') && fs.existsSync(path.join(ROOT, asset.proxy)) ? asset.proxy : rel)
   const key = await cacheKey(abs, high ? 'strip4-high' : 'strip4')
   const dir = guardedOutput(ROOT, path.join(CACHE, key))
-  const meta = guardedOutput(ROOT, path.join(dir, 'strip.json'))
-  const jpeg = guardedOutput(ROOT, path.join(dir, 'strip.jpg'))
+  return { abs, key, dir, meta: guardedOutput(ROOT, path.join(dir, 'strip.json')), jpeg: guardedOutput(ROOT, path.join(dir, 'strip.jpg')) }
+}
+
+// A filmstrip that is already in the cache is answered without a processing slot. Null means it
+// has to be made (or the request is wrong, which the queued path reports).
+async function cachedFilmstrip(rel, high = false) {
+  const asset = project?.assets[rel]
+  if (!asset) return null
+  try {
+    const { meta } = await filmstripCache(asset, rel, high)
+    return fs.existsSync(meta) ? JSON.parse(fs.readFileSync(meta, 'utf8')) : null
+  } catch { return null }
+}
+
+async function filmstrip(rel, high = false) {
+  const asset = project?.assets[rel] ?? (await probe(rel))
+  const { abs, key, dir, meta, jpeg } = await filmstripCache(asset, rel, high)
   if (fs.existsSync(meta)) return JSON.parse(fs.readFileSync(meta, 'utf8'))
 
   return once(`strip:${key}`, async () => {
@@ -538,6 +566,14 @@ async function filmstrip(rel, high = false) {
     return publish(data)
     } finally { try { fs.unlinkSync(guardedOutput(ROOT, part)) } catch {} }
   })
+}
+
+// Waveform peaks that are already in the cache are answered without a processing slot.
+async function cachedPeaks(rel) {
+  try {
+    const file = path.join(CACHE, await cacheKey(resolveMedia(rel), 'peaks2'), 'peaks.json')
+    return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null
+  } catch { return null }
 }
 
 async function peaks(rel) {
@@ -575,7 +611,11 @@ async function peaks(rel) {
 async function audioRange(rel, from, dur) {
   if (!Number.isFinite(from) || from < 0 || !Number.isFinite(dur) || dur <= 0 || dur > 3600) throw new Error('Audio range must be finite, nonnegative and at most one hour')
   const abs = resolveMedia(rel)
-  const key = await cacheKey(abs, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3))
+  // An export reads a private copy of each source, at a new path for every job. Keyed by path,
+  // every export left new WAV files in the cache and none was ever reused. A copy is keyed by the
+  // SHA-256 of its bytes instead, so the second export of the same media reuses the first one's audio.
+  const digest = exportCopyDigests.get(abs)
+  const key = digest ? hashOf('export-copy', digest, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3)) : await cacheKey(abs, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3))
   const file = path.join(CACHE, 'audio', `${key}.wav`)
   if (fs.existsSync(file)) return file
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -685,38 +725,33 @@ async function transcribe(rel) {
 
 // ---------------------------------------------------------------- render worker (headless Chrome)
 
+// The host starts the worker Chrome, replaces one that cannot serve (never connected, page closed,
+// stalled or stopping) and refuses pages from a process it has replaced. See processing-worker.mjs.
+const workerHost = createProcessingWorkerHost({
+  launch: token => spawn(CHROME, [
+    '--headless=new', '--use-angle=metal', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required',
+    '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--mute-audio', '--no-first-run',
+    `--user-data-dir=${path.join(DOT, 'chrome')}`, '--window-size=1280,800', `http://127.0.0.1:${PORT}/?worker=1&id=${token}`,
+  ], { stdio: 'ignore' }),
+  clients, log,
+  onChange: value => { worker = value },
+  onExit: ownedWorker => acknowledgeProcessingWorkerExit(jobs.values(), ownedWorker, failJob),
+  onLost: ownedWorker => acknowledgeProcessingWorkerExit(jobs.values(), ownedWorker, failJob, workerClosedMessage),
+})
+
 function workerConnected() {
-  return processingWorkerConnected(worker, clients)
+  return workerHost.connected()
 }
 
-async function ensureWorker(signal) {
-  const until = Date.now() + 20000
-  while (!workerConnected()) {
-    if (signal?.aborted) throw processingCancelled()
-    if (!worker) {
-      log('starting the render worker')
-      worker = spawn(CHROME, [
-        '--headless=new', '--use-angle=metal', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required',
-        '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--mute-audio', '--no-first-run',
-        `--user-data-dir=${path.join(DOT, 'chrome')}`, '--window-size=1280,800', `http://127.0.0.1:${PORT}/?worker=1`,
-      ], { stdio: 'ignore' })
-      const ownedWorker = worker
-      ownedWorker.on('exit', () => {
-        retireProcessingWorkerClients(clients, ownedWorker)
-        if (worker === ownedWorker) worker = null
-        acknowledgeProcessingWorkerExit(jobs.values(), ownedWorker, failJob)
-      })
-    }
-    if (Date.now() > until) throw new Error('the render worker did not start')
-    await new Promise(r => setTimeout(r, 150))
-  }
+function ensureWorker(signal) {
+  return workerHost.ensure(signal)
 }
 
 function touchWorker() {
   clearTimeout(workerIdleTimer)
   workerIdleTimer = setTimeout(() => {
     if (processing.snapshot().active || [...jobs.values()].some(j => j.state === 'running' || j.state === 'queued')) return touchWorker()
-    if (worker) { worker.processingStopping = true; worker.kill() }
+    workerHost.retire(worker, 'idle for 5 minutes')
   }, 5 * 60 * 1000)
 }
 
@@ -745,7 +780,7 @@ function newJob(kind, spec) {
 }
 
 function jobPublic(job) {
-  const { ffmpeg: _f, resolve: _r, reject: _j, exportSources: _s, exportDestination: _d, ...rest } = job
+  const { ffmpeg: _f, resolve: _r, reject: _j, exportSources: _s, exportDestination: _d, exportCopies: _c, frameDeadline: _t, ...rest } = job
 
   return rest
 }
@@ -761,15 +796,41 @@ function checkExportOutput(file, sequence = false) {
   return out
 }
 
+// A job that has not reached the worker says why in `waiting`: { reason, since, job? }.
+// reason is 'behind-job' (job is the id of the render job that has the worker), 'behind-processing'
+// (a proxy, analysis or other processing has the queue), 'copying-sources' (its media is being
+// copied and hashed) or 'worker-starting' (waiting for the render worker to connect).
+function setJobWait(job, wait) {
+  if ((job.waiting?.reason ?? null) === (wait?.reason ?? null) && (job.waiting?.job ?? null) === (wait?.job ?? null)) return false
+  if (wait) job.waiting = { ...wait, since: Date.now() }
+  else delete job.waiting
+  return true
+}
+
+function refreshQueuedJobWaits(except) {
+  for (const queued of jobs.values()) {
+    if (queued === except || !queued.processing || queued.admissionState !== 'queued') continue
+    if (setJobWait(queued, queuedJobWait(queued, jobs.values(), processing.snapshot().active > 0))) broadcast('job', jobPublic(queued))
+  }
+}
+
 function queueWorkerJob(job, snapshot, guard) {
   const state = reserveProcessingWorker(processing, job, {
     ...guard, ensureWorker: async signal => {
       const check = () => { guard.assertCurrent(); if (signal.aborted) throw new Error('Export cancelled') }
+      if (setJobWait(job, { reason: 'copying-sources' })) broadcast('job', jobPublic(job))
+      const copyStarted = performance.now()
       const cohort = await prepareExportCohort(ROOT, job.exportSources, check)
+      // Every frame and export copies and hashes all project media first. Keep the cost visible.
+      job.sourceCopyMs = Math.round(performance.now() - copyStarted)
+      log(`job ${job.id} (${job.kind}): copied ${cohort.receipt.count} source${cohort.receipt.count === 1 ? '' : 's'} in ${job.sourceCopyMs} ms`)
       job.exportSources = cohort
+      job.exportCopies = cohort.copies.map(copy => path.resolve(copy.file))
+      for (const copy of cohort.copies) exportCopyDigests.set(path.resolve(copy.file), copy.digest)
       job.spec.sourceCohort = cohort.receipt
       for (const key of Object.keys(snapshot)) delete snapshot[key]
       Object.assign(snapshot, cohort.project)
+      if (setJobWait(job, workerConnected() ? null : { reason: 'worker-starting' })) broadcast('job', jobPublic(job))
       await ensureWorker(signal)
       check()
     },
@@ -779,6 +840,9 @@ function queueWorkerJob(job, snapshot, guard) {
       if (job.kind === 'export') job.exportDestination.assertCurrent()
       reservation.worker = worker
       job.lastWorkerActivity = job.workerDispatchedAt = performance.now()
+      delete job.waiting
+      // A still frame's 30 s limit starts now, when the worker has it.
+      job.frameDeadline?.dispatched()
       reservation.payload = { job: jobPublic(job), project: snapshot, version: job.projectVersion }
       broadcast('render', reservation.payload, 'worker')
     },
@@ -788,15 +852,23 @@ function queueWorkerJob(job, snapshot, guard) {
       if (ownedWorker) job.processing.cancelWorker = armProcessingWorkerCancellation(ownedWorker, { isCurrent: () => worker === ownedWorker, isDrained: () => job.processing.drained })
     },
     waitEncoder: () => job.done ?? Promise.resolve(),
-    onState: state => { job.admissionState = state; if (job.kind !== 'export' || job.state !== 'done') broadcast('job', jobPublic(job)) },
+    onState: state => {
+      job.admissionState = state
+      setJobWait(job, queuedJobWait(job, jobs.values(), processing.snapshot().active > 0) ?? (state === 'queued' || job.waiting?.reason?.startsWith('behind-') ? null : job.waiting))
+      refreshQueuedJobWaits(job)
+      if (job.kind !== 'export' || job.state !== 'done') broadcast('job', jobPublic(job))
+    },
   })
   state.ticket.promise.catch(error => failJob(job, error)).finally(() => {
     state.cancelWorker?.(); state.cancelWorker = null
     state.worker = null; state.payload = null; state.ticket = null; state.assertCurrent = () => { throw new Error('This worker reservation has drained') }
     delete job.ffmpeg; delete job.done
+    for (const copy of job.exportCopies ?? []) exportCopyDigests.delete(copy)
+    delete job.exportCopies
     for (const owned of [job.exportSources, job.exportDestination]) try { owned?.cleanup?.() } catch { job.cleanupWarning = 'An export stage changed or could not be removed. Its files were retained.' }
     delete job.exportSources; delete job.exportDestination
     cleanupExportAudio(job)
+    if (setJobWait(job, null)) broadcast('job', jobPublic(job))
   })
 }
 
@@ -934,7 +1006,7 @@ function failJob(job, error) {
   job.reject?.(new Error(job.error))
 }
 
-async function renderFrame(at, width = 1280, comp = null) {
+async function renderFrame(at, width = 1280, comp = null, { queueMs } = {}) {
   if (!project) throw new Error('no project')
   processing.assertCapacity()
   const guard = captureProcessing()
@@ -948,9 +1020,10 @@ async function renderFrame(at, width = 1280, comp = null) {
   job.projectVersion = version
   job.exportSources = captured
   const done = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject })
-  queueWorkerJob(job, snapshot, guard)
-  const timeout = setTimeout(() => failJob(job, 'frame render timed out'), 30000)
-  return done.finally(() => clearTimeout(timeout))
+  // 30 s to render once the worker has the frame. Before that it may wait 5 minutes, or 85 s for the assistant.
+  job.frameDeadline = frameJobDeadline(message => failJob(job, message), { queueMs })
+  try { queueWorkerJob(job, snapshot, guard) } catch (error) { job.frameDeadline.clear(); jobs.delete(job.id); throw error }
+  return done.finally(() => job.frameDeadline.clear())
 }
 
 // ---------------------------------------------------------------- routes
@@ -978,8 +1051,9 @@ const assistantService = createBrowserAssistant({
   root: ROOT, custom: customExecutable ? { executable: customExecutable, args: customArguments } : undefined,
   chatgpt: chatgptAccount,
   getIdentity: () => projectEpoch,
-  getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus) } : {}) }),
-  renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null) }),
+  // exportFolder tells the prompt this is the browser editor, whose exports land in renders/ (see EXPORT_GUIDE).
+  getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus), exportFolder: 'renders' } : {}) }),
+  renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null, { queueMs: ASSISTANT_FRAME_QUEUE_MS }) }),
   dispatch: (call, assertCurrent, acceptIdentity, registerJob, run = {}) => {
     assertCurrent()
     const url = new URL(call.path, 'http://127.0.0.1')
@@ -995,6 +1069,14 @@ const assistantService = createBrowserAssistant({
   },
   cancelJob: job => routes[`POST ${job.path}`]?.({ id: job.id }),
   jobState: job => job.path === '/api/jobs/cancel' ? jobs.get(job.id)?.state : routes[job.path === '/api/video/jobs/cancel' ? 'GET /api/video/jobs' : 'GET /api/analysis/jobs']?.().jobs.find(value => value.id === job.id)?.state,
+  // What a failed or cancelled job of an assistant request was and why it stopped, for the sentence
+  // the request ends with. Only the kind, the export file name and the error the job list already shows.
+  jobFailure: job => {
+    const result = job.path === '/api/jobs/cancel' ? jobs.get(job.id) : routes[job.path === '/api/video/jobs/cancel' ? 'GET /api/video/jobs' : 'GET /api/analysis/jobs']?.().jobs.find(value => value.id === job.id)
+    if (!result || !['failed', 'cancelled'].includes(result.state)) return undefined
+    const name = job.path === '/api/jobs/cancel' && result.kind === 'export' ? String(result.spec?.out ?? '').split(/[\\/]/).pop() : ''
+    return { kind: result.kind, ...(name ? { name } : {}), error: result.error }
+  },
   jobOutcome: job => {
     const result = job.path === '/api/jobs/cancel' ? jobs.get(job.id) : routes[job.path === '/api/video/jobs/cancel' ? 'GET /api/video/jobs' : 'GET /api/analysis/jobs']?.().jobs.find(value => value.id === job.id)
     return result ? { state: result.state, applied: result.applied, applyError: result.applyError, assetRegistered: result.assetRegistered } : undefined
@@ -1119,7 +1201,7 @@ const routes = {
     }
     for (const [src, asset] of Object.entries(assets)) {
       ensureProxy(src, asset).catch(e => log(e.message))
-      if (asset.hasVideo && !asset.proxy) filmstrip(src).catch(() => {})
+      if (asset.hasVideo && !asset.proxy) waitForSourceDerivative(() => filmstrip(src)).catch(() => {})
     }
 
     return { assets, version, failures, warnings: warnings.filter(item => assets[item.path]) }
@@ -1146,8 +1228,8 @@ const routes = {
     }
   },
 
-  'GET /api/strip': (_b, q) => admitSourceDerivative(() => filmstrip(q.get('src'), q.get('quality') === 'high')),
-  'GET /api/peaks': (_b, q) => admitSourceDerivative(() => peaks(q.get('src'))),
+  'GET /api/strip': async (_b, q) => (await cachedFilmstrip(q.get('src'), q.get('quality') === 'high')) ?? waitForSourceDerivative(() => filmstrip(q.get('src'), q.get('quality') === 'high')),
+  'GET /api/peaks': async (_b, q) => (await cachedPeaks(q.get('src'))) ?? waitForSourceDerivative(() => peaks(q.get('src'))),
 
   'POST /api/analyze': body => body.kind === 'transcript' ? transcriptService.transcribe(body) : body.kind === 'stabilization' && routes['POST /api/analysis/stabilize'] ? routes['POST /api/analysis/stabilize'](body) : admit(() => analyze(body.src, body.kind, body)),
 
@@ -1290,6 +1372,8 @@ async function handleJobUpload(req, res, url) {
     }
     if (what === 'alive') {
       noteWorkerActivity(job, workerClock(), 'heartbeat')
+      // The body names the setup step the page is on, so a setup that hangs can say where.
+      noteWorkerSetupStep(job, (await readBody(req, 64).catch(() => Buffer.alloc(0))).toString('utf8'))
 
       return send(res, 200, { ok: true })
     }
@@ -1368,7 +1452,7 @@ async function handleJobUpload(req, res, url) {
 }
 
 // A hung render worker would otherwise hold the export queue forever (limits in processing-worker.mjs).
-setInterval(createWorkerWatchdog({ jobs: () => jobs.values(), failJob }), WORKER_CHECK_MS).unref()
+setInterval(createWorkerWatchdog({ jobs: () => jobs.values(), failJob, retireWorker: ownedWorker => workerHost.retire(ownedWorker, 'its job stalled') }), WORKER_CHECK_MS).unref()
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
@@ -1394,9 +1478,13 @@ const server = http.createServer(async (req, res) => {
   }
   try {
     if (url.pathname === '/api/events') {
+      const role = url.searchParams.get('role') ?? 'ui'
+      // A page of a worker Arya has replaced must not serve the new worker's jobs. 204 tells its
+      // EventSource to stop reconnecting.
+      if (role === 'worker' && !workerHost.accepts(url.searchParams.get('worker'))) { res.writeHead(204, { 'cache-control': 'no-store' }); return res.end() }
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
-      const client = { res, role: url.searchParams.get('role') ?? 'ui' }
-      if (client.role === 'worker') client.worker = worker
+      const client = { res, role }
+      if (client.role === 'worker') workerHost.attach(client)
       clients.add(client)
       res.write(`event: hello\ndata: ${JSON.stringify({ version, role: client.role })}\n\n`)
       if (client.role === 'ui') {
@@ -1410,6 +1498,8 @@ const server = http.createServer(async (req, res) => {
       req.on('close', () => {
         clearInterval(ping)
         clients.delete(client)
+        // A worker whose page stays away for 5 s has lost it: its jobs fail and it is replaced.
+        workerHost.detached(client)
       })
       if (client.role === 'worker' && workerConnected() && client.worker === worker) {
         for (const job of jobs.values()) if (job.processing?.dispatched && !job.processing.drained && job.state === 'queued') res.write(`event: render\ndata: ${JSON.stringify(job.processing.payload)}\n\n`)

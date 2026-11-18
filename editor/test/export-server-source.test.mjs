@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { createProcessingAdmission } from '../core/processing-admission.mjs'
-import { reserveProcessingWorker } from '../core/processing-worker.mjs'
+import { frameJobDeadline, queuedJobWait, reserveProcessingWorker } from '../core/processing-worker.mjs'
 import { validateExportSpec } from '../core/processing-export.js'
 import { captureExportSources, prepareExportCohort, createExportDestination } from '../core/export-cohort.mjs'
 import { guardedOutput } from '../core/output-path.js'
@@ -27,6 +27,7 @@ function fixture(t) {
   const events = [], encoders = [], admission = createProcessingAdmission()
   const values = { ROOT, DOT, fs, path, createProcessingAdmission, reserveProcessingWorker, validateExportSpec, captureExportSources, prepareExportCohort, createExportDestination, guardedOutput, initialProject: project, processing: admission,
     armProcessingWorkerCancellation: () => () => {}, ensureWorker: async () => {}, touchWorker: () => {}, assistantCalls: { getStore: () => null },
+    queuedJobWait, frameJobDeadline, workerConnected: () => true, exportCopyDigests: new Map(), log: () => {},
     duration: () => 1, compView: (p, name) => p.comps?.[name], pushActivity: () => {}, deliveries: new DeliveryHistory(ROOT),
     broadcast: (type, data) => events.push({ type, data }), spawn: (_cmd, args) => {
       const ff = new EventEmitter(); ff.stderr = new EventEmitter(); ff.stdin = new EventEmitter(); ff.stdin.end = () => {}; ff.kills = []; ff.kill = signal => ff.kills.push(signal); ff.argv = args; encoders.push(ff); return ff
@@ -46,6 +47,8 @@ test('actual server export methods dispatch backend snapshot copies and publish 
   assert.match(payload.job.spec.sourceCohort.sourcesSHA256, /^[a-f0-9]{64}$/)
   assert.equal(payload.job.spec.sourceCohort.count, 1)
   assert.equal('exportSources' in f.jobPublic(job), false); assert.equal('exportDestination' in f.jobPublic(job), false)
+  assert.equal(job.exportCopies.length, 1, 'the server keeps the copy paths for the audio cache')
+  assert.equal('exportCopies' in f.jobPublic(job), false); assert.equal('exportCopies' in payload.job, false); assert.equal('frameDeadline' in f.jobPublic(job), false)
   f.startEncoder(job); assert.equal(encoders.length, 1); assert.ok(encoders[0].argv.includes('-n')); assert.notEqual(encoders[0].argv.at(-1), job.spec.out)
   fs.writeFileSync(encoders[0].argv.at(-1), 'synthetic encoded bytes'); encoders[0].emit('close', 0)
   await f.finishExport(job); assert.equal(job.state, 'done'); assert.equal(job.outputState, 'published')
