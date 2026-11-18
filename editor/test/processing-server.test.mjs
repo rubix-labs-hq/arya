@@ -110,6 +110,12 @@ test('the job routes record worker progress for the stall watchdog', async t => 
   assert.equal((await f.api(`/api/job/${job.id}/alive`, {})).status, 200)
   const setup = await read()
   assert.ok(setup.lastWorkerActivity > dispatched.lastWorkerActivity, 'a heartbeat during setup counts')
+  // The heartbeat body names the setup step; anything else is ignored.
+  assert.equal(setup.workerStep, undefined)
+  assert.equal((await f.api(`/api/job/${job.id}/alive`, Buffer.from('audio'), true)).status, 200)
+  assert.equal((await read()).workerStep, 'audio')
+  assert.equal((await f.api(`/api/job/${job.id}/alive`, Buffer.from('x'.repeat(200)), true)).status, 200)
+  assert.equal((await read()).workerStep, 'audio', 'an oversized or unknown body changes nothing')
   assert.equal((await f.api(`/api/job/${job.id}/start`, {})).status, 200)
   const started = await read()
   assert.ok(Number.isFinite(started.workerStartedAt))

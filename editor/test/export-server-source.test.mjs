@@ -47,6 +47,8 @@ test('actual server export methods dispatch backend snapshot copies and publish 
   assert.match(payload.job.spec.sourceCohort.sourcesSHA256, /^[a-f0-9]{64}$/)
   assert.equal(payload.job.spec.sourceCohort.count, 1)
   assert.equal('exportSources' in f.jobPublic(job), false); assert.equal('exportDestination' in f.jobPublic(job), false)
+  assert.equal(job.exportCopies.length, 1, 'the server keeps the copy paths for the audio cache')
+  assert.equal('exportCopies' in f.jobPublic(job), false); assert.equal('exportCopies' in payload.job, false); assert.equal('frameDeadline' in f.jobPublic(job), false)
   f.startEncoder(job); assert.equal(encoders.length, 1); assert.ok(encoders[0].argv.includes('-n')); assert.notEqual(encoders[0].argv.at(-1), job.spec.out)
   fs.writeFileSync(encoders[0].argv.at(-1), 'synthetic encoded bytes'); encoders[0].emit('close', 0)
   await f.finishExport(job); assert.equal(job.state, 'done'); assert.equal(job.outputState, 'published')

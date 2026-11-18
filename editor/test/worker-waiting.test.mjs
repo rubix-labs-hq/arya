@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { failStalledWorkerJob, FRAME_QUEUE_MS, FRAME_RENDER_MS, frameJobDeadline, noteWorkerActivity, noteWorkerSetupStep, queuedJobWait } from '../core/processing-worker.mjs'
+import { ASSISTANT_FRAME_QUEUE_MS, failStalledWorkerJob, FRAME_QUEUE_MS, FRAME_RENDER_MS, frameJobDeadline, noteWorkerActivity, noteWorkerSetupStep, queuedJobWait } from '../core/processing-worker.mjs'
 
 function timers() {
   let now = 0, next = 1
@@ -39,6 +39,22 @@ test('a frame that never reaches the worker stops after 5 minutes and says why',
   assert.deepEqual(failures, [])
   clock.advance(1)
   assert.deepEqual(failures, ['This frame waited 5 minutes behind other processing, so it stopped. Try again when the running export has finished.'])
+})
+
+test('a frame the assistant asked for stops waiting early enough to answer inside its 120 s tool call', async () => {
+  const fs = await import('node:fs')
+  const shim = fs.readFileSync(new URL('../agent/mcp.mjs', import.meta.url), 'utf8')
+  assert.match(shim, /const deadline = Date\.now\(\) \+ 120000\n/, 'the tool call limit this cap is chosen for')
+  assert.ok(ASSISTANT_FRAME_QUEUE_MS + FRAME_RENDER_MS < 120000)
+  const clock = timers(), failures = []
+  frameJobDeadline(message => failures.push(message), { ...clock, queueMs: ASSISTANT_FRAME_QUEUE_MS })
+  clock.advance(ASSISTANT_FRAME_QUEUE_MS - 1)
+  assert.deepEqual(failures, [])
+  clock.advance(1)
+  assert.deepEqual(failures, ['This frame waited 85 s behind other processing, so it stopped. Try again when the running export has finished.'])
+  const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
+  assert.match(server, /renderFrame\(frame\.at, frame\.width \?\? 1280, frame\.comp \?\? null, \{ queueMs: ASSISTANT_FRAME_QUEUE_MS \}\)/)
+  assert.match(server, /'POST \/api\/frame': async body => renderFrame\(body\.at \?\? uiState\.playhead \?\? 0, body\.width \?\? 1280, body\.comp \?\? null\),/, 'the editor keeps the 5 minute wait')
 })
 
 test('a finished frame leaves no timer behind, whether or not it was dispatched', () => {

@@ -212,14 +212,18 @@ export function createProcessingWorkerHost({ launch, clients, onExit = () => {},
 
 export const FRAME_RENDER_MS = 30000
 export const FRAME_QUEUE_MS = 5 * 60 * 1000
+// An assistant tool call gives up after 120 s (agent/mcp.mjs). A frame the assistant asked for stops
+// waiting at 85 s, so 85 s of waiting plus 30 s of rendering still answers inside that call.
+export const ASSISTANT_FRAME_QUEUE_MS = 85000
 
 /**
  * The time limits of a still-frame job. The 30 s render limit starts when the worker is given the
  * frame (`dispatched`), not when the job is queued: the wait behind a running export, the source
- * copy and a worker start are not the frame's fault. The whole request is capped at 5 minutes.
+ * copy and a worker start are not the frame's fault. The wait before that is capped at `queueMs`.
  */
-export function frameJobDeadline(fail, { setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
-  let timer = setTimer(() => fail('This frame waited 5 minutes behind other processing, so it stopped. Try again when the running export has finished.'), FRAME_QUEUE_MS)
+export function frameJobDeadline(fail, { queueMs = FRAME_QUEUE_MS, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+  const waited = queueMs % 60000 ? `${Math.round(queueMs / 1000)} s` : `${queueMs / 60000} minute${queueMs === 60000 ? '' : 's'}`
+  let timer = setTimer(() => fail(`This frame waited ${waited} behind other processing, so it stopped. Try again when the running export has finished.`), queueMs)
   return {
     dispatched() { clearTimer(timer); timer = setTimer(() => fail('The render worker did not finish this frame in 30 s. Try again.'), FRAME_RENDER_MS) },
     clear() { clearTimer(timer) },

@@ -25,7 +25,7 @@ import { colorCapabilities } from './routes/color.mjs'
 import { createDerivativeWaiters } from './core/derivative-waiters.mjs'
 import { createProcessingAdmission, captureProcessingIdentity, processingCancelled } from './core/processing-admission.mjs'
 import { runProcessingProcess } from './core/processing-process.mjs'
-import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, createProcessingWorkerHost, workerClosedMessage, createWorkerWatchdog, noteWorkerActivity, noteWorkerSetupStep, frameJobDeadline, queuedJobWait, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
+import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, createProcessingWorkerHost, workerClosedMessage, createWorkerWatchdog, noteWorkerActivity, noteWorkerSetupStep, frameJobDeadline, ASSISTANT_FRAME_QUEUE_MS, queuedJobWait, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
 import { validateExportSpec } from './core/processing-export.js'
 import { ProjectRecovery, recoveryProject } from './core/project-recovery.mjs'
 import { runRecoveryJournal } from './core/project-recovery-bridge.mjs'
@@ -780,7 +780,7 @@ function newJob(kind, spec) {
 }
 
 function jobPublic(job) {
-  const { ffmpeg: _f, resolve: _r, reject: _j, exportSources: _s, exportDestination: _d, frameDeadline: _t, ...rest } = job
+  const { ffmpeg: _f, resolve: _r, reject: _j, exportSources: _s, exportDestination: _d, exportCopies: _c, frameDeadline: _t, ...rest } = job
 
   return rest
 }
@@ -1006,7 +1006,7 @@ function failJob(job, error) {
   job.reject?.(new Error(job.error))
 }
 
-async function renderFrame(at, width = 1280, comp = null) {
+async function renderFrame(at, width = 1280, comp = null, { queueMs } = {}) {
   if (!project) throw new Error('no project')
   processing.assertCapacity()
   const guard = captureProcessing()
@@ -1020,8 +1020,8 @@ async function renderFrame(at, width = 1280, comp = null) {
   job.projectVersion = version
   job.exportSources = captured
   const done = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject })
-  // 30 s to render once the worker has the frame, 5 minutes for the whole request.
-  job.frameDeadline = frameJobDeadline(message => failJob(job, message))
+  // 30 s to render once the worker has the frame. Before that it may wait 5 minutes, or 85 s for the assistant.
+  job.frameDeadline = frameJobDeadline(message => failJob(job, message), { queueMs })
   try { queueWorkerJob(job, snapshot, guard) } catch (error) { job.frameDeadline.clear(); jobs.delete(job.id); throw error }
   return done.finally(() => job.frameDeadline.clear())
 }
@@ -1053,7 +1053,7 @@ const assistantService = createBrowserAssistant({
   getIdentity: () => projectEpoch,
   // exportFolder tells the prompt this is the browser editor, whose exports land in renders/ (see EXPORT_GUIDE).
   getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus), exportFolder: 'renders' } : {}) }),
-  renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null) }),
+  renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null, { queueMs: ASSISTANT_FRAME_QUEUE_MS }) }),
   dispatch: (call, assertCurrent, acceptIdentity, registerJob, run = {}) => {
     assertCurrent()
     const url = new URL(call.path, 'http://127.0.0.1')
