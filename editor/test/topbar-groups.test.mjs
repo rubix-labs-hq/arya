@@ -66,7 +66,7 @@ test('the welcome screen marks New 1080p project as the primary action', () => {
 })
 
 
-test('Ask Arya is outside More and reports setup, ready, run, refresh and connection states', () => {
+test('Ask Arya is outside More and reports one status word for setup, ready, run, refresh and connection states', () => {
   const context = shell(project)
   const check = (state, label) => {
     Object.assign(context.store, state)
@@ -84,7 +84,7 @@ test('Ask Arya is outside More and reports setup, ready, run, refresh and connec
   check({ claude: { state: 'idle' }, assistantSharingReviewOpen: true }, 'Working')
   check({ assistantSharingReviewOpen: false, connected: false }, 'Reconnecting')
   check({ connected: true, assistantStatus: { provider: 'codex', configured: false, mode: 'auto',
-    autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } } }, 'Needs refresh')
+    autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } } }, 'Not set up')
   const hosted = nodes(shell(project, 'browser-local').TopBar()).find(node => node.props?.id === 'ask-arya')
   assert.match(text(hosted), /Unavailable in beta/)
 })
