@@ -5,6 +5,7 @@ import { h } from 'preact'
 import htm from 'htm'
 import { applyOps, clipEnd, timecode } from '../../core/project.js'
 import { clipName } from '../../core/describe.js'
+import { editNotes } from '../../core/edit-notes.js'
 import { changeReceipt } from './change-receipt.js'
 import { assistantSuggestions } from './assistant-suggestions.js'
 
@@ -30,7 +31,8 @@ function previewChanges(project, proposal) {
   if (!proposal.ops?.length) return { layers: [], settings: [] }
   try {
     const imports = Object.fromEntries(Object.entries(proposal.assets ?? {}).filter(([src]) => !project.assets?.[src]))
-    const next = applyOps(project, Object.keys(imports).length ? [{ op: 'import', assets: imports }, ...proposal.ops] : proposal.ops).project
+    const ops = Object.keys(imports).length ? [{ op: 'import', assets: imports }, ...proposal.ops] : proposal.ops
+    const applied = applyOps(project, ops), next = applied.project
     const receipt = changeReceipt(project, next, { version: proposal.baseVersion + 1, who: 'agent', at: proposal.at })
     if (!receipt) return { error: 'These edits would not change the project.' }
     // Name layers as the timeline does, and list new nested values one property at a time.
@@ -40,7 +42,9 @@ function previewChanges(project, proposal) {
     const layers = receipt.clips.map(layer => ({ ...layer, name: names.get(layer.id) ?? layer.name, track: kinds.get(layer.id) ?? '', changes: layer.changes.flatMap(expand) }))
     // A clip added to or removed from a track also reorders it; the layer row already says so.
     const settings = receipt.scopes.filter(scope => scope.changes.some(change => change.property !== 'Object order')).map(scope => scope.changes.filter(change => change.property !== 'Object order').every(change => change.property === 'duration') ? { ...scope, name: 'Timeline length' } : scope)
-    return { receipt, layers, settings }
+    // The same notes the server sends with a committed edit: overlaps, shortened text, fonts and the like.
+    const notes = editNotes(project, next, { ops, created: applied.created ?? [] })
+    return { receipt, layers, settings, notes }
   } catch (error) {
     return { error: String(error?.message ?? error) }
   }
@@ -60,7 +64,7 @@ const STATUS = { added: 'New', deleted: 'Removed', changed: 'Changed' }
 
 function PreviewCard({ proposal, project, version, running, newRequest, busy, onApply, onDiscard }) {
   const stale = proposal.stale || proposal.baseVersion !== version
-  const { receipt, error, layers = [], settings = [] } = stale ? {} : previewChanges(project, proposal)
+  const { receipt, error, layers = [], settings = [], notes = [] } = stale ? {} : previewChanges(project, proposal)
   const steps = proposal.steps ?? []
   const changed = [receipt?.total ? plural(receipt.total, 'layer') : '', settings.length ? plural(settings.length, 'setting group') : ''].filter(Boolean).join(' and ')
   const run = steps.length ? `run ${plural(steps.length, 'processing step')}` : ''
@@ -79,6 +83,7 @@ function PreviewCard({ proposal, project, version, running, newRequest, busy, on
     </li>`)}</ul>` : null}
     ${layers.length > MAX_LAYERS ? html`<p class="assistant-preview-note">${plural(layers.length - MAX_LAYERS, 'more layer')} change.</p>` : null}
     ${settings.length && !stale ? html`<p class="assistant-preview-note">Settings: ${settings.slice(0, 4).map(scope => scope.name).join(', ')}${settings.length > 4 ? ', …' : ''}</p>` : null}
+    ${notes.map(note => html`<p class="assistant-note">${note}</p>`)}
     ${receipt && !stale ? html`<details class="assistant-preview-details"><summary>Show all changes</summary>
       ${[...receipt.scopes, ...receipt.clips].map(item => html`<div class="receipt-layer">
         <b>${item.name}</b><span class="receipt-meta">${item.compositionName ?? ''} ${item.id ?? ''} · ${STATUS[item.status] ?? item.status}</span>
@@ -110,10 +115,11 @@ function ApplyingCard({ applying, onDismiss }) {
   </section>`
 }
 
+// The undo bar on its own. The panel folds it into the result card; this stays for hosts that show it alone.
 function ChangeBar({ change, busy, onUndo }) {
   if (!change?.undoable) return null
   return html`<div class="assistant-change" role="status">
-    <span>${change.kind === 'preview' ? 'Applied the assistant preview.' : `The last request made ${plural(change.edits, 'edit')}.`}</span>
+    <span>${change.kind === 'preview' ? 'Applied the preview' : `Made ${plural(change.edits, 'edit')}`}</span>
     <button class="ghost" disabled=${Boolean(busy)} title="Restore the project from before this assistant change. Undo restores it again." onClick=${onUndo}>${busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button>
   </div>`
 }
