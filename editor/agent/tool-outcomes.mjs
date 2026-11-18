@@ -74,3 +74,16 @@ export function unfinishedJobsOutcome(failures) {
   const shown = reasons.slice(0, 2), more = reasons.length - shown.length
   return [`${count} processing job${count === 1 ? '' : 's'} did not finish.`, ...shown, ...(more ? [`${more} more ${more === 1 ? 'is' : 'are'} not listed here.`] : []), 'Review any committed edits.'].join(' ')
 }
+
+const MAX_LISTED_COMMITS = 20
+/**
+ * What a failed request saved, for the reply and the saved conversation. `commits` are the
+ * {version, summary} of each edit the run saved, and `changed` says whether the project version
+ * moved during the run.
+ */
+export function savedSummary(commits, changed) {
+  if (!commits.length) return changed ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were saved.'
+  const listed = commits.slice(0, MAX_LISTED_COMMITS).map(commit => `- ${commit.summary}`)
+  if (commits.length > listed.length) listed.push(`- and ${commits.length - listed.length} more`)
+  return `Saved before the failure, and still in the project:\n${listed.join('\n')}`
+}

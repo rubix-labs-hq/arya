@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { SHARING_VERSION, normalizeSharingEnvelope, sharingScopeForRoute, sameSharingScope, sameSharingRecipients, loopbackCompanion, canonicalCompanion, sharingDisclosure } from '../core/assistant-sharing.mjs'
 import { agentProjectView, HISTORY_NOTE, runHistory } from './agent-views.mjs'
 import { progressLabel, stepLabel, waitingAfter } from './step-labels.mjs'
-import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, unfinishedJobsOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
+import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, savedSummary, unfinishedJobsOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
 
 const exec = promisify(execFile)
 const names = { chatgpt: 'ChatGPT', 'claude-code': 'Claude Code', codex: 'Codex', antigravity: 'Google Antigravity', 'gemini-cli': 'Gemini CLI · retired', custom: 'Custom agent' }
@@ -44,14 +44,6 @@ const NETWORK_CODES = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET', 'ECONNRE
 const networkCode = error => error instanceof TypeError && NETWORK_CODES.has(error.cause?.code) ? error.cause.code : null
 const bridgeRequestKind = route => /\/tools\/[^/]+$/.test(route) ? 'tool-result' : /\/events\?/.test(route) ? 'events' : /\/cancel$/.test(route) ? 'cancel' : 'run'
 const EVENT_LOOP_WINDOW_MS = 30000
-const MAX_LISTED_COMMITS = 20
-/** What a failed request saved, for the reply and the saved conversation. */
-function savedSummary(commits, changed) {
-  if (!commits.length) return changed ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were saved.'
-  const listed = commits.slice(0, MAX_LISTED_COMMITS).map(commit => `- ${commit.summary}`)
-  if (commits.length > listed.length) listed.push(`- and ${commits.length - listed.length} more`)
-  return `Saved before the failure, and still in the project:\n${listed.join('\n')}`
-}
 const object = value => value && typeof value === 'object' && !Array.isArray(value)
 const bounded = (value, bytes, message) => { if (Buffer.byteLength(JSON.stringify(value)) > bytes) throw failure(message); return value }
 
@@ -655,7 +647,11 @@ export function createBrowserAssistant(options) {
           } else if (event.type === 'route') {
             run.routing = event.routing
             // The route arrives once the run is admitted. The agent has not answered yet, and the phase says so.
-            publish({ routing: executedRouting(run), ...(run.stepped ? {} : { phase: `Requested ${event.routing.modelName ?? event.routing.model ?? names[event.routing.provider]}. Waiting for its first step` }) })
+            publish({ routing: run.executedModel ? { ...event.routing, executedModel: run.executedModel, executedModelSource: 'cli' } : event.routing, ...(run.stepped ? {} : { phase: `Requested ${event.routing.modelName ?? event.routing.model ?? names[event.routing.provider]}. Waiting for its first step` }) })
+          } else if (event.type === 'text') {
+            text += String(event.text ?? '')
+            if (Buffer.byteLength(text) > 512 * 1024) throw failure('The assistant reply exceeded 512 KiB.')
+            publish({ state: 'thinking', text, phase: 'Generating a response' })
           } else if (event.type === 'model') {
             // The model the CLI says it is running, which can differ from the one requested when
             // the provider default was chosen. The first one is the run's own; a CLI may name a
@@ -664,10 +660,6 @@ export function createBrowserAssistant(options) {
               run.executedModel = redact(event.model, [owner.token])
               if (run.routing) publish({ routing: executedRouting(run) })
             }
-          } else if (event.type === 'text') {
-            text += String(event.text ?? '')
-            if (Buffer.byteLength(text) > 512 * 1024) throw failure('The assistant reply exceeded 512 KiB.')
-            publish({ state: 'thinking', text, phase: 'Generating a response' })
           } else if (event.type === 'done' || event.type === 'error') {
             const unfinished = event.type === 'done' && [...run.jobs.values()].some(job => options.jobState?.(job) === 'queued' || options.jobState?.(job) === 'running')
             run.terminal = true

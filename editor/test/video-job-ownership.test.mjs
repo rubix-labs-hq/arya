@@ -27,7 +27,7 @@ const evaluate = (source, bindings, ending) => new Function(...Object.keys(bindi
 const denied = () => { throw new Error('No real command, worker, filesystem, or network operation is allowed') }
 
 function runContext() {
-  const run = { id: 'run1', identity: 1, sharingGeneration: 1, initialVersion: 7, jobs: new Map(), outcomes: outcomes.createToolOutcomes(), cancelled: false, terminal: false }
+  const run = { id: 'run1', identity: 1, sharingGeneration: 1, initialVersion: 7, jobs: new Map(), outcomes: outcomes.createToolOutcomes(), commits: [], cancelled: false, terminal: false }
   const assertRun = value => { assert.equal(value, run); if (value.cancelled || value.terminal) throw failure('This assistant run is no longer active.') }
   // Keep the captured run in the same lexical closure as the actual registration function.
   const register = evaluate(registerSource, { assertRun, identifier: protocol.identifier, failure, fixtureRun: run }, 'return job => registerJob(fixtureRun, job)')
@@ -281,7 +281,8 @@ async function terminalFixture(kind) {
   const bindings = { assertRun: context.assertRun, request: async () => ({ events: [{ seq: 1, type: 'done', text: 'Agent claims completion.' }] }),
     tool: denied, state, publish: next => { Object.assign(state, next); states.push({ ...state }) }, options: { ...callbacks, getOutline: () => ({ version: fixture.facts().currentVersion }), onReply: (...reply) => replies.push(reply) },
     recordCompletedJobOutcome: outcomes.recordCompletedJobOutcome, unresolvedToolOutcome: outcomes.unresolvedToolOutcome, unfinishedJobsOutcome: outcomes.unfinishedJobsOutcome,
-    redact: value => value, failure, sleep: denied, cancelJobs, cancelRemote: async () => true, closed: false, active: context.run }
+    redact: value => value, failure, sleep: denied, cancelJobs, cancelRemote: async () => true, closed: false, active: context.run,
+    savedSummary: outcomes.savedSummary, projectVersion: () => fixture.facts().currentVersion, watchLoopDelay: () => {}, loopDelayReport: () => 'event-loop delay not measured', executedRouting: value => value.routing }
   const drive = evaluate(driveSource, bindings, 'return drive')
   await drive({ token: 'fixture-only' }, context.run)
   if (kind === 'running') await wait(fixture, 100)

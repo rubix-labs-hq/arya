@@ -15,7 +15,7 @@ assert.ok(driveSource.startsWith('  const drive = async') && driveSource.endsWit
 // are injected, so no companion, provider, server or external process starts.
 async function complete(receipts, { version = 5, initialVersion = 5, event = 'done', callback = true, failure = false, outcomes = helper.createToolOutcomes() } = {}) {
   const jobs = new Map(receipts.map((receipt, index) => [`j${index}`, receipt]))
-  const run = { id: 'fixture', jobs: new Map([...jobs.keys()].map(id => [id, { id, path: '/api/jobs/cancel' }])), initialVersion, outcomes }
+  const run = { id: 'fixture', jobs: new Map([...jobs.keys()].map(id => [id, { id, path: '/api/jobs/cancel' }])), initialVersion, outcomes, commits: [] }
   const states = [], replies = [], calls = [], state = {}
   const options = {
     jobState: job => jobs.get(job.id)?.state,
@@ -27,7 +27,9 @@ async function complete(receipts, { version = 5, initialVersion = 5, event = 'do
     state, publish: next => { Object.assign(state, next); states.push(next) }, redact: text => text, unresolvedToolOutcome: helper.unresolvedToolOutcome,
     recordCompletedJobOutcome: helper.recordCompletedJobOutcome, unfinishedJobsOutcome: helper.unfinishedJobsOutcome, cancelJobs: async () => calls.push('cancelJobs'),
     cancelRemote: async () => calls.push('cancelRemote'), tool: () => { throw new Error('Unexpected fixture tool') }, names: {},
-    sleep: () => { throw new Error('Unexpected fixture wait') }, run }
+    sleep: () => { throw new Error('Unexpected fixture wait') }, run,
+    // What a failed turn reports: the real summary, the version as the host reads it, and no event-loop timer.
+    savedSummary: helper.savedSummary, projectVersion: () => options.getOutline().version, watchLoopDelay: () => {}, loopDelayReport: () => 'event-loop delay not measured', executedRouting: value => value.routing }
   const drive = new Function(...Object.keys(injected), `let active = run, closed = false; ${driveSource}\nreturn drive`)(...Object.values(injected))
   await drive({ token: 'fixture-redaction-only' }, run)
   assert.equal(states.length, 1)

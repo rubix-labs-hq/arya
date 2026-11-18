@@ -58,7 +58,7 @@ function fixture(t, { held = false, assistant = true, afterImport } = {}) {
     let project = initial, version = 7, projectEpoch = 2, lastText = JSON.stringify(initial), recoveryState = {status:'valid'};
     const assistantCalls = new AsyncLocalStorage(), processing = createProcessingAdmission(), musicCompositions = new WeakMap(), assistantReview = { commitBy() {} };
     const past = [], future = [], activity = [], chat = [], jobs = new Map(), writes = [], calls = [], origins = [], scopes = [];
-    const chatHistory = {status:()=>({})}, claude = {}, transcriptService = {}, assistantService = {};
+    const chatHistory = {status:()=>({})}, claude = {}, transcriptService = {}, assistantService = {}, session = {id:'fixture-session',startedAt:0};
     const broadcast = () => {}, pushActivity = () => {}, log = () => {}, once = (_key, fn) => fn(), jobPublic = job => job;
     const readBody = () => {}, readJson = () => {}, send = () => {}, serveFile = () => {};
     const cacheKey = () => {throw new Error('Music must not create video proxies')}, ensureProxy = async () => {};
