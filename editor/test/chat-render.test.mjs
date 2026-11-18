@@ -171,6 +171,7 @@ test('a stopped request that changed nothing says so and offers Retry and Edit a
   const tree = panel(stopped, true, { chat, review: { change: null, changes: [] }, lastSent: { request: { text: 'Tighten the opening' }, options: {}, runId: 'r1' } })
   const run = nodes(tree).find(node => node.props?.class === 'assistant-run cancelled')
   assert.equal(textContent(nodes(run).find(node => node.props?.class === 'assistant-run-stage')), 'Nothing was changed.')
+  assert.equal(nodes(tree).find(node => node.props?.class?.startsWith('assistant-failure ')).props.class, 'assistant-failure stopped', 'not drawn as an error')
   const actions = nodes(tree).find(node => node.props?.class === 'assistant-failure-actions')
   assert.deepEqual(nodes(actions).filter(node => node.type === 'button').map(textContent), ['Edit and retry', 'Retry'])
   // Another request's run gets Edit and retry only.
