@@ -27,7 +27,7 @@ const conversation = [
 ]
 
 test('the run history is the last six messages, oldest first, each cut and marked', () => {
-  const history = runHistory(conversation)
+  const history = runHistory(conversation.slice(2))
   assert.equal(history.length, HISTORY_LIMITS.messages)
   assert.deepEqual(history.map(entry => entry.at), [1002, 1003, 1004, 1005, 1006, 1007])
   assert.deepEqual(history.map(entry => entry.role), ['user', 'assistant', 'user', 'assistant', 'user', 'assistant'], 'a stored reply has role assistant whichever provider wrote it')
@@ -35,11 +35,38 @@ test('the run history is the last six messages, oldest first, each cut and marke
   assert.deepEqual(history[1], { role: 'assistant', at: 1003, text: conversation[3].text }, 'a short message is whole and carries nothing else')
   assert.equal(history[3].error, true)
   assert.ok(Buffer.byteLength(JSON.stringify(history)) <= HISTORY_LIMITS.bytes)
-  // Six long messages do not fit 8 KiB, so the oldest are dropped first.
-  const long = runHistory(Array.from({ length: 8 }, (_, index) => says('user', `${index}`.repeat(4000), index)))
-  assert.ok(long.length < 6 && long.length > 0); assert.equal(long.at(-1).at, 7)
-  assert.ok(Buffer.byteLength(JSON.stringify(long)) <= HISTORY_LIMITS.bytes)
   assert.deepEqual(runHistory([]), []); assert.deepEqual(runHistory(undefined), []); assert.deepEqual(runHistory([null, 'x']), [])
+})
+
+test('a longer conversation keeps its first request, and the history says what it leaves out and where', () => {
+  // Eight saved messages: the first request, a marked hole of two, then the newest five.
+  const history = runHistory(conversation)
+  assert.deepEqual(history.map(entry => entry.omitted ?? entry.at), [1000, 2, 1003, 1004, 1005, 1006, 1007])
+  assert.deepEqual(history[0], { role: 'user', at: 1000, text: 'Cut the pauses.' })
+  assert.deepEqual(history[1], { omitted: 2 }, 'the hole is an entry of its own, where the messages were')
+  assert.equal(history.filter(entry => entry.omitted === undefined).length, HISTORY_LIMITS.messages)
+  // Twenty turns later the first request is still there, and the count covers everything between.
+  const turns = [...conversation, ...Array.from({ length: 40 }, (_, index) => says(index % 2 ? 'claude' : 'user', `turn ${index}`, 2000 + index))]
+  const late = runHistory(turns)
+  assert.deepEqual(late.map(entry => entry.omitted ?? entry.at), [1000, 42, 2035, 2036, 2037, 2038, 2039])
+  assert.equal(late.reduce((sum, entry) => sum + (entry.omitted ?? 0), 0) + HISTORY_LIMITS.messages, turns.length)
+  // A conversation that opens with replies: they are counted before the first request.
+  const greeted = runHistory([says('claude', 'Welcome.', 1), says('claude', 'Signed in.', 2), ...turns])
+  assert.deepEqual(greeted.map(entry => entry.omitted ?? entry.at), [2, 1000, 42, 2035, 2036, 2037, 2038, 2039])
+  // Six messages or fewer are whole, with no marker.
+  assert.equal(runHistory(conversation.slice(0, 6)).some(entry => 'omitted' in entry), false)
+  // Six long messages do not fit 8 KiB. The oldest of the newest go first, and the first request stays.
+  const long = runHistory(Array.from({ length: 8 }, (_, index) => says('user', `${index}`.repeat(4000), index)))
+  assert.deepEqual(long.map(entry => entry.omitted ?? entry.at), [0, 3, 4, 5, 6, 7])
+  assert.ok(Buffer.byteLength(JSON.stringify(long)) <= HISTORY_LIMITS.bytes)
+  // When even the first request and the newest message do not fit together, the newest one wins.
+  const heavy = runHistory([says('user', '\u0000'.repeat(1500), 0), ...Array.from({ length: 9 }, (_, index) => says('claude', 'short', index + 1)), says('user', '\u0001'.repeat(1300), 10)])
+  assert.deepEqual(heavy.map(entry => entry.omitted ?? entry.at), [10, 10])
+  assert.ok(Buffer.byteLength(JSON.stringify(heavy)) <= HISTORY_LIMITS.bytes)
+  // The note tells the reader what the count means and where the rest is.
+  assert.match(HISTORY_NOTE, /historyEarlier:N means N saved messages are not in history/)
+  assert.match(HISTORY_NOTE, /read those messages before you answer: GET \/api\/assistant\/history\?offset=0/)
+  assert.match(CHAT_NOTE, /chatEarlier:N means N older saved messages are not in chat/)
 })
 
 test('the history route pages every message and returns the rest of a long one', () => {
@@ -81,7 +108,8 @@ test('the agent view of the project keeps the project and bounds everything arou
     chat: Array.from({ length: 100 }, (_, index) => says(index % 2 ? 'claude' : 'user', `${index} `.repeat(3000), index)),
     activity: Array.from({ length: 40 }, (_, index) => ({ who: 'agent', text: `line ${index} `.repeat(200), at: index })), jobs: Array.from({ length: 20 }, (_, index) => ({ id: `j${index}`, state: 'done' })) }
   const view = agentProjectView(full)
-  assert.deepEqual(Object.keys(view), ['project', 'version', 'root', 'chat', 'chatNote', 'activity', 'jobs'])
+  assert.deepEqual(Object.keys(view), ['project', 'version', 'root', 'chat', 'chatEarlier', 'chatNote', 'activity', 'jobs'])
+  assert.equal(view.chatEarlier, 88, 'the count of saved messages the chat leaves out')
   assert.equal(view.project, full.project); assert.equal(view.version, 7)
   assert.equal(view.chat.length, 12); assert.equal(view.chat.at(-1).at, 99); assert.equal(view.chat.at(-1).role, 'assistant'); assert.equal(view.chat[0].text.length, 1500); assert.ok(view.chat[0].more > 0)
   assert.equal(view.chatNote, CHAT_NOTE)
@@ -89,7 +117,7 @@ test('the agent view of the project keeps the project and bounds everything arou
   assert.deepEqual(view.jobs.map(job => job.id), ['j15', 'j16', 'j17', 'j18', 'j19'])
   assert.ok(Buffer.byteLength(JSON.stringify(view)) < 32 * 1024, String(Buffer.byteLength(JSON.stringify(view))))
   assert.ok(Buffer.byteLength(JSON.stringify(full)) > 500 * 1024)
-  assert.deepEqual(agentProjectView({ project: null, version: 0 }), { project: null, version: 0, root: undefined, chat: [], chatNote: CHAT_NOTE, activity: [], jobs: [] })
+  assert.deepEqual(agentProjectView({ project: null, version: 0 }), { project: null, version: 0, root: undefined, chat: [], chatEarlier: 0, chatNote: CHAT_NOTE, activity: [], jobs: [] })
 })
 
 test('the real server gives an agent the earlier messages, bounded, and leaves the editor\'s own view whole', async t => {
@@ -104,23 +132,25 @@ test('the real server gives an agent the earlier messages, bounded, and leaves t
   } })
   const agent = await server.ask('B, all of them.')
   const { context } = promptContext(agent.prompt)
-  // The run context: the six messages before this request, without the request itself.
-  assert.deepEqual(context.history.map(entry => entry.at), [1002, 1003, 1004, 1005, 1006, 1007])
-  assert.equal(context.history[1].text, 'Which rows do you want? A) the first ten B) all of them')
-  assert.equal(context.history[0].more, pasted.length - 1500)
+  // The run context: the first request and the five messages before this one, without this
+  // request itself, and the count of saved messages it leaves out.
+  assert.deepEqual(context.history.map(entry => entry.omitted ?? entry.at), [1000, 2, 1003, 1004, 1005, 1006, 1007])
+  assert.equal(context.history[2].text, 'Which rows do you want? A) the first ten B) all of them')
+  assert.equal(context.historyEarlier, 2)
   assert.equal(context.historyNote, HISTORY_NOTE)
   assert.ok(Buffer.byteLength(JSON.stringify(context.history)) <= HISTORY_LIMITS.bytes)
   const [project, page, rest] = agent.results
   // GET /api/project as the agent reads it.
   assert.ok(Buffer.byteLength(JSON.stringify(project)) < 60 * 1024, String(Buffer.byteLength(JSON.stringify(project))))
-  assert.deepEqual(Object.keys(project), ['project', 'version', 'root', 'chat', 'chatNote', 'activity', 'jobs'])
+  assert.deepEqual(Object.keys(project), ['project', 'version', 'root', 'chat', 'chatEarlier', 'chatNote', 'activity', 'jobs'])
+  assert.equal(project.chatEarlier, 0)
   assert.equal(project.project.name, 'Server fixture')
   assert.equal(project.chat.length, 9, 'the eight earlier messages and this request')
   assert.equal(project.chat.at(-1).text, 'B, all of them.')
   assert.equal(project.chat[2].text.length, 1500); assert.equal(project.chat[2].more, pasted.length - 1500)
   // The history route as the agent reads it.
   assert.equal(page.total, 9); assert.equal(page.messages.length, 9); assert.equal(page.messages[2].more, pasted.length - 2000)
-  assert.equal(context.history[0].text + rest.text, pasted, 'the cut part of the run history plus the rest is the whole message')
+  assert.equal(project.chat[2].text + rest.text, pasted, 'the cut part in chat plus the rest is the whole message')
   assert.equal(Object.hasOwn(rest, 'more'), false)
   // The editor's own read is unchanged: the whole message, the run state and the recovery state.
   const editor = (await server.api('GET', '/api/project')).body
@@ -136,7 +166,7 @@ test('a first request carries no history', async t => {
   const server = await runningServer(t, [{ method: 'GET', path: '/api/assistant/history' }])
   const agent = await server.ask('Add a title.')
   const { context } = promptContext(agent.prompt)
-  assert.equal(Object.hasOwn(context, 'history'), false); assert.equal(Object.hasOwn(context, 'historyNote'), false)
+  assert.equal(Object.hasOwn(context, 'history'), false); assert.equal(Object.hasOwn(context, 'historyNote'), false); assert.equal(Object.hasOwn(context, 'historyEarlier'), false)
   assert.deepEqual(agent.results[0].messages.map(entry => entry.text), ['Add a title.'])
 })
 
