@@ -115,6 +115,65 @@ test('a slow machine gets a longer start limit after each start that never conne
   assert.equal(third.ok, true); assert.equal(f.launched.length, 2)
 })
 
+test('a worker that never connects is stopped at its own start limit when no later request asks', async () => {
+  const f = fixture(), first = f.ensure()
+  await f.clock.advance(22000)
+  assert.match(first.error.message, /did not start/)
+  // The second process may take 40 s. Its one request gives up at 20 s and nothing asks again.
+  const second = f.ensure(); await f.clock.advance(21000)
+  assert.match(second.error.message, /did not start in 20 s/)
+  const slow = f.launched[1]
+  assert.equal(slow.processingStartLimit, 40000); assert.deepEqual(slow.kills, [])
+  await f.clock.advance(20000)
+  assert.deepEqual(slow.kills, ['SIGTERM'], 'stopped at 40 s with no request waiting')
+  assert.equal(f.host.current, null)
+  assert.equal(f.logs.filter(line => /did not connect within 40 s/.test(line)).length, 1, String(f.logs))
+  // A third start in a row that never connected gets the longest limit.
+  f.ensure(); await f.clock.advance(300)
+  assert.equal(f.launched[2].processingStartLimit, 80000)
+})
+
+test('a worker that connects in time is not stopped by its start timer', async () => {
+  const f = fixture(), first = f.ensure()
+  await f.clock.advance(300); f.connect(); await f.clock.advance(200)
+  assert.equal(first.ok, true)
+  await f.clock.advance(60000)
+  assert.deepEqual(f.launched[0].kills, []); assert.equal(f.host.current, f.launched[0])
+  assert.equal(f.logs.some(line => /did not connect/.test(line)), false, String(f.logs))
+})
+
+test('a worker that connected and then lost its page is replaced without being counted as a failed start', async () => {
+  const f = fixture(), first = f.ensure()
+  await f.clock.advance(200); const page = f.connect(); await f.clock.advance(200)
+  assert.equal(first.ok, true)
+  await f.clock.advance(60000)
+  f.close(page); await f.clock.advance(500)
+  const next = f.ensure(); await f.clock.advance(600)
+  assert.equal(f.logs.some(line => /did not connect within/.test(line)), false, String(f.logs))
+  assert.ok(f.logs.includes('stopping the render worker: it cannot serve this request'), String(f.logs))
+  assert.equal(f.launched.length, 2)
+  assert.equal(f.launched[1].processingStartLimit, 20000, 'the replacement keeps the first start limit')
+  f.connect(); await f.clock.advance(200)
+  assert.equal(next.ok, true)
+})
+
+test('a replaced worker that exits late does not clear the worker that replaced it', async () => {
+  const f = fixture(index => index === 0 ? child([]) : child())
+  f.ensure()
+  await f.clock.advance(20400)
+  const second = f.ensure()
+  await f.clock.advance(15000)
+  assert.equal(f.launched.length, 2, 'the replacement started after the wait for the old process')
+  f.connect(); await f.clock.advance(300)
+  assert.equal(second.ok, true)
+  f.launched[0].signalCode = 'SIGKILL'; f.launched[0].emit('exit', null, 'SIGKILL')
+  await f.clock.advance(100)
+  assert.equal(f.host.current, f.launched[1], 'the new worker is still the current one')
+  const third = f.ensure(); await f.clock.advance(300)
+  assert.equal(third.ok, true)
+  assert.equal(f.launched.length, 2, 'no third process is started')
+})
+
 test('an idle stop that ignores SIGTERM gets SIGKILL, and the next request starts a new worker', async () => {
   const f = fixture(index => child(index === 0 ? ['SIGKILL'] : undefined)), first = f.ensure()
   await f.clock.advance(300); f.connect(); await f.clock.advance(200)

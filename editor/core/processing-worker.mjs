@@ -122,6 +122,7 @@ export function createProcessingWorkerHost({ launch, clients, onExit = () => {},
     if (worker.processingGone) return
     worker.processingGone = true
     clearTimer(worker.processingCloseTimer)
+    clearTimer(worker.processingStartTimer)
     retireProcessingWorkerClients(clients, worker)
     if (current === worker) set(null)
     onExit(worker)
@@ -134,6 +135,14 @@ export function createProcessingWorkerHost({ launch, clients, onExit = () => {},
     worker.processingStartedAt = now()
     worker.processingStartLimit = workerStartLimit(failedStarts)
     worker.processingExitWaiters = []
+    // A worker that never connects is stopped at its start limit even when no later request asks.
+    worker.processingStartTimer = setTimer(() => {
+      if (current !== worker || worker.processingStopping || worker.processingConnectedAt !== undefined) return
+      failedStarts++
+      log(`the render worker did not connect within ${Math.round(worker.processingStartLimit / 1000)} s`)
+      retire(worker, 'it never connected')
+    }, worker.processingStartLimit)
+    worker.processingStartTimer?.unref?.()
     worker.on('exit', () => gone(worker))
     // 'error' without a pid means the browser could not be started at all (for example, no Chrome).
     worker.on('error', error => {
@@ -156,6 +165,7 @@ export function createProcessingWorkerHost({ launch, clients, onExit = () => {},
       client.worker = current
       if (!current) return
       clearTimer(current.processingCloseTimer)
+      clearTimer(current.processingStartTimer)
       if (current.processingConnectedAt === undefined) {
         current.processingConnectedAt = now()
         failedStarts = 0
@@ -185,7 +195,7 @@ export function createProcessingWorkerHost({ launch, clients, onExit = () => {},
         if (signal?.aborted) throw processingCancelled()
         const worker = current
         if (worker && (worker.processingStopping || now() - worker.processingStartedAt >= worker.processingStartLimit)) {
-          if (!worker.processingStopping) {
+          if (!worker.processingStopping && worker.processingConnectedAt === undefined) {
             failedStarts++
             log(`the render worker did not connect within ${Math.round(worker.processingStartLimit / 1000)} s`)
           }
