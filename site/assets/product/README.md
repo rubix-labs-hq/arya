@@ -2,7 +2,7 @@
 
 Every image in this folder is a capture of running Arya software, or a frame or clip that Arya rendered. None is a mockup or a recomposition. There are two sets:
 
-- `native-*.webp`, `after-the-tide.mp4` and `after-the-tide-poster.webp` come from the native Mac, iPad and iPhone apps, build 1.1.0 (3), captured in November 2026. Three more (`*-ask-arya.webp` and `native-iphone-assistant.webp`) come from the 1.3.0 development build at f6fa4d5, captured on 2026-11-18. No page shows those three yet (see below).
+- `native-*.webp`, `after-the-tide.mp4` and `after-the-tide-poster.webp` come from the native Mac, iPad and iPhone apps, build 1.1.0 (3), captured in November 2026. Three more (`*-ask-arya.webp` and `native-iphone-assistant.webp`) come from the 1.3.0 development build at f6fa4d5, captured on 2026-11-18. They appear only after the mobile release gate opens (see below).
 - Every other image is a capture of the browser editor (development build, 2026-10-09) or a frame that editor rendered.
 
 The home page leads with the native captures. It uses browser captures only where no native capture of that feature exists yet: the node graph, the transform inspector, the loudness reading, the film in the timeline and the assistant panel. Each figure names the edition it shows.
@@ -24,7 +24,7 @@ The home page leads with the native captures. It uses browser captures only wher
 | `native-iphone-edit.webp` | iPhone 6.9-inch, Edit page, whole screen at half size. |
 | `native-iphone-edit-ask-arya.webp` | iPhone 6.9-inch, the same Edit page with Ask Arya in the top bar, whole screen at half size. 1.3.0 development build at f6fa4d5, App Store edition, Release, simulator. Waits in `native.next`. |
 | `native-iphone-deliver.webp` | iPhone 6.3-inch, Deliver sheet from the export range down, at half size. |
-| `native-iphone-assistant.webp` | iPhone 6.3-inch, Edit page with the assistant open, whole screen at half size. No assistant account was connected: it shows the setup card and a typed request that was not sent, and no reply. 1.3.0 development build at f6fa4d5, App Store edition, Release, simulator. Waits in `native.next`; no page shows it. |
+| `native-iphone-assistant.webp` | iPhone 6.3-inch, Edit page with the assistant open, whole screen at half size. No assistant account was connected: it shows the setup card and a typed request that was not sent, and no reply. 1.3.0 development build at f6fa4d5, App Store edition, Release, simulator. Waits in `native.next`, then replaces the local browser capture in the assistant section when that App Store release is live. |
 | `after-the-tide.mp4` | The 12 second export the iPhone app rendered from the After the Tide project, at 1280 by 720 without sound. |
 | `after-the-tide-poster.webp` | One frame of that export. |
 

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
 import { safeDestination, releaseDestination, mobileReleaseDestination } from '../assets/config.mjs';
 import { sceneArtwork, orbitArtwork, pageVignette } from './visuals.mjs';
-import { productHome, primaryAction, proCopy, storeScope } from './product-home.mjs';
+import { productHome, atLeastMinor, primaryAction, proCopy, storeScope } from './product-home.mjs';
 import { structuredMetadata, writeDiscoveryFiles } from './discovery.mjs';
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const config = JSON.parse(await readFile(join(root, 'config.json'), 'utf8'));
@@ -100,10 +100,7 @@ if (native.next) {
     if (!/^\/assets\/product\/native-[a-z-]+\.webp$/.test(item.src)) throw new Error('A native capture must be a local reviewed WebP image');
     if (!(item.project in native.projects)) throw new Error('A native capture must name its sample project');
   }
-  const minor = value => String(value ?? '').split('.').slice(0, 2).map(Number);
-  const [major, minorNumber] = minor(mobileVersion);
-  const [nextMajor, nextMinor] = minor(next.version);
-  if (mobileReady && (major > nextMajor || (major === nextMajor && minorNumber >= nextMinor))) {
+  if (mobileReady && atLeastMinor(mobileVersion, next.version)) {
     native.editions = { ...native.editions, Next: next.edition };
     for (const [id, item] of Object.entries(next.images)) native.images[id] = { ...item, edition: 'Next' };
   }

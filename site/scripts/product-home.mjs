@@ -25,6 +25,7 @@ export const assistantCopy = {
   // Shown after the account point while the App Store release is live. It names no CLI provider,
   // because those run on a Mac.
   mobilePoint: ['On iPad and iPhone.', 'Use ChatGPT where offered, an Anthropic API key, or a connection to Arya on your Mac.'],
+  ask: 'Open Ask Arya in the top bar on any editor page. After an edit, the reply comes first. A card below it shows what changed and offers Undo this change. Turn on Preview to see the edit before you choose Apply or Discard.',
   card: 'Assistant editing with your own AI account.',
   hostedLimit: 'The browser editor has no assistant, Figma import or transcription.',
   link: ['/install/#accounts', 'How assistant sign-in works'],
@@ -116,6 +117,14 @@ export function nativeCaptureNote({ native, shown = null, releaseReady = false, 
   return `Captured from Arya ${native.version} on ${devices}, ${native.captured}, with the ${listed(projects)} sample project${projects.length > 1 ? 's' : ''}.${media ? ` ${media}` : ''}${current}`;
 }
 
+// Release and capture versions use numeric major.minor or major.minor.patch.
+export function atLeastMinor(version, minimum) {
+  if (typeof version !== 'string' || !/^\d+\.\d+(?:\.\d+)?$/.test(version)) return false;
+  const [major, minor] = version.split('.').map(Number);
+  const [requiredMajor, requiredMinor] = minimum.split('.').map(Number);
+  return major > requiredMajor || (major === requiredMajor && minor >= requiredMinor);
+}
+
 export function productHome({ button, link, faq, stage, shots, figures, native, film = null, releaseURL = null, releaseReady = Boolean(releaseURL), publicSource = null, accessURL = null, browserEditor = null, mobileURL = null, mobileVersion = null, pro = false, scope = storeScope(null, pro), contributionsConfigured = false, version = null, size = '104 MB', minimumOS = 'macOS 14', architectures = 'Apple silicon and Intel' }) {
   if (!Array.isArray(shots) || shots.length !== 4 || shots[0].id !== 'edit') throw new Error('The home gallery needs four verified captures, starting with Edit');
   const nativeIds = ['mac-color', 'mac-edit', 'ipad-color', 'iphone-edit', 'mac-color-inspector', 'mac-motion-inspector', 'mac-media-panel', 'ipad-color-inspector', 'iphone-deliver'];
@@ -141,9 +150,9 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
   };
   // A native capture, labelled with its device. `small` swaps in a detail of the same screen on phones.
   const picture = (item, { small = null, eager = false, priority = false } = {}) => `<picture>${small ? `<source media="(max-width:760px)" srcset="${small.src}" width="${small.width}" height="${small.height}">` : ''}<img src="${item.src}" alt="${item.alt}" width="${item.width}" height="${item.height}"${eager ? '' : ' loading="lazy"'}${priority ? ' fetchpriority="high"' : ''} decoding="async"></picture>`;
-  const plate = id => {
+  const plate = (id, note = '') => {
     const item = shot(id);
-    return `<figure class="plate plate-${id}"><div class="plate-frame">${picture(item)}</div><figcaption><span class="plate-label">${item.label}</span> ${item.caption}${pictured(item)}</figcaption></figure>`;
+    return `<figure class="plate plate-${id}"><div class="plate-frame">${picture(item)}</div><figcaption><span class="plate-label">${item.label}</span> ${item.caption}${pictured(item)}${note ? ` ${note}` : ''}</figcaption></figure>`;
   };
   // A clip the native app exported. It plays only when the visitor starts it.
   const clipFigure = id => {
@@ -248,6 +257,15 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
     : `${mobileURL ? 'Not for Mac yet. The Mac app is in a private beta by invitation. It' : 'Not yet. Arya is in a private beta by invitation. The Mac app'} needs final interface checks, a signed package and Apple notarization before a public download. ${accessURL ? 'You can request beta access on the download page.' : betaRequestsClosed}${mobileURL ? ` Arya ${mobileVersion} is available on the App Store for iPhone and iPad.${pro ? ` ${scope.store}` : ''}` : ''}`;
 
   // The assistant's points. The iPad and iPhone point shows only while the App Store release is live.
+  const askOnMobile = Boolean(mobileURL) && atLeastMinor(mobileVersion, '1.3');
+  const askOnMac = releaseReady && atLeastMinor(version, '1.3');
+  const askEditions = [askOnMac && 'the direct Mac download', askOnMobile && 'the iPhone and iPad apps'].filter(Boolean);
+  const askNote = askEditions.length
+    ? `<div class="assistant-workflow"><h3>Using Ask Arya in ${askEditions.join(' and ')}</h3><p>${assistantCopy.ask}</p></div>`
+    : '';
+  const assistantFigure = askOnMobile && shot('iphone-assistant')
+    ? plate('iphone-assistant', native.editions?.[shot('iphone-assistant').edition])
+    : figure('assistant', 'Local browser editor');
   const assistantPoints = [...assistantCopy.points.slice(0, 2), ...(mobileURL ? [assistantCopy.mobilePoint] : []), ...assistantCopy.points.slice(2)];
 
   // What each place gives you. Facts only, each one already stated on a guide page or in the table below.
@@ -274,9 +292,10 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
 <section class="assistant" id="ai" tabindex="-1" aria-labelledby="ai-heading">
 <div class="wrap assistant-grid">
 <div class="chapter-copy"><p class="where">${mobileURL ? assistantCopy.scopeMobile : assistantCopy.scope}</p><h2 id="ai-heading">${assistantCopy.heading}</h2><p>${assistantCopy.lead}</p>
+${askNote}
 <ul class="points">${assistantPoints.map(([lead, text]) => `<li><strong>${lead}</strong> ${text}</li>`).join('')}</ul>
 ${link(...assistantCopy.link)}</div>
-${figure('assistant', 'Local browser editor')}
+${assistantFigure}
 </div>
 </section>
 ${launchFilm}<section class="pages" id="suite" tabindex="-1" aria-labelledby="suite-heading">
