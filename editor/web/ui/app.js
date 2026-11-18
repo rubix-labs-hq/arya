@@ -68,15 +68,18 @@ function TopBar() {
     return action()
   }
   const hosted = host.kind === 'browser-local'
-  const assistant = assistantState(s.assistantStatus ?? s.caps?.assistant)
+  // The same rule as the panel: only the native host carries its status in the capabilities.
+  const assistant = assistantState(s.assistantStatus ?? (s.caps?.host === 'native' ? s.caps.assistant : null))
   const working = assistantActivity(s.claude, { pending: s.assistantSharingReviewOpen === true }).active
-  const assistantLabel = hosted ? 'Unavailable in beta' : !s.connected ? 'Reconnecting' : working ? 'Working' : assistant.ready ? 'Ready' : assistant.refreshRequired ? 'Needs refresh' : 'Not set up'
+  // Until the first status answer arrives the entry says so. "Not set up" is only for a status that says it.
+  const checking = assistant.checking && !s.assistantStatusError
+  const assistantLabel = hosted ? 'Unavailable in beta' : !s.connected ? 'Reconnecting' : working ? 'Working' : assistant.ready ? 'Ready' : checking ? 'Checking' : assistant.refreshRequired ? 'Needs refresh' : 'Not set up'
   const openAssistant = () => {
     if (store.assistantSharingReviewOpen) return
     const focus = () => globalThis.document?.querySelector('#editor-assistant :is(textarea, .assistant-setup a.primary)')?.focus()
-    if (s.chatOpen) focus()
+    if (s.chatOpen && !s.chatCollapsed) focus()
     else {
-      set({ chatOpen: true })
+      set({ chatOpen: true, chatCollapsed: false })
       queueMicrotask(focus)
     }
   }
@@ -105,7 +108,7 @@ function TopBar() {
       </div></div>
       <span class="topbar-sep before-assistant" aria-hidden="true"></span>
       <button type="button" id="ask-arya" class=${`assistant-entry ${s.chatOpen ? 'on' : ''}`} data-state=${!hosted && s.connected && working ? 'working' : !hosted && s.connected && assistant.ready ? 'ready' : 'idle'} aria-expanded=${Boolean(s.chatOpen)} aria-controls=${s.chatOpen ? 'editor-assistant' : undefined} disabled=${s.assistantSharingReviewOpen === true} onClick=${openAssistant}>
-        <${Icon} name="assistant" /><span class="assistant-entry-label">Ask Arya</span><span class="assistant-entry-state"><i aria-hidden="true"></i>${assistantLabel}</span><kbd aria-hidden="true">/</kbd>
+        <${Icon} name="assistant" /><span class="assistant-entry-label">Ask Arya</span><span class="assistant-entry-hint" aria-hidden="true">to edit or explain</span><span class="assistant-entry-state"><i aria-hidden="true"></i>${assistantLabel}${s.refs.length ? ` · ${s.refs.length} attached` : ''}</span><kbd aria-hidden="true">/</kbd>
       </button>
       ${/* Shown only when the editor loses its server, so a dot beside Assistant never reads as AI status. */ s.connected ? null : html`<span class="conn" role="status" aria-label="Disconnected from the Arya server" title="Disconnected from the Arya server"></span>`}
       </div>
@@ -267,12 +270,14 @@ function App() {
   useEffect(() => {
     document.body.dataset.page = s.page
   }, [s.page])
+  // Ask again sooner while the first account check is still running, so "Checking" ends when the check does.
+  const checkingAssistant = !s.assistantStatusError && s.assistantStatus?.loading === true && s.assistantStatus.checkedAt === null
   useEffect(() => {
     const poll = () => refreshAssistantStatus().catch(() => {})
     poll()
-    const interval = setInterval(poll, 4000)
+    const interval = setInterval(poll, checkingAssistant ? 1000 : 4000)
     return () => clearInterval(interval)
-  }, [])
+  }, [checkingAssistant])
   const page = !s.project ? html`<${Welcome} />` :
     s.page === 'edit' ? html`<${EditPage} />` :
     s.page === 'color' ? html`<${ColorPage} />` :
@@ -282,7 +287,7 @@ function App() {
     html`<${MediaPage} />`
 
   return html`
-    <div class=${`app ${s.chatOpen ? 'chat-open' : ''}`} style=${layoutStyle(l)}>
+    <div class=${`app ${s.chatOpen ? 'chat-open' : ''}${s.chatOpen && s.chatCollapsed ? ' chat-collapsed' : ''}`} style=${layoutStyle(l)}>
       <${TopBar} />
       ${host.kind === 'browser-local' ? html`<${BrowserWorkspace} />` : null}
       <div class="main">

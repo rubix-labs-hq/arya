@@ -58,7 +58,7 @@ test('not-ready setup reason appears once, only in the setup card', () => {
   const tree = render()
   assert.equal(text(tree).split(reason).length - 1, 1)
   assert.ok(text([find(tree, 'assistant-setup')]).includes(reason))
-  assert.ok(text([find(tree, 'chat-head')]).includes('Not connected'))
+  assert.ok(text([find(tree, 'chat-head')]).includes('Not set up'))
   assert.equal(find(tree, 'assistant-route-preview'), undefined)
 })
 
@@ -67,7 +67,7 @@ test('an expired model catalog reads as Needs refresh in the header, not as disc
   const tree = render(expired)
   const head = text([find(tree, 'chat-head')])
   assert.ok(head.includes('Needs refresh'), head)
-  assert.equal(head.includes('Not connected'), false)
+  assert.equal(head.includes('Not set up'), false)
   assert.ok(text([find(tree, 'assistant-setup')]).includes('Model availability needs a refresh'))
 })
 
@@ -85,7 +85,7 @@ test('route previews render when ready and stay hidden when not ready', () => {
 test('the empty state has one sentence and Input tips retains the attachment hint', () => {
   const tree = render(readyStatus)
   const empty = find(tree, 'chat-empty'), card = find(tree, 'assistant-composer-card')
-  assert.equal(text([empty]).trim(), 'Ask for an edit or a question about this project.')
+  assert.equal(text([empty]).trim(), 'Ask for an edit, or ask a question about this project.')
   assert.equal(text([find(render(readyStatus, { caps: { host: 'native' } }), 'chat-empty')]).trim(), text([empty]).trim())
   assert.equal(walk([empty]).filter(node => node.type === 'p').length, 1)
   const help = find([card], 'assistant-input-help')

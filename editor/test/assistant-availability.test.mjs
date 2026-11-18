@@ -104,4 +104,5 @@ test('welcome starts with project formats regardless of assistant configuration'
   assert.match(text(tree), /Choose a format, then add footage to your timeline/)
   assert.match(text(tree), /New 1080p project/)
   assert.equal(text(render(false)), text(tree))
+  assert.doesNotMatch(text(tree), /Claude|ChatGPT|Codex/, 'the welcome names no provider')
 })

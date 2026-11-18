@@ -969,7 +969,7 @@ export function clipMenu(p, hit, t) {
     const unlockedIds = ids.filter(id => !p.tracks.some(tt => tt.locked && tt.clips.some(x => x.id === id)))
     items.push(
       ...(store.caps?.host === 'browser-local' ? [] : [{ label: 'Reference to Assistant', hint: '⌥-click', run: () => ids.forEach(id => { const cc = p.tracks.flatMap(tt => tt.clips).find(x => x.id === id); if (cc) addRef({ kind: 'clip', id, label: `${id} ${cc.label ?? cc.title?.text ?? mediaDisplayName(cc.src ?? cc.kind, p.assets?.[cc.src])}` }) }) },
-      { label: 'Ask the Assistant about this clip…', run: () => { addRef({ kind: 'clip', id: c.id, label: `${c.id}` }); set({ chatOpen: true }); setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50) } }]),
+      { label: 'Ask the Assistant about this clip…', run: () => { addRef({ kind: 'clip', id: c.id, label: `${c.id}` }); set({ chatOpen: true, chatCollapsed: false }); setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50) } }]),
       { sep: true },
       { label: 'Blade at playhead', hint: '⌘B', run: () => edit({ op: 'blade', at: time.t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: 'Blade here', run: () => edit({ op: 'blade', at: t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },

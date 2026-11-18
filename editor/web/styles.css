@@ -489,8 +489,6 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .audio-tools > *, .deliver-settings > *, .deliver-queue > *, .media-right > * { flex-shrink: 0; }
 .claude-dot.ok, .claude-dot.busy { background: var(--accent); }
 .chat-head { flex: none; min-width: 0; gap: 6px; }
-.chat-head > .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.chat-head .grow { display: none; }
 .assistant-setup { flex: none; padding: 14px 12px; background: #efbc6808; border-bottom: 1px solid var(--line); }
 .assistant-setup b { font-size: 12px; }
 .assistant-setup p { font-size: 12px; color: var(--muted); margin: 6px 0 10px; }
@@ -662,7 +660,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .assistant-run-time { margin-left: auto; color: var(--muted); font: 11px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .assistant-run p { margin: 5px 0 0; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .assistant-run button { margin-top: 7px; min-height: 44px; }
-.assistant-run.error .assistant-run-symbol { color: var(--red); }
+.assistant-run.error .assistant-run-symbol { color: var(--danger); }
 .assistant-stream small { display: block; color: var(--muted); margin-bottom: 5px; font-size: 10px; }
 @keyframes assistant-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .assistant-run.active .assistant-run-symbol { animation: none; } }
@@ -698,9 +696,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .assistant-composer-card .quick { border: 0; padding: 4px 8px; }
 .assistant-composer-card > .composer { flex: 0 0 auto; padding: 8px; }
 .assistant-composer-card textarea { width: 100%; min-width: 0; min-height: 64px; border: 0; background: transparent; }
-.assistant-composer-footer { display: flex; align-items: flex-start; flex: 0 1 auto; min-height: 106px; max-height: 180px; min-width: 0; overflow: auto; padding: 4px 8px 8px; gap: 6px; }
-.assistant-composer-footer .assistant-controls { flex: 1; min-width: 0; padding: 0; border: 0; }
-.assistant-composer-footer .assistant-controls select, .assistant-composer-footer .assistant-controls button { min-height: 40px; }
+.assistant-model-popover .assistant-controls select, .assistant-model-popover .assistant-controls button { min-height: 40px; }
 .assistant-primary-action { flex: 0 0 auto; position: sticky; top: 0; align-self: flex-start; }
 .assistant-primary-action button { min-height: 44px; min-width: 44px; padding: 6px 10px; }
 .assistant-primary-action .send { background: var(--accent); color: var(--bg); border-radius: 7px; font-size: 20px; }
@@ -711,14 +707,13 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .assistant-route { padding: 8px 12px 0; border-top: 1px solid var(--line); }
 .assistant-route .assistant-routing-receipt { padding: 4px 0 8px; border-top: 0; }
 .chat > .assistant-route { flex: 0 1 auto; min-height: 28px; overflow: auto; }
-@media (pointer: coarse) { .assistant-composer-footer .assistant-controls select, .assistant-composer-footer .assistant-controls button { min-height: 44px; } }
+@media (pointer: coarse) { .assistant-model-popover .assistant-controls select, .assistant-model-popover .assistant-controls button { min-height: 44px; } }
 
 /* Short panels keep the draft and primary controls separate from scrollable context. */
 @media (max-height: 520px) {
   .chat > .assistant-setup { max-height: 48px; overflow: auto; padding-block: 8px; }
   .chat > .chat-list { padding-block: 0; }
   .chat > .chat-list:has(> :not(.chat-empty)) { min-height: 44px; }
-  .assistant-composer-content { max-height: 44px; }
 }
 
 .assistant-tool-card, .assistant-result-card { min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); overflow-wrap: anywhere; }
@@ -1071,12 +1066,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 
 .welcome { overflow: auto; }
 .welcome-card { padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
-.welcome-formats button.ghost { border-color: var(--line-2); }
 .welcome-card h1 { margin: 0; font-size: 1.65em; }
 .welcome-card .brand.big img { width: 90px; height: auto; }
 .welcome-card .welcome-recovery { align-self: start; white-space: normal; }
 .welcome-formats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .welcome-formats button { white-space: normal; }
+.welcome-formats button.ghost { border-color: var(--line-2); }
 
 .deliver-preset-picker { display: none; }
 @media (max-width: 720px) {

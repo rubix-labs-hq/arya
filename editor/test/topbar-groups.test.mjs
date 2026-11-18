@@ -77,7 +77,8 @@ test('Ask Arya is outside More and reports setup, ready, run, refresh and connec
     assert.equal(text(nodes(entry).find(node => cls(node, 'assistant-entry-state'))), label)
     assert.equal(nodes(tree.find(node => node.props?.id === 'editor-action-list')).includes(entry), false)
   }
-  check({}, 'Not set up')
+  check({}, 'Checking')
+  check({ assistantStatus: { provider: 'codex', configured: false } }, 'Not set up')
   check({ assistantStatus: { provider: 'codex', configured: true } }, 'Ready')
   check({ claude: { state: 'working' } }, 'Working')
   check({ claude: { state: 'idle' }, assistantSharingReviewOpen: true }, 'Working')

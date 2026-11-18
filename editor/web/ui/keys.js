@@ -17,7 +17,7 @@ export const SHORTCUTS = [
   ['F', 'Match frame (open the source at this frame)'], ['E W D Q', 'Append / insert / overwrite / connect the source clip'],
   ['⌘C ⌘X ⌘V', 'Copy / cut / paste at playhead'], ['⌘D', 'Duplicate'], ['⌘A', 'Select all'], ['⌘Z ⇧⌘Z', 'Undo / redo'],
   ['⌘= ⌘-', 'Zoom timeline'], ['⇧Z', 'Zoom to fit'], ['⌘L', 'Loop playback'], ['⇧1 … ⇧6', 'Media, Edit, Motion, Color, Audio, Deliver pages'],
-  ['⌘E', 'Export'], ['⌘,', 'Settings'], ['/', 'Talk to the assistant'], ['⌥-click', 'Reference anything to the assistant'], ['?', 'This list'],
+  ['⌘E', 'Export'], ['⌘,', 'Settings'], ['/', 'Ask Arya'], ['⌥-click', 'Reference anything to the assistant'], ['?', 'This list'],
 ]
 
 function sel() {
@@ -362,7 +362,7 @@ export function installKeys() {
           set({ selection: [], selMarker: null })
           break
         case '/':
-          set({ chatOpen: true })
+          set({ chatOpen: true, chatCollapsed: false })
           setTimeout(() => document.querySelector('.chat textarea')?.focus(), 30)
           break
         case '?':

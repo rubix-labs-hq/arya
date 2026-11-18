@@ -28,7 +28,7 @@ function panel(run, connected = true, { draft = '', chat = [], onDraft = () => {
     assistantActivity, assistantState, assistantPrompt, providerName, () => 0, refresh, api, patch => { Object.assign(state, patch); if (patch.assistantDraft) onDraft(patch.assistantDraft.text) }, state, { t: 0 }, () => {}, () => {}, {}, () => null, () => null, () => null, createAssistantSharingGate, ...Object.values(script), assistantPanel)
 }
 
-test('assistant activity renders detail with Stop in the composer footer', () => {
+test('assistant activity renders detail with Stop in the bar inside the field', () => {
   const tree = panel({ state: 'working', startedAt: Date.now() - 1000, phase: 'Rendering media' })
   const all = nodes(tree), run = all.find(node => node.props?.class === 'assistant-run active')
   assert.ok(run)
@@ -37,7 +37,7 @@ test('assistant activity renders detail with Stop in the composer footer', () =>
   assert.ok(heading)
   assert.ok(content.some(node => node.type === 'p' && children(node).includes('Rendering media')))
   assert.equal(nodes(run).some(node => node.type === 'button'), false)
-  const footer = all.find(node => node.props?.class === 'assistant-composer-footer')
+  const footer = nodes(all.find(node => node.props?.class === 'assistant-field')).find(node => node.props?.class === 'assistant-field-bar')
   assert.ok(footer)
   assert.ok(nodes(footer).some(node => node.type === 'button' && node.props['aria-label'] === 'Stop request'))
   assert.equal(all.filter(node => node.type === 'button' && node.props['aria-label'] === 'Stop request').length, 1)
@@ -62,7 +62,7 @@ test('idle composer has current context, draft and one Send action beside model 
   assert.ok(card)
   assert.ok(nodes(card).some(node => node.type === 'textarea'))
   assert.ok(nodes(card).some(node => node.props?.class === 'assistant-context-chips'))
-  const footer = nodes(card).find(node => node.props?.class === 'assistant-composer-footer')
+  const footer = nodes(nodes(card).find(node => node.props?.class === 'assistant-field')).find(node => node.props?.class === 'assistant-field-bar')
   assert.ok(footer)
   assert.equal(nodes(footer).filter(node => node.props?.['aria-label'] === 'Send message').length, 1)
   assert.equal(all.filter(node => node.props?.['aria-label'] === 'Send message').length, 1)
@@ -72,7 +72,9 @@ test('stopping action remains in the primary action location with a disabled rec
   const tree = panel({ state: 'cancelling' })
   const primary = nodes(tree).find(node => node.props?.class === 'assistant-primary-action')
   const button = nodes(primary).find(node => node.type === 'button')
-  assert.equal(children(button).join(''), 'Stopping…')
+  assert.equal(button.props['aria-label'], 'Stopping…')
+  assert.equal(button.props.title, 'Stopping…')
+  assert.equal(button.props.class, 'assistant-stop', 'the same control, not a second one')
   assert.equal(button.props.disabled, true)
   assert.equal(nodes(tree).filter(node => node.props?.['aria-label'] === 'Send message').length, 0)
 })
