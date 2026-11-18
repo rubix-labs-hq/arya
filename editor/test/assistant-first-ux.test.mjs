@@ -741,6 +741,27 @@ test('the list keeps its end in view when the pinned history warning takes a lin
   assert.equal(element.scrollTop, 946)
 })
 
+test('the suggestion row that arrives when the first check ends stays in view for a reader at the end of the list', t => {
+  const clips = [{ id: 'c1', kind: 'video', src: 'a.mp4', start: 0, dur: 4 }]
+  const f = panel(t, { selection: ['c1'], chat: [{ role: 'user', text: 'Earlier', at: 1 }, { role: 'assistant', text: 'Done.', at: 2 }], project: { width: 1920, height: 1080, assets: { 'a.mp4': { hasAudio: true } }, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} }, assistantStatus: { provider: 'codex', configured: false, loading: true, checkedAt: null } }, { draft: '' })
+  const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
+  const redraw = () => { const tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /); return tree }
+  assert.ok(byClass(redraw(), 'assistant-checking')); assert.equal(element.scrollTop, 900)
+  // The row is taller than the line it replaces.
+  element.scrollHeight = 927; f.state.assistantStatus = ready
+  let tree = redraw()
+  assert.ok(byClass(tree, 'assistant-suggestions')); assert.equal(element.scrollTop, 927)
+  // The row leaves while a draft is typed and returns when it is cleared.
+  f.state.assistantDraft = { ...f.state.assistantDraft, text: 'Trim' }; redraw()
+  element.scrollHeight = 930; f.state.assistantDraft = { ...f.state.assistantDraft, text: '' }; tree = redraw()
+  assert.equal(element.scrollTop, 930)
+  // A reader who scrolled up is left alone when the row leaves and returns with the draft.
+  element.scrollTop = 100; byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
+  f.state.assistantDraft = { ...f.state.assistantDraft, text: 'Trim' }; assert.equal(byClass(redraw(), 'assistant-suggestions'), undefined)
+  f.state.assistantDraft = { ...f.state.assistantDraft, text: '' }; assert.ok(byClass(redraw(), 'assistant-suggestions'))
+  assert.equal(element.scrollTop, 100)
+})
+
 test('the setup card names the signed-in ChatGPT account', t => {
   const unset = { provider: 'codex', mode: 'manual', configured: false, providers: [{ id: 'codex', installed: false, authenticated: false, available: false, reason: 'Install Codex.' }] }
   const says = status => text(nodes(byClass(panel(t, { assistantStatus: status }).draw(), 'assistant-setup')).find(node => node.type === 'p'))

@@ -227,11 +227,6 @@ export function ChatPanel() {
     : !chatgpt.signedIn ? ['Continue with ChatGPT', () => startChatGPTSignIn({})]
     : !chatgpt.planUsage ? ['Turn on ChatGPT plan usage', () => startChatGPTSignIn({ ...(chatgptCurrent ? { account: chatgptCurrent.id } : {}), enablePlan: true })]
     : connection.provider !== 'chatgpt' || connection.mode === 'auto' ? ['Use ChatGPT', () => chooseChatGPTAssistant(connection)] : null
-  // A setup card, a sign-in wait or the ChatGPT welcome that arrives under a long conversation is brought into view.
-  const welcome = Boolean(chatgpt?.welcome)
-  useEffect(() => {
-    if (list.current && (checking || !status.ready || welcome)) list.current.scrollTop = list.current.scrollHeight
-  }, [checking, status.ready, status.refreshRequired, providerFailure, chatgptWaiting, signInState, welcome])
   const timeline = s.openComp ? s.project?.comps?.[s.openComp] : s.project
   const selectedObjects = (timeline?.tracks ?? []).flatMap(track => (track.clips ?? []).map(clip => ({ clip, track })))
   const selection = s.selection.map(id => {
@@ -245,6 +240,12 @@ export function ChatPanel() {
   const quick = assistantPanel.suggestions(s.project, { selection: s.selection, comp: s.openComp })
   // Suggestions populate an empty draft as a prompt.
   const showSuggestions = canSend && quick.length > 0 && !text.trim()
+  // A setup card, a sign-in wait or the ChatGPT welcome that arrives under a long conversation is brought into view.
+  // The suggestion row is too, for a reader who is already at the end.
+  const welcome = Boolean(chatgpt?.welcome)
+  useEffect(() => {
+    if (list.current && (checking || !status.ready || welcome || follow.current)) list.current.scrollTop = list.current.scrollHeight
+  }, [checking, status.ready, status.refreshRequired, providerFailure, chatgptWaiting, signInState, welcome, showSuggestions])
   const lastRequest = [...s.chat].reverse().find(m => ['user', 'you'].includes(m.role) && m.text)?.text ?? ''
   const view = assistantPanel.focus(s.project, { comp: s.openComp, playhead })
   const scopeName = s.openComp ? s.project?.comps?.[s.openComp]?.name ? `${s.project.comps[s.openComp].name} (${s.openComp})` : s.openComp : 'Main timeline'
