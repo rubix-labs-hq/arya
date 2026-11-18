@@ -135,6 +135,8 @@
 .chat-list .assistant-run-symbol { flex: none; width: 14px; font-size: 13px; text-align: center; }
 .chat-list .assistant-run-heading b { flex: none; font-weight: 500; color: var(--text); }
 .chat-list .assistant-run-stage { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* An opened run line shows its whole stage sentence. */
+.chat-list .assistant-run[open] .assistant-run-stage { white-space: normal; overflow: visible; }
 .chat-list .assistant-run .assistant-run-time { margin-left: auto; }
 .chat-list .assistant-run p { margin: 4px 0 0 20px; overflow-wrap: anywhere; }
 .chat-list .assistant-run-updates { margin: 4px 0 0; padding-left: 34px; }
@@ -194,7 +196,11 @@
 .chat .assistant-field-bar { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 0 5px 5px; }
 .chat .assistant-input-tools { flex: 1 1 auto; flex-wrap: nowrap; gap: 2px; min-width: 0; padding: 0; }
 .chat .assistant-input-tools > * { flex: 0 1 auto; min-width: 0; }
-.chat .assistant-input-tools > :is(.assistant-model-menu, .assistant-input-help) { flex: none; margin: 0; }
+/* The provider and model give way first, so Prompt and Import text stay readable. */
+.chat .assistant-input-tools > :is(.assistant-input-kind, .assistant-script-import, .assistant-input-help) { flex: none; margin: 0; }
+.chat .assistant-input-tools > .assistant-model-menu { flex: 0 1 auto; min-width: 0; margin: 0; }
+.chat .assistant-model-menu > summary { max-width: 100%; }
+.chat .assistant-model-menu > summary > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat .assistant-input-tools > label { font-size: .88em; }
 .chat .assistant-input-tools > label > select, .chat .assistant-input-tools > .assistant-script-import, .chat .assistant-script-import span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat .assistant-input-kind { position: relative; }

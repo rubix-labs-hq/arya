@@ -41,6 +41,7 @@ test('assistant activity renders one run line with Stop in the bar inside the fi
   assert.ok(heading)
   assert.equal(textContent(nodes(heading).find(node => node.type === 'b')), 'Working')
   assert.equal(textContent(nodes(heading).find(node => node.props?.class === 'assistant-run-stage')), 'Rendering media')
+  assert.equal(nodes(heading).find(node => node.props?.class === 'assistant-run-stage').props.title, 'Rendering media', 'a cut-off stage can still be read in full')
   assert.match(textContent(nodes(heading).find(node => node.props?.class === 'assistant-run-time')), /^\ds$/)
   assert.equal(nodes(run).some(node => node.type === 'button'), false)
   const footer = nodes(all.find(node => node.props?.class === 'assistant-field')).find(node => node.props?.class === 'assistant-field-bar')

@@ -121,7 +121,7 @@ function RunLine({ label, stage, elapsed, state, symbol, detail = '', updates = 
   const bare = value => String(value ?? '').replace(/\.$/, '')
   const extra = detail && !(stage && bare(detail).endsWith(bare(stage))) ? detail : ''
   const expandable = Boolean(extra || updates.length || [children].flat(Infinity).some(Boolean))
-  const heading = html`<span class="assistant-run-symbol" aria-hidden="true">${symbol}</span><b role=${live ? 'status' : undefined}>${label}</b>${stage ? html`<span class="assistant-run-stage">${stage}</span>` : null}${elapsed ? html`<span class="assistant-run-time">${elapsed}</span>` : null}`
+  const heading = html`<span class="assistant-run-symbol" aria-hidden="true">${symbol}</span><b role=${live ? 'status' : undefined}>${label}</b>${stage ? html`<span class="assistant-run-stage" title=${stage}>${stage}</span>` : null}${elapsed ? html`<span class="assistant-run-time">${elapsed}</span>` : null}`
   if (!expandable) return html`<div class=${`assistant-run ${state}`}><div class="assistant-run-heading">${heading}</div></div>`
   return html`<details class=${`assistant-run ${state}`} open=${open}>
     <summary class="assistant-run-heading">${heading}</summary>
@@ -547,7 +547,7 @@ export function ChatPanel() {
           <div class="assistant-field-bar">
             <div class="assistant-input-tools" role="group" aria-label="Assistant input">
               <details class="assistant-model-menu" name="assistant-composer-menu" onKeyDown=${closeComposerMenu} onFocusOut=${leaveComposerMenu}>
-                <summary title="Provider and model">${modelName || 'Model'}</summary>
+                <summary title=${modelName ? `Provider and model: ${modelName}` : 'Provider and model'}><span>${modelName || 'Model'}</span></summary>
                 <div class="assistant-model-popover">
                   <${AssistantControls} status=${connection} active=${inputLocked} text=${text} selectionCount=${s.selection.length} />
                 </div>
