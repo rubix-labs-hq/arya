@@ -384,9 +384,9 @@ struct NativeEditorView: View {
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { model.mobilePanel = nil } } }
                 }
                 .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
-                // From the third accessibility text size up, the assistant's chips, draft and actions
-                // no longer fit the medium sheet, so it opens at full height. Smaller sizes keep the viewer visible.
-                .presentationDetents(panel == .assistant && dynamicTypeSize >= .accessibility3 ? [.large] : [.medium, .large])
+                // At accessibility text sizes the assistant's chips, draft and actions leave the medium
+                // sheet one line of history, so it opens at full height. Standard sizes keep the viewer visible.
+                .presentationDetents(panel == .assistant && dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .background { mediaImportPresentation(panel: panel) }
