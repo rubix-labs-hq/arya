@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { startBridge } from './bridge.mjs'
 import { executable, providerStatus, PROVIDERS, subscriptionEnvironment } from './adapters.mjs'
 import { identifier, redact, validateCall } from './protocol.mjs'
@@ -36,6 +37,21 @@ const PREVIEW_OUTCOMES = {
   undone: 'You undid the applied preview.',
 }
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
+// fetch failed below HTTP: the connection was reset, closed or refused. The request may not have
+// arrived, or its answer was lost. A kept-alive socket that the bridge closed during a stall of
+// the shared event loop fails this way, and the next attempt opens a new connection.
+const NETWORK_CODES = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET', 'ECONNREFUSED'])
+const networkCode = error => error instanceof TypeError && NETWORK_CODES.has(error.cause?.code) ? error.cause.code : null
+const bridgeRequestKind = route => /\/tools\/[^/]+$/.test(route) ? 'tool-result' : /\/events\?/.test(route) ? 'events' : /\/cancel$/.test(route) ? 'cancel' : 'run'
+const EVENT_LOOP_WINDOW_MS = 30000
+const MAX_LISTED_COMMITS = 20
+/** What a failed request saved, for the reply and the saved conversation. */
+function savedSummary(commits, changed) {
+  if (!commits.length) return changed ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were saved.'
+  const listed = commits.slice(0, MAX_LISTED_COMMITS).map(commit => `- ${commit.summary}`)
+  if (commits.length > listed.length) listed.push(`- and ${commits.length - listed.length} more`)
+  return `Saved before the failure, and still in the project:\n${listed.join('\n')}`
+}
 const object = value => value && typeof value === 'object' && !Array.isArray(value)
 const bounded = (value, bytes, message) => { if (Buffer.byteLength(JSON.stringify(value)) > bytes) throw failure(message); return value }
 
@@ -106,6 +122,9 @@ export function createBrowserAssistant(options) {
   const root = path.resolve(options.root), settingsFile = path.join(root, '.reel', 'assistant-settings.json'), sharingFile = path.join(root, '.reel', 'assistant-sharing.json')
   // Host-only bounds also let fixture tests exercise timeout cleanup without waiting 15s.
   const requestTimeoutMs = options.requestTimeoutMs ?? 15000, cleanupTimeoutMs = options.cleanupTimeoutMs ?? 18000
+  // Waits before the second and third attempt of a bridge request that failed below HTTP.
+  const retryDelaysMs = options.retryDelaysMs ?? [150, 600]
+  if (!Array.isArray(retryDelaysMs) || retryDelaysMs.length > 2 || retryDelaysMs.some(value => !Number.isInteger(value) || value < 0 || value > 600)) throw new TypeError('Assistant host retries are at most two, each within 600 ms.')
   if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 15000 || !Number.isInteger(cleanupTimeoutMs) || cleanupTimeoutMs < 1 || cleanupTimeoutMs > 18000) throw new TypeError('Assistant host timeouts must be positive and within their default limits.')
   const ownerClosures = new WeakMap()
   let sharingGeneration = 0, grantRecord = null
@@ -141,6 +160,17 @@ export function createBrowserAssistant(options) {
     }
   } catch (error) { options.diagnostic?.(redact(error.message)) }
   const invalidateReviews = () => { sharingGeneration++; reviews.clear() }
+  // The server and the bridge share one event loop. A stall longer than the bridge's 5 s
+  // keep-alive closes the host's connection, so a failed run logs the longest stall it saw.
+  let loopDelay = null, loopWindowStart = 0, loopPreviousMax = 0
+  const watchLoopDelay = () => {
+    if (!loopDelay) { loopDelay = monitorEventLoopDelay({ resolution: 20 }); loopDelay.enable(); loopWindowStart = Date.now(); return }
+    if (Date.now() - loopWindowStart < EVENT_LOOP_WINDOW_MS) return
+    loopPreviousMax = loopDelay.max; loopDelay.reset(); loopWindowStart = Date.now()
+  }
+  /** The longest event-loop delay in the current window and the one before it. */
+  const loopDelayReport = () => loopDelay ? `event-loop delay max ${Math.round(Math.max(loopDelay.max, loopPreviousMax) / 1e6)} ms over the last ${Math.round((Date.now() - loopWindowStart + (loopPreviousMax ? EVENT_LOOP_WINDOW_MS : 0)) / 1000)} s` : 'event-loop delay not measured'
+  const projectVersion = () => options.getVersion ? options.getVersion() : options.getOutline().version
   const persistGrant = () => {
     fs.mkdirSync(guardedOutput(root, path.dirname(sharingFile)), { recursive: true })
     if (!grantRecord) { try { fs.unlinkSync(guardedOutput(root, sharingFile)) } catch (error) { if (error.code !== 'ENOENT') throw error }; return }
@@ -390,13 +420,32 @@ export function createBrowserAssistant(options) {
     if (persistenceError) throw persistenceError
     return { version: SHARING_VERSION, approved: false, required: true, revoked: true, ...result }
   }
-  const request = async (owner, method, route, body) => {
+  const requestOnce = async (owner, method, route, body) => {
     const response = await fetch(new URL(route, owner.endpoint), { method, headers: { authorization: `Bearer ${owner.token}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(requestTimeoutMs) })
     const chunks = []; let bytes = 0
     for await (const chunk of response.body) { bytes += chunk.length; if (bytes > 9 * 1024 * 1024) throw failure('The companion response exceeded its limit.'); chunks.push(chunk) }
     const value = JSON.parse(Buffer.concat(chunks).toString('utf8'))
     if (!response.ok) throw failure(redact(value.error ?? `Agent bridge returned ${response.status}`, [owner.token]), response.status)
     return value
+  }
+  // Every bridge route the host calls answers a repeated request the same way: a run with the
+  // same ID and body, a tool result with the same content, a cancel and an event page. So a
+  // request that failed below HTTP is sent again, up to twice. An HTTP error status, a timeout
+  // and a stopped or closed run are never retried.
+  const request = async (owner, method, route, body, alive = () => !closed) => {
+    for (let attempt = 0; ; attempt++) {
+      try { return await requestOnce(owner, method, route, body) }
+      catch (error) {
+        const code = networkCode(error)
+        if (!code) throw error
+        const kind = bridgeRequestKind(route)
+        const lost = Object.assign(failure(`The connection between Arya and the agent failed ${attempt + 1} time${attempt ? 's in a row' : ''} (${redact(error.message, [owner.token])}, ${code}).`, 502), { network: code, attempts: attempt + 1, requestKind: kind })
+        if (attempt >= retryDelaysMs.length || !alive()) throw lost
+        options.diagnostic?.(`${kind} request failed (${code}); retry ${attempt + 1} of ${retryDelaysMs.length}`)
+        await sleep(retryDelaysMs[attempt])
+        if (!alive()) throw lost
+      }
+    }
   }
   const closeOwner = owner => {
     if (!ownerClosures.has(owner)) ownerClosures.set(owner, (async () => {
@@ -473,7 +522,15 @@ export function createBrowserAssistant(options) {
     if (url.pathname === '/api/transcript') { if (!url.searchParams.has('offset')) url.searchParams.set('offset', '0'); if (!url.searchParams.has('limit')) url.searchParams.set('limit', '500'); call.path = url.pathname + url.search }
     if (run.review && call.method === 'POST' && url.pathname === '/api/transcript') throw failure('Preview changes is on, and saved transcript corrections have no preview or undo. Describe the corrections in your reply, or ask the user to turn off Preview changes.', 409)
     if (url.pathname === '/api/ops') call.body = { ...call.body, who: 'agent', returnProject: false }
-    const result = await options.dispatch(call, () => assertRun(run), identity => { run.identity = identity }, job => registerJob(run, job), { runId: run.id, review: run.review === true })
+    // The server reports each commit this call makes, so an edit by the user or a background job
+    // in the same moment is not listed as the run's own.
+    let committed = false
+    const result = await options.dispatch(call, () => assertRun(run), identity => { run.identity = identity; committed = true }, job => registerJob(run, job), { runId: run.id, review: run.review === true })
+    if (committed && run.commits.length < 128) {
+      const named = typeof call.body?.summary === 'string' ? redact(call.body.summary, [run.owner?.token]).replace(/\s+/g, ' ').trim().slice(0, 160) : ''
+      run.commits.push({ version: projectVersion(), summary: named || stepLabel({ ...call, path: url.pathname }).done })
+      if (active === run && !closed) publish({ committed: [...run.commits] })
+    }
     assertRun(run)
     recordToolOutcome(run.outcomes, { ...call, path: url.pathname }, result)
     // Edits that answer with the whole committed project can exceed the result budget after the
@@ -487,10 +544,12 @@ export function createBrowserAssistant(options) {
   }
   const drive = async (owner, run) => {
     let cursor = 0, text = ''
+    const live = () => !closed && !run.cancelled
     try {
       while (!run.cancelled && !run.terminal && !closed) {
         assertRun(run)
-        const page = await request(owner, 'GET', `/v1/runs/${run.id}/events?after=${cursor}`)
+        watchLoopDelay()
+        const page = await request(owner, 'GET', `/v1/runs/${run.id}/events?after=${cursor}`, undefined, live)
         for (const event of page.events) {
           if (!Number.isSafeInteger(event.seq) || event.seq <= cursor) throw failure('The companion returned an invalid event cursor.')
           cursor = event.seq
@@ -505,7 +564,7 @@ export function createBrowserAssistant(options) {
             try { reply = await tool(event, run) }
             catch (error) { reply = { error: redact(error.message, [owner.token]).slice(0, 2000) } }
             assertRun(run)
-            await request(owner, 'POST', `/v1/runs/${run.id}/tools/${event.callID}`, reply)
+            await request(owner, 'POST', `/v1/runs/${run.id}/tools/${event.callID}`, reply, live)
             publish({ state: 'thinking', phase: waitingAfter(label, Boolean(reply.error)) })
           } else if (event.type === 'route') {
             run.routing = event.routing
@@ -523,7 +582,10 @@ export function createBrowserAssistant(options) {
             const failedJobs = [...run.jobs.values()].filter(job => ['failed', 'cancelled'].includes(options.jobState?.(job)))
             const currentVersion = options.getOutline().version
             const outcome = unresolvedToolOutcome(run.outcomes) ?? (failedJobs.length ? unfinishedJobsOutcome(failedJobs.map(job => ({ ...options.jobFailure?.(job), state: options.jobState?.(job) }))) : run.review ? 'Preview mode was on. Proposed edits are applied only when you choose Apply.' : currentVersion !== run.initialVersion ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were applied during this request.')
-            publish({ state: event.type === 'done' && !unfinished ? 'done' : 'error', text: redact(final, [owner.token]).slice(0, 512 * 1024), outcome, errorCode: event.type === 'error' && /^chatgpt_[a-z_]{1,48}$/.test(event.code ?? '') ? event.code : null })
+            // A failed reply also says what the run saved, because only the text is kept in the saved conversation.
+            const failed = event.type === 'error'
+            const said = redact(final, [owner.token]).slice(0, 512 * 1024)
+            publish({ state: event.type === 'done' && !unfinished ? 'done' : 'error', text: failed ? `${said}\n\n${savedSummary(run.commits, currentVersion !== run.initialVersion)}` : said, outcome, committed: [...run.commits], retryable: false, errorCode: event.type === 'error' && /^chatgpt_[a-z_]{1,48}$/.test(event.code ?? '') ? event.code : null })
             options.onReply?.(state.text, event.type === 'error' || unfinished)
             if (event.type === 'error' || unfinished) await cancelJobs(run)
             break
@@ -536,7 +598,19 @@ export function createBrowserAssistant(options) {
         if (!run.terminal) await sleep(75)
       }
     } catch (error) {
-      if (!run.cancelled && !closed) { run.terminal = true; publish({ state: 'error', text: redact(error.message, [owner.token]).slice(0, 2000) }); options.onReply?.(state.text, true) }
+      if (!run.cancelled && !closed) {
+        run.terminal = true
+        // The reason first, then what the run saved. Only this text is kept in the saved conversation.
+        let changed = true
+        try { changed = projectVersion() !== run.initialVersion } catch { /* Unknown is reported as changed. */ }
+        const saved = savedSummary(run.commits, changed)
+        const count = run.commits.length
+        if (error.network) options.diagnostic?.(`run failed: ${error.requestKind} request, cause ${error.network}, ${error.attempts} attempts, ${loopDelayReport()}`)
+        publish({ state: 'error', text: `${redact(error.message, [owner.token]).slice(0, 2000)}\n\n${saved}`, outcome: count ? `${count} edit${count === 1 ? ' was' : 's were'} saved before the request failed. ${count === 1 ? 'It is' : 'They are'} still in the project.` : saved, committed: [...run.commits],
+          // Only a lost connection is known to be worth sending again. A refusal, a limit or a changed project is not.
+          retryable: Boolean(error.network) })
+        options.onReply?.(state.text, true)
+      }
       await cancelJobs(run)
       await cancelRemote(run)
     } finally { if (active === run && !run.cancelled && !run.admissionUnconfirmed) active = null }
@@ -557,9 +631,9 @@ export function createBrowserAssistant(options) {
     bounded(refs, 64 * 1024, 'Attached references exceeded 64 KiB.')
     // Reserve before status or model discovery can await, so Stop also owns setup.
     if (active) throw failure('The assistant is still working.', 409)
-    const run = { sharingGeneration, id: randomUUID(), identity: options.getIdentity(), cancelled: false, terminal: false, jobs: new Map(), outcomes: createToolOutcomes(), review: body.review === true }
+    const run = { sharingGeneration, id: randomUUID(), identity: options.getIdentity(), cancelled: false, terminal: false, jobs: new Map(), outcomes: createToolOutcomes(), commits: [], review: body.review === true }
     active = run
-    publish({ state: 'thinking', text: '', runId: run.id, phase: 'Connecting to your agent', startedAt: Date.now(), finishedAt: null, outcome: '', stopUnconfirmed: false, routing: null, errorCode: null })
+    publish({ state: 'thinking', text: '', runId: run.id, phase: 'Connecting to your agent', startedAt: Date.now(), finishedAt: null, outcome: '', stopUnconfirmed: false, routing: null, errorCode: null, committed: [], retryable: false })
     let owner
     try {
       const current = await status({ wait: true })
@@ -585,7 +659,7 @@ export function createBrowserAssistant(options) {
       run.initialVersion = outline.version
       const context = { inputKind, projectRoot: root, projectID: String(run.identity), projectEpoch: run.identity, version: outline.version, selection, selectedTransitions: selection.filter(id => id.startsWith('tr:')).map(id => ({ id, clip: id.slice(3) })), ...(body.comp ? { comp: body.comp } : {}), playhead: body.playhead ?? 0, refs, ...(run.review ? { review: true } : {}), ...(history.length ? { history, historyNote: HISTORY_NOTE } : {}) }
       const requestBody = { id: run.id, sharing: envelope, provider: settings.provider, ...(run.chatgptIdentity ? { chatgptIdentity: run.chatgptIdentity } : {}), ...(settings.mode === 'auto' || settings.effort || settings.catalogBound ? { routing: settings.mode === 'auto' ? { ...settings, enabledModels: envelope.scope.models } : settings } : {}), text: body.text, context, outline, ...(settings.model ? { model: settings.model } : {}), ...(settings.agent ? { agent: settings.agent } : {}) }
-      run.submission = request(owner, 'POST', '/v1/runs', requestBody)
+      run.submission = request(owner, 'POST', '/v1/runs', requestBody, () => !closed && !run.cancelled)
       await run.submission
       assertRun(run)
       publish({ state: 'thinking', phase: 'Thinking about your request' })
@@ -627,6 +701,7 @@ export function createBrowserAssistant(options) {
   const close = async () => {
     if (closed) return
     closed = true
+    loopDelay?.disable()
     unsubscribeChatGPT?.()
     invalidateReviews()
     catalogHost.close()
