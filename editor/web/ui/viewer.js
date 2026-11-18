@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
 import { clipEnd, compView, duration, timecode, valueAt } from '/core/project.js'
 import { canvas, comp, media, player } from './engine-host.js'
-import { addRef, edit, set, store, time, toast, useStore, useTime, viewProject } from './store.js'
+import { addRef, drawnProject, edit, set, store, time, toast, useStore, useTime, viewProject } from './store.js'
+import { PreviewBanner } from './preview-banner.js'
 import { titleAnim } from '../engine/frame.js'
 import { resolvedShape } from '../engine/shapes.js'
 import { mediaUrl } from '../engine/media.js'
@@ -167,7 +168,8 @@ function TransformOverlay({ p, rect }) {
 
 export function Viewer({ compact }) {
   const s = useStore()
-  const p = viewProject()
+  const p = drawnProject()
+  const shown = Boolean(s.previewShown)
   const stage = useRef(null)
   const host = useRef(null)
   const rect = useFit(stage, p?.width ?? 1920, p?.height ?? 1080, s.viewerMode)
@@ -217,7 +219,8 @@ export function Viewer({ compact }) {
   }
 
   return html`
-    <div class=${`viewer ${compact ? 'compact' : ''}`}>
+    <div class=${`viewer ${compact ? 'compact' : ''} ${shown ? 'showing-preview' : ''}`}>
+      ${shown ? html`<${PreviewBanner} />` : null}
       <div class="viewer-info" aria-label="Active timeline information"><span class="viewer-info-name" title=${timelineName}>${timelineName}</span><span class="viewer-info-format">${p.width}×${p.height} · ${p.fps} fps timeline</span></div>
       <div class="viewer-bar">
         <div class="seg">
@@ -232,19 +235,19 @@ export function Viewer({ compact }) {
         <button class=${s.overlays.grid ? 'on' : ''} title="Rule of thirds" aria-label="Rule of thirds grid" aria-pressed=${!!s.overlays.grid} onClick=${() => set({ overlays: { ...s.overlays, grid: !s.overlays.grid } })}><${Icon} name="grid" /></button>
         <button title="Reference this frame to your assistant (⌥-click a point in the frame for a pixel)" aria-label="Reference this frame to your assistant" onClick=${() => addRef({ kind: 'frame', id: time.t.toFixed(3), label: `frame ${timecode(time.t, p.fps)}` })}><${Icon} name="attach" /></button>
       </div>
-      <div class="viewer-stage" ref=${stage} onPointerDown=${onStageDown} onDblClick=${() => player.toggle()}>
+      <div class="viewer-stage" ref=${stage} onPointerDown=${shown ? undefined : onStageDown} onDblClick=${() => player.toggle()}>
         <div class="canvas-host" ref=${host} style=${{ left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` }}></div>
         ${s.overlays.safe ? html`<div class="safe" style=${{ left: `${rect.x + rect.w * 0.05}px`, top: `${rect.y + rect.h * 0.05}px`, width: `${rect.w * 0.9}px`, height: `${rect.h * 0.9}px` }}><div class="safe-inner"></div></div>` : null}
         ${s.overlays.grid ? html`<div class="thirds" style=${{ left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` }}></div>` : null}
-        ${!s.playing && !registry.viewerOverlays.some(o => o.exclusive?.(store)) ? html`<${TransformOverlay} p=${p} rect=${rect} />` : null}
-        ${registry.viewerOverlays.filter(o => o.when?.(store) ?? true).map(o => hh(o.component, { key: o.id, p, rect, t: time.t }))}
+        ${!shown && !s.playing && !registry.viewerOverlays.some(o => o.exclusive?.(store)) ? html`<${TransformOverlay} p=${p} rect=${rect} />` : null}
+        ${shown ? null : registry.viewerOverlays.filter(o => o.when?.(store) ?? true).map(o => hh(o.component, { key: o.id, p, rect, t: time.t }))}
       </div>
-      <${Transport} p=${p} />
+      <${Transport} p=${p} locked=${shown} />
     </div>
   `
 }
 
-export function Transport({ p }) {
+export function Transport({ p, locked = false }) {
   const t = useTime()
   const s = store
   const [editing, setEditing] = useState(false)
@@ -298,9 +301,9 @@ export function Transport({ p }) {
         <button aria-label="Go to end" title="End (End)" onClick=${() => player.seek(duration(p))}><${Icon} name="skip-end" /></button>
       </div>
       <div class="buttons right">
-        <button aria-label="Mark in" title="Mark in (I)" onClick=${() => edit({ op: 'range', in: t, out: Math.max(t + 1 / p.fps, p.range?.out ?? duration(p)) })}>I</button>
-        <button aria-label="Mark out" title="Mark out (O)" onClick=${() => edit({ op: 'range', in: Math.min(p.range?.in ?? 0, t - 1 / p.fps), out: t })}>O</button>
-        <button aria-label="Clear range" title="Clear range (⌥X)" disabled=${!p.range} onClick=${() => edit({ op: 'range', in: null })}><${Icon} name="clear" /></button>
+        <button aria-label="Mark in" title="Mark in (I)" disabled=${locked} onClick=${() => edit({ op: 'range', in: t, out: Math.max(t + 1 / p.fps, p.range?.out ?? duration(p)) })}>I</button>
+        <button aria-label="Mark out" title="Mark out (O)" disabled=${locked} onClick=${() => edit({ op: 'range', in: Math.min(p.range?.in ?? 0, t - 1 / p.fps), out: t })}>O</button>
+        <button aria-label="Clear range" title="Clear range (⌥X)" disabled=${locked || !p.range} onClick=${() => edit({ op: 'range', in: null })}><${Icon} name="clear" /></button>
         <button class=${s.loop ? 'on' : ''} aria-label="Loop playback" aria-pressed=${!!s.loop} title="Loop playback (⌘L)" onClick=${() => set({ loop: !s.loop })}><${Icon} name="loop" /></button>
       </div>
     </div>

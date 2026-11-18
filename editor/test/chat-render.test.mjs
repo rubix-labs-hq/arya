@@ -23,13 +23,13 @@ const nodes = node => typeof node === 'object' && node ? [node, ...children(node
 const textContent = node => children(node).map(child => typeof child === 'object' ? textContent(child) : String(child)).join('')
 // The panel's refs in the order ChatPanel creates them, so a test can preset one (the last request sent).
 const refNames = [...source.matchAll(/(\w+) = useRef\(/g)].map(match => match[1])
-function panel(run, connected = true, { draft = '', chat = [], activity = [], receipts = [], review = null, session = null, project = { comps: {} }, lastSent = null, onDraft = () => {}, api = () => {}, status = { provider: 'codex', configured: true }, refresh = async () => {} } = {}) {
-  const state = { claude: run, connected, caps: {}, assistantStatus: status, assistantReview: review, session,
+function panel(run, connected = true, { draft = '', chat = [], activity = [], receipts = [], review = null, previewShown = null, session = null, project = { comps: {} }, lastSent = null, patches = [], onDraft = () => {}, api = () => {}, toast = () => {}, status = { provider: 'codex', configured: true }, refresh = async () => {} } = {}) {
+  const state = { claude: run, connected, caps: {}, assistantStatus: status, assistantReview: review, previewShown, session,
     root: '/fixture', assistantDraft: { root: '/fixture', text: draft, inputKind: 'prompt' }, chat, activity, receipts, selection: [], refs: [], project, openComp: null }
   let refIndex = 0
   const useRef = value => ({ current: refNames[refIndex++] === 'lastSent' && lastSent ? lastSent : value })
   return render(Icon, h, htm, () => {}, useRef, value => [value, () => {}], () => state,
-    assistantActivity, assistantState, assistantPrompt, providerName, () => 0, refresh, api, patch => { Object.assign(state, patch); if (patch.assistantDraft) onDraft(patch.assistantDraft.text) }, state, { t: 0 }, () => {}, () => {}, {}, () => null, () => null, () => null, createAssistantSharingGate, ...Object.values(script), assistantPanel)
+    assistantActivity, assistantState, assistantPrompt, providerName, () => 0, refresh, api, patch => { patches.push(patch); Object.assign(state, patch); if (patch.assistantDraft) onDraft(patch.assistantDraft.text) }, state, { t: 0 }, toast, () => {}, {}, () => null, () => null, () => null, createAssistantSharingGate, ...Object.values(script), assistantPanel)
 }
 
 test('assistant activity renders one run line with Stop in the bar inside the field', () => {
@@ -432,4 +432,43 @@ test('a card whose change added a composition that is not open offers to open it
   assert.deepEqual(updates, [{ openComp: 'k1', compParents: { k1: null }, selection: [], page: 'edit', viewerMode: 'timeline', scroll: 0 }])
   // Gone again, as after Undo, there is nothing to open.
   assert.equal(nodes(renderReceipt(receipt, before).tree).some(node => node.type === 'button' && textContent(node).startsWith('Open ')), false)
+})
+
+test('the preview card asks the store to show its proposal in the viewer, and says when it does', () => {
+  const proposal = { id: 'p1', baseVersion: 0, at: 1, summary: 'Add a sample title', stale: false, ops: [{ op: 'add_title', text: 'Sample', track: 'V3', start: 0, dur: 2 }], steps: [] }
+  const project = { name: 'Sample', fps: 30, width: 1280, height: 720, tracks: [{ id: 'V1', kind: 'video', clips: [] }], assets: {}, comps: {} }
+  const card = tree => nodes(tree).find(node => node.type === assistantPanel.PreviewCard)
+  const patches = []
+  const off = card(panel({ state: 'done' }, true, { review: { proposal }, project, patches }))
+  assert.equal(off.props.shown, false)
+  off.props.onShow(true)
+  // The real store stamps the saved project, version and folder on this bare id.
+  assert.deepEqual(patches.at(-1), { previewShown: { id: 'p1' }, viewerMode: 'timeline' })
+  const on = card(panel({ state: 'done' }, true, { review: { proposal }, project, previewShown: { id: 'p1' }, patches }))
+  assert.equal(on.props.shown, true)
+  on.props.onShow(false)
+  assert.deepEqual(patches.at(-1), { previewShown: null })
+  assert.equal(card(panel({ state: 'done' }, true, { review: { proposal: { ...proposal, id: 'p2' } }, project, previewShown: { id: 'p1' } })).props.shown, false, 'a shown preview belongs to its own proposal')
+})
+
+test('Undo this change on a result card is refused while the viewer shows a preview', async () => {
+  const { changeReceipt } = await import('../web/ui/change-receipt.js')
+  const at = Date.now() - 5000
+  const before = { comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }] }
+  const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
+  const receipt = changeReceipt(before, after, { who: 'agent', version: 5, at: at + 1000 })
+  const chat = [{ role: 'user', text: 'Make the title longer', at }]
+  const change = { id: 'ch1', kind: 'preview', beforeVersion: 4, afterVersion: 5, edits: 1, undoable: true }
+  const proposal = { id: 'p2', baseVersion: 5, at: 2, summary: 'Add a sample title', stale: false, ops: [{ op: 'add_title', text: 'Sample', track: 'V3', start: 0, dur: 2 }], steps: [] }
+  const calls = [], toasts = []
+  const options = previewShown => ({ chat, receipts: [receipt], project: after, review: { change, proposal }, previewShown, api: async (route, body) => { calls.push([route, body?.id]) }, toast: (text, kind) => toasts.push([text, kind]) })
+  const shown = resultCard(panel({ state: 'done' }, true, options({ id: 'p2' })))
+  await shown.props.onUndo()
+  assert.deepEqual(calls, [], 'nothing reaches the server while the preview is shown')
+  assert.equal(toasts.length, 1)
+  assert.match(toasts[0][0], /Undo is off while the viewer shows the assistant preview/)
+  assert.equal(toasts[0][1], 'error')
+  const back = resultCard(panel({ state: 'done' }, true, options(null)))
+  await back.props.onUndo()
+  assert.deepEqual(calls, [['/api/assistant/change/undo', 'ch1']], 'Undo works again once the preview is not shown')
 })

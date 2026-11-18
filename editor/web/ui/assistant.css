@@ -19,6 +19,19 @@
 .assistant-preview-actions button { min-height: 40px; padding: 6px 14px; }
 .assistant-preview-actions .assistant-apply { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .assistant-preview-actions .assistant-apply:hover:not(:disabled) { background: #f6ce8d; border-color: #f6ce8d; }
+.assistant-preview-show { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.assistant-preview-show button { min-height: 32px; }
+.assistant-preview-show button[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
+
+/* "Show in viewer": the viewer draws the preview, so it says so above the picture. */
+.viewer.showing-preview { border-color: var(--accent); }
+.viewer-preview-banner { flex: none; padding: 6px 10px 8px; background: #2a2418; border-bottom: 1px solid var(--accent); font-size: 12px; min-width: 0; }
+.viewer-preview-banner p { margin: 0; overflow-wrap: anywhere; }
+.viewer-preview-banner b { color: var(--accent); font-weight: 600; margin-right: 4px; }
+.viewer-preview-banner .viewer-preview-steps { margin-top: 2px; color: var(--muted); }
+.viewer-preview-banner .assistant-preview-actions { margin-top: 6px; flex-wrap: wrap; }
+.viewer-preview-banner .assistant-preview-actions button { min-height: 32px; padding: 4px 12px; }
+@media (pointer: coarse) { .viewer-preview-banner .assistant-preview-actions button { min-height: 44px; } }
 
 /* One-step undo of the latest assistant change. In the panel it sits inside the result card. */
 .chat .assistant-change { flex: none; display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }

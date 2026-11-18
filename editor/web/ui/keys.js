@@ -120,6 +120,8 @@ export function runEditorCommand(command) {
  */
 export function moveHistory(direction) {
   const nothing = direction === 'undo' ? 'Nothing to undo.' : 'Nothing to redo.'
+  // A shown assistant preview keeps the project as it is; it ends on Apply, Discard or Back to project.
+  if (store.previewShown) { toast('Undo and Redo are off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.', 'error'); return Promise.resolve(null) }
   if (store.history?.[direction] === 0) { toast(nothing); return Promise.resolve(null) }
   return Promise.resolve().then(() => api(`/api/${direction}`, {})).then(r => {
     const history = r?.history, counted = Number.isSafeInteger(history?.undo) && Number.isSafeInteger(history?.redo)

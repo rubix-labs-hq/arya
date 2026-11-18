@@ -396,7 +396,18 @@ export function ChatPanel() {
     finally { setReviewBusy('') }
   }
   const focusComposer = () => composer.current?.focus()
-  const undoChange = () => decide('undo', '/api/assistant/change/undo', { id: store.assistantReview?.change?.id })
+  // Undoing an earlier change is an edit, so it waits until the viewer stops showing a preview.
+  const undoChange = () => {
+    if (store.previewShown) { toast('Undo is off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.', 'error'); return }
+    return decide('undo', '/api/assistant/change/undo', { id: store.assistantReview?.change?.id })
+  }
+  // "Show in viewer": on a phone the sheet covers the viewer, so it drops to its bar; the banner over the viewer has Apply and Discard.
+  // The store stamps the project it was shown over and forgets it once it no longer applies.
+  const showInViewer = on => {
+    set(on ? { previewShown: { id: review?.proposal?.id }, viewerMode: 'timeline' } : { previewShown: null })
+    if (on && store.previewShown && globalThis.document?.querySelector('#editor-assistant .chat-collapse')?.getClientRects().length) set({ chatCollapsed: true })
+  }
+  const shownPreview = Boolean(review?.proposal?.id) && s.previewShown?.id === review.proposal.id
   // The current run's line, and what a failed run saved and how to try again.
   const liveSymbol = !s.connected ? '↻' : working ? '◌' : activity.state === 'done' ? '↵' : activity.state === 'error' ? '!' : '■'
   const liveRunLine = updates => RunLine({ live: true, state: working ? 'active' : activity.state, symbol: liveSymbol, label: activity.label, stage: activity.stage, elapsed: activity.elapsed, detail: activity.detail, updates,
@@ -521,13 +532,13 @@ export function ChatPanel() {
             ${live ? liveRunLine(turn.updates)
               : turn.updates.length ? RunLine({ state: failed ? 'error' : 'done', symbol, label: failed ? 'Failed' : 'Done', stage: updates, elapsed: past, updates: turn.updates }) : null}
             ${live ? failureBlock(lastReply) : null}
-            ${latest && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy}
+            ${latest && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy} shown=${shownPreview} onShow=${showInViewer}
               onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
             ${latest && review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
             ${turn.receipts.length || index === changeTurn ? html`<${ResultCard} receipts=${turn.receipts} change=${index === changeTurn ? changeShown : null} busy=${reviewBusy} onUndo=${undoChange} />` : null}
           </div>`
         })}
-        ${!turns.length && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${false} busy=${reviewBusy}
+        ${!turns.length && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${false} busy=${reviewBusy} shown=${shownPreview} onShow=${showInViewer}
           onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
         ${!turns.length && review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
         ${!turns.length && changeShown ? html`<${ResultCard} change=${changeShown} busy=${reviewBusy} onUndo=${undoChange} />` : null}

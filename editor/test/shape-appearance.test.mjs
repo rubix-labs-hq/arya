@@ -10,7 +10,7 @@ const moduleURL = source => 'data:text/javascript;base64,' + Buffer.from(source)
 const key = Symbol.for('arya.shape-appearance.test')
 const hostURL = moduleURL(`export const host={events:()=>()=>{},kind:'browser'};export const api=(...args)=>globalThis[Symbol.for('arya.shape-appearance.test')].api(...args);`)
 let text = await fs.readFile(new URL('../web/ui/store.js', import.meta.url), 'utf8')
-for (const [from, to] of [['preact/hooks', import.meta.resolve('preact/hooks')], ['/core/project.js', coreURL], ['../host.js', hostURL], ['./change-receipt.js', new URL('../web/ui/change-receipt.js', import.meta.url).href]]) text = text.replaceAll("'" + from + "'", JSON.stringify(to))
+for (const [from, to] of [['preact/hooks', import.meta.resolve('preact/hooks')], ['/core/project.js', coreURL], ['/core/proposal-ops.js', new URL('../core/proposal-ops.js', import.meta.url).href], ['../host.js', hostURL], ['./change-receipt.js', new URL('../web/ui/change-receipt.js', import.meta.url).href]]) text = text.replaceAll("'" + from + "'", JSON.stringify(to))
 const oldWidth = globalThis.innerWidth; globalThis.innerWidth = 1440
 const storeURL = moduleURL(text), { set, store, viewProject } = await import(storeURL)
 if (oldWidth === undefined) delete globalThis.innerWidth; else globalThis.innerWidth = oldWidth

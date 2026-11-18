@@ -43,7 +43,7 @@ test('main defaults/rounding/clear and explicit null scope remain independent; i
 // Actual production store and core; only browser URL loading and API host replaced.
 const hostURL=moduleURL("export const host={events:()=>()=>{},kind:'browser'};export const api=(...args)=>globalThis[Symbol.for('arya.composition-range.test')].api(...args);")
 let source=await fs.readFile(new URL('../web/ui/store.js',import.meta.url),'utf8')
-source=source.replace("'preact/hooks'",JSON.stringify(import.meta.resolve('preact/hooks'))).replace("'/core/project.js'",JSON.stringify(coreURL)).replace("'../host.js'",JSON.stringify(hostURL)).replace("'./change-receipt.js'",JSON.stringify(new URL('../web/ui/change-receipt.js',import.meta.url).href))
+source=source.replace("'preact/hooks'",JSON.stringify(import.meta.resolve('preact/hooks'))).replace("'/core/project.js'",JSON.stringify(coreURL)).replace("'/core/proposal-ops.js'",JSON.stringify(new URL('../core/proposal-ops.js',import.meta.url).href)).replace("'../host.js'",JSON.stringify(hostURL)).replace("'./change-receipt.js'",JSON.stringify(new URL('../web/ui/change-receipt.js',import.meta.url).href))
 const initialWidth=globalThis.innerWidth;globalThis.innerWidth=1440
 const storeURL=moduleURL(source);const {edit,set,store,setTime,viewProject}=await import(storeURL)
 if(initialWidth===undefined)delete globalThis.innerWidth;else globalThis.innerWidth=initialWidth

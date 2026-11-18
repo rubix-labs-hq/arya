@@ -10,6 +10,7 @@ import { changeReceipt } from './change-receipt.js'
 import { assistantSuggestions } from './assistant-suggestions.js'
 import { messageHTML } from './message-text.js'
 import { readableChange, settingsSummary, splitChanges } from './change-values.js'
+import { proposalOps } from '../../core/proposal-ops.js'
 
 const html = htm.bind(h)
 const MAX_LAYERS = 6
@@ -32,8 +33,7 @@ function previewChanges(project, proposal) {
   if (!project || !proposal?.ops?.length && !proposal?.steps?.length) return { error: 'This preview has no edits.' }
   if (!proposal.ops?.length) return { layers: [], settings: [] }
   try {
-    const imports = Object.fromEntries(Object.entries(proposal.assets ?? {}).filter(([src]) => !project.assets?.[src]))
-    const ops = Object.keys(imports).length ? [{ op: 'import', assets: imports }, ...proposal.ops] : proposal.ops
+    const ops = proposalOps(project, proposal)
     const applied = applyOps(project, ops), next = applied.project
     const receipt = changeReceipt(project, next, { version: proposal.baseVersion + 1, who: 'agent', at: proposal.at })
     if (!receipt) return { error: 'These edits would not change the project.' }
@@ -80,7 +80,7 @@ function ChangeList({ changes = [], fps = 30, keyLimit = Infinity }) {
   })}</dl>`
 }
 
-function PreviewCard({ proposal, project, version, running, newRequest, busy, onApply, onDiscard }) {
+function PreviewCard({ proposal, project, version, running, newRequest, busy, shown = false, onShow, onApply, onDiscard }) {
   const stale = proposal.stale || proposal.baseVersion !== version
   const { receipt, error, layers = [], settings = [], notes = [] } = stale ? {} : previewChanges(project, proposal)
   const steps = proposal.steps ?? []
@@ -114,6 +114,10 @@ function PreviewCard({ proposal, project, version, running, newRequest, busy, on
       <p><span class="assistant-preview-step-label">Produces</span> ${step.preview?.produces ?? ''}</p>
       <p><span class="assistant-preview-step-label">Lands</span> ${step.preview?.lands ?? ''}</p>
     </li>`)}</ol>` : null}
+    ${onShow && !stale && !error && proposal.ops?.length ? html`<div class="assistant-preview-show">
+      <button class="ghost tiny" aria-pressed=${shown} title=${shown ? 'Show the saved project again' : 'Draw this preview in the viewer and playback. Nothing is saved and editing is off until you apply, discard or go back.'} onClick=${() => onShow(!shown)}>${shown ? 'Back to project' : 'Show in viewer'}</button>
+      ${shown ? html`<span class="assistant-preview-note" role="status">The viewer shows this preview.${steps.length ? ' Processing steps are not shown.' : ''}</span>` : null}
+    </div>` : null}
     <div class="assistant-preview-actions">
       <button class="assistant-apply" disabled=${Boolean(stale || error || running || busy)} title=${running ? 'Wait for the assistant to finish' : 'Apply these edits as one undo step'} onClick=${onApply}>${busy === 'apply' ? 'Applying…' : 'Apply'}</button>
       <button class="ghost" disabled=${Boolean(busy)} onClick=${onDiscard}>Discard</button>

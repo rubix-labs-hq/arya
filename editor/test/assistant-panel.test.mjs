@@ -208,3 +208,26 @@ test('a preview shows the same edit notes a committed edit would get, as quiet l
   const plain = { ...proposal, ops: [{ op: 'update', id: 'c1', set: { opacity: 0.5 } }] }
   assert.deepEqual(nodes(assistantPanel.PreviewCard({ proposal: plain, project: p, version: 3, running: false, busy: '' })).filter(node => node.props?.class === 'assistant-note'), [])
 })
+
+test('Show in viewer is offered for a preview with edits, and says when processing steps are not shown', () => {
+  const p = interview()
+  const proposal = { id: 'p4', baseVersion: 3, at: 1, summary: 'Add a lower third', stale: false, ops: [{ op: 'add_title', text: 'Sample name', track: 'V3', start: 5, dur: 3 }] }
+  const toggles = []
+  const off = assistantPanel.PreviewCard({ proposal, project: p, version: 3, running: false, busy: '', onShow: on => toggles.push(on) })
+  assert.equal(button(off, 'Show in viewer').props['aria-pressed'], false, 'off until the person turns it on')
+  button(off, 'Show in viewer').props.onClick()
+  assert.deepEqual(toggles, [true])
+  const on = assistantPanel.PreviewCard({ proposal, project: p, version: 3, running: false, busy: '', shown: true, onShow: value => toggles.push(value) })
+  assert.equal(button(on, 'Back to project').props['aria-pressed'], true)
+  assert.match(text(on), /The viewer shows this preview\./)
+  assert.doesNotMatch(text(on), /Processing steps are not shown/)
+  button(on, 'Back to project').props.onClick()
+  assert.deepEqual(toggles, [true, false])
+  const withSteps = { ...proposal, steps: [{ path: '/api/transcribe', body: {}, preview: { title: 'Transcribe', produces: 'Words', lands: 'Transcript' } }] }
+  assert.match(text(assistantPanel.PreviewCard({ proposal: withSteps, project: p, version: 3, shown: true, onShow: () => {} })), /The viewer shows this preview\. Processing steps are not shown\./)
+  // Nothing to draw: only steps, a stale preview, one that cannot apply, or a host without the viewer hook.
+  assert.equal(button(assistantPanel.PreviewCard({ proposal: { ...withSteps, ops: [] }, project: p, version: 3, onShow: () => {} }), 'Show in viewer'), undefined)
+  assert.equal(button(assistantPanel.PreviewCard({ proposal, project: p, version: 4, onShow: () => {} }), 'Show in viewer'), undefined)
+  assert.equal(button(assistantPanel.PreviewCard({ proposal: { ...proposal, ops: [{ op: 'update', id: 'missing', set: { opacity: 0.5 } }] }, project: p, version: 3, onShow: () => {} }), 'Show in viewer'), undefined)
+  assert.equal(button(assistantPanel.PreviewCard({ proposal, project: p, version: 3 }), 'Show in viewer'), undefined)
+})

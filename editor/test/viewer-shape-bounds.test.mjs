@@ -45,11 +45,11 @@ test('the actual viewer module resolves its existing shape helpers and returns t
   const moduleURL = text => 'data:text/javascript;base64,' + Buffer.from(text).toString('base64')
   const engine = moduleURL('export const canvas={},comp={size:[320,180]},media={titles:new Map()},player={};')
   const hooks = moduleURL('export const useEffect=()=>{},useRef=()=>({current:null}),useState=x=>[x,()=>{}];')
-  const store = moduleURL('export const addRef=()=>{},edit=()=>{},set=()=>{},store={},time={t:0},toast=()=>{},useStore=()=>({}),useTime=()=>0,viewProject=()=>null;')
+  const store = moduleURL('export const addRef=()=>{},edit=()=>{},set=()=>{},store={},time={t:0},toast=()=>{},useStore=()=>({}),useTime=()=>0,viewProject=()=>null,drawnProject=()=>null;')
   const imports = {
     preact: import.meta.resolve('preact'), 'preact/hooks': hooks, htm: import.meta.resolve('htm'),
     '/core/project.js': new URL('../core/project.js', import.meta.url).href,
-    './engine-host.js': engine, './store.js': store,
+    './engine-host.js': engine, './store.js': store, './preview-banner.js': moduleURL('export const PreviewBanner=()=>null;'),
     '../engine/frame.js': moduleURL(`export const titleAnim=${titleAnim.toString()};`),
     '../engine/media.js': moduleURL('export const mediaUrl=()=>null;'),
     '../engine/shapes.js': new URL('../web/engine/shapes.js', import.meta.url).href,
