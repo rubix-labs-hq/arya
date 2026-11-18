@@ -27,6 +27,20 @@ A Mac download requires `ready`, `notarized`, version, SHA-256 and an HTTPS URL 
 
 Arya Pro copy for the App Store edition follows `mobileRelease.pro`. It appears only when that field is the JSON boolean `true` and the App Store release is live (`mobileRelease.ready` and a valid App Store URL). Any other value keeps the tip-era copy, byte for byte. Set it to `true` only after the App Store version that sells Arya Pro (1.2.0) is live, then run `npm run build`. The Pro sentences live in `proCopy` in `scripts/product-home.mjs`. They never state a price, because prices vary by storefront. Check the privacy policy date when you flip it, because the privacy page text changes.
 
+Each release channel is stated by itself. `release` is the direct Mac download, `mobileRelease` is the iPhone and iPad app, and the optional `macAppStoreRelease` object records what is live on the Mac App Store, which passes App Review on its own schedule:
+
+```json
+"macAppStoreRelease": { "version": "1.1.1", "build": "5", "pro": false }
+```
+
+`version` is the live Mac App Store version, `build` is its build number (recorded for the release checklist and not printed) and `pro` is the JSON boolean `true` once that version sells Arya Pro. The object changes nothing while `mobileRelease.pro` is not `true`. With `mobileRelease.pro` true:
+
+- `pro` false: the Pro sentences name iPhone and iPad only. The download page adds a "Mac App Store · Version" line that says that edition has optional tips and that Arya Pro starts there with version 1.2.0. No sentence says one purchase covers the Mac App Store edition, and the privacy and support pages keep the tip disclosure.
+- `pro` true: the sentence "One Arya Pro purchase covers iPhone, iPad and the Mac App Store edition." returns. When both versions match, the version line reads "iPhone, iPad and Mac"; otherwise each channel keeps its own line.
+- Object missing, or without a version such as `1.2.0`: no page names a Mac App Store version or says Arya Pro covers that edition. `storeScope` in `scripts/product-home.mjs` decides all of this.
+
+Update `macAppStoreRelease` whenever the Mac App Store version changes. It can change without anyone acting, because an approved version releases by itself. The direct Mac download and the browser editor are always stated as free and never needing Arya Pro.
+
 Contribution URLs have a separate allowlist. A preset checkout URL must represent that exact one-time USD amount at the provider. The custom destination must let the user explicitly choose the amount at the provider. The site never creates a payment, changes provider amounts by query string or claims payment success. Test the actual hosted checkout and receipt before configuring it.
 
 `publicSourceURL` holds the public repository URL once it is published. An approved HTTPS `contactURL` on `externalHosts` adds a footer support link. A configured `siteURL` adds canonical links and the link preview metadata, which points at `assets/brand/link-preview.png`. Neither field proves deployment or reachability. The six pages explain current product and release limits. Check those facts against the product before every release.
