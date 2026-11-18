@@ -168,6 +168,8 @@ test('the actual worker sends setup heartbeats during pending audio, then a setu
     noteWorkerActivity(pending, now, 'heartbeat')
     assert.deepEqual(stalledWorkerJobs([pending], now), [], 'slow, responsive audio is allowed')
   }
+  // Each heartbeat names the setup step the page is on, so a hang can say where it stopped.
+  assert.deepEqual([...new Set(f.requests.filter(item => item.url === '/api/job/first/alive').map(item => item.request.body))], ['audio'])
   const deadline = workerSetupLimit(pending)
   noteWorkerActivity(pending, deadline, 'heartbeat')
   assert.deepEqual(stalledWorkerJobs([pending], deadline), [pending], 'heartbeats cannot hide an endless audio render')
