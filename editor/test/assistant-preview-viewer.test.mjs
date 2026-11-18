@@ -168,3 +168,11 @@ test('Undo, Redo and grabbing a still are refused while the preview is shown', a
   assert.ok(grabStill({ id: 'c1' }))
   assert.deepEqual([sent, grabbed.length], [['/api/undo'], 1], 'both work again once the preview is not shown')
 })
+
+test('the engine draws and identifies the shown preview, and loads its looks', () => {
+  const source = fs.readFileSync(new URL('../web/ui/engine-host.js', import.meta.url), 'utf8')
+  assert.match(source, /getProject: \(\) => drawnProject\(\)/)
+  assert.match(source, /getProjectIdentity: \(\) => previewProject\(\) \?\? store\.project/)
+  assert.match(source, /loadLuts\(comp, previewProject\(\) \?\? store\.project/)
+  assert.doesNotMatch(source, /\bviewProject\b/, 'the engine never draws the saved project while a preview is shown')
+})
