@@ -16,8 +16,10 @@ export const PROPOSAL_EXCLUDED_OPS = new Set(['replace', 'import', 'library_save
 
 const invalid = message => Object.assign(new Error(message), { status: 400 })
 
-export function createAssistantReview({ getVersion, getEpoch, getProject, onChange = () => {}, now = Date.now } = {}) {
+export function createAssistantReview({ getVersion, getEpoch, getProject, onChange = () => {}, onRestore = () => {}, now = Date.now } = {}) {
   let run = null, change = null, proposal = null, applying = null
+  // The change "Undo this change" removed. Redo can bring its project back, and the change with it.
+  let undoneChange = null
   const version = () => getVersion(), epoch = () => getEpoch()
   const publicChange = () => {
     if (!change) return null
@@ -44,6 +46,7 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, onChan
       } else if (TERMINAL.has(state.state) && run?.runId === state.runId && !run.finished) {
         run.finished = true
         const edits = version() - run.beforeVersion
+        if (edits > 0) undoneChange = null
         if (edits > 0) change = { id: randomUUID(), kind: 'request', runId: run.runId, label: 'Assistant request', before: run.before, after: project, beforeVersion: run.beforeVersion, afterVersion: version(), epoch: run.epoch, safe: !run.foreign && epoch() === run.epoch, at: now() }
         changed()
       }
@@ -52,6 +55,15 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, onChan
     commitBy(call) {
       if (run && !run.finished && call?.runId !== run.runId) run.foreign = true
       if (applying && !applying.finished && call?.applyId !== applying.id) applying.foreign = true
+      if (!undoneChange) return
+      // A replaced project can never hold the undone change's project again.
+      if (epoch() !== undoneChange.epoch) { undoneChange = null; return }
+      // Redo restores the same project object, so the change is the latest one again.
+      if (!change && getProject() === undoneChange.after) {
+        change = undoneChange; undoneChange = null
+        changed()
+        try { onRestore(change) } catch { /* A failed notification does not undo state. */ }
+      }
     },
     active: () => !!run && !run.finished || !!applying && !applying.finished,
     applying: () => !!applying && !applying.finished,
@@ -116,6 +128,7 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, onChan
       const done = applying
       done.finished = true
       if (version() > done.beforeVersion) {
+        undoneChange = null
         change = { id: randomUUID(), kind: 'preview', runId: null, label: 'Applied assistant preview', before: done.before, after: project, beforeVersion: done.beforeVersion, afterVersion: version(), epoch: done.epoch, safe: !done.foreign && epoch() === done.epoch, at: now() }
       }
       if (error) done.error = String(error).slice(0, 600)
@@ -130,7 +143,7 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, onChan
       return value.undoable ? { change } : { reason: value.reason }
     },
     undone(id) {
-      if (change?.id === id) { change = null; if (applying?.finished) applying = null; changed() }
+      if (change?.id === id) { undoneChange = change; change = null; if (applying?.finished) applying = null; changed() }
     },
   }
 }

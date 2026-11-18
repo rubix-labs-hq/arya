@@ -169,17 +169,19 @@ export default ctx => {
       return { discarded }
     },
 
-    // Restores the project from before the latest assistant change in one undoable step.
+    // Restores the project from before the latest assistant change in one step that Redo reverses.
     'POST /api/assistant/change/undo': body => {
       userOnly()
       const r = review()
       if (r.active()) throw refused('Wait for the assistant to finish before undoing its change.')
       const target = r.undoTarget(body?.id)
       if (!target.change) throw refused(target.reason)
-      ctx.commit(target.change.before, 'you', [`Undo ${target.change.label.toLowerCase()}`])
+      // A history move, so Redo brings the change back. It falls back to a forward edit when the
+      // project from before the change is no longer in the undo history.
+      ;(ctx.restoreProject ?? ctx.commit)(target.change.before, 'you', [`Undo ${target.change.label.toLowerCase()}`])
       r.undone(target.change.id)
       if (target.change.kind === 'preview') ctx.assistant?.settlePreview?.('undone')
-      return { undone: true, version: ctx.getVersion() }
+      return { undone: true, version: ctx.getVersion(), ...(ctx.getHistory ? { history: ctx.getHistory() } : {}) }
     },
   } }
 }

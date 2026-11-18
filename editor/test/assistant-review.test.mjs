@@ -306,8 +306,10 @@ test('actual server preview mode refuses direct edits, shows the proposal and ap
   assert.equal(undone.status, 200, JSON.stringify(undone))
   assert.equal((await server.api('GET', '/api/state')).body.assistant.outcome, 'You undid the applied preview.')
   assert.deepEqual((await server.api('GET', '/api/project')).body.project, before.project)
-  const redone = (await server.api('POST', '/api/undo', {})).body
-  assert.equal(redone.project.tracks.find(track => track.id === 'V3').clips[0].title.text, 'Previewed title', 'the one-step undo is itself undoable')
+  // "Undo this change" is a step back in the history, so Redo reverses it. Undo has nothing older to go to.
+  assert.equal((await server.api('POST', '/api/undo', {})).body.moved, false)
+  const redone = (await server.api('POST', '/api/redo', {})).body
+  assert.equal(redone.project.tracks.find(track => track.id === 'V3').clips[0].title.text, 'Previewed title', 'Redo brings the whole change back')
 })
 
 test('actual server direct mode undoes a multi-edit request in one step, and refuses after a later edit', async t => {

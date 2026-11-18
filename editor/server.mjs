@@ -76,7 +76,12 @@ const chat = chatHistory.messages()
 let claude = { state: 'idle', text: '' }
 let uiState = { playhead: 0, selection: [], page: 'edit' }
 // The latest assistant change for one-step undo, and the pending preview in Preview changes mode.
-const assistantReview = createAssistantReview({ getVersion: () => version, getEpoch: () => projectEpoch, getProject: () => project, onChange: value => broadcast('assistantReview', value, 'ui') })
+const assistantReview = createAssistantReview({ getVersion: () => version, getEpoch: () => projectEpoch, getProject: () => project, onChange: value => broadcast('assistantReview', value, 'ui'),
+  // Redo brought an undone preview back, so its request no longer says the preview was undone.
+  onRestore: change => { if (change.kind === 'preview') assistantService.settlePreview('applied') } })
+// One per server process. The version counter, the undo history and the assistant's change cards
+// start again with each one, so a page can tell a restart from a continued session.
+const session = { id: randomUUID(), startedAt: Date.now() }
 let lastPoll = 0
 const jobs = new Map()
 const deliveries = new DeliveryHistory(ROOT, () => Object.entries(project?.assets ?? {}).flatMap(([src, asset]) => [src, asset?.proxy].filter(v => typeof v === 'string')))
@@ -290,7 +295,13 @@ function commit(next, who, lines, options = {}) {
   } else if (options.historyMove === 'redo') {
     future.pop()
     rememberProject(previous)
-  } else if (project && options.history !== false) {
+  } else if (options.historyMove === 'restore' && past.lastIndexOf(options.restoreTo) >= 0) {
+    // "Undo this change": everything from the restored project on leaves the undo history, and
+    // the project being left becomes the one Redo step.
+    past.length = past.lastIndexOf(options.restoreTo)
+    future.length = 0
+    future.push(previous)
+  } else if (project && (options.history !== false || options.historyMove === 'restore')) {
     rememberProject(project)
     future.length = 0
   }
@@ -304,7 +315,7 @@ function commit(next, who, lines, options = {}) {
   processing.current()?.accept()
   try {
     if (!publication.directorySynced) log('Project saved, but the directory flush failed:', publication.warningCode)
-    broadcast('project', { project, version, who })
+    broadcast('project', { project, version, who, history: { undo: past.length, redo: future.length } })
     for (const line of lines.slice(-8)) pushActivity(who, line)
   } catch { /* Notification failure does not reverse a published edit. */ }
   return { directorySynced: publication.directorySynced, ...(publication.warningCode ? { warningCode: publication.warningCode } : {}) }
@@ -315,7 +326,7 @@ fs.watchFile(FILE, { interval: 700 }, () => {
   const before = version
   loadFromDisk()
   if (version !== before) {
-    broadcast('project', { project, version, who: 'disk' })
+    broadcast('project', { project, version, who: 'disk', history: { undo: past.length, redo: future.length } })
     pushActivity('claude', 'reel.project.json changed on disk')
   }
 })
@@ -1114,7 +1125,7 @@ const assistantService = createBrowserAssistant({
 })
 
 const routes = {
-  'GET /api/project': () => ({ project, version, root: ROOT, recovery: { status: recoveryState?.status, warning: recovery.warning, history: fs.existsSync(path.join(ROOT, '.reel', 'recovery')) }, activity: activity.slice(-40), chat: chat.slice(-100), chatHistory: chatHistory.status(), claude, jobs: [...jobs.values()].map(jobPublic).slice(-20) }),
+  'GET /api/project': () => ({ project, version, history: { undo: past.length, redo: future.length }, session, root: ROOT, recovery: { status: recoveryState?.status, warning: recovery.warning, history: fs.existsSync(path.join(ROOT, '.reel', 'recovery')) }, activity: activity.slice(-40), chat: chat.slice(-100), chatHistory: chatHistory.status(), claude, jobs: [...jobs.values()].map(jobPublic).slice(-20) }),
   'GET /api/recovery': () => ({ ...recovery.list(), version }),
   'POST /api/recovery/restore': body => restoreRecovery(body),
 
@@ -1159,18 +1170,18 @@ const routes = {
 
   'POST /api/undo': () => {
     const prev = past.at(-1)
-    if (!prev) return { version, project }
+    if (!prev) return { version, project, moved: false, history: { undo: past.length, redo: future.length } }
     commit(prev, 'you', ['undo'], { history: false, historyMove: 'undo' })
 
-    return { version, project }
+    return { version, project, moved: true, history: { undo: past.length, redo: future.length } }
   },
 
   'POST /api/redo': () => {
     const next = future.at(-1)
-    if (!next) return { version, project }
+    if (!next) return { version, project, moved: false, history: { undo: past.length, redo: future.length } }
     commit(next, 'you', ['redo'], { history: false, historyMove: 'redo' })
 
-    return { version, project }
+    return { version, project, moved: true, history: { undo: past.length, redo: future.length } }
   },
 
   'POST /api/new': async body => {
@@ -1523,7 +1534,7 @@ const server = http.createServer(async (req, res) => {
       const client = { res, role }
       if (client.role === 'worker') workerHost.attach(client)
       clients.add(client)
-      res.write(`event: hello\ndata: ${JSON.stringify({ version, role: client.role })}\n\n`)
+      res.write(`event: hello\ndata: ${JSON.stringify({ version, role: client.role, session, history: { undo: past.length, redo: future.length } })}\n\n`)
       if (client.role === 'ui') {
         // Reconnects must recover terminal status even if an event was missed.
         res.write(`event: claude\ndata: ${JSON.stringify(claude)}\n\n`)
@@ -1608,6 +1619,7 @@ const routeCtx = {
   assistant: assistantService,
   getProject: () => project,
   getVersion: () => version,
+  getHistory: () => ({ undo: past.length, redo: future.length }),
   getProjectGeneration: () => projectEpoch,
   getAssistantReview: () => assistantReview,
   getChat: () => chat,
@@ -1622,6 +1634,8 @@ const routeCtx = {
     return handler(body, new URLSearchParams(), { headers: {} })
   },
   commit: (next, who, lines) => commit(next, who, lines),
+  // "Undo this change" as a history move back to `before`, so one Redo brings the change back.
+  restoreProject: (before, who, lines) => commit(before, who, lines, { history: false, historyMove: 'restore', restoreTo: before }),
   editOps: async (ops, who = 'reel', summary, options = {}) => routes['POST /api/ops']({ ops, who, summary, returnProject: options.returnProject ?? false, ...(options.expectedVersion === undefined ? {} : { expectedVersion: options.expectedVersion }) }),
 }
 
