@@ -1,6 +1,6 @@
 # Arya
 
-> Arya is an open-source video and motion editor. Projects remain editable; core editing and export are free. Optional tips support development.
+> Arya is an open-source video and motion editor. Projects remain editable; core editing and export are free. Optional tips support development. A built-in assistant in the native apps edits with the user's own AI account. The hosted browser editor has none.
 
 ## Official pages
 

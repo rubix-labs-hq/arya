@@ -1,6 +1,6 @@
 # Arya
 
-> Arya is an open-source video and motion editor. Projects remain editable; core editing and export are free. Optional tips support development.
+> Arya is an open-source video and motion editor. Projects remain editable; core editing and export are free. Optional tips support development. A built-in assistant in the native apps edits with the user's own AI account. The hosted browser editor has none.
 
 ## Availability
 
@@ -18,7 +18,7 @@ The hosted editor has no assistant, Figma import, speech transcription, captions
 
 ## Optional connections
 
-AI assistance requires a user-owned supported provider account or API connection. Provider charges and limits are separate. iPhone/iPad CLI connections require a trusted HTTPS Mac companion. Figma personal access token and pasted MCP import are supported; public Figma OAuth is not configured. Do not describe hosted AI credits, cloud project sync or Figma OAuth as included.
+The assistant is in the native Mac, iPad and iPhone apps and the local browser editor, not the hosted editor. It requires a user-owned provider account or API connection: ChatGPT sign-in where the app offers it, Claude Code, Codex or Google Antigravity on a Mac, or an Anthropic API key. Provider charges and limits are separate. On iPhone and iPad, CLI assistants need a trusted HTTPS Mac companion; ChatGPT sign-in and an API key do not. Figma personal access token and pasted MCP import are supported; public Figma OAuth is not configured. Do not describe hosted AI credits, cloud project sync or Figma OAuth as included.
 
 ## Cost and privacy
 

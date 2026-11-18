@@ -2,23 +2,31 @@
 // Downloads are free with optional contributions. Checkout controls require a configured provider.
 //
 // The page answers one question: is Arya a real editor I can use on my device today, and what
-// does it cost? The order follows that: availability, the app on each device, the six pages the
-// app is built from, then limits and answers.
+// does it cost? The order follows that: availability, the app on each device, the assistant,
+// the six pages the app is built from, then limits and answers.
 export const footageCredit = 'Footage: <cite>Tears of Steel</cite>, (CC) Blender Foundation, <a href="https://mango.blender.org/" rel="noopener noreferrer">mango.blender.org</a>, licensed <a href="https://creativecommons.org/licenses/by/3.0/" rel="noopener noreferrer">CC BY 3.0</a>.';
 export const betaRequestsClosed = 'Beta requests open when the form on the download page is connected.';
 
 // Every assistant claim on the home page is in this object, so it can be reviewed and changed in
-// one place. It distinguishes the local editor from the hosted browser editor.
+// one place. The assistant is in the native apps (Mac, plus iPad and iPhone while the App Store
+// release is live) and the local browser editor. The hosted browser editor has none.
 const assistantProviders = 'Claude Code, Codex or Google Antigravity';
 export const assistantCopy = {
   providers: assistantProviders,
   scope: 'In the Mac app and the local browser editor',
+  scopeMobile: 'In the Mac, iPad and iPhone apps and the local browser editor',
   heading: 'Edit with your AI account.',
-  lead: 'Ask the built-in assistant to change a cut, title or layer. Review the changes, refine them on the timeline or undo them.',
+  lead: 'Select clips, a title or a range and say what should change. The assistant reads your selection, playhead, transcript and rendered frames, then edits through the same timeline operations you use by hand.',
   points: [
-    ['Use your own account.', 'Connect ChatGPT where offered, or choose another supported provider in Assistant settings. Arya includes no AI credits.'],
+    ['Review every change.', 'Each change comes with a receipt of what changed and reverses with Undo.'],
+    ['Use your own account.', `Connect ChatGPT where offered, or ${assistantProviders} on a Mac. Arya includes no AI credits.`],
     ['Always optional.', 'You can edit and export without connecting an account.'],
   ],
+  // Shown after the account point while the App Store release is live. It names no CLI provider,
+  // because those run on a Mac.
+  mobilePoint: ['On iPad and iPhone.', 'Use ChatGPT where offered, an Anthropic API key, or a connection to Arya on your Mac.'],
+  card: 'Assistant editing with your own AI account.',
+  hostedLimit: 'The browser editor has no assistant, Figma import or transcription.',
   link: ['/install/#accounts', 'How assistant sign-in works'],
   // The "AI assistant" row of What works where: Mac app, local browser editor, hosted browser editor.
   editions: [
@@ -135,8 +143,7 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
     releaseReady && releaseURL
       ? `<a class="button" href="${releaseURL}" data-direct-download>Download Arya for Mac</a>`
       : button(action.href, action.label),
-    mobileURL ? button(mobileURL, 'Download on the App Store', 'secondary') : '',
-    browserEditor ? link(browserEditor, 'Open browser editor') : '',
+    mobileURL ? button(mobileURL, 'Download on the App Store', 'secondary hero-ios') : '',
   ].join('');
 
   // The app on each device. iPad and iPhone screens appear only while the App Store release is live.
@@ -213,27 +220,39 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
     ? `Yes. Arya ${version} for Mac is on the download page with its version, requirements and SHA-256 checksum. It is free, signed, notarized and licensed under MIT. ${mobileURL ? `Arya ${mobileVersion} is also available on the App Store for iPhone and iPad.${pro ? ` ${proCopy.store}` : ''}` : 'iPhone and iPad builds are coming later.'}`
     : `Not yet. Arya is in a private beta by invitation. The Mac app needs final interface checks, a signed package and Apple notarization before a public download. ${accessURL ? 'You can request beta access on the download page.' : betaRequestsClosed}`;
 
+  // The assistant's points. The iPad and iPhone point shows only while the App Store release is live.
+  const assistantPoints = [...assistantCopy.points.slice(0, 2), ...(mobileURL ? [assistantCopy.mobilePoint] : []), ...assistantCopy.points.slice(2)];
+
   // What each place gives you. Facts only, each one already stated on a guide page or in the table below.
   const platforms = [
     `<article class="platform"><h3>Mac</h3><p class="platform-state">${releaseReady ? `Arya ${version}, a ${size ? `${size} ` : ''}notarized universal DMG for ${minimumOS} or later.` : 'Private beta, by invitation.'}</p><ul><li>Local project folders with automatic proxies.</li><li>FCPXML and OpenTimelineIO interchange, with ProRes 4444 and PNG alpha export.</li><li>Assistant connections, Figma import and transcription with Apple Speech.</li></ul>${link(action.href, action.label)}</article>`,
     mobileURL
-      ? `<article class="platform"><h3>${pro ? 'App Store' : 'iPhone and iPad'}</h3><p class="platform-state">Arya ${mobileVersion} for ${pro ? 'iPhone, iPad and Mac' : 'iPhone and iPad'}. ${pro ? proCopy.short : 'Free core editor.'}</p><ul>${pro ? `<li>${proCopy.free} ${proCopy.adds}</li><li>${proCopy.plans} ${proCopy.early}</li>` : ''}<li>Add media from Files or Photos.</li><li>New projects are saved in Arya’s Projects folder in Files. You can also open project folders you choose.</li><li>Export from Deliver. Keep Arya active until the export finishes if your device does not support background export.</li></ul>${link(mobileURL, 'Download on the App Store')}</article>`
+      ? `<article class="platform"><h3>${pro ? 'App Store' : 'iPhone and iPad'}</h3><p class="platform-state">Arya ${mobileVersion} for ${pro ? 'iPhone, iPad and Mac' : 'iPhone and iPad'}. ${pro ? proCopy.short : 'Free core editor.'}</p><ul>${pro ? `<li>${proCopy.free} ${proCopy.adds}</li><li>${proCopy.plans} ${proCopy.early}</li>` : ''}<li>${assistantCopy.card}</li><li>Add media from Files or Photos.</li><li>New projects are saved in Arya’s Projects folder in Files. You can also open project folders you choose.</li><li>Export from Deliver. Keep Arya active until the export finishes if your device does not support background export.</li></ul>${link(mobileURL, 'Download on the App Store')}</article>`
       : '<article class="platform"><h3>iPhone and iPad</h3><p class="platform-state">Coming later. There is no public mobile download or TestFlight link yet.</p><ul><li>iPad and iPhone builds share the project format.</li></ul></article>',
     browserEditor ? `<article class="platform"><h3>Browser</h3><p class="platform-state">Free editing and export in Chrome and Edge. No install.</p><ul><li>Exports up to five minutes in supported formats.</li><li>Timeline editing, color grading, motion and audio, with projects kept in your browser profile.</li><li>No AI assistant, Figma import, transcription or captions.</li></ul>${link(browserEditor, 'Open browser editor')}</article>` : '',
   ].join('');
 
   return `<section class="hero">
 <div class="wrap hero-grid">
-<h1>Video editing, color, motion and shorts. <em>Your edit. Every layer.</em></h1>
+<h1>One AI-native suite for editing, color, motion and shorts. <em>Your edit. Every layer.</em></h1>
 <div class="hero-side">
-<p class="lead">Cut on the timeline. On Mac, ask the built-in assistant to make edits you can adjust and undo.</p>
+<p class="lead">Work by hand on a timeline, or tell the <a href="#ai">built-in assistant</a> what should change. Every change is an ordinary edit you can adjust and undo.</p>
 <div class="actions hero-actions">${heroActions}</div>
-<p class="hero-meta">${releaseReady ? `Free Mac download · ${minimumOS} or later` : releaseLine} ${link('/download/', 'Compare editions')}</p>
+<p class="hero-meta">${releaseReady ? `Free Mac download · ${minimumOS} or later.` : releaseLine}${browserEditor ? ` ${assistantCopy.hostedLimit}` : ''}</p>
+<div class="actions hero-links">${browserEditor ? link(browserEditor, 'Open browser editor') : ''}${link('/download/', releaseReady ? 'All downloads' : 'Release status')}</div>
 </div>
 </div>
 <div class="wrap">${family}</div>
 </section>
-${launchFilm}<section class="pages" id="suite" tabindex="-1" aria-labelledby="suite-heading">
+${launchFilm}<section class="assistant" id="ai" tabindex="-1" aria-labelledby="ai-heading">
+<div class="wrap assistant-grid">
+<div class="chapter-copy"><p class="where">${mobileURL ? assistantCopy.scopeMobile : assistantCopy.scope}</p><h2 id="ai-heading">${assistantCopy.heading}</h2><p>${assistantCopy.lead}</p>
+<ul class="points">${assistantPoints.map(([lead, text]) => `<li><strong>${lead}</strong> ${text}</li>`).join('')}</ul>
+${link(...assistantCopy.link)}</div>
+${figure('assistant')}
+</div>
+</section>
+<section class="pages" id="suite" tabindex="-1" aria-labelledby="suite-heading">
 <div class="wrap">
 <div class="section-head"><h2 id="suite-heading">Six pages. One project.</h2><p>Cut, grade, animate, mix and deliver without round trips. Every workspace edits the same project file, so a grade, a title or a short stays live and editable.</p></div>
 <div class="pages-grid">
@@ -266,14 +285,6 @@ ${figure('shorts', '')}
 <ul class="figma-limits"><li><strong>Editable layers</strong>Text, rectangles and ellipses with a solid or gradient fill, and nested frames arrive as live Arya layers.</li><li><strong>Rendered images</strong>Complex vectors, boolean shapes, stars, polygons, lines, image fills, shadows and masked groups arrive as images you can still animate.</li><li><strong>Local token</strong>Your Figma personal access token stays on your device. Hosted OAuth sign-in is planned for a later release.</li></ul>
 </article>
 </section>
-<section class="assistant" id="ai" tabindex="-1" aria-labelledby="ai-heading">
-<div class="wrap assistant-grid">
-<div class="chapter-copy"><p class="where">${assistantCopy.scope}</p><h2 id="ai-heading">${assistantCopy.heading}</h2><p>${assistantCopy.lead}</p>
-<ul class="points">${assistantCopy.points.map(([lead, text]) => `<li><strong>${lead}</strong> ${text}</li>`).join('')}</ul>
-${link(...assistantCopy.link)}</div>
-${figure('assistant')}
-</div>
-</section>
 <section class="platforms wrap" id="platforms" aria-labelledby="platforms-heading">
 <div class="section-head"><h2 id="platforms-heading">${mobileURL ? 'On your Mac, iPhone and iPad.' : 'On your Mac.'}</h2><p>The Mac app and the browser editor share one open project format${mobileURL ? ', and the iPad and iPhone builds share it too' : ''}.</p></div>
 <div class="platform-list">${platforms}</div>
@@ -298,8 +309,8 @@ ${faq([
 </section>
 <section class="layer-study-section wrap"><details class="layer-study"><summary>Explore the editable-layer illustration<span>An interactive brand study</span></summary><div class="layer-study-body"><noscript><p>Layer controls need JavaScript. The artwork remains available to view.</p></noscript><p>Afterlight is a separate illustration of editable layers. It does not run the Arya application or call an agent.</p>${stage}</div></details></section>
 <section class="closing wrap" aria-labelledby="closing-heading">
-<div class="closing-copy"><h2 id="closing-heading">${mobileURL ? 'Start your first cut.' : 'Start cutting on your Mac.'}</h2><p class="closing-meta">${releaseReady ? `Arya ${version} for Mac is a ${size ? `${size} ` : ''}notarized universal DMG for ${minimumOS} or later.${mobileURL ? ` Arya ${mobileVersion} for iPhone and iPad is on the App Store.` : ''}${pro && mobileURL ? ` Arya is MIT licensed, and the Mac download is free. ${proCopy.store}` : ' Arya is free and MIT licensed.'}` : releaseLine}</p></div>
-<div class="closing-actions">${button(action.href, action.label)}${mobileURL ? button(mobileURL, 'Download on the App Store', 'secondary closing-ios') : ''}${browserEditor ? button(browserEditor, 'Open browser editor', 'secondary') : ''}</div>
-${contributionsConfigured ? (pro && mobileURL ? '<p class="closing-support">The Mac download and the browser editor are free to use. If Arya helps your work, you can <a href="/support/">support its development</a> with a one-time contribution. In the App Store edition, Arya Pro also funds development.</p>' : '<p class="closing-support">Arya is free to use. If it helps your work, you can <a href="/support/">support its development</a> with a one-time contribution.</p>') : ''}
+<div class="closing-copy"><h2 id="closing-heading">${mobileURL ? 'Start your first cut.' : 'Start cutting on your Mac.'}</h2><p class="closing-meta">${releaseReady ? `Arya ${version} for Mac is a ${size ? `${size} ` : ''}notarized universal DMG for ${minimumOS} or later.${mobileURL ? ` Arya ${mobileVersion} for iPhone and iPad is on the App Store.` : ''}${pro && mobileURL ? ` Arya is MIT licensed, and the Mac download is free. ${proCopy.store}` : ' Arya is free and MIT licensed.'}` : releaseLine}${browserEditor ? ` ${assistantCopy.hostedLimit}` : ''}</p></div>
+<div class="closing-actions">${button(action.href, action.label)}${mobileURL ? button(mobileURL, 'Download on the App Store', 'secondary closing-ios') : ''}${browserEditor ? button(browserEditor, 'Open browser editor (limited)', 'secondary') : ''}</div>
+${contributionsConfigured ? (pro && mobileURL ? `<p class="closing-support">The Mac download and the browser editor are free to use. If Arya helps your work, you can <a href="/support/">support its development</a> with a one-time contribution. In the App Store edition, Arya Pro also funds development.</p>` : '<p class="closing-support">Arya is free to use. If it helps your work, you can <a href="/support/">support its development</a> with a one-time contribution.</p>') : ''}
 </section>`;
 }

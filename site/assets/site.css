@@ -54,15 +54,17 @@ main:focus-visible,section[tabindex="-1"]:focus-visible{outline:0}
 
 /* Home hero: product, launch actions and real editor captures */
 .hero{padding:clamp(24px,3vw,44px) 0 clamp(44px,5.5vw,80px)}
-.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,40%);gap:24px clamp(24px,4vw,64px);align-items:center}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,40%);gap:24px clamp(24px,4vw,64px);align-items:end}
 .hero h1{font-size:clamp(38px,4.9vw,70px);letter-spacing:-.04em;line-height:1.02}
 .hero h1 em{display:block;margin-top:.28em;font-size:.75em;letter-spacing:-.015em}
 .hero .lead{margin:0 0 22px;color:var(--soft)}
+.hero .lead a{color:var(--paper);text-decoration-color:#ffffff59}
+.hero .lead a:hover{text-decoration-color:currentColor}
 .actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px}
 .hero-actions{gap:10px}
-.hero-actions .text-link{padding-inline:4px}
-.hero-meta{margin:8px 0 0;color:var(--muted);font-size:14px}
-.hero-meta .text-link{font-size:inherit;margin-left:8px}
+.hero-meta{margin:10px 0 0;color:var(--muted);font-size:14px}
+.hero-links{gap:0 24px}
+.hero-links .text-link{font-size:15px}
 
 /* The app on each device: real captures as offset layers, back to front */
 /* The stage is as tall as the Mac window. iPad and iPhone sit over the Mac's empty Media panel and end on the line where its viewer ends. */
@@ -336,10 +338,10 @@ td{color:var(--soft)}
 .edition p,.download-help p{margin:0;color:var(--paper-text)}
 .edition .edition-meta{font-size:14px;color:var(--paper-muted)}
 #release-action:empty,#mobile-action:empty{display:none}
-.download-details{align-self:start;width:100%;font-size:15px;color:var(--paper-text)}
-.download-details summary{min-height:44px;padding:9px 0;font-weight:650;cursor:pointer}
 /* Side by side, the three editions share their rows, so the buttons sit on one line */
 @media(min-width:961px){.edition-grid{grid-template-rows:repeat(6,auto)}.edition{grid-row:span 6;grid-template-rows:subgrid}}
+.download-details{align-self:start;width:100%;font-size:15px;color:var(--paper-text)}
+.download-details summary{min-height:44px;padding:9px 0;font-weight:650;cursor:pointer}
 .download-details p{margin:0 0 10px}
 .download-help{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:1px solid var(--paper-stroke);margin-top:20px;padding-top:24px}
 .download-help h2{margin-bottom:8px}
@@ -395,6 +397,8 @@ td{color:var(--soft)}
   .pages-grid{grid-template-columns:minmax(0,1fr)}
   .page-rail{position:static;flex-direction:row;border-bottom:1px solid var(--stroke)}
   .page-rail a{flex:1 1 0;justify-content:center;min-width:44px;border-bottom:0}
+  .hero-grid{grid-template-columns:minmax(0,1fr);gap:18px}
+  .hero .lead{max-width:34em}
 }
 
 /* Navigation collapses before the links crowd the header */
@@ -424,10 +428,6 @@ td{color:var(--soft)}
   .contents-label{width:100%}
   .footer-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .footer-brand{grid-column:1/-1}
-}
-
-/* Phones and small tablets: the device layers become one row to swipe, each a readable detail */
-@media(max-width:760px){
   .edition-grid{grid-template-columns:minmax(0,1fr)}
 }
 
@@ -435,7 +435,10 @@ td{color:var(--soft)}
 @media(max-width:699px){
   html:not(.has-navigation) .nav{order:1;flex:1 0 100%;gap:0;justify-content:space-between}
   html:not(.has-navigation) .nav a:not(.button){padding-inline:4px;font-size:14px}
-  .hero-grid,.edition-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+/* Phones and small tablets: the device layers become one row to swipe, each a readable detail */
+@media(max-width:760px){
   .edition{padding-block:16px 20px}
   .edition #release-action,.edition #mobile-action,.edition .button{width:100%}
   .family-stage{aspect-ratio:auto;display:flex;align-items:flex-start;gap:14px;margin:0 calc(-1*var(--gutter)) 10px;padding:0 var(--gutter) 8px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:var(--gutter);-webkit-overflow-scrolling:touch}
@@ -457,8 +460,11 @@ td{color:var(--soft)}
   .hero-grid{gap:16px}
   .hero .lead{margin-bottom:16px}
   .hero-actions .button{width:100%}
-  .hero-meta{margin-top:0}
-  .hero-meta .text-link{margin-left:0}
+  /* A phone visitor's download comes first */
+  .hero-actions .hero-ios,.closing-actions .closing-ios{order:-1;background:var(--amber);color:var(--ink);border-color:transparent}
+  .hero-actions .hero-ios:hover,.closing-actions .closing-ios:hover{background:#f6cf8b;border-color:transparent}
+  .hero-actions:has(.hero-ios) .button:not(.secondary),.closing-actions:has(.closing-ios) .button:not(.secondary){background:#ffffff08;color:var(--paper);border-color:var(--stroke)}
+  .hero-actions:has(.hero-ios) .button:not(.secondary):hover,.closing-actions:has(.closing-ios) .button:not(.secondary):hover{background:#ffffff12;border-color:#686c60}
   .eyebrow{font-size:13px}
   .plate-mac-media-panel{grid-template-columns:150px minmax(0,1fr);gap:16px}
   .workspace-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
@@ -467,15 +473,15 @@ td{color:var(--soft)}
   .workspace-full{margin-top:0}
   .extra-shorts{grid-template-columns:minmax(0,1fr)}
   .figure-shorts{width:min(64%,240px)}
+  /* Links in list items get a 44px box. Links in running text get it from padding, which leaves the line spacing alone */
+  .article li a:not(.button):not(.text-link){display:inline-flex;align-items:center;min-height:44px;min-width:44px;vertical-align:middle}
+  .article p a:not(.button):not(.text-link),.download-details a,.credit a,.chapter-figure figcaption a,.chapter-head p a,.closing-support a,.pages-note a,.hero .lead a{padding-block:13px}
   table{font-size:15px}
   tbody th{white-space:normal}
   .editions-section .table-wrap,.switching .table-wrap{border-bottom:0}
   .editions-section thead,.switching thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
   .editions-section table,.editions-section tbody,.editions-section tr,.editions-section th,.editions-section td,.switching table,.switching tbody,.switching tr,.switching th,.switching td{display:block}
   .editions-section tr,.switching tr{padding:16px 0;border-bottom:1px solid var(--stroke)}
-  /* Links in list items get a 44px box. Links in running text get it from padding, which leaves the line spacing alone */
-  .article li a:not(.button):not(.text-link){display:inline-flex;align-items:center;min-height:44px;min-width:44px;vertical-align:middle}
-  .article p a:not(.button):not(.text-link),.download-details a,.credit a,.chapter-figure figcaption a,.chapter-head p a,.closing-support a,.pages-note a,.hero .lead a{padding-block:13px}
   .editions-section tr:last-child,.switching tr:last-child{border-bottom:0}
   .editions-section th,.editions-section td,.switching th,.switching td{padding:0;border:0}
   .editions-section th,.switching th{font-size:17px;margin-bottom:8px}
@@ -488,14 +494,14 @@ td{color:var(--soft)}
   .mobile-property{display:flex;justify-content:space-between;width:100%;gap:12px;color:var(--muted)}
   .mobile-property strong{color:var(--amber)}
   .footer-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 16px}
+  .footer-nav:last-of-type{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}
+  .footer-nav:last-of-type span{grid-column:1/-1}
   .site-footer{padding-top:32px}
   .closing-actions,.closing-actions .button{width:100%}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}.button:hover,.button:active,.text-link:hover span{transform:none}}
 
 @media(max-width:380px){
-  .footer-nav:last-of-type{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}
-  .footer-nav:last-of-type span{grid-column:1/-1}
   .header-inner .brand img{width:76px;height:auto}
   .header-inner .header-download,.menu-button{padding-inline:10px}
 }
