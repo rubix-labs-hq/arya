@@ -1504,12 +1504,18 @@ private struct NativeEditorPreferences: View {
                 #if os(iOS)
                 Text("Interaction").tag("interaction")
                 #endif
-            }.pickerStyle(.segmented).padding(.horizontal, 18).padding(.vertical, 12)
+            }.pickerStyle(.segmented).labelsHidden().padding(.horizontal, 18).padding(.vertical, 12)
+            // Plain rows with a chevron read as places to go, not as a selected list item.
             Button { gettingStartedVisible = true } label: {
-                Text("Getting started")
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
+                HStack {
+                    Label("Getting started", systemImage: "questionmark.circle")
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(NativeEditorStyle.muted)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .padding(.horizontal, 18)
             .accessibilityIdentifier("settings.gettingStarted")
             #if os(iOS)
@@ -1518,10 +1524,12 @@ private struct NativeEditorPreferences: View {
                     Label("Arya Pro", systemImage: "sparkles")
                     Spacer()
                     Text(proStore.access.summary).font(.footnote).foregroundStyle(NativeEditorStyle.muted)
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(NativeEditorStyle.muted)
                 }
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .padding(.horizontal, 18)
             .accessibilityHint("4K, ProRes and HDR export. Editing and 1080p export stay free.")
             .accessibilityIdentifier("settings.pro")

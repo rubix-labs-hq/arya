@@ -171,6 +171,7 @@ struct ReelIOSApp: App {
                                 .navigationTitle("Assistant")
                                 .toolbar { Button("Done") { presentation.dismissSheet(route) } }
                         }
+                        .tint(NativeEditorStyle.accent)
                         .id(route.id)
                     case .gettingStarted:
                         NativeGettingStartedSheet(onDismiss: { presentation.dismissSheet(route) })
@@ -180,6 +181,7 @@ struct ReelIOSApp: App {
                             NativeProView(store: .shared)
                                 .toolbar { Button("Done") { presentation.dismissSheet(route) } }
                         }
+                        .tint(NativeEditorStyle.accent)
                         .id(route.id)
                     }
                 }

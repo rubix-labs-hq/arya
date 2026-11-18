@@ -313,6 +313,10 @@ struct StartView: View {
                                 .frame(minHeight: 44)
                                 .contentShape(Rectangle())
                         }
+                        #if os(macOS)
+                        // A gold text link, as on iPad and iPhone, so it does not compete with New Project.
+                        .buttonStyle(.borderless).foregroundStyle(NativeEditorStyle.accent)
+                        #endif
                         .accessibilityIdentifier("welcome.gettingStarted")
                         #if os(iOS)
                         if let openAssistantSettings {
