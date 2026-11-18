@@ -92,8 +92,9 @@ public actor ReelBackend {
     private var activity: [JSON] = []
     private var assistantChatHistory: NativeAssistantChatHistory?
     private var uiState: [(String, JSON)] = [("playhead", 0), ("selection", []), ("page", "edit")]
-    /// Who made each recent commit, so the assistant can tell its own edits from the user's.
-    private var commitOwners: [(version: Int, who: String)] = []
+    /// Who made each recent commit, and whether it was an Undo or Redo, so the assistant can tell
+    /// its own edits from the user's and its history moves from its edits.
+    private var commitOwners: [(version: Int, who: String, move: String?)] = []
     private var jobs: [Job] = []
     private var subscribed = false
     private var watcher: DispatchSourceTimer?
@@ -213,6 +214,20 @@ public actor ReelBackend {
         return owners.count == version - after ? owners : nil
     }
 
+    /// "undo" or "redo" for each commit after `after`, oldest first; nil when any of them was an
+    /// edit or was not a recorded commit.
+    public func historyMoves(after: Int) -> [String]? {
+        let moves = commitOwners.filter { $0.version > after }.compactMap(\.move)
+        return moves.count == version - after ? moves : nil
+    }
+
+    /// The result card title for an assistant request that only moved through Undo history.
+    public static func historyChangeTitle(moves: [String]) -> String {
+        let net = moves.filter { $0 == "undo" }.count - moves.filter { $0 == "redo" }.count
+        let edits = { (count: Int) in "\(count) edit\(count == 1 ? "" : "s")" }
+        return net > 0 ? "Undid \(edits(net))" : net < 0 ? "Redid \(edits(-net))" : "Undid and redid \(edits(moves.count / 2))"
+    }
+
     /// The shared suggestion rules for the selection or the timeline, as a JSON array.
     public func assistantSuggestions(selection: [String], composition: String?) -> String {
         guard let project else { return "[]" }
@@ -237,10 +252,34 @@ public actor ReelBackend {
                                 assets: JSON.compact(assets).text, steps: try steps.map { try core.describeStep(project: result.project, step: $0) })
     }
 
-    /// Restores the project from before an assistant change as one undoable edit, only while
-    /// the project is still exactly the result of that change.
-    public func restoreAssistantChange(_ snapshot: String, expected: String, line: String) throws -> Int {
+    /// Restores the project from before an assistant change, only while the project is still
+    /// exactly the result of that change. When the change was the assistant pressing Undo, the
+    /// project before it is in Redo history, so it comes back as a Redo that keeps the rest of that
+    /// history. When `historyMove` says the change was only the assistant's Undo and Redo presses
+    /// and the project is in Undo history, it goes back as an Undo, so Redo can bring the change
+    /// back. Otherwise the restore is one new undoable edit.
+    public func restoreAssistantChange(_ snapshot: String, expected: String, line: String, historyMove: Bool = false) throws -> Int {
         guard let current = project, current == expected else { throw APIError("The project changed after this assistant change. Use Undo step by step.") }
+        // Undo and Redo presses that cancel out leave the project as it was: nothing to restore.
+        if snapshot == current { return version }
+        if let index = future.lastIndex(of: snapshot) {
+            try commit(snapshot, who: "you", lines: [line], history: false, move: "redo")
+            // Every project redone on the way goes back to Undo history, as that many presses of Redo would.
+            let passed = Array(future[(index + 1)...].reversed())
+            future.removeSubrange(index...)
+            rememberProject(current)
+            for project in passed { rememberProject(project) }
+            return version
+        }
+        if historyMove, let index = past.lastIndex(of: snapshot) {
+            try commit(snapshot, who: "you", lines: [line], history: false, move: "undo")
+            // Every project undone on the way goes to Redo history, as that many presses of Undo would.
+            let passed = Array(past[(index + 1)...].reversed())
+            past.removeSubrange(index...)
+            future.append(current)
+            future.append(contentsOf: passed)
+            return version
+        }
         try commit(snapshot, who: "you", lines: [line])
         return version
     }
@@ -918,7 +957,7 @@ public actor ReelBackend {
         if past.count > 200 { past.removeFirst(past.count - 200) }
     }
 
-    private func commit(_ next: String, who: String, lines: [String], history: Bool = true, admission: (() throws -> Void)? = nil) throws {
+    private func commit(_ next: String, who: String, lines: [String], history: Bool = true, move: String? = nil, admission: (() throws -> Void)? = nil) throws {
         try requireOpen()
         try requireWritableProject()
         try validateCurrentProcessing()
@@ -935,7 +974,7 @@ public actor ReelBackend {
         }
         project = next
         version += 1
-        commitOwners.append((version, who))
+        commitOwners.append((version, who, move))
         if commitOwners.count > 400 { commitOwners.removeFirst(commitOwners.count - 400) }
         NativeAudioPreviewReuse.store.discard(owner: audioPreviewReuseOwner)
         lastText = text
@@ -1101,8 +1140,8 @@ public actor ReelBackend {
             let options = JSON.compact([("ids", .array(ids.map(JSON.string))), ("at", at.map(JSON.number)), ("comp", JSON.str(query["comp"].flatMap { $0.isEmpty ? nil : $0 }))])
             return .object([("text", .string(try core.describeRequest(project: project, options: options.text))), ("version", .int(version))])
         case ("POST", "/api/ops"): return try await applyOps(bodyText, b)
-        case ("POST", "/api/undo"): return try undo()
-        case ("POST", "/api/redo"): return try redo()
+        case ("POST", "/api/undo"): return try undo(who: Self.processingRequester(b))
+        case ("POST", "/api/redo"): return try redo(who: Self.processingRequester(b))
         case ("POST", "/api/new"):
             let next = try core.newProject(name: b["name"] as? String ?? "Untitled", options: bodyText)
             let fields = (try? JSON.parse(next) as? [String: Any]) ?? [:]
@@ -1555,17 +1594,17 @@ public actor ReelBackend {
         return (JSON(any: prepared).text, inputs.keys.sorted().compactMap { inputs[$0] })
     }
 
-    private func undo() throws -> JSON {
+    private func undo(who: String = "you") throws -> JSON {
         guard let prev = past.last, let current = project else { return .object([("version", .int(version)), ("project", project.map(JSON.raw) ?? .null)]) }
-        try commit(prev, who: "you", lines: ["undo"], history: false)
+        try commit(prev, who: who, lines: ["undo"], history: false, move: "undo")
         past.removeLast()
         future.append(current)
         return .object([("version", .int(version)), ("project", .raw(prev))])
     }
 
-    private func redo() throws -> JSON {
+    private func redo(who: String = "you") throws -> JSON {
         guard let next = future.last, let current = project else { return .object([("version", .int(version)), ("project", project.map(JSON.raw) ?? .null)]) }
-        try commit(next, who: "you", lines: ["redo"], history: false)
+        try commit(next, who: who, lines: ["redo"], history: false, move: "redo")
         future.removeLast()
         rememberProject(current)
         return .object([("version", .int(version)), ("project", .raw(next))])

@@ -82,6 +82,39 @@ test('native proposals keep the agent’s step request and fill the range again 
   const stage = between(swift('App/Shared/NativeAssistant.swift'), '    private func stageProposal(', '\n    }\n')
   assert.match(stage, /"body": \$0\["request"\] \?\? \$0\["body"\] \?\? \[:\]/, 'earlier steps go back to their request')
   assert.match(stage, /allSteps\[index\]\["request"\] = allSteps\[index\]\["body"\]; allSteps\[index\]\["body"\] = completed/)
+  assert.match(stage, /let summaries = held \+ \(summary\.isEmpty \|\| held\.contains\(summary\) \? \[\] : \[summary\]\)/, 'a repeated summary is kept once, as the browser keeps it')
+})
+
+test('a native request that only pressed Undo or Redo is recorded as a history move and titled by it', () => {
+  const app = swift('App/Shared/NativeAssistant.swift'), panel = swift('App/Shared/NativeEditor/NativeAssistantPanel.swift')
+  assert.match(app, /agentAttributed: Set<String> = \["\/api\/ops", "\/api\/undo", "\/api\/redo",/, 'the agent’s Undo and Redo are its own commits')
+  assert.match(app, /guard agentAttributed\.contains\(route\), var fields = try\? JSON\.parse\(body \?\? "\{\}"\)/, 'Undo and Redo send no body, so one is made')
+  const record = between(app, '    func recordRunChange(', '\n    }\n')
+  assert.match(record, /let moves = await backend\.historyMoves\(after: baseline\.version\) \?\? \[\]/)
+  assert.match(record, /kind: moves\.isEmpty \? "request" : "history"/)
+  assert.match(panel, /\$0\.kind == "history" \? ReelBackend\.historyChangeTitle\(moves: \$0\.moves\)/)
+})
+
+test('a stopped native request that changed nothing says so', () => {
+  const app = swift('App/Shared/NativeAssistant.swift'), panel = swift('App/Shared/NativeEditor/NativeAssistantPanel.swift')
+  const record = between(app, '    func recordRunChange(', '\n    }\n')
+  assert.ok(record.indexOf('lastRunEdited = nil') < record.indexOf('guard let baseline'), 'an unknown run is not reported as unchanged')
+  assert.match(record, /lastRunEdited = version > baseline\.version/)
+  // A Stop clears activeID first, so the run's task returns before recordRunChange; Stop measures the run itself.
+  const cancel = between(app, '    func cancel() {', '\n    }\n')
+  assert.ok(cancel.indexOf('let stoppedRun = activeID') >= 0 && cancel.indexOf('let stoppedRun = activeID') < cancel.indexOf('activeID = nil'), 'Stop notes the run before clearing it')
+  assert.ok(cancel.indexOf('lastRunEdited = nil') < cancel.indexOf('stoppingTask = Task'), 'an earlier run’s answer is cleared at once')
+  const measured = cancel.indexOf('self.lastRunEdited = version > baseline.version')
+  assert.ok(measured > cancel.indexOf('await runningTask?.value') && measured < cancel.indexOf('self.state = failed'), 'after the run ends and before it reads Stopped')
+  assert.match(cancel, /let baseline = self\.runBaseline, baseline\.id == stoppedRun/, 'only for the run that was stopped')
+  const send = between(app, '        activeID = id\n', 'publish()')
+  assert.match(send, /lastRunEdited = nil/, 'a new run starts unknown')
+  assert.match(between(app, '    func clearPreviewState() {', '\n    }\n'), /lastRunEdited = nil/)
+  // Undo then Redo in one request leaves the project as it was, so there is no change to undo.
+  assert.match(record, /guard version > baseline\.version, let after = await backend\.currentProject\(\), after != baseline\.project else \{ return \}/)
+  assert.match(panel, /let stoppedNote = assistant\.lastRunEdited == false \? "Nothing was changed\." : "Review or undo any committed edits\."/)
+  assert.match(panel, /stopped \? stoppedNote : ""/)
+  assert.match(panel, /assistant\.state == "cancelled" \? "Stopped\. \\\(stoppedNote\)"/)
 })
 
 test('a native request waits while a preview is applying, as the browser does', () => {

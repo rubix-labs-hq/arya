@@ -33,4 +33,11 @@ assert 'refresh ? "/v1/status?refresh=1" : "/v1/status"' in bridge
 assert "guard statusID == id, connectionGeneration == generation, !Task.isCancelled else { return }" in controller
 assert 'let selectedProvider = provider, selectedModel = routingMode == "manual" ? sharing.scope.models[0].model : model, selectedAgent = agent' in controller
 assert "accountStatusVerified = false; sharingConsentVersion = 0; routingSupported = false; providers = []; catalogs = []" in controller
-print("PASS: 23 app-only source contracts. Foundation policy and transport XCTest cases are unexecuted until the root compiler gate.")
+model_controls = panel[panel.index("private func modelControls(short: Bool)"):panel.index("private var routeSummary")]
+assert "let label = short ? NativeAssistantRoutingPolicy.compactRoutingLabel(mode: assistant.routingMode, provider: assistant.provider) : assistant.routingLabel" in model_controls, "a phone's model chip names only Auto or the provider"
+assert '.accessibilityLabel("Assistant model, \\(assistant.routingLabel)")' in model_controls, "VoiceOver still reads the full route"
+assert "modelControls(short: width < 420 || compactTouch)" in panel, "a compact-width phone row uses the short label"
+assert "modelControls(short: dynamicTypeSize >= .accessibility3 || compactTouch)" in panel, "and so does a phone's stacked row at accessibility sizes"
+assert 'restoreAssistantChange(change.before, expected: change.after, line: "Undo assistant change", historyMove: change.kind == "history")' in controller, "an assistant's history move is undone as a history move"
+assert "private var compactTouch: Bool {\n        #if os(iOS)\n        horizontalSizeClass == .compact\n        #else\n        false" in panel, "only iOS has a size class"
+print("PASS: 29 app-only source contracts. Foundation policy and transport XCTest cases are unexecuted until the root compiler gate.")

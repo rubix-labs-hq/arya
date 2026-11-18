@@ -32,6 +32,10 @@ test('selection suggestions match what is selected', () => {
 test('timeline suggestions follow the footage, format and captions', () => {
   const short = assistantSuggestions(interview(), {}).map(item => item.label)
   assert.deepEqual(short, ['Cut the silences', 'Grade these to match', 'Make a 9:16 version', 'Add captions'])
+  // A pause cut names its target, so the agent neither trims a token amount nor leaves text fragments.
+  const silences = assistantSuggestions(interview(), {}).find(item => item.id === 'silences').prompt
+  assert.match(silences, /^Shorten silent pauses longer than 0\.4 seconds across the timeline to about 0\.15 seconds\..* remove any title or caption piece a cut leaves behind\.$/)
+  assert.match(assistantSuggestions(interview(), { selection: ['c1', 'c2'] }).find(item => item.id === 'silences-selection').prompt, /^Shorten silent pauses longer than 0\.4 seconds inside the 1 selected clip to about 0\.15 seconds\./)
   const long = assistantSuggestions(interview({ seconds: 600, width: 1080, height: 1920 }), {}).map(item => item.label)
   assert.deepEqual(long, ['Cut the silences', 'Make three 30-second shorts', 'Grade these to match', 'Add captions'])
   const empty = newProject('Empty'); empty.assets['media/a.mp4'] = { hasVideo: true, duration: 10 }

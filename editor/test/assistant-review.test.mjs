@@ -151,6 +151,9 @@ test('previews accumulate within one request, reset on request and refuse unsafe
   const second = review.stage(review.propose({ runId: 'r1', ops: [{ op: 'update', id: 'c1', set: { opacity: 0.5 } }], summary: 'Fade it' }))
   assert.notEqual(first.id, second.id)
   assert.equal(second.ops.length, 2); assert.equal(second.summary, 'Add a title; Fade it'); assert.equal(second.stale, false)
+  // Each revision often resends the same title; the user reads it once.
+  const third = review.stage(review.propose({ runId: 'r1', ops: [{ op: 'update', id: 'c1', set: { opacity: 0.4 } }], summary: ' Fade it ' }))
+  assert.equal(third.ops.length, 3); assert.equal(third.summary, 'Add a title; Fade it')
   const reset = review.stage(review.propose({ runId: 'r1', ops: [{ op: 'add_color', color: '#000' }], reset: true }))
   assert.equal(reset.ops.length, 1); assert.equal(reset.summary, '')
   for (const op of ['replace', 'import', 'library_apply']) assert.throws(() => review.propose({ runId: 'r1', ops: [{ op }] }), /cannot be previewed/)

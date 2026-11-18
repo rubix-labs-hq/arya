@@ -167,6 +167,8 @@ final class NativeAssistant: ObservableObject {
     @Published private(set) var proposal: NativeAssistantProposal?
     @Published private(set) var applyingProposal: NativeAssistantApplying?
     @Published private(set) var lastChange: NativeAssistantChange?
+    /// Whether the latest finished request changed the project; nil when that is not known.
+    @Published private(set) var lastRunEdited: Bool?
     @Published private(set) var suggestions: [NativeAssistantSuggestion] = []
     /// The pending preview no longer matches the open project, checked by backend, version and text.
     @Published private(set) var proposalStale = false
@@ -746,6 +748,9 @@ final class NativeAssistant: ObservableObject {
     func cancel() {
         guard stoppingTask == nil else { return }
         let wasWorking = activeID != nil
+        // A stopped run never reaches recordRunChange, so Stop measures its edits itself below.
+        let stoppedRun = activeID, stoppedBackend = session?.backend
+        lastRunEdited = nil
         let runningTask = task
         let jobs = activeJobs
         activeJobs.removeAll()
@@ -768,6 +773,12 @@ final class NativeAssistant: ObservableObject {
             // AgentBridge.run awaits its independently owned remote cancel before returning.
             await runningTask?.value
             guard let self, self.stopID == id else { return }
+            if let stoppedRun, let backend = stoppedBackend, let baseline = self.runBaseline, baseline.id == stoppedRun {
+                self.runBaseline = nil
+                let version = await backend.currentVersion()
+                guard self.stopID == id else { return }
+                if self.session?.backend === backend { self.lastRunEdited = version > baseline.version }
+            }
             self.lastStopResult = (id, !failed && !self.stopHadFailure)
             self.stoppingTask = nil; self.stopID = nil
             if self.state == "cancelling" {
@@ -1254,6 +1265,7 @@ final class NativeAssistant: ObservableObject {
             }, events: { [weak self] event in await self?.receive(event, clientID: generation) })
         }
         activeID = id
+        lastRunEdited = nil
         outcome = ""
         route = [:]
         jobOutcomes = [:]
@@ -3272,6 +3284,8 @@ struct NativeAssistantChange: Identifiable {
     let afterVersion: Int
     let edits: Int
     let safe: Bool
+    /// For kind "history", the assistant's Undo and Redo presses in order.
+    var moves: [String] = []
 }
 
 struct NativeAssistantSuggestion: Identifiable, Hashable {
@@ -3288,13 +3302,14 @@ extension NativeAssistant {
                                                         "/api/shorts/propose", "/api/multicam/sync", "/api/luts/inspect", "/api/analysis/saliency"]
     /// Routes that change the project only with apply:true.
     private static let previewWhenNotApplied: Set<String> = ["/api/shorts/build", "/api/captions/from-transcript", "/api/transcript/edit", "/api/interchange/import", "/api/looks/match", "/api/analysis/track", "/api/analysis/autoreframe"]
-    private static let agentAttributed: Set<String> = ["/api/ops", "/api/new", "/api/import", "/api/captions/from-transcript", "/api/shorts/build", "/api/transcript/edit", "/api/luts/apply", "/api/looks/match", "/api/interchange/import",
+    private static let agentAttributed: Set<String> = ["/api/ops", "/api/undo", "/api/redo", "/api/new", "/api/import", "/api/captions/from-transcript", "/api/shorts/build", "/api/transcript/edit", "/api/luts/apply", "/api/looks/match", "/api/interchange/import",
                                                        "/api/stabilize/render", "/api/retime", "/api/video/denoise", "/api/analysis/person-mask", "/api/audio/clean", "/api/audio/loudnorm",
                                                        "/api/analysis/track", "/api/analysis/autoreframe", "/api/audio/compose", "/api/audio/compose/place"]
 
     /// Marks the assistant's edits as its own, so receipts and one-step undo can tell them apart.
     static func agentBody(route: String, body: String?) -> String? {
-        guard agentAttributed.contains(route), let body, var fields = try? JSON.parse(body) as? [String: Any] else { return body }
+        // Undo and Redo take no body, so theirs is made here.
+        guard agentAttributed.contains(route), var fields = try? JSON.parse(body ?? "{}") as? [String: Any] else { return body }
         fields["who"] = "agent"
         if route == "/api/ops" { fields["returnProject"] = false }
         return JSON(any: fields).text
@@ -3359,7 +3374,9 @@ extension NativeAssistant {
             previews.append(["title": value.string("title"), "produces": value.string("produces"), "lands": value.string("lands")])
         }
         let summary = (fields["summary"] as? String).map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240)) } ?? ""
-        let summaries = (same ? proposal?.summaries ?? [] : []) + (summary.isEmpty ? [] : [summary])
+        // The summaries join into the title the user reads, so a summary the preview already has is not added again.
+        let held = same ? proposal?.summaries ?? [] : []
+        let summaries = held + (summary.isEmpty || held.contains(summary) ? [] : [summary])
         let replaced = proposal.flatMap { $0.runID != runID ? ($0.summary.isEmpty ? "\($0.ops.count + $0.steps.count) earlier edits" : $0.summary) : $0.replaced } ?? ""
         let receipt = NativeChangeReceipt.make(before: (try? JSON.parse(base.project) as? [String: Any]), after: (try? JSON.parse(preview.project) as? [String: Any]) ?? [:],
                                                previousVersion: version, version: version + 1, who: "agent")
@@ -3423,14 +3440,19 @@ extension NativeAssistant {
     /// Records the request's edits as one change when every commit since it started was the assistant's.
     func recordRunChange(id: UUID, backend: ReelBackend) async {
         defer { if previewRunID == id { previewRunID = nil } }
+        lastRunEdited = nil
         guard let baseline = runBaseline, baseline.id == id else { return }
         runBaseline = nil
         let version = await backend.currentVersion()
-        guard version > baseline.version, let after = await backend.currentProject() else { return }
+        lastRunEdited = version > baseline.version
+        // A request whose Undo and Redo presses cancel out leaves nothing to undo.
+        guard version > baseline.version, let after = await backend.currentProject(), after != baseline.project else { return }
         let owners = await backend.commitOwners(after: baseline.version)
+        // A request that only pressed Undo or Redo is a history move, and undoing it moves back the same way.
+        let moves = await backend.historyMoves(after: baseline.version) ?? []
         guard session?.backend === backend else { return }
-        lastChange = NativeAssistantChange(backend: ObjectIdentifier(backend), kind: "request", before: baseline.project, after: after, afterVersion: version, edits: version - baseline.version,
-                                           safe: owners?.allSatisfy { ["agent", "claude"].contains($0) } ?? false)
+        lastChange = NativeAssistantChange(backend: ObjectIdentifier(backend), kind: moves.isEmpty ? "request" : "history", before: baseline.project, after: after, afterVersion: version, edits: version - baseline.version,
+                                           safe: owners?.allSatisfy { ["agent", "claude"].contains($0) } ?? false, moves: moves)
     }
 
     /// Whether "Undo this change" can restore the project from before the latest assistant change.
@@ -3447,7 +3469,7 @@ extension NativeAssistant {
             return
         }
         do {
-            _ = try await backend.restoreAssistantChange(change.before, expected: change.after, line: "Undo assistant change")
+            _ = try await backend.restoreAssistantChange(change.before, expected: change.after, line: "Undo assistant change", historyMove: change.kind == "history")
             lastChange = nil
             if applyingProposal?.finished == true { applyingProposal = nil }
         } catch { session.nativeEditor.status = error.localizedDescription }
@@ -3459,7 +3481,7 @@ extension NativeAssistant {
     /// can apply to or undo in the next. reset() calls this when a project closes.
     func clearPreviewState() {
         proposal = nil; applyingProposal = nil; lastChange = nil; proposalStale = false
-        previewRunID = nil; runBaseline = nil
+        previewRunID = nil; runBaseline = nil; lastRunEdited = nil
     }
 
     /// Rechecks the pending preview against the open project's backend, version and exact text.

@@ -626,8 +626,10 @@ struct NativeAssistantPanel: View {
             let elapsed = seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
             let quiet = working && context.date.timeIntervalSince(assistant.updatedAt ?? context.date) >= 20
             let stopped = assistant.state == "cancelled"
-            let stage = working ? (quiet ? "No update for 20 seconds" : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress) : assistant.state == "done" ? (assistant.outcome.isEmpty ? "Results not verified" : assistant.outcome) : stopped ? "Review or undo any committed edits." : ""
-            let detail = working ? quiet ? "No update for 20 seconds. Last confirmed stage: \(assistant.progress.isEmpty ? "Working" : assistant.progress)." : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress : assistant.state == "done" ? assistant.outcome.isEmpty ? "Edit results have not been verified." : assistant.outcome : assistant.state == "cancelled" ? "Stopped. Review or undo any committed edits." : assistant.progress.isEmpty ? "Request failed. Review the error before retrying." : assistant.progress
+            // A stopped request that never moved the version says so, instead of asking for a review of edits it did not make.
+            let stoppedNote = assistant.lastRunEdited == false ? "Nothing was changed." : "Review or undo any committed edits."
+            let stage = working ? (quiet ? "No update for 20 seconds" : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress) : assistant.state == "done" ? (assistant.outcome.isEmpty ? "Results not verified" : assistant.outcome) : stopped ? stoppedNote : ""
+            let detail = working ? quiet ? "No update for 20 seconds. Last confirmed stage: \(assistant.progress.isEmpty ? "Working" : assistant.progress)." : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress : assistant.state == "done" ? assistant.outcome.isEmpty ? "Edit results have not been verified." : assistant.outcome : assistant.state == "cancelled" ? "Stopped. \(stoppedNote)" : assistant.progress.isEmpty ? "Request failed. Review the error before retrying." : assistant.progress
             DisclosureGroup(isExpanded: $activityExpanded) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(detail).foregroundStyle(NativeEditorStyle.muted).textSelection(.enabled)
@@ -686,7 +688,7 @@ struct NativeAssistantPanel: View {
         let undoable = assistant.lastChange.flatMap { assistant.canUndoLastChange(version: model.version) ? $0 : nil }
         let latest = model.changeReceipts.last
         let changed = (latest?.clips ?? []).filter { $0.status != "deleted" && model.receiptSelection($0) != nil }
-        let title = undoable.map { $0.kind == "preview" ? "Applied the preview" : "Made \($0.edits) edit\($0.edits == 1 ? "" : "s")" }
+        let title = undoable.map { $0.kind == "preview" ? "Applied the preview" : $0.kind == "history" ? ReelBackend.historyChangeTitle(moves: $0.moves) : "Made \($0.edits) edit\($0.edits == 1 ? "" : "s")" }
             ?? "Recent assistant edits"
         return VStack(alignment: .leading, spacing: 8) {
             Label(title, systemImage: "checkmark.circle.fill").font(.callout.weight(.semibold))
@@ -897,21 +899,30 @@ struct NativeAssistantPanel: View {
                     stackedActionRow(width: width) { primaryAction }
                     stackedActionRow(width: width) { primaryAction.labelStyle(NativeAssistantIconActionStyle()) }
                 }
-                // The largest text sizes cannot fit "· Default" even on a row of its own.
-                modelControls(short: dynamicTypeSize >= .accessibility3)
+                // The largest text sizes, and a phone at any accessibility size, show only the provider even on a row of its own.
+                modelControls(short: dynamicTypeSize >= .accessibility3 || compactTouch)
             }.frame(maxWidth: .infinity)
         } else {
-            // In one row the model shares the width, so a narrow pane drops "· Default" from its
-            // label and a narrow touch row shows Send or Stop as its icon.
+            // In one row the model shares the width, so a narrow pane or a phone shows only the
+            // provider in its label, and a narrow touch row shows Send or Stop as its icon.
             HStack(spacing: 6) {
                 inputMenu
                 previewToggle(iconOnly: width < 360)
-                modelControls(short: width < 420)
+                modelControls(short: width < 420 || compactTouch)
                 if Self.touch && width < 440 { primaryAction.labelStyle(NativeAssistantIconActionStyle()) } else { primaryAction }
             }
             // The row is as tall while a request runs as when idle, so Stop keeps Send's target.
             .frame(minHeight: actionHeight)
         }
+    }
+
+    /// A touch screen at compact width, such as a phone in portrait. The Mac has no size class.
+    private var compactTouch: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
     }
 
     private func stackedActionRow<Primary: View>(width: Double, @ViewBuilder primary: () -> Primary) -> some View {
@@ -1091,9 +1102,10 @@ struct NativeAssistantPanel: View {
         } catch { model.status = error.localizedDescription }
     }
 
-    /// Short drops "· Default" from a provider's default route, so the name fits beside Send.
+    /// Short shows only Auto or the provider's short name, so the label fits beside Send without
+    /// being cut in the middle. The menu marks the model, and VoiceOver reads the full route.
     private func modelControls(short: Bool) -> some View {
-            let label = short && assistant.routingLabel == "\(assistant.providerName) · Default" ? assistant.providerName : assistant.routingLabel
+            let label = short ? NativeAssistantRoutingPolicy.compactRoutingLabel(mode: assistant.routingMode, provider: assistant.provider) : assistant.routingLabel
             return Menu {
                 if assistant.routingSupported && !assistant.autoModels.isEmpty {
                     ForEach(NativeAssistantRoutingPolicy.priorities, id: \.self) { priority in
