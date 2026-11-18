@@ -157,7 +157,7 @@ test('failed queue rows retry the exact spec this tab requested, including the c
   ]
   const rows = f.render().values.flat(Infinity).filter(value => value?.strings?.join('').includes('job-name'))
   const ours = rows.find(value => JSON.stringify(value).includes('intro.mp4')), theirs = rows.find(value => JSON.stringify(value).includes('other.mp4'))
-  assert.ok(ours.values.includes('The render could not start. Try again.'))
+  assert.ok(ours.values.includes('the render worker did not start'), 'a failed job shows its own error')
   assert.ok(theirs.values.includes('Encoder ran out of memory'))
   assert.ok(f.find(ours, '>Retry</button>'), 'a job this tab started can be retried')
   assert.equal(f.find(theirs, '>Retry</button>'), null, 'a job from elsewhere has no spec to retry')
