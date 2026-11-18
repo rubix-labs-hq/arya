@@ -21,10 +21,8 @@ const assistantDrafts = new Map()
 let signInNotice = null
 
 function md(text) {
-  // Minimal formatting: code spans, bold, line breaks.
-  const esc = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-
-  return esc.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>')
+  // Escaped first, then code, bold, https links, tables and lists. Local paths show as file names.
+  return assistantPanel.messageHTML(text, { root: store.root })
 }
 
 const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`

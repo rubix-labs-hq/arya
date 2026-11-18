@@ -8,6 +8,7 @@ import { clipName } from '../../core/describe.js'
 import { editNotes } from '../../core/edit-notes.js'
 import { changeReceipt } from './change-receipt.js'
 import { assistantSuggestions } from './assistant-suggestions.js'
+import { messageHTML } from './message-text.js'
 
 const html = htm.bind(h)
 const MAX_LAYERS = 6
@@ -124,4 +125,4 @@ function ChangeBar({ change, busy, onUndo }) {
   </div>`
 }
 
-export const assistantPanel = { focus, suggestions: assistantSuggestions, previewChanges, PreviewCard, ApplyingCard, ChangeBar }
+export const assistantPanel = { focus, suggestions: assistantSuggestions, previewChanges, PreviewCard, ApplyingCard, ChangeBar, messageHTML }
