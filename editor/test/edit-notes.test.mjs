@@ -364,6 +364,18 @@ test('video zoomed more than 10% past the scale that fills a frame of another sh
   const bladed = run(tight.project, [{ op: 'blade', at: 3 }])
   assert.equal(bladed.project.tracks.find(track => track.id === 'V1').clips.length, 2, 'the blade made a second piece')
   assert.equal(bladed.notes.some(note => /fill scale/.test(note)), false, bladed.notes.join('\n'))
+  // Trimming the left edge of a keyed zoom moves its keys but zooms no further, so the note does not come back.
+  const trimmed = run(keyed.project, [{ op: 'trim', id, edge: 'left', to: 1 }])
+  assert.equal(trimmed.project.tracks.find(track => track.id === 'V1').clips[0].anim.scale[0][0], -1, 'the trim moved the keys')
+  assert.equal(trimmed.notes.some(note => /fill scale/.test(note)), false, trimmed.notes.join('\n'))
+  // A key before the clip's start counts only by the zoom it gives on screen: 5 at -4s eases to 3.8 at 0s.
+  const early = run(media, [{ op: 'update', id, set: { scale: 3.2, anim: { scale: [[-4, 5], [2, 3.2]] } } }])
+  assert.match(early.notes.join('\n'), new RegExp(`${id} reaches scale 3\\.8, 20% past 3\\.16`))
+  // A base scale that keys override does not count.
+  assert.equal(run(media, [{ op: 'update', id, set: { scale: 4, anim: { scale: [[0, 3.2], [6, 3.3]] } } }]).notes.some(note => /fill scale/.test(note)), false)
+  // A zoom that grows on screen is noted again.
+  const grown = run(keyed.project, [{ op: 'keyframe', id, prop: 'scale', at: 4, value: 4.2 }])
+  assert.match(grown.notes.join('\n'), new RegExp(`${id} reaches scale 4\\.2`))
   // A punch-in on media of the frame's own shape, and a cover fit, are choices, not reframes.
   assert.equal(placed(wide(), { scale: 1.5 }).notes.some(note => /fill scale/.test(note)), false)
   assert.equal(placed(vertical(), { scale: 4, fit: 'cover' }).notes.some(note => /fill scale/.test(note)), false)

@@ -12,7 +12,7 @@
 // fix to send, and the person's, a short sentence that names clips as the timeline does. Notes
 // that only help the agent (title positions) have no person form.
 
-import { clipEnd, hasAudio, round } from './project.js'
+import { clipEnd, hasAudio, round, valueAt } from './project.js'
 import { BUNDLED_FONTS, knownFont } from './fonts.js'
 import { clipName } from './describe.js'
 
@@ -285,11 +285,23 @@ function briefTextNotes(before, after, made) {
   ]
 }
 
-/** A clip's base scale or its largest scale key. */
-const largestScale = clip => Math.max(...[typeof clip.scale === 'number' ? clip.scale : 1, ...(Array.isArray(clip.anim?.scale) ? clip.anim.scale.map(key => key?.[1]) : [])].filter(Number.isFinite))
+/**
+ * A clip's largest scale while it is on screen (clip-local 0 to dur). Keys outside that range, which a
+ * trim or blade leaves behind, count only through the value they give inside it, and an overshooting
+ * ease is sampled between keys.
+ */
+function shownScale(project, clip) {
+  const dur = clip.dur > 0 ? clip.dur : 0
+  const keys = Array.isArray(clip.anim?.scale) ? clip.anim.scale.map(key => key?.[0]).filter(Number.isFinite).sort((a, b) => a - b) : []
+  const times = [0, dur, ...keys]
+  for (let i = 0; i < keys.length - 1; i++) for (let step = 1; step < 8; step++) times.push(keys[i] + (keys[i + 1] - keys[i]) * step / 8)
+  const values = times.filter(t => t >= 0 && t <= dur).map(t => valueAt(project, clip, 'scale', t)).filter(Number.isFinite)
+  return values.length ? Math.max(...values) : NaN
+}
 
 /** Video this batch scaled past the scale that fills its frame. Scale 1 fits the whole picture inside the frame. */
-function fillScaleNotes(before, after, made, project) {
+function fillScaleNotes(before, after, made) {
+  const project = after.project
   const parts = [], people = []
   for (const [id, entry] of after.clips) {
     const { clip } = entry
@@ -301,10 +313,12 @@ function fillScaleNotes(before, after, made, project) {
     const fill = Math.max(entry.width / asset.width, entry.height / asset.height) / Math.min(entry.width / asset.width, entry.height / asset.height)
     // Only where the media's shape differs from the frame: a punch-in on matching media is a choice, not a reframe.
     if (!(fill > 1.01)) continue
-    const most = largestScale(clip)
+    const most = shownScale(after.project, clip)
     if (!(most > fill * 1.1)) continue
+    // A trim moves the keys but zooms no further; only a larger zoom on screen is news.
+    if (!made.has(id) && old && shownScale(before.project, old) >= most - 1e-6) continue
     // A blade or cut makes new pieces of a clip; one already this zoomed in this timeline was noted when it was zoomed.
-    if (made.has(id) && [...before.clips.values()].some(other => other.comp === entry.comp && other.clip.kind === 'video' && other.clip.src === clip.src && largestScale(other.clip) >= most - 1e-6)) continue
+    if (made.has(id) && [...before.clips.values()].some(other => other.comp === entry.comp && other.clip.kind === 'video' && other.clip.src === clip.src && shownScale(before.project, other.clip) >= most - 1e-6)) continue
     const over = Math.round((most / fill - 1) * 100)
     parts.push(`${id} reaches scale ${num(most)}, ${over}% past ${num(fill)}, the scale at which its ${asset.width}x${asset.height} media fills the ${entry.width}x${entry.height} frame`)
     people.push(`${named(after, clip)} is zoomed ${over}% past the size that fills the frame`)
@@ -333,7 +347,7 @@ export function editNotes(before, after, { ops = [], created = [], audience = 'a
       ...untimedCaptionNote(ops),
       ...titlePlaceNote(old, now, made),
       ...briefTextNotes(old, now, made),
-      ...fillScaleNotes(old, now, made, after),
+      ...fillScaleNotes(old, now, made),
     ].map(entry => audience === 'person' ? entry.person : entry.agent).filter(Boolean)
       .map(note => note.length > MAX_NOTE ? `${note.slice(0, MAX_NOTE - 3)}...` : note)
     return notes.length > MAX_NOTES ? [...notes.slice(0, MAX_NOTES - 1), `and ${notes.length - MAX_NOTES + 1} more notes were left out.`] : notes
