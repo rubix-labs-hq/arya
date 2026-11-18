@@ -239,7 +239,7 @@ test('the device stage moves once on load, and not at all with reduced motion or
   assert.ok(motion > 0);
   assert.equal(css.split('animation:layer-in').length - 1, 1);
   assert.ok(css.indexOf('animation:layer-in') > motion && css.indexOf('@keyframes layer-in') > motion);
-  assert.match(css, /@media\(prefers-reduced-motion:reduce\)\{html\{scroll-behavior:auto\}.*animation:none!important;transition:none!important.*transform:none/);
+  assert.ok(css.includes('@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}.button:hover,.button:active,.text-link:hover span{transform:none}}'));
   const phone = css.slice(css.indexOf('@media(max-width:760px){'), css.indexOf('@media(max-width:650px){'));
   assert.ok(phone.includes('scroll-snap-type:x mandatory') && phone.includes('animation:none'));
   // Device labels are links, so they keep a 44px touch height on a phone.

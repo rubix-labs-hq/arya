@@ -18,6 +18,8 @@ code{font-family:var(--mono);font-size:.88em;background:#ffffff14;padding:.1em .
 .skip-link{position:fixed;top:-100px;left:24px;z-index:99;background:var(--amber);color:var(--ink);padding:12px 16px;font-weight:600}
 .skip-link:focus{top:12px}
 :focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+/* A section that takes focus from a link to it shows no ring; the next Tab lands inside it */
+main:focus-visible,section[tabindex="-1"]:focus-visible{outline:0}
 .noscript{background:var(--raised);padding:20px;text-align:center;font-size:14px}
 
 /* Header and navigation */
@@ -30,7 +32,8 @@ code{font-family:var(--mono);font-size:.88em;background:#ffffff14;padding:.1em .
 .nav a:not(.button):hover{color:var(--paper);background:#ffffff0d}
 .nav a[aria-current=page]{color:var(--paper);background:#ffffff0d}
 .header-download{flex:none;margin-left:4px}
-.header-download[aria-current=page]{background:var(--paper)}
+.header-download[aria-current=page]{background:#ffffff08;color:var(--paper);border-color:var(--stroke)}
+.header-download[aria-current=page]:hover{background:#ffffff12;border-color:#686c60}
 .menu-button{display:none;min-height:44px;padding:0 16px;background:transparent;color:var(--paper);border:1px solid var(--stroke);border-radius:6px;font:600 15px var(--font);cursor:pointer}
 
 /* Buttons and links */
@@ -335,6 +338,8 @@ td{color:var(--soft)}
 #release-action:empty,#mobile-action:empty{display:none}
 .download-details{align-self:start;width:100%;font-size:15px;color:var(--paper-text)}
 .download-details summary{min-height:44px;padding:9px 0;font-weight:650;cursor:pointer}
+/* Side by side, the three editions share their rows, so the buttons sit on one line */
+@media(min-width:961px){.edition-grid{grid-template-rows:repeat(6,auto)}.edition{grid-row:span 6;grid-template-rows:subgrid}}
 .download-details p{margin:0 0 10px}
 .download-help{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:1px solid var(--paper-stroke);margin-top:20px;padding-top:24px}
 .download-help h2{margin-bottom:8px}
@@ -417,12 +422,19 @@ td{color:var(--soft)}
   .article-aside a{border-top:0;text-decoration:underline;text-decoration-color:var(--paper-muted)}
   .page-vignette{display:none}
   .contents-label{width:100%}
-  .footer-grid{grid-template-columns:1fr 1fr}
+  .footer-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .footer-brand{grid-column:1/-1}
 }
 
 /* Phones and small tablets: the device layers become one row to swipe, each a readable detail */
 @media(max-width:760px){
+  .edition-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+/* Before the menu handlers are installed, the fallback links take one compact row under the brand, so the header shrinks less when the menu arrives */
+@media(max-width:699px){
+  html:not(.has-navigation) .nav{order:1;flex:1 0 100%;gap:0;justify-content:space-between}
+  html:not(.has-navigation) .nav a:not(.button){padding-inline:4px;font-size:14px}
   .hero-grid,.edition-grid{grid-template-columns:minmax(0,1fr)}
   .edition{padding-block:16px 20px}
   .edition #release-action,.edition #mobile-action,.edition .button{width:100%}
@@ -461,6 +473,9 @@ td{color:var(--soft)}
   .editions-section thead,.switching thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
   .editions-section table,.editions-section tbody,.editions-section tr,.editions-section th,.editions-section td,.switching table,.switching tbody,.switching tr,.switching th,.switching td{display:block}
   .editions-section tr,.switching tr{padding:16px 0;border-bottom:1px solid var(--stroke)}
+  /* Links in list items get a 44px box. Links in running text get it from padding, which leaves the line spacing alone */
+  .article li a:not(.button):not(.text-link){display:inline-flex;align-items:center;min-height:44px;min-width:44px;vertical-align:middle}
+  .article p a:not(.button):not(.text-link),.download-details a,.credit a,.chapter-figure figcaption a,.chapter-head p a,.closing-support a,.pages-note a,.hero .lead a{padding-block:13px}
   .editions-section tr:last-child,.switching tr:last-child{border-bottom:0}
   .editions-section th,.editions-section td,.switching th,.switching td{padding:0;border:0}
   .editions-section th,.switching th{font-size:17px;margin-bottom:8px}
@@ -479,6 +494,8 @@ td{color:var(--soft)}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}.button:hover,.button:active,.text-link:hover span{transform:none}}
 
 @media(max-width:380px){
+  .footer-nav:last-of-type{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}
+  .footer-nav:last-of-type span{grid-column:1/-1}
   .header-inner .brand img{width:76px;height:auto}
   .header-inner .header-download,.menu-button{padding-inline:10px}
 }

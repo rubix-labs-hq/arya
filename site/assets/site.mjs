@@ -77,6 +77,8 @@ const currentDownload = document.querySelector('#release-action a');
 // send early clicks to the release information instead of an installer that may be stale.
 if (directDownload) directDownload.href = '/download/#mac';
 if (currentDownload) currentDownload.href = '#release-state';
+// Say so when the check is slow. A quick check never changes the label.
+const slowCheck = currentDownload ? setTimeout(() => { currentDownload.textContent = 'Checking release…'; }, 400) : 0;
 const configController=new AbortController();
 const configTimeout=setTimeout(()=>configController.abort(),8000);
 const configLoad=fetch('/config.json',{cache:'no-store',signal:configController.signal}).then(async response=>{
@@ -107,6 +109,7 @@ const configLoad=fetch('/config.json',{cache:'no-store',signal:configController.
     if (directDownload) directDownload.textContent = 'Check Mac availability';
     document.querySelector('#release-state')?.replaceChildren(document.createTextNode('Release validation in progress'));
     document.querySelector('#release-description')?.replaceChildren(document.createTextNode('The public installer is not ready.'));
+    document.querySelector('.download-hero .lead')?.replaceChildren(document.createTextNode('See which editions are available.'));
     if (releaseDetails) releaseDetails.hidden = true;
     releaseAction?.replaceChildren();
   }
@@ -116,12 +119,13 @@ const configLoad=fetch('/config.json',{cache:'no-store',signal:configController.
   if (directDownload) directDownload.textContent = 'Check Mac availability';
   document.querySelector('#release-state')?.replaceChildren(document.createTextNode('Release status unavailable'));
   document.querySelector('#release-description')?.replaceChildren(document.createTextNode('Reload this page to check the release status before downloading.'));
+  document.querySelector('.download-hero .lead')?.replaceChildren(document.createTextNode('See which editions are available.'));
   if (releaseDetails) releaseDetails.hidden = true;
   releaseAction?.replaceChildren();
   const state=document.querySelector('#contribution-state');
   if(state)state.textContent='Contribution setup could not be loaded. No payment has been taken. Try reloading this page.';
   return null;
-}).finally(()=>clearTimeout(configTimeout));
+}).finally(()=>{clearTimeout(configTimeout);clearTimeout(slowCheck);});
 const form=document.querySelector('#contribution-form');
 const input=document.querySelector('#custom-amount');
 const state=document.querySelector('#contribution-state');
