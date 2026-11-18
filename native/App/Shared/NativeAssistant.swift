@@ -3359,7 +3359,9 @@ extension NativeAssistant {
             previews.append(["title": value.string("title"), "produces": value.string("produces"), "lands": value.string("lands")])
         }
         let summary = (fields["summary"] as? String).map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240)) } ?? ""
-        let summaries = (same ? proposal?.summaries ?? [] : []) + (summary.isEmpty ? [] : [summary])
+        // The summaries join into the title the user reads, so a summary the preview already has is not added again.
+        let held = same ? proposal?.summaries ?? [] : []
+        let summaries = held + (summary.isEmpty || held.contains(summary) ? [] : [summary])
         let replaced = proposal.flatMap { $0.runID != runID ? ($0.summary.isEmpty ? "\($0.ops.count + $0.steps.count) earlier edits" : $0.summary) : $0.replaced } ?? ""
         let receipt = NativeChangeReceipt.make(before: (try? JSON.parse(base.project) as? [String: Any]), after: (try? JSON.parse(preview.project) as? [String: Any]) ?? [:],
                                                previousVersion: version, version: version + 1, who: "agent")

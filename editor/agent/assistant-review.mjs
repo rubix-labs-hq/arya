@@ -92,7 +92,9 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, onChan
       if (all.length > MAX_OPS) throw invalid(`A preview holds at most ${MAX_OPS} ops.`)
       if (queued.length > MAX_STEPS) throw invalid(`A preview holds at most ${MAX_STEPS} processing steps.`)
       const text = typeof summary === 'string' ? summary.trim().slice(0, MAX_SUMMARY) : ''
-      return { runId, baseVersion: version(), epoch: epoch(), ops: all, steps: queued, assets: { ...(keep ? proposal.assets : {}) }, summaries: [...(keep ? proposal.summaries : []), ...(text ? [text] : [])] }
+      // The summaries join into the title the user reads, so a summary the preview already has is not added again.
+      const held = keep ? proposal.summaries : []
+      return { runId, baseVersion: version(), epoch: epoch(), ops: all, steps: queued, assets: { ...(keep ? proposal.assets : {}) }, summaries: [...held, ...(text && !held.includes(text) ? [text] : [])] }
     },
     /** Stores a preview the route has checked against the current project. */
     stage(next) {

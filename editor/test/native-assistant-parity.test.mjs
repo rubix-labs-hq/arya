@@ -82,6 +82,7 @@ test('native proposals keep the agent’s step request and fill the range again 
   const stage = between(swift('App/Shared/NativeAssistant.swift'), '    private func stageProposal(', '\n    }\n')
   assert.match(stage, /"body": \$0\["request"\] \?\? \$0\["body"\] \?\? \[:\]/, 'earlier steps go back to their request')
   assert.match(stage, /allSteps\[index\]\["request"\] = allSteps\[index\]\["body"\]; allSteps\[index\]\["body"\] = completed/)
+  assert.match(stage, /let summaries = held \+ \(summary\.isEmpty \|\| held\.contains\(summary\) \? \[\] : \[summary\]\)/, 'a repeated summary is kept once, as the browser keeps it')
 })
 
 test('a native request waits while a preview is applying, as the browser does', () => {
