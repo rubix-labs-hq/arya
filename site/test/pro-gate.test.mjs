@@ -147,6 +147,8 @@ test('iPhone and iPad sell Arya Pro while the Mac App Store edition is still at 
   assert.ok(download.includes('Mac App Store · Version 1.1.1. Free to edit and export, with optional tips. Arya Pro starts there with version 1.2.0.'));
   assert.match(full, /- Mac App Store edition: version 1\.1\.1, on the same App Store listing\. It is free to edit and export, offers optional tips and has no Arya Pro\./);
   assert.ok(!everything.includes(universal), 'no sentence says one purchase covers the Mac App Store edition');
+  // The purchase details follow the iPhone and iPad button. The Mac App Store line closes the card.
+  assert.match(on['download/index.html'], /Download on the App Store<\/a><\/div>\n<div class="edition-more"><details class="download-details"><summary>Export formats and purchase options<\/summary>[\s\S]*?<\/details>\n<p class="edition-meta" id="mac-app-store">Mac App Store · Version 1\.1\.1\.[^<]*<\/p><\/div>\n<\/section>/);
   assert.doesNotMatch(everything, /iPhone, iPad and Mac ·|for iPhone, iPad and Mac[,.]|covers iPhone, iPad and the Mac App Store edition|In the App Store edition/);
   assert.doesNotMatch(everything, /Mac App Store[^.]*Version 1\.2\.0\b|Mac App Store edition: version 1\.2\.0/);
 

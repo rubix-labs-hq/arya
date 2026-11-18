@@ -318,3 +318,21 @@ test('with no Mac release and a live App Store release, pages say only the Mac d
   assert.ok(none.pages.home.includes('Not yet. Arya is in a private beta by invitation. The Mac app needs final interface checks'));
   assert.ok(none.pages.project.includes('<li>Mac release in preparation</li><li>iPhone and iPad coming later</li>'));
 });
+
+test('a build without a version or a size prints no missing value, and a not-ready download page offers no Mac download', async () => {
+  const visible = html => html.replace(/<script[\s\S]*?<\/script>/g, ' ');
+  const unreleased = await buildFixture(defaults);
+  assert.equal(unreleased.result.status, 0, unreleased.result.stderr);
+  for (const [name, html] of Object.entries(unreleased.pages)) {
+    assert.doesNotMatch(visible(html), /\bnull\b|\bundefined\b/, `${name} prints a missing value`);
+    assert.doesNotMatch(html, /\.dmg"|releases\/download/, `${name} links an installer`);
+  }
+  assert.ok(unreleased.pages.download.includes('<h1>Arya editions and beta access</h1><p class="lead">See which editions are available.</p>'));
+  const unsized = await buildFixture({ ...publicConfig, release: { ...publicConfig.release, size: null } });
+  assert.equal(unsized.result.status, 0, unsized.result.stderr);
+  for (const [name, html] of Object.entries(unsized.pages)) assert.doesNotMatch(visible(html), /\bnull\b|\bundefined\b/, `${name} prints a missing value`);
+  assert.ok(unsized.pages.home.includes('Arya 0.3.0, a notarized universal DMG for'));
+  assert.ok(unsized.pages.home.includes('Arya 0.3.0 for Mac is a notarized universal DMG for'));
+  assert.ok(unsized.pages.download.includes('<h1>Download Arya</h1>'));
+  assert.ok(unsized.pages.privacy.includes('Sign in with ChatGPT is available in the direct Mac app'));
+});
