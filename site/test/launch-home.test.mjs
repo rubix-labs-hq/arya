@@ -112,9 +112,9 @@ test('the exported clip never plays by itself and has a text alternative', () =>
   assert.ok(text(live.home).includes('shown here as a 720p copy without sound'));
 });
 
-test('the launch film plays only when started and sits under the hero', () => {
+test('the launch film plays only when started and sits between the assistant and the six pages', () => {
   const start = live.home.indexOf('<section class="launch-film"');
-  assert.ok(start > live.home.indexOf('<section class="hero">') && start < live.home.indexOf('<section class="pages"'));
+  assert.ok(start > live.home.indexOf('<section class="assistant"') && start < live.home.indexOf('<section class="pages"'));
   const section = live.home.slice(start, live.home.indexOf('</section>', start));
   const [video] = section.match(/<video\b[^>]*>/);
   for (const attribute of ['controls', 'playsinline', 'preload="none"', 'poster="/assets/film/launch-film-poster.webp?v=', 'width="1920"', 'height="1080"', 'aria-label="The Arya launch film, 75 seconds with narration and music.']) assert.ok(video.includes(attribute), attribute);
@@ -202,9 +202,9 @@ test('the assistant leads the page and is never described as Mac only', () => {
   assert.match(live.home, /<p class="lead">[^<]*<a href="#ai">built-in assistant<\/a>/);
   assert.doesNotMatch(home, /On Mac, ask the built-in assistant|assistant on Mac\./);
 
-  // The assistant section is the first section after the hero and the launch film.
+  // The assistant section is the first section after the hero, ahead of the launch film.
   const order = [...live.home.matchAll(/<section class="([a-z-]+)[ "]/g)].map(match => match[1]);
-  assert.deepEqual(order.slice(0, 4), ['hero', 'launch-film', 'assistant', 'pages']);
+  assert.deepEqual(order.slice(0, 4), ['hero', 'assistant', 'launch-film', 'pages']);
   assert.deepEqual([...macOnly.home.matchAll(/<section class="([a-z-]+)[ "]/g)].map(match => match[1]).slice(0, 3), ['hero', 'assistant', 'pages']);
   const section = text(live.home.slice(live.home.indexOf('<section class="assistant"'), live.home.indexOf('<section class="pages"')));
 

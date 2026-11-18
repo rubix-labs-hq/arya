@@ -270,7 +270,7 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
 </div>
 <div class="wrap">${family}</div>
 </section>
-${launchFilm}<section class="assistant" id="ai" tabindex="-1" aria-labelledby="ai-heading">
+<section class="assistant" id="ai" tabindex="-1" aria-labelledby="ai-heading">
 <div class="wrap assistant-grid">
 <div class="chapter-copy"><p class="where">${mobileURL ? assistantCopy.scopeMobile : assistantCopy.scope}</p><h2 id="ai-heading">${assistantCopy.heading}</h2><p>${assistantCopy.lead}</p>
 <ul class="points">${assistantPoints.map(([lead, text]) => `<li><strong>${lead}</strong> ${text}</li>`).join('')}</ul>
@@ -278,7 +278,7 @@ ${link(...assistantCopy.link)}</div>
 ${figure('assistant')}
 </div>
 </section>
-<section class="pages" id="suite" tabindex="-1" aria-labelledby="suite-heading">
+${launchFilm}<section class="pages" id="suite" tabindex="-1" aria-labelledby="suite-heading">
 <div class="wrap">
 <div class="section-head"><h2 id="suite-heading">Six pages. One project.</h2><p>Cut, grade, animate, mix and deliver without round trips. Every workspace edits the same project file, so a grade, a title or a short stays live and editable.</p></div>
 <div class="pages-grid">
