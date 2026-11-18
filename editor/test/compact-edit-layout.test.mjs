@@ -238,6 +238,8 @@ test('Undo and Redo follow the server history depth and say so when nothing move
   assert.equal(f.button('Redo').props.disabled, true)
   await f.button('Redo').props.onClick?.()
   assert.deepEqual(f.requests, [], 'a disabled Redo sends nothing even if pressed')
+  assert.deepEqual(f.toasts, ['Nothing to redo.'])
+  assert.equal(f.button('Redo').props.title, 'Nothing to redo')
 })
 test('Settings and recovery still respect sharing review ownership', t => {
   const f = fixture(t); f.state.assistantSharingReviewOpen = true

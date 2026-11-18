@@ -156,6 +156,11 @@ test('Command-Return sends like Return, as in the Mac Assistant', async () => {
   assert.ok(f.calls.some(call => call.route === '/api/bridge/send'))
 })
 
+test('the prompt placeholder follows the selection', () => {
+  assert.equal(input(fixture().draw()).props.placeholder, 'Ask for an edit, or ask about the project')
+  assert.equal(input(fixture({ selection: ['c1'] }).draw()).props.placeholder, 'Ask about or change this selection')
+})
+
 test('in a script or screenplay, Return adds a line and Command-Return sends', async () => {
   for (const inputKind of ['script', 'screenplay']) {
     const f = fixture({ assistantDraft: { root: '/fixture', text: 'INT. ROOM - DAY', inputKind } })
@@ -165,6 +170,7 @@ test('in a script or screenplay, Return adds a line and Command-Return sends', a
     assert.equal(plain.prevented, 0, `${inputKind}: Return keeps the newline`)
     assert.deepEqual(f.calls, [])
     assert.match(text(f.draw()), /⌘Return to send · Return for a new line/)
+    assert.equal(input(f.draw()).props.placeholder, 'Paste a script to build editable scenes', `${inputKind}: placeholder`)
     const command = event({ metaKey: true })
     input(f.draw()).props.onKeyDown(command)
     await tick()
