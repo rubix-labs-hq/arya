@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
 
@@ -22,7 +23,7 @@ registerHooks({
   },
 })
 const { applyOps, newProject } = await import('../core/project.js')
-const { drawnProject, edit, previewProject, previewing, refusePreviewEdit, set, store, viewProject } = await import('../web/ui/store.js')
+const { drawnProject, edit, previewProject, previewing, refusePreviewEdit, set, store, time, toast, viewProject } = await import('../web/ui/store.js')
 const { proposalOps } = await import('../core/proposal-ops.js')
 const { PreviewBanner } = await import('../web/ui/preview-banner.js')
 const showPreview = id => set(id == null ? { previewShown: null } : { previewShown: { id }, viewerMode: 'timeline' })
@@ -144,4 +145,26 @@ test('the banner over the viewer says it shows the preview and offers Apply, Dis
   assert.equal(button(PreviewBanner(), 'Apply').props.disabled, true, 'Apply waits for the assistant, as on the card')
   set({ claude: { state: 'idle' }, assistantReview: { proposal: null } })
   assert.equal(PreviewBanner(), null)
+})
+
+// The real functions from keys.js and color/panels.js, run against this store.
+const extract = (file, name) => fs.readFileSync(new URL(`../web/ui/${file}`, import.meta.url), 'utf8').match(new RegExp(`export function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`))[0].replace('export ', '')
+
+test('Undo, Redo and grabbing a still are refused while the preview is shown', async () => {
+  reset()
+  const sent = [], grabbed = []
+  const moveHistory = new Function('store', 'api', 'set', 'toast', `${extract('keys.js', 'moveHistory')}\nreturn moveHistory`)(store, async route => { sent.push(route); return { project: store.project, version: store.version } }, set, toast)
+  const canvas = { toDataURL: () => { grabbed.push(true); return 'data:image/jpeg;base64,' } }
+  const grabStill = new Function('store', 'canvas', 'time', 'timecode', 'set', 'toast', `${extract('color/panels.js', 'grabStill')}\nreturn grabStill`)(store, canvas, time, () => '00:00:00:00', set, toast)
+  showPreview('a')
+  assert.equal(await moveHistory('undo'), null)
+  assert.equal(await moveHistory('redo'), null)
+  assert.equal(grabStill({ id: 'c1' }), null)
+  assert.deepEqual([sent, grabbed], [[], []])
+  assert.ok(store.toasts.some(item => /Undo and Redo are off while the viewer shows the assistant preview/.test(item.text)))
+  assert.ok(store.toasts.some(item => /Go back to the project to grab a still/.test(item.text)))
+  set({ previewShown: null })
+  await moveHistory('undo')
+  assert.ok(grabStill({ id: 'c1' }))
+  assert.deepEqual([sent, grabbed.length], [['/api/undo'], 1], 'both work again once the preview is not shown')
 })

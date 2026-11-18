@@ -194,6 +194,12 @@ test('actual timeline transport: play, pause and shuttle label, icons, loop stat
       }
       assert.equal(named.get('Clear range').props.disabled, true, 'clear range is disabled without a range')
     }
+    // While the viewer shows an assistant preview, the range buttons are off; playback still works.
+    globalThis.__viewerStore = { playing: false, rate: 1, loop: false }
+    const { Transport } = await load('viewer.js', viewerStubs(), 'locked')
+    const locked = byName(expand(Transport({ p: { ...p, range: { in: 1, out: 2 } }, locked: true })))
+    for (const name of ['Mark in', 'Mark out', 'Clear range']) assert.equal(locked.get(name).props.disabled, true, name)
+    for (const name of ['Play', 'Go to start', 'Loop playback']) assert.ok(!locked.get(name).props.disabled, name)
   } finally { delete globalThis.__viewerLog; delete globalThis.__viewerStore; delete globalThis.__viewerProject; delete globalThis.__viewerStateIndex }
 })
 
