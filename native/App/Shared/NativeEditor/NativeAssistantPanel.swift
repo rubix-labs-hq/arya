@@ -320,8 +320,8 @@ struct NativeAssistantPanel: View {
             #if os(iOS)
             .scrollDismissesKeyboard(.interactively)
             #endif
-            .onAppear { proxy.scrollTo("end", anchor: .bottom) }
-            .onChange(of: assistant.state) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+            .onAppear { scrollToLatest(proxy) }
+            .onChange(of: assistant.state) { _, _ in scrollToLatest(proxy) }
             .onChange(of: assistant.partialReply) { _, _ in if assistant.isWorking { proxy.scrollTo("end", anchor: .bottom) } }
             .onChange(of: assistant.chat.count) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
             .onChange(of: model.changeReceipts.count) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
@@ -329,9 +329,19 @@ struct NativeAssistantPanel: View {
         }
     }
 
+    /// With no conversation yet, the setup card is the thing to read, so keep its heading and
+    /// primary action in view. In a short phone sheet, scrolling to the end would hide them.
+    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        if !assistant.configured && assistant.chat.isEmpty {
+            proxy.scrollTo("setup", anchor: .top)
+        } else {
+            proxy.scrollTo("end", anchor: .bottom)
+        }
+    }
+
     private var conversationContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if !assistant.configured { setupCard }
+            if !assistant.configured { setupCard.id("setup") }
             if let diagnostic = assistant.localDiagnostic {
                 VStack(alignment: .leading, spacing: 5) {
                     Label("Latest local tool failure", systemImage: "exclamationmark.triangle").font(.system(size: 11, weight: .semibold))
