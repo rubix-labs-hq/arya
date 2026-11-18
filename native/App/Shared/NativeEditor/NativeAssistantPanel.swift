@@ -900,7 +900,7 @@ struct NativeAssistantPanel: View {
                     stackedActionRow(width: width) { primaryAction.labelStyle(NativeAssistantIconActionStyle()) }
                 }
                 // The largest text sizes, and a phone at any accessibility size, show only the provider even on a row of its own.
-                modelControls(short: dynamicTypeSize >= .accessibility3 || Self.touch && horizontalSizeClass == .compact)
+                modelControls(short: dynamicTypeSize >= .accessibility3 || compactTouch)
             }.frame(maxWidth: .infinity)
         } else {
             // In one row the model shares the width, so a narrow pane or a phone shows only the
@@ -908,12 +908,21 @@ struct NativeAssistantPanel: View {
             HStack(spacing: 6) {
                 inputMenu
                 previewToggle(iconOnly: width < 360)
-                modelControls(short: width < 420 || Self.touch && horizontalSizeClass == .compact)
+                modelControls(short: width < 420 || compactTouch)
                 if Self.touch && width < 440 { primaryAction.labelStyle(NativeAssistantIconActionStyle()) } else { primaryAction }
             }
             // The row is as tall while a request runs as when idle, so Stop keeps Send's target.
             .frame(minHeight: actionHeight)
         }
+    }
+
+    /// A touch screen at compact width, such as a phone in portrait. The Mac has no size class.
+    private var compactTouch: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
     }
 
     private func stackedActionRow<Primary: View>(width: Double, @ViewBuilder primary: () -> Primary) -> some View {
