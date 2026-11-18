@@ -78,6 +78,12 @@ function resultTitle(kind, label, edits) {
   return kind === 'preview' ? 'Applied the preview' : kind === 'history' && label ? label : `Made ${plural(edits, 'edit')}`
 }
 
+/** Compositions the receipts added that still exist and are not open, as [id, name]. */
+function addedCompositions(receipts, project, open) {
+  const ids = new Set(receipts.flatMap(receipt => (receipt.scopes ?? []).filter(scope => scope.status === 'added' && scope.comp != null && scope.track == null && scope.asset == null).map(scope => scope.comp)))
+  return [...ids].filter(id => id !== (open ?? null) && Object.hasOwn(project?.comps ?? {}, id)).map(id => [id, project.comps[id].name ?? id])
+}
+
 /**
  * One card per run: what the run changed and what you can do about it. It folds in the one-step
  * undo of the latest assistant change when that change belongs to this run. With no receipt (after
@@ -93,6 +99,8 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
   const title = resultTitle(kind, change ? change.label : receipts[0]?.changeLabel, edits)
   // The assistant undid or redid edits, and Redo cannot simply reverse that: the toolbar can.
   const pointer = kind === 'history' && change && !undoable && !undone ? change.reason : ''
+  const added = undone ? [] : addedCompositions(receipts, store.project, store.openComp)
+  const openComposition = id => set({ openComp: id, compParents: { ...(store.compParents ?? {}), [id]: null }, selection: [], page: 'edit', viewerMode: 'timeline', scroll: 0 })
   const caption = receipts.length ? receiptCaption(receipts, store.project) : ''
   const notes = [...new Set(receipts.flatMap(receipt => receipt.notes ?? []))]
   // Select works on the layers of every edit in the run, one button per timeline they are on.
@@ -107,7 +115,8 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
   return html`<section class=${`assistant-result-card${undone ? ' undone' : ''}`} aria-label=${undone ? 'Undone edit result' : 'Committed edit result'}>
     <div class="receipt-heading"><b>${title}</b>${undone ? html`<small>Undone</small>` : null}</div>
     ${caption ? html`<p class="assistant-result-caption">${caption}</p>` : null}
-    ${undoable || groups.length ? html`<div class="receipt-actions">
+    ${undoable || groups.length || added.length ? html`<div class="receipt-actions">
+      ${added.map(([id, name]) => html`<button class="ghost tiny" key=${id} onClick=${() => openComposition(id)}>Open ${name}</button>`)}
       ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title="Restore the project from before this assistant change. Redo brings it back." onClick=${onUndo}>${busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
       ${groups.map(comp => {
         const selectable = receiptSelection(merged, store.project, comp)

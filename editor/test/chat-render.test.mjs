@@ -382,3 +382,17 @@ test('actual ChatPanel keeps the draft and never dispatches if sharing review fa
   assert.deepEqual(calls, ['/api/assistant/sharing'])
   assert.deepEqual(drafts, [])
 })
+
+test('a card whose change added a composition that is not open offers to open it first', () => {
+  const before = { name: 'Main', tracks: [{ id: 'V1', kind: 'video', clips: [] }], comps: {} }
+  const after = structuredClone(before)
+  after.comps.k1 = { name: 'Sample scene', width: 1080, height: 1920, fps: 30, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'color', color: '#123456', start: 0, dur: 2 }] }] }
+  const receipt = changeReceipt(before, after, { who: 'agent', version: 3 })
+  const { tree, updates } = renderReceipt(receipt, after, { id: 'p1', kind: 'preview', edits: 1, undoable: true })
+  const buttons = nodes(tree).filter(node => node.type === 'button').map(textContent)
+  assert.deepEqual(buttons, ['Open Sample scene', 'Undo this change', 'Select changed layers'])
+  nodes(tree).find(node => node.type === 'button' && textContent(node) === 'Open Sample scene').props.onClick()
+  assert.deepEqual(updates, [{ openComp: 'k1', compParents: { k1: null }, selection: [], page: 'edit', viewerMode: 'timeline', scroll: 0 }])
+  // Gone again, as after Undo, there is nothing to open.
+  assert.equal(nodes(renderReceipt(receipt, before).tree).some(node => node.type === 'button' && textContent(node).startsWith('Open ')), false)
+})
