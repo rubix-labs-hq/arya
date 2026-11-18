@@ -20,7 +20,7 @@ export function assistantActivity(run = {}, { connected = true, pending = false,
   const elapsed = start == null ? '' : elapsedLabel(end - start)
   const label = !connected && !terminal ? 'Reconnecting' : run.stopUnconfirmed ? 'Stop unconfirmed' : ({ sending: 'Sending request', queued: 'Queued', thinking: 'Thinking', running: 'Working', working: 'Using tools', cancelling: 'Stopping', done: 'Response finished', cancelled: 'Stopped', error: 'Failed' })[state] ?? 'Ready'
   const quiet = active && !preparing && Number.isFinite(run.updatedAt) && now - run.updatedAt >= 20000
-  const detail = !connected && !terminal ? 'Live status is unavailable. The request may still be running.'
+  const detail = !connected && !terminal ? active ? 'Live status is unavailable. The request may still be running.' : 'Live status is unavailable.'
     : run.stopUnconfirmed ? 'Stopping could not be confirmed. Review processing jobs before retrying.'
     : state === 'cancelling' ? 'Waiting for the agent and its processing to stop.'
     : active ? preparing ? 'Preparing your request.' : quiet ? `No update for ${elapsedLabel(now - run.updatedAt)}. Last confirmed stage: ${run.phase || 'Working'}.` : run.phase || 'Your request is in progress.'

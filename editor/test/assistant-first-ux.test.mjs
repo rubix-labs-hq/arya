@@ -372,7 +372,7 @@ test('a failing selected provider keeps the ChatGPT action on the setup card, af
     assert.deepEqual(f.calls.map(call => call.route), [route], name)
   }
   const waiting = panel(t, { assistantStatus: failing(account({ attempt: { state: 'waiting', message: '', startURL: 'https://auth.example/start' } })) }).draw()
-  assert.deepEqual(nodes(byClass(waiting, 'assistant-setup')).filter(node => node.type === 'button').map(text), ['Cancel sign-in', 'Other ways to connect'])
+  assert.deepEqual(nodes(byClass(waiting, 'assistant-setup')).filter(node => node.type === 'button').map(text), ['Cancel sign-in', 'Refresh status', 'Other ways to connect'], 'a sign-in in progress keeps Refresh for the failing provider')
 })
 
 // Fails at 9f9dc3b: a ready assistant that lost its connection no longer says why Send is off.
@@ -687,6 +687,86 @@ test('the status poll waits for its answer, so a server slower than the interval
   assert.deepEqual(later.deps, [false]); assert.equal(timers[1].ms, 4000)
 })
 
+test('the history warning and the plugin note sit above the conversation, outside its scroll area', t => {
+  const chat = Array.from({ length: 30 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: `Message ${i}`, at: i + 1 }))
+  const tree = panel(t, { chat, chatHistory: { warning: 'Chat history could not be saved.' }, caps: { assistant: { pluginSession: true } } }).draw()
+  const children = flatten(tree.props.children).filter(node => node && typeof node === 'object')
+  const at = name => children.findIndex(node => cls(node, name))
+  const notice = children.findIndex(node => node.type?.name === 'AssistantHistoryNotice')
+  assert.ok(at('chat-head') === 0 && notice > 0 && notice < at('chat-list'), 'the warning is between the header and the list')
+  assert.equal(children[notice].props.status.warning, 'Chat history could not be saved.')
+  assert.ok(at('assistant-plugin-note') > notice && at('assistant-plugin-note') < at('chat-list'), 'the plugin note follows it')
+  assert.match(text(children[at('assistant-plugin-note')]), /^Typing here starts a separate .* run\. To use this Claude session, ask in the terminal\.$/)
+  assert.equal(nodes(byClass(tree, 'chat-list')).some(node => node.type?.name === 'AssistantHistoryNotice' || cls(node, 'assistant-plugin-note')), false, 'a long conversation cannot scroll them away')
+  assert.match(assistantCSS, /\n\.chat > :is\(\.assistant-route-preview, \.assistant-plugin-note\) \{ flex: none; margin: 0; padding: 6px 12px; border-bottom: 1px solid var\(--line\); \}/)
+  assert.doesNotMatch(assistantCSS, /\.chat-list \.assistant-plugin-note/)
+})
+
+test('a setup card, a sign-in wait, the first check or the ChatGPT welcome that arrives under a long conversation is scrolled into view', t => {
+  const chat = [{ role: 'user', text: 'First', at: 1 }, { role: 'assistant', text: 'Done.', at: 2 }]
+  const unset = { provider: 'codex', mode: 'manual', configured: false, providers: [{ id: 'codex', installed: false, authenticated: false, available: false, reason: 'Install Codex.' }] }
+  const stale = { provider: 'codex', configured: false, mode: 'auto', autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } }
+  const arrive = (before, after) => {
+    const f = panel(t, { chat, assistantStatus: before }, { draft: '' })
+    const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
+    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    // The person scrolls up to read.
+    element.scrollTop = 100; byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
+    f.state.assistantStatus = after; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    return { top: element.scrollTop, last: flatten(byClass(tree, 'chat-list').props.children).filter(node => node && typeof node === 'object' && !cls(node, 'assistant-suggestions')).at(-1) }
+  }
+  for (const [name, after, shown] of [
+    ['not set up', unset, 'assistant-setup'],
+    ['needs refresh', stale, 'assistant-setup'],
+    ['waiting for sign-in', { ...unset, chatgpt: account({ attempt: { state: 'waiting', message: '', startURL: null } }) }, 'assistant-setup'],
+    ['the first check', { ...unset, loading: true, checkedAt: null }, 'assistant-checking'],
+    ['the ChatGPT welcome', { ...ready, provider: 'chatgpt', chatgpt: signedIn({ welcome: true }) }, 'chatgpt-welcome'],
+  ]) {
+    const result = arrive(ready, after)
+    assert.equal(result.top, 900, name)
+    assert.ok(cls(result.last, shown), `${name}: it is the last card in the list, next to the field`)
+  }
+  assert.equal(arrive(unset, { ...unset, chatgpt: account({ attempt: { state: 'waiting', message: '', startURL: null } }) }).top, 900, 'a sign-in that starts from the setup card')
+  assert.equal(arrive({ ...ready, provider: 'chatgpt', chatgpt: signedIn() }, { ...ready, provider: 'chatgpt', chatgpt: signedIn({ welcome: true }) }).top, 900, 'the welcome on an account that was already signed in')
+  assert.equal(arrive(ready, { ...ready, model: 'other' }).top, 100, 'a ready assistant leaves a reader where they are')
+  assert.equal(arrive(ready, { ...ready, chatgpt: signedIn() }).top, 100, 'so does an account with no welcome to show')
+})
+
+test('the list keeps its end in view when the pinned history warning takes a line from it', t => {
+  const f = panel(t, { chat: [{ role: 'user', text: 'First', at: 1 }] })
+  const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
+  let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+  element.scrollHeight = 946
+  f.state.chatHistory = { warning: 'Chat history could not be saved.' }; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+  assert.equal(element.scrollTop, 946)
+})
+
+test('the setup card names the signed-in ChatGPT account', t => {
+  const unset = { provider: 'codex', mode: 'manual', configured: false, providers: [{ id: 'codex', installed: false, authenticated: false, available: false, reason: 'Install Codex.' }] }
+  const says = status => text(nodes(byClass(panel(t, { assistantStatus: status }).draw(), 'assistant-setup')).find(node => node.type === 'p'))
+  assert.equal(says({ ...unset, chatgpt: signedIn() }), 'Signed in to ChatGPT as sam@example.com.')
+  assert.equal(says({ ...unset, chatgpt: signedIn({ planUsage: false }) }), 'Signed in to ChatGPT as sam@example.com. Plan usage is off for this sign-in.')
+  assert.equal(says({ ...unset, chatgpt: signedIn({ email: '' }) }), 'Signed in to ChatGPT as your account.')
+  assert.equal(says({ ...unset, chatgpt: account() }), 'Use your ChatGPT plan for eligible requests. You can keep editing without an account.')
+})
+
+test('a sign-in that is waiting keeps Refresh when the selected provider needs one', async t => {
+  const reason = 'The selected account session expired. Sign in again.'
+  const attempt = { state: 'waiting', message: '', startURL: 'https://auth.example/start' }
+  const failing = { provider: 'codex', mode: 'manual', configured: false, reason, chatgpt: account({ attempt }), providers: [{ id: 'codex', installed: true, authenticated: false, available: false, reason }] }
+  const stale = { provider: 'codex', configured: false, mode: 'auto', chatgpt: account({ attempt }), autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } }
+  for (const [status, label] of [[failing, 'Refresh status'], [stale, 'Refresh availability']]) {
+    const f = panel(t, { assistantStatus: status }), card = byClass(f.draw(), 'assistant-setup')
+    const buttons = nodes(card).filter(node => node.type === 'button')
+    assert.deepEqual(buttons.map(text), ['Cancel sign-in', label, 'Other ways to connect'])
+    assert.deepEqual(nodes(card).filter(node => cls(node, 'primary')).map(text), ['Open the sign-in page ↗'], 'the sign-in page stays the one primary action')
+    await buttons[1].props.onClick()
+    assert.deepEqual(f.calls.map(call => call.route), ['refresh'])
+  }
+  const off = nodes(byClass(panel(t, { assistantStatus: failing, claude: { state: 'working' } }).draw(), 'assistant-setup')).find(node => node.type === 'button' && text(node) === 'Refresh status')
+  assert.equal(off.props.disabled, true, 'off while a request runs, like Refresh on the card without a sign-in')
+})
+
 test('the entry only opens the conversation, so it does not claim an expanded state', async () => {
   let focused = 0
   const context = shell({ document: { querySelector: () => ({ focus: () => focused++ }) }, patch: { assistantStatus: ready } })
@@ -697,6 +777,25 @@ test('the entry only opens the conversation, so it does not claim an expanded st
   assert.equal(context.store.chatOpen, true, 'a second press returns to the field. Close is in the panel')
   assert.equal('aria-expanded' in entryOf(context).props, false)
   assert.equal(focused, 2)
+})
+
+test('a lost connection says a request may still be running only while one is', t => {
+  const run = patch => text(byClass(panel(t, { connected: false, ...patch }).draw(), 'assistant-run'))
+  assert.equal(run({}), '↻ Reconnecting Live status is unavailable.')
+  assert.match(run({ claude: { state: 'working', startedAt: 1000 } }), /^↻ Reconnecting .*Live status is unavailable\. The request may still be running\.$/)
+})
+
+test('a focused suggestion in the one-line strip is scrolled into view, and the strip fades where it continues', t => {
+  const clips = [{ id: 'c1', kind: 'video', src: 'a.mp4', start: 0, dur: 4 }]
+  const tree = panel(t, { selection: ['c1'], chat: [{ role: 'user', text: 'Earlier', at: 1 }], project: { width: 1920, height: 1080, assets: { 'a.mp4': { hasAudio: true } }, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} } }, { draft: '' }).draw()
+  const chips = nodes(byClass(tree, 'assistant-suggestions')).filter(node => node.type === 'button')
+  assert.ok(chips.length > 0)
+  for (const chip of chips) { let seen; chip.props.onFocus({ currentTarget: { scrollIntoView: options => { seen = options } } }); assert.deepEqual(seen, { block: 'nearest', inline: 'nearest' }) }
+  const strip = assistantCSS.match(/\n\.chat-list \.assistant-suggestions\.compact \{[^}]*\}/)[0]
+  assert.match(strip, /flex-wrap: nowrap;/); assert.match(strip, /overflow-x: auto;/); assert.match(strip, /padding: 4px 28px 4px 4px;/); assert.match(strip, /scroll-padding-inline: 4px 28px;/)
+  assert.match(strip, /[^-]mask-image: linear-gradient\(90deg, #000 calc\(100% - 28px\), transparent\);/)
+  assert.doesNotMatch(assistantCSS, /@media \(max-height: 520px\) \{[^@]*assistant-suggestions/, 'a short desktop window keeps the row')
+  assert.match(media(assistantCSS, '(max-height: 500px) and (max-width: 1000px) and (orientation: landscape)'), /\.chat-list \.assistant-suggestions\.compact \{ display: none; \}/, 'a phone on its side has about two lines of conversation, so the row steps aside there')
 })
 
 test('phone, larger-text and short-window layouts keep Send, the header controls and the conversation on screen', () => {

@@ -142,7 +142,7 @@ export function ChatPanel() {
   useEffect(() => {
     const hasUpdates = s.chat.length || s.activity.length || s.receipts.length || activity.active || activity.terminal || s.assistantReview
     if (hasUpdates && list.current && follow.current) list.current.scrollTop = list.current.scrollHeight
-  }, [s.chat, s.claude.text, activity.state, s.activity, s.receipts, s.assistantReview])
+  }, [s.chat, s.claude.text, activity.state, s.activity, s.receipts, s.assistantReview, s.chatHistory?.warning])
 
   const send = async (msg = text) => {
     if (!assistantDraftIsCurrent(draftContext, store)) return
@@ -227,6 +227,11 @@ export function ChatPanel() {
     : !chatgpt.signedIn ? ['Continue with ChatGPT', () => startChatGPTSignIn({})]
     : !chatgpt.planUsage ? ['Turn on ChatGPT plan usage', () => startChatGPTSignIn({ ...(chatgptCurrent ? { account: chatgptCurrent.id } : {}), enablePlan: true })]
     : connection.provider !== 'chatgpt' || connection.mode === 'auto' ? ['Use ChatGPT', () => chooseChatGPTAssistant(connection)] : null
+  // A setup card, a sign-in wait or the ChatGPT welcome that arrives under a long conversation is brought into view.
+  const welcome = Boolean(chatgpt?.welcome)
+  useEffect(() => {
+    if (list.current && (checking || !status.ready || welcome)) list.current.scrollTop = list.current.scrollHeight
+  }, [checking, status.ready, status.refreshRequired, providerFailure, chatgptWaiting, signInState, welcome])
   const timeline = s.openComp ? s.project?.comps?.[s.openComp] : s.project
   const selectedObjects = (timeline?.tracks ?? []).flatMap(track => (track.clips ?? []).map(clip => ({ clip, track })))
   const selection = s.selection.map(id => {
@@ -279,6 +284,7 @@ export function ChatPanel() {
   }
   const inputLocked = working || Boolean(sharingReview)
   const needsRefresh = status.refreshRequired || providerFailure
+  const refreshButton = kind => html`<button class=${kind || undefined} disabled=${refreshing || connection?.loading || working || !s.connected} onClick=${refreshAvailability}>${refreshing || connection?.loading ? 'Refreshing…' : status.refreshRequired ? 'Refresh availability' : 'Refresh status'}</button>`
   const openSettings = (other = false) => {
     if (!store.assistantSharingReviewOpen) set({ settingsOpen: true, ...(other ? { settingsOtherWays: true } : {}) })
   }
@@ -313,13 +319,13 @@ export function ChatPanel() {
         <button class="ghost tiny chat-collapse" aria-label=${collapsed ? 'Expand assistant' : 'Minimize assistant'} title=${collapsed ? 'Expand assistant' : 'Minimize to reach the timeline. Your draft is kept.'} aria-expanded=${!collapsed} onClick=${() => set({ chatCollapsed: !collapsed })}><${Icon} name=${collapsed ? 'chevron-up' : 'chevron-down'} /></button>
         <button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button>
       </div>
+      ${/* These two stay pinned under the header, so a long conversation cannot scroll them away. */ null}
+      <${AssistantHistoryNotice} status=${s.chatHistory} />
+      ${s.caps.assistant?.pluginSession ? html`<p class="assistant-plugin-note">Typing here starts a separate ${name} run. To use this Claude session, ask in the terminal.</p>` : null}
       <div class="chat-list" role="group" aria-label="Conversation" tabIndex="0" ref=${list} onMouseDown=${releasePointerFocus} onScroll=${event => {
         const el = event.currentTarget
         follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
       }}>
-        <${AssistantHistoryNotice} status=${s.chatHistory} />
-        ${s.caps.assistant?.pluginSession ? html`<p class="assistant-plugin-note">Typing here starts a separate ${name} run. To use this Claude session, ask in the terminal.</p>` : null}
-        ${chatgpt?.welcome ? html`<section class="assistant-setup chatgpt-welcome" aria-labelledby="chatgpt-welcome-heading"><b id="chatgpt-welcome-heading">You’re using your ChatGPT plan</b><p>Eligible AI requests in Arya use your ChatGPT plan or credits balance. Check and manage usage in your ChatGPT settings.</p><button class="primary" onClick=${chatgptTask(() => chatgptAccountAction('welcome'))}>Got it</button><a class="button" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></section>` : null}
         ${status.ready && !working && !conversation.length && !text.trim() ? html`<div class="chat-empty">
           <p>Ask for an edit, or ask a question about this project.</p>
         </div>` : null}
@@ -347,18 +353,20 @@ export function ChatPanel() {
           onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
         ${review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
         ${review?.change && !runActive && !(review?.applying && !review.applying.finished) ? html`<${assistantPanel.ChangeBar} change=${review.change} busy=${reviewBusy} onUndo=${() => decide('undo', '/api/assistant/change/undo', { id: review.change.id })} />` : null}
+        ${chatgpt?.welcome ? html`<section class="assistant-setup chatgpt-welcome" aria-labelledby="chatgpt-welcome-heading"><b id="chatgpt-welcome-heading">You’re using your ChatGPT plan</b><p>Eligible AI requests in Arya use your ChatGPT plan or credits balance. Check and manage usage in your ChatGPT settings.</p><button class="primary" onClick=${chatgptTask(() => chatgptAccountAction('welcome'))}>Got it</button><a class="button" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></section>` : null}
         ${checking ? html`<p class="assistant-checking" role="status"><span class="assistant-run-symbol" aria-hidden="true">◌</span>Checking your assistant…</p>` : !status.ready ? html`<section class="assistant-setup" aria-label="Assistant setup">
           <b>${chatgptWaiting ? 'Waiting for ChatGPT sign-in' : status.refreshRequired ? status.label : providerFailure ? `${name}: ${status.label}` : 'Connect your editing assistant'}</b>
           <p>${chatgptWaiting ? 'Finish signing in on the ChatGPT page.' : needsRefresh ? status.reason
-            : chatgpt?.signedIn && !chatgpt.planUsage ? 'Turn on ChatGPT plan usage for this sign-in.'
+            : chatgpt?.signedIn && !chatgpt.planUsage ? `Signed in to ChatGPT as ${chatgpt.email || 'your account'}. Plan usage is off for this sign-in.`
             : chatgpt?.signedIn && connection.provider === 'chatgpt' && connection.mode !== 'auto' ? connection.reason ?? 'Refresh ChatGPT status in Settings.'
+            : chatgpt?.signedIn ? `Signed in to ChatGPT as ${chatgpt.email || 'your account'}.`
             : chatgpt ? 'Use your ChatGPT plan for eligible requests. You can keep editing without an account.'
             : connection?.reason ?? (s.assistantStatusError || 'Choose a provider in Assistant settings. You can keep editing without an account.')}</p>
           ${showSignInNotice && !chatgptWaiting && ['failed', 'cancelled', 'expired'].includes(signInState) && chatgpt.attempt.message ? html`<p role="status">${chatgpt.attempt.message}</p>` : null}
           ${text.trim() ? html`<p>Your draft is kept.</p>` : null}
           <div class="assistant-setup-actions">
-            ${chatgptWaiting ? html`${chatgpt.attempt?.startURL ? html`<a class="button primary" href=${chatgpt.attempt.startURL} target="_blank" rel="noopener noreferrer">Open the sign-in page ↗</a>` : null}<button onClick=${chatgptTask(() => chatgptAccountAction('cancel'))}>Cancel sign-in</button>`
-            : needsRefresh ? html`<button class="primary" disabled=${refreshing || connection?.loading || working || !s.connected} onClick=${refreshAvailability}>${refreshing || connection?.loading ? 'Refreshing…' : status.refreshRequired ? 'Refresh availability' : 'Refresh status'}</button>`
+            ${chatgptWaiting ? html`${chatgpt.attempt?.startURL ? html`<a class="button primary" href=${chatgpt.attempt.startURL} target="_blank" rel="noopener noreferrer">Open the sign-in page ↗</a>` : null}<button onClick=${chatgptTask(() => chatgptAccountAction('cancel'))}>Cancel sign-in</button>${needsRefresh ? refreshButton('') : null}`
+            : needsRefresh ? refreshButton('primary')
             : chatgptAction ? html`<button class="primary" disabled=${working} onClick=${chatgptTask(chatgptAction[1])}>${chatgptAction[0]}</button>`
             : html`<button class="primary" onClick=${() => openSettings()}>Assistant settings</button>`}
             ${needsRefresh && chatgptAction ? html`<button disabled=${working} onClick=${chatgptTask(chatgptAction[1])}>${chatgptAction[0]}</button>` : null}
@@ -366,7 +374,7 @@ export function ChatPanel() {
             : needsRefresh ? html`<button class="ghost settings-link" onClick=${() => openSettings()}>Assistant settings</button>` : null}
           </div>
         </section>` : null}
-        ${showSuggestions && !review?.proposal && !(review?.applying && !review.applying.finished) ? html`<div class=${`assistant-suggestions${conversation.length ? ' compact' : ''}`} role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${item.prompt} onClick=${() => { setText(item.prompt, 'prompt'); focusComposer() }}>${item.label}</button>`)}</div>` : null}
+        ${showSuggestions && !review?.proposal && !(review?.applying && !review.applying.finished) ? html`<div class=${`assistant-suggestions${conversation.length ? ' compact' : ''}`} role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${item.prompt} onFocus=${e => e.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })} onClick=${() => { setText(item.prompt, 'prompt'); focusComposer() }}>${item.label}</button>`)}</div>` : null}
       </div>
       <div class="assistant-composer-card" role="group" aria-label="Assistant composer">
         <div class="assistant-field">
