@@ -112,7 +112,7 @@ test('a project that changed without an edit of this run is not called unchanged
   const f = await host(t, { events: [route, { type: 'tool', callID: 'c1', method: 'GET', path: '/api/outline' }], fail: kind => kind === 'tool-result' ? 'drop' : null, onDispatch: (_call, bump) => bump() })
   const final = await f.send()
   assert.deepEqual(final.committed, [])
-  assert.match(final.text, /\n\nThe project changed during this request\. Review edits in the timeline\.$/); assert.equal(/No project edits were saved/.test(final.text), false)
+  assert.match(final.text, /\n\nEdits were saved while this request ran\. Review them in the timeline\.$/); assert.equal(/No project edits were saved/.test(final.text), false)
 })
 
 test('an HTTP error from the bridge is not retried and keeps its own message first', async t => {

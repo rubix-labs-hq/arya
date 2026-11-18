@@ -75,6 +75,16 @@ export function unfinishedJobsOutcome(failures) {
   return [`${count} processing job${count === 1 ? '' : 's'} did not finish.`, ...shown, ...(more ? [`${more} more ${more === 1 ? 'is' : 'are'} not listed here.`] : []), 'Review any committed edits.'].join(' ')
 }
 
+/**
+ * The outcome of a finished request that moved the project version by `edits`, of which the run
+ * itself saved `commits`. It counts as the result card does, so the two never disagree.
+ */
+export function editedOutcome(edits, commits) {
+  const count = `${edits} edit${edits === 1 ? '' : 's'}`
+  return commits === edits ? `This request made ${count}. Review ${edits === 1 ? 'it' : 'them'} in the timeline.`
+    : `${count} ${edits === 1 ? 'was' : 'were'} saved while this request ran. Review ${edits === 1 ? 'it' : 'them'} in the timeline.`
+}
+
 const MAX_LISTED_COMMITS = 20
 /**
  * What a failed request saved, for the reply and the saved conversation. `commits` are the
@@ -82,7 +92,7 @@ const MAX_LISTED_COMMITS = 20
  * moved during the run.
  */
 export function savedSummary(commits, changed) {
-  if (!commits.length) return changed ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were saved.'
+  if (!commits.length) return changed ? 'Edits were saved while this request ran. Review them in the timeline.' : 'No project edits were saved.'
   const listed = commits.slice(0, MAX_LISTED_COMMITS).map(commit => `- ${commit.summary}`)
   if (commits.length > listed.length) listed.push(`- and ${commits.length - listed.length} more`)
   return `Saved before the failure, and still in the project:\n${listed.join('\n')}`

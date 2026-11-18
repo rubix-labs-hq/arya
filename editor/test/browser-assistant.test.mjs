@@ -123,8 +123,10 @@ test('an actual stdio CLI builds native editable layers, selection context, fram
   const root = temporary(t), fixture = path.join(here, 'fixtures', 'agent-cli.mjs'), mcp = path.join(here, '../agent/mcp.mjs')
   fs.copyFileSync(path.join(here, 'golden', 'basics-1.png'), path.join(root, 'frame.png'))
   let project = newProject('Browser subscription fixture', { width: 160, height: 90 }), version = 1
-  const past = [], replies = [], frames = [], frameRuns = [], states = []
+  const past = [], replies = [], frames = [], frameRuns = [], states = [], previewAsks = []
   const service = createBrowserAssistant(options(root, { custom: { executable: process.execPath, args: [fixture, mcp] },
+    // The second frame stands for one drawn from the request's pending preview.
+    framePreview: (runId, option) => { previewAsks.push([runId, option]); return frames.length === 1 },
     getOutline: () => ({ outline: outline(project), version }),
     dispatch: async (call, assertCurrent) => {
       assertCurrent()
@@ -146,9 +148,10 @@ test('an actual stdio CLI builds native editable layers, selection context, fram
     'Reading the project outline', 'Waiting for the agent’s next step after it read the project outline',
     'Applying 9 edits', 'Waiting for the agent’s next step after it applied 9 edits',
     'Rendering a frame at 0s', 'Waiting for the agent’s next step after it rendered a frame at 0s',
-    'Rendering a frame at 1s', 'Waiting for the agent’s next step after it rendered a frame at 1s',
+    'Rendering a frame of the preview at 1s', 'Waiting for the agent’s next step after it rendered a frame of the preview at 1s',
   ])
-  assert.ok(states.some(value => value.state === 'working' && value.phase === 'Rendering a frame at 1s'))
+  assert.ok(states.some(value => value.state === 'working' && value.phase === 'Rendering a frame of the preview at 1s'))
+  assert.deepEqual(previewAsks, [[run.runId, { strict: false }], [run.runId, { strict: false }]], 'only frames ask, for this run')
   const started=states.find(value => value.runId === run.runId), finished=service.snapshot()
   assert.ok(Number.isFinite(started.startedAt));assert.equal(finished.startedAt,started.startedAt)
   assert.ok(finished.finishedAt >= finished.startedAt);assert.equal(finished.updatedAt,finished.finishedAt)

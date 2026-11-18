@@ -15,6 +15,9 @@ test('a tool step is named from its route, a count and a time', () => {
   assert.equal(doing({ method: 'POST', path: '/api/assistant/propose', body: { steps: [{}] } }), 'Preparing a preview of 1 processing step')
   assert.equal(doing({ frame: { at: 12.44, width: 640 } }), 'Rendering a frame at 12.4s')
   assert.equal(doing({ frame: { at: 0 } }), 'Rendering a frame at 0s')
+  assert.deepEqual(stepLabel({ frame: { at: 31.5 } }, { frameOf: 'preview' }), { doing: 'Rendering a frame of the preview at 31.5s', done: 'rendered a frame of the preview at 31.5s' })
+  assert.equal(stepLabel({ frame: { at: 30.2 } }, { frameOf: 'project' }).doing, 'Rendering a frame of the saved project at 30.2s')
+  assert.equal(stepLabel({ frame: { src: 'refs/sample.png' } }, { frameOf: 'preview' }).doing, 'Opening a reference image')
   assert.equal(doing({ frame: { src: 'refs/private name.png' } }), 'Opening a reference image')
   assert.equal(doing({ method: 'GET', path: '/api/transcript?src=media%2Fclient%20interview.mp4&offset=0' }), 'Reading the transcript')
   assert.equal(doing({ method: 'GET', path: '/api/outline' }), 'Reading the project outline')
@@ -25,8 +28,13 @@ test('a tool step is named from its route, a count and a time', () => {
   assert.equal(doing({ method: 'POST', path: '/api/analyze', body: { kind: 'constructor' } }), 'Running analyze')
   assert.equal(doing({ method: 'POST', path: '/api/export', body: { name: 'client-cut' } }), 'Starting an export')
   assert.deepEqual(stepLabel({ method: 'POST', path: '/api/audio/measure-mix', body: { from: 0, to: 12 } }), { doing: 'Measuring the mix', done: 'started measuring the mix' })
-  assert.equal(doing({ method: 'POST', path: '/api/audio/loudnorm', body: { src: 'media/a.wav' } }), 'Running audio loudnorm')
-  assert.equal(doing({ method: 'POST', path: '/api/captions/from-transcript' }), 'Running captions from transcript')
+  assert.equal(doing({ method: 'POST', path: '/api/audio/loudnorm', body: { src: 'media/a.wav' } }), 'Levelling loudness')
+  assert.equal(doing({ method: 'POST', path: '/api/captions/from-transcript' }), 'Making captions from the transcript')
+  assert.equal(doing({ method: 'POST', path: '/api/shorts/build' }), 'Building the shorts')
+  assert.equal(doing({ method: 'POST', path: '/api/transcript/edit' }), 'Cutting the video from the transcript')
+  // Every write route an agent may call has its own words, not the path's.
+  for (const route of WRITES) if (route !== '/api/analyze') assert.doesNotMatch(doing({ method: 'POST', path: route }), /^Running /, route)
+  for (const route of READS) assert.doesNotMatch(doing({ method: 'GET', path: route }), /^Running /, route)
   assert.deepEqual(stepLabel({ method: 'POST', path: '/api/ops', body: { ops: [{}, {}] } }), { doing: 'Applying 2 edits', done: 'applied 2 edits' })
 })
 
@@ -48,7 +56,7 @@ test('every route an agent may call has a step name with no request text in it',
 test('the wait after a step says which step it follows, and a progress label is one bounded line', () => {
   const edits = stepLabel({ method: 'POST', path: '/api/ops', body: { ops: [{}, {}] } })
   assert.equal(waitingAfter(edits), 'Waiting for the agent’s next step after it applied 2 edits')
-  assert.equal(waitingAfter(edits, true), 'Waiting for the agent’s next step after a step that failed: applying 2 edits')
+  assert.equal(waitingAfter(edits, true), 'A step failed (applying 2 edits). Waiting for the agent’s next step')
   assert.equal(progressLabel('  Thinking\n\tabout it\u0007  '), 'Thinking about it')
   assert.equal(progressLabel('x'.repeat(200)).length, 80)
   assert.equal(progressLabel(undefined), ''); assert.equal(progressLabel({ label: 'x' }), '')
@@ -56,7 +64,7 @@ test('the wait after a step says which step it follows, and a progress label is 
 
 test('the assistant publishes the step names, keeps the route out of the phase and accepts progress events', () => {
   const source = fs.readFileSync(new URL('../agent/browser-assistant.mjs', import.meta.url), 'utf8')
-  assert.match(source, /const label = stepLabel\(event\)\n\s+publish\(\{ state: 'working', phase: label\.doing \}\)/)
+  assert.match(source, /const label = stepLabel\(event, \{ frameOf: frameOf\(event, run\) \}\)\n\s+publish\(\{ state: 'working', phase: label\.doing \}\)/)
   assert.match(source, /publish\(\{ state: 'thinking', phase: waitingAfter\(label, Boolean\(reply\.error\)\) \}\)/)
   assert.doesNotMatch(source, /Requested route:/)
   assert.match(source, /event\.type === 'progress'/)

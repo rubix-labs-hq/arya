@@ -25,6 +25,43 @@ const ROUTES = {
   'POST /api/undo': step('Undoing an edit', 'undid an edit'),
   'POST /api/redo': step('Redoing an edit', 'redid an edit'),
   'POST /api/ui/show': step('Showing a moment in the editor', 'showed a moment in the editor'),
+  'GET /api/jobs': step('Checking processing jobs', 'checked processing jobs'),
+  'GET /api/analysis/jobs': step('Checking processing jobs', 'checked processing jobs'),
+  'GET /api/video/jobs': step('Checking processing jobs', 'checked processing jobs'),
+  'POST /api/jobs/cancel': step('Stopping a processing job', 'stopped a processing job'),
+  'POST /api/analysis/jobs/cancel': step('Stopping a processing job', 'stopped a processing job'),
+  'POST /api/video/jobs/cancel': step('Stopping a processing job', 'stopped a processing job'),
+  'GET /api/luts': step('Listing LUTs', 'listed LUTs'),
+  'POST /api/luts/inspect': step('Reading a LUT', 'read a LUT'),
+  'POST /api/luts/apply': step('Applying a LUT', 'applied a LUT'),
+  'GET /api/interchange/files': step('Listing timeline files', 'listed timeline files'),
+  'POST /api/interchange/export': step('Exporting a timeline file', 'exported a timeline file'),
+  'POST /api/interchange/import': step('Importing a timeline file', 'imported a timeline file'),
+  'GET /api/figma/status': step('Checking the Figma connection', 'checked the Figma connection'),
+  'POST /api/figma/frames': step('Listing Figma frames', 'listed Figma frames'),
+  'POST /api/figma/import': step('Importing from Figma', 'imported from Figma'),
+  'POST /api/figma/import-mcp': step('Importing from Figma', 'imported from Figma'),
+  'GET /api/audio/compose/capabilities': step('Checking what music can be made', 'checked what music can be made'),
+  'POST /api/import': step('Importing media', 'imported media'),
+  'POST /api/new': step('Starting a new project', 'started a new project'),
+  'POST /api/transcript': step('Saving transcript corrections', 'saved transcript corrections'),
+  'POST /api/transcript/edit': step('Cutting the video from the transcript', 'cut the video from the transcript'),
+  'POST /api/captions/from-transcript': step('Making captions from the transcript', 'made captions from the transcript'),
+  'POST /api/shorts/propose': step('Picking moments for shorts', 'picked moments for shorts'),
+  'POST /api/shorts/build': step('Building the shorts', 'built the shorts'),
+  'POST /api/audio/clean': step('Cleaning up the sound', 'cleaned up the sound'),
+  'POST /api/audio/loudnorm': step('Levelling loudness', 'levelled loudness'),
+  'POST /api/audio/compose': step('Composing music', 'composed music'),
+  'POST /api/audio/compose/place': step('Placing music', 'placed music'),
+  'POST /api/retime': step('Rendering a speed change', 'rendered a speed change'),
+  'POST /api/stabilize/render': step('Rendering a steadied copy', 'rendered a steadied copy'),
+  'POST /api/video/denoise': step('Reducing video noise', 'reduced video noise'),
+  'POST /api/analysis/track': step('Tracking motion', 'tracked motion'),
+  'POST /api/analysis/autoreframe': step('Working out a reframe', 'worked out a reframe'),
+  'POST /api/analysis/saliency': step('Finding the subject', 'found the subject'),
+  'POST /api/analysis/person-mask': step('Masking a person', 'masked a person'),
+  'POST /api/looks/match': step('Matching a look', 'matched a look'),
+  'POST /api/multicam/sync': step('Syncing camera angles', 'synced camera angles'),
 }
 const ANALYSES = {
   scenes: step('Finding scene changes', 'looked for scene changes'),
@@ -35,14 +72,19 @@ const ANALYSES = {
   stabilization: step('Measuring camera shake', 'measured camera shake'),
 }
 
-/** {doing, done} for a tool event from the bridge: "Applying 3 edits" and "applied 3 edits". */
-export function stepLabel(event) {
+/**
+ * {doing, done} for a tool event from the bridge: "Applying 3 edits" and "applied 3 edits".
+ * `frameOf` says what a frame shows: 'preview' for the request's pending preview, 'project' for
+ * the saved project while a preview could be shown instead. A person can then tell which was drawn.
+ */
+export function stepLabel(event, { frameOf = null } = {}) {
   try {
     if (!object(event)) return GENERIC
     if (object(event.frame)) {
       if (typeof event.frame.src === 'string') return step('Opening a reference image', 'opened a reference image')
       const at = Number.isFinite(event.frame.at) && event.frame.at >= 0 ? ` at ${seconds(event.frame.at)}` : ''
-      return step(`Rendering a frame${at}`, `rendered a frame${at}`)
+      const of = frameOf === 'preview' ? ' of the preview' : frameOf === 'project' ? ' of the saved project' : ''
+      return step(`Rendering a frame${of}${at}`, `rendered a frame${of}${at}`)
     }
     if (typeof event.path !== 'string' || !['GET', 'POST'].includes(event.method)) return GENERIC
     const route = event.path.split('?')[0], body = object(event.body) ? event.body : {}
@@ -64,9 +106,9 @@ export function stepLabel(event) {
   }
 }
 
-/** The phase after a tool call, while the agent decides what to do next. No final period. */
+/** The phase after a tool call, while the agent decides what to do next. No final period. A failure comes first. */
 export const waitingAfter = (label, failed = false) => failed
-  ? `Waiting for the agent’s next step after a step that failed: ${label.doing.charAt(0).toLowerCase()}${label.doing.slice(1)}`
+  ? `A step failed (${label.doing.charAt(0).toLowerCase()}${label.doing.slice(1)}). Waiting for the agent’s next step`
   : `Waiting for the agent’s next step after it ${label.done}`
 
 /** A progress label from an adapter, made safe to show: one line, at most 80 characters. */

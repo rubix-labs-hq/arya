@@ -98,6 +98,23 @@ test('the run that made a preview gets the project it would make, and nobody els
   assert.equal(review.trial('r1', applyOps, { strict: false }), null)
 })
 
+test('previewing says, without throwing, whether a frame draws the run’s own preview', () => {
+  const { state, review } = tracker()
+  assert.equal(review.previewing('r1'), false, 'nothing proposed')
+  review.stage(review.propose({ runId: 'r1', ops: [{ op: 'add_title', track: 'V2', start: 0, dur: 2, title: { text: 'Sample' } }] }))
+  assert.equal(review.previewing('r1'), true)
+  assert.equal(review.previewing('r2'), false, 'another run’s preview is never drawn')
+  assert.equal(review.previewing(null), false)
+  state.version = 5
+  assert.equal(review.previewing('r1'), true, 'a Preview changes request is refused a frame of its stale preview, which is still a frame of the preview')
+  assert.equal(review.previewing('r1', { strict: false }), false, 'any other request draws the saved project')
+  state.version = 4
+  review.discard(review.snapshot().proposal.id)
+  assert.equal(review.previewing('r1'), false, 'after discard the saved project is drawn')
+  review.stage({ ...review.propose({ runId: 'r1', steps: [{ path: '/api/audio/clean', body: { id: 'c1' } }] }), steps: [{ path: '/api/audio/clean', body: { id: 'c1' } }] })
+  assert.equal(review.previewing('r1'), false, 'steps alone draw nothing new')
+})
+
 test('a preview of steps alone, or one that imports media, draws what its ops would make', () => {
   const { state, review } = tracker()
   review.stage({ ...review.propose({ runId: 'r1', steps: [{ path: '/api/audio/clean', body: { id: 'c1' } }] }), steps: [] })

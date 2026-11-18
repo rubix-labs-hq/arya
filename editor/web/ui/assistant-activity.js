@@ -9,6 +9,9 @@ export function elapsedLabel(milliseconds) {
 // The browser server's outcome for a finished request that ran with Preview changes on.
 export const PREVIEW_OUTCOME = 'Preview mode was on. Proposed edits are applied only when you choose Apply.'
 
+// The phase the browser server and the Mac app publish with each piece of reply text.
+export const WRITING_PHASE = 'Generating a response'
+
 // A run that has said nothing for this long shows that it is quiet, as the Mac and iPad apps do.
 const QUIET_MS = 20000
 
@@ -23,7 +26,9 @@ export function assistantActivity(run = {}, { connected = true, pending = false,
   const start = !preparing && Number.isFinite(run.startedAt) ? run.startedAt : null
   const end = terminal && Number.isFinite(run.finishedAt) ? run.finishedAt : now
   const elapsed = start == null ? '' : elapsedLabel(end - start)
-  const writing = state === 'thinking' && typeof run.text === 'string' && run.text.length > 0
+  // Writing only while reply text is what arrived last. The server names that phase; a tool step or
+  // a wait after it is Working again, so the label does not flip between the two on every step.
+  const writing = state === 'thinking' && typeof run.text === 'string' && run.text.length > 0 && (!run.phase || run.phase === WRITING_PHASE)
   const label = !connected && !terminal ? 'Reconnecting'
     : state === 'cancelling' ? 'Stopping…' : run.stopUnconfirmed ? 'Failed' : writing ? 'Writing…' : active ? 'Working'
     : ({ done: 'Done', cancelled: 'Stopped', error: 'Failed' })[state] ?? 'Ready'

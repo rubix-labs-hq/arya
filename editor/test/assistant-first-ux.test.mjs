@@ -464,7 +464,7 @@ test('the preview sentence shows only while this request has a proposal to apply
   assert.equal(note({ claude: done, assistantReview: review({ proposal: { id: 'p0', runId: 'r0' } }) }), '', 'an older proposal is not this request')
   assert.equal(note({ claude: done }), PREVIEW_OUTCOME, 'with no review state the sentence is kept')
   assert.equal(note({ claude: done, caps: { host: 'native' }, assistantReview: review() }), PREVIEW_OUTCOME, 'the Mac host reports its own flow')
-  const other = 'The project changed during this request. Review edits in the timeline.'
+  const other = 'This request made 2 edits. Review them in the timeline.'
   assert.equal(note({ claude: { ...done, outcome: other }, assistantReview: review() }), other, 'other outcomes always show')
   assert.equal(assistantActivity(done, { proposal: false }).detail, '')
   assert.equal(assistantActivity(done).detail, PREVIEW_OUTCOME)

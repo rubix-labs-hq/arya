@@ -1183,6 +1183,7 @@ const assistantService = createBrowserAssistant({
   getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus), exportFolder: 'renders' } : {}), ...(focus && transcriptionState ? { transcription: transcriptionState } : {}) }),
   // A frame shows the request's own pending preview, so the assistant can check a change the
   // project does not hold yet. Any other frame shows the saved project.
+  framePreview: (runId, options) => assistantReview.previewing(runId, options),
   renderFrame: (frame, assertCurrent, registerJob, run = {}) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null, { queueMs: ASSISTANT_FRAME_QUEUE_MS, preview: assistantReview.trial(run.runId, applyOps, { strict: run.review === true }) }) }),
   dispatch: (call, assertCurrent, acceptIdentity, registerJob, run = {}) => {
     assertCurrent()
