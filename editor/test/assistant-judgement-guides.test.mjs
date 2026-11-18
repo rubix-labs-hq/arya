@@ -11,6 +11,8 @@ const read = path => fs.readFileSync(new URL(path, import.meta.url), 'utf8')
 
 test('the instructions name the one-step Undo this change button before toolbar step counts', () => {
   assert.match(INSTRUCTIONS, /When this request edits the project, the editor shows one Undo this change button under your reply that reverts every edit of the request at once\. To tell the user how to undo, name that button first and give toolbar Undo step counts only as a second option\./)
+  // The browser's Undo this change restores a history-only request as a new edit (B01), so the agent sends the user to the toolbar for those.
+  assert.match(INSTRUCTIONS, /If the request only moved through history with \/api\/undo or \/api\/redo, tell the user to reverse it with toolbar Redo or Undo instead\./)
   // The button the sentence names, and the route behind it that reverts the request whole.
   assert.match(read('../web/ui/chat.js'), /Undo this change/)
   assert.match(read('../routes/assistant.mjs'), /'POST \/api\/assistant\/change\/undo'/)
