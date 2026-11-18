@@ -10,6 +10,8 @@ import { guardedOutput } from '../core/output-path.js'
 import { PREVIEW_STEP_ROUTES } from '../core/assistant-steps.js'
 import { validateRoutingPreferences, selectRoute } from '../core/assistant-routing.mjs'
 import { createAssistantCatalog } from './assistant-catalog.mjs'
+import { readCodexCatalog } from './catalog-discovery.mjs'
+import { createProbeTiming } from './probe-timing.mjs'
 import { fileURLToPath } from 'node:url'
 import { SHARING_VERSION, normalizeSharingEnvelope, sharingScopeForRoute, sameSharingScope, canonicalCompanion, sharingDisclosure } from '../core/assistant-sharing.mjs'
 import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, unfinishedJobsOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
@@ -116,7 +118,9 @@ export function createBrowserAssistant(options) {
   const platform = options.platform ?? process.platform
   const statusProvider = options.providerStatus ?? providerStatus
   const resolveExecutable = options.executable ?? executable
-  const catalogHost = createAssistantCatalog({ custom: options.custom, chatgpt: options.chatgpt, providerStatus: statusProvider, executable: resolveExecutable, ...(options.catalogOptions ?? {}) })
+  // Each route check and each slow check in the agent process writes one line with its duration.
+  const probeTiming = createProbeTiming({ log: message => options.diagnostic?.(message) })
+  const catalogHost = probeTiming.catalog(createAssistantCatalog({ custom: options.custom, chatgpt: options.chatgpt, executable: resolveExecutable, ...(options.catalogOptions ?? {}), providerStatus: probeTiming.probe('editor', 'accounts', options.catalogOptions?.providerStatus ?? statusProvider), readCodexCatalog: probeTiming.probe('editor', 'models', options.catalogOptions?.readCodexCatalog ?? readCodexCatalog) }))
   const launchLogin = options.launchLogin ?? ((command, args, env) => exec(command, args, { env, timeout: 10000, maxBuffer: 64 * 1024 }))
   try {
     const file = guardedOutput(root, settingsFile)
@@ -326,7 +330,7 @@ export function createBrowserAssistant(options) {
   })
   const companion = async () => {
     assertOpen()
-    if (!bridgePromise) bridgePromise = (options.startBridge ?? startBridge)({ custom: options.custom, chatgpt: options.chatgpt, ...(options.bridgeOptions ?? {}) }).then(value => { bridge = value; return value })
+    if (!bridgePromise) bridgePromise = (options.startBridge ?? startBridge)({ custom: options.custom, chatgpt: options.chatgpt, ...(options.bridgeOptions ?? {}), catalogOptions: { ...(options.bridgeOptions?.catalogOptions ?? {}), providerStatus: probeTiming.probe('agent', 'accounts', options.bridgeOptions?.catalogOptions?.providerStatus ?? providerStatus), readCodexCatalog: probeTiming.probe('agent', 'models', options.bridgeOptions?.catalogOptions?.readCodexCatalog ?? readCodexCatalog) } }).then(value => { bridge = value; return value })
     const value = await bridgePromise
     if (closed) { await value.close(); throw failure('The browser assistant has closed.', 410) }
     return value
