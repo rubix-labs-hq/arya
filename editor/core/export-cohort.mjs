@@ -50,8 +50,21 @@ export function exportSourceReferences(project) {
   return [...paths]
 }
 
+// A proxy is named in the project when its media is imported and written a little later. Until
+// then the path is absent, and the person is told which file is not ready, not an ENOENT.
+function admitted(root, project, value) {
+  try { return regular(root, value) }
+  catch (error) {
+    const owner = error?.code === 'ENOENT' ? Object.entries(project.assets ?? {}).find(([, asset]) => asset?.proxy === value) : null
+    if (!owner) throw error
+    const [src, asset] = owner
+    const name = typeof asset.name === 'string' && asset.name.trim() ? asset.name.trim() : path.basename(src)
+    throw Object.assign(new Error(`Arya is still preparing a preview copy of ${name}. Wait for it to finish, then export again.`), { code: 'ARYA_PROXY_PENDING', src })
+  }
+}
+
 export function captureExportSources(root, project) {
-  const records = exportSourceReferences(project).map(value => { const admitted = regular(root, value); return { value, ...admitted, directories: directories(root, admitted.file) } })
+  const records = exportSourceReferences(project).map(value => { const source = admitted(root, project, value); return { value, ...source, directories: directories(root, source.file) } })
   if (records.reduce((sum, record) => sum + record.bytes, 0) > MAX_BYTES) throw new Error('Export source copies exceed the 64 GiB limit')
   return { project: structuredClone(project), records, rootIdentity: directoryStamp(fs.lstatSync(root, { bigint: true })) }
 }
