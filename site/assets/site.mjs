@@ -31,6 +31,13 @@ menu?.querySelectorAll('a').forEach(anchor => anchor.addEventListener('click', e
   closeNavigation();
 }));
 if (menu && menuButton) document.documentElement.classList.add('has-navigation');
+const articleIndex = document.querySelector('.article-index');
+if (articleIndex) {
+  const narrow = window.matchMedia('(max-width: 960px)');
+  const setIndexLayout = () => { articleIndex.open = !narrow.matches; };
+  setIndexLayout();
+  narrow.addEventListener('change', setIndexLayout);
+}
 const stage = document.querySelector('.stage');
 const layerDescription = document.querySelector('#layer-description');
 const artboard = document.querySelector('.artboard');

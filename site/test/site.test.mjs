@@ -134,8 +134,8 @@ test('layout rules keep the closing copy, the hero buttons, the page names and e
   const css=await readFile(join(root,'assets/site.css'),'utf8'),download=await readFile(join(root,'download/index.html'),'utf8');
   // Closing copy and buttons stack until there is room for both.
   assert.match(css,/@media\(max-width:1279px\)\{\s*\.closing\{grid-template-columns:minmax\(0,1fr\)\}\s*\.closing-actions\{justify-content:flex-start\}/);
-  // The hero side column always fits the two download buttons on one row.
-  assert.ok(css.includes('.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(480px,40%);'));
+  // The desktop introduction fits both download buttons beside the capture.
+  assert.ok(css.includes('.hero-grid{display:grid;grid-template-columns:minmax(480px,2fr) minmax(0,3fr);'));
   assert.match(css,/@media\(max-width:359px\)\{\s*\.page-rail a\{font-size:13px\}/);
   // Edition cards share four rows and a block for the rest, so a disclosure moves only its own card.
   assert.ok(css.includes('.edition-grid{grid-template-rows:repeat(5,auto)}.edition{grid-row:span 5;grid-template-rows:subgrid}'));

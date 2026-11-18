@@ -149,7 +149,7 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
     return `<figure class="chapter-figure figure-${id}"><a href="${item.src}" class="figure-link"><img src="${item.src}" alt="${item.alt}" width="${item.width}" height="${item.height}" loading="lazy" decoding="async"></a><figcaption>${label ? `<span class="plate-label">${label}</span> ` : ''}${item.caption}</figcaption></figure>`;
   };
   // A native capture, labelled with its device. `small` swaps in a detail of the same screen on phones.
-  const picture = (item, { small = null, eager = false, priority = false } = {}) => `<picture>${small ? `<source media="(max-width:760px)" srcset="${small.src}" width="${small.width}" height="${small.height}">` : ''}<img src="${item.src}" alt="${item.alt}" width="${item.width}" height="${item.height}"${eager ? '' : ' loading="lazy"'}${priority ? ' fetchpriority="high"' : ''} decoding="async"></picture>`;
+  const picture = (item, { small = null, alt = item.alt, eager = false, priority = false } = {}) => `<picture>${small ? `<source media="(max-width:760px)" srcset="${small.src}" width="${small.width}" height="${small.height}">` : ''}<img src="${item.src}" alt="${alt}" width="${item.width}" height="${item.height}"${eager ? '' : ' loading="lazy"'}${priority ? ' fetchpriority="high"' : ''} decoding="async"></picture>`;
   const plate = (id, note = '') => {
     const item = shot(id);
     return `<figure class="plate plate-${id}"><div class="plate-frame">${picture(item)}</div><figcaption><span class="plate-label">${item.label}</span> ${item.caption}${pictured(item)}${note ? ` ${note}` : ''}</figcaption></figure>`;
@@ -157,13 +157,13 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
   // A clip the native app exported. It plays only when the visitor starts it.
   const clipFigure = id => {
     const clip = native.clips[id];
-    return `<figure class="chapter-figure figure-clip"><video controls playsinline preload="none" poster="${clip.poster}" width="${clip.width}" height="${clip.height}" aria-label="${clip.description}"><source src="${clip.src}" type="video/mp4"><a href="${clip.src}">Open the exported clip</a></video><figcaption><span class="plate-label">${clip.label}</span> ${clip.caption} ${native.projects?.[clip.project] || ''}</figcaption></figure>`;
+    return `<figure class="chapter-figure figure-clip"><video controls playsinline preload="none" loading="lazy" poster="${clip.poster}" width="${clip.width}" height="${clip.height}" aria-label="${clip.description}"><source src="${clip.src}" type="video/mp4"><a href="${clip.src}">Open the exported clip</a></video><figcaption><span class="plate-label">${clip.label}</span> ${clip.caption} ${native.projects?.[clip.project] || ''}</figcaption></figure>`;
   };
   const launchFilm = film && releaseReady && mobileURL && publicSource
     ? `<section class="launch-film" id="film" aria-labelledby="launch-film-heading">
 <div class="wrap">
 <div class="section-head"><h2 id="launch-film-heading">${launchFilmCopy.heading}</h2><p>${launchFilmCopy.lead}</p></div>
-<figure class="launch-film-figure"><video controls playsinline preload="none" poster="${film.poster}" width="${launchFilmCopy.width}" height="${launchFilmCopy.height}" aria-label="${launchFilmCopy.description}"><source src="${film.src}" type="video/mp4"><a href="${film.src}">Download the launch film</a></video></figure>
+<figure class="launch-film-figure"><video controls playsinline preload="none" loading="lazy" poster="${film.poster}" width="${launchFilmCopy.width}" height="${launchFilmCopy.height}" aria-label="${launchFilmCopy.description}"><source src="${film.src}" type="video/mp4"><a href="${film.src}">Download the launch film</a></video></figure>
 </div>
 </section>
 `
@@ -187,8 +187,8 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
   const family = `<figure class="family${mobileURL ? '' : ' family-solo'}">
 <div class="family-stage">
 ${mobileURL ? `${layer('iphone-edit', 'iphone', { eager: true })}
-${layer('ipad-color', 'ipad', { small: shot('ipad-color-inspector'), eager: true })}
-` : ''}${layer('mac-color', 'mac', { small: shot('mac-color-inspector'), eager: true, priority: true })}
+${layer('ipad-color', 'ipad', { small: shot('ipad-color-inspector'), alt: 'The Color inspector on iPad with the grade for Coastal arrival open.', eager: true })}
+` : ''}${layer('mac-color', 'mac', { small: shot('mac-color-inspector'), alt: 'The Color inspector on Mac with a waveform and four color wheels for Coastal arrival.', eager: true, priority: true })}
 </div>
 <figcaption class="credit">${captureNote}</figcaption>
 </figure>`;
@@ -279,7 +279,7 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
 
   return `<section class="hero">
 <div class="wrap hero-grid">
-<h1>One AI-native suite for editing, color, motion and shorts. <em>Your edit. Every layer.</em></h1>
+<div class="hero-intro"><h1>One AI-native suite for editing, color, motion and shorts. <em>Your edit. Every layer.</em></h1>
 <div class="hero-side">
 <p class="lead">Work by hand on a timeline, or tell the <a href="#ai">built-in assistant</a> what should change. Every change is an ordinary edit you can adjust and undo.</p>
 <div class="actions hero-actions">${heroActions}</div>
@@ -287,15 +287,16 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
 <div class="actions hero-links">${browserEditor ? link(browserEditor, 'Open browser editor') : ''}${link('/download/', releaseReady ? 'All downloads' : 'Release status')}</div>
 </div>
 </div>
-<div class="wrap">${family}</div>
+${family}
+</div>
 </section>
 <section class="assistant" id="ai" tabindex="-1" aria-labelledby="ai-heading">
 <div class="wrap assistant-grid">
-<div class="chapter-copy"><p class="where">${mobileURL ? assistantCopy.scopeMobile : assistantCopy.scope}</p><h2 id="ai-heading">${assistantCopy.heading}</h2><p>${assistantCopy.lead}</p>
+<div class="chapter-copy assistant-intro"><p class="where">${mobileURL ? assistantCopy.scopeMobile : assistantCopy.scope}</p><h2 id="ai-heading">${assistantCopy.heading}</h2><p>${assistantCopy.lead}</p>
 ${askNote}
-<ul class="points">${assistantPoints.map(([lead, text]) => `<li><strong>${lead}</strong> ${text}</li>`).join('')}</ul>
 ${link(...assistantCopy.link)}</div>
 ${assistantFigure}
+<ul class="points">${assistantPoints.map(([lead, text]) => `<li><strong>${lead}</strong> ${text}</li>`).join('')}</ul>
 </div>
 </section>
 ${launchFilm}<section class="pages" id="suite" tabindex="-1" aria-labelledby="suite-heading">
