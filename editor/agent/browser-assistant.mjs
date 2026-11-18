@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { SHARING_VERSION, normalizeSharingEnvelope, sharingScopeForRoute, sameSharingScope, sameSharingRecipients, loopbackCompanion, canonicalCompanion, sharingDisclosure } from '../core/assistant-sharing.mjs'
 import { agentProjectView, HISTORY_NOTE, runHistory } from './agent-views.mjs'
 import { progressLabel, stepLabel, waitingAfter } from './step-labels.mjs'
-import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, savedSummary, unfinishedJobsOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
+import { createToolOutcomes, editedOutcome, recordToolOutcome, recordCompletedJobOutcome, savedSummary, unfinishedJobsOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
 
 const exec = promisify(execFile)
 const names = { chatgpt: 'ChatGPT', 'claude-code': 'Claude Code', codex: 'Codex', antigravity: 'Google Antigravity', 'gemini-cli': 'Gemini CLI · retired', custom: 'Custom agent' }
@@ -564,6 +564,12 @@ export function createBrowserAssistant(options) {
     })()
     return run.remoteCancellation
   }
+  // A frame draws the request's own pending preview when it has one (see renderFrame in server.mjs),
+  // so its step label says whether the preview or the saved project was drawn.
+  const frameOf = (event, run) => {
+    if (!event?.frame || typeof event.frame.src === 'string' || !options.framePreview) return null
+    try { return options.framePreview(run.id, { strict: run.review === true }) ? 'preview' : run.review ? 'project' : null } catch { return null }
+  }
   const image = async (frame, run) => {
     assertRun(run)
     const result = frame.src ? { path: confinedFile(root, frame.src) } : await options.renderFrame(frame, () => assertRun(run), job => registerJob(run, job), { runId: run.id, review: run.review === true })
@@ -636,7 +642,7 @@ export function createBrowserAssistant(options) {
             // The phase names the step, and the wait after it names the step it follows, so a
             // long silence says what the editor last did instead of a generic line.
             run.stepped = true
-            const label = stepLabel(event)
+            const label = stepLabel(event, { frameOf: frameOf(event, run) })
             publish({ state: 'working', phase: label.doing })
             let reply
             try { reply = await tool(event, run) }
@@ -667,7 +673,7 @@ export function createBrowserAssistant(options) {
             for (const job of run.jobs.values()) recordCompletedJobOutcome(run.outcomes, options.jobOutcome?.(job))
             const failedJobs = [...run.jobs.values()].filter(job => ['failed', 'cancelled'].includes(options.jobState?.(job)))
             const currentVersion = options.getOutline().version
-            const outcome = unresolvedToolOutcome(run.outcomes) ?? (failedJobs.length ? unfinishedJobsOutcome(failedJobs.map(job => ({ ...options.jobFailure?.(job), state: options.jobState?.(job) }))) : run.review ? 'Preview mode was on. Proposed edits are applied only when you choose Apply.' : currentVersion !== run.initialVersion ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were applied during this request.')
+            const outcome = unresolvedToolOutcome(run.outcomes) ?? (failedJobs.length ? unfinishedJobsOutcome(failedJobs.map(job => ({ ...options.jobFailure?.(job), state: options.jobState?.(job) }))) : run.review ? 'Preview mode was on. Proposed edits are applied only when you choose Apply.' : currentVersion !== run.initialVersion ? editedOutcome(currentVersion - run.initialVersion, run.commits.length) : 'No project edits were applied during this request.')
             // A failed reply also says what the run saved, because only the text is kept in the saved conversation.
             const failed = event.type === 'error'
             const said = redact(final, [owner.token]).slice(0, 512 * 1024)

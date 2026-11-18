@@ -170,5 +170,5 @@ test('actual same-run music retry clears its own failed outcome without regenera
   assert.ok(fs.existsSync(path.join(root, readyPath)))
   assert.deepEqual(calls, ['/api/audio/compose/capabilities', '/api/project', '/api/audio/compose', '/api/audio/compose/place', '/api/outline'])
   assert.doesNotMatch(service.snapshot().outcome, /not applied|Retry placement/)
-  assert.match(service.snapshot().outcome, /project changed.*Review edits/i)
+  assert.match(service.snapshot().outcome, /edits were saved while this request ran\. Review them in the timeline/i)
 })

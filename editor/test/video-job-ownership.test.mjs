@@ -280,7 +280,7 @@ async function terminalFixture(kind) {
   const cancelJobs = run => actualCancel(run, callbacks)
   const bindings = { assertRun: context.assertRun, request: async () => ({ events: [{ seq: 1, type: 'done', text: 'Agent claims completion.' }] }),
     tool: denied, state, publish: next => { Object.assign(state, next); states.push({ ...state }) }, options: { ...callbacks, getOutline: () => ({ version: fixture.facts().currentVersion }), onReply: (...reply) => replies.push(reply) },
-    recordCompletedJobOutcome: outcomes.recordCompletedJobOutcome, unresolvedToolOutcome: outcomes.unresolvedToolOutcome, unfinishedJobsOutcome: outcomes.unfinishedJobsOutcome,
+    recordCompletedJobOutcome: outcomes.recordCompletedJobOutcome, unresolvedToolOutcome: outcomes.unresolvedToolOutcome, editedOutcome: outcomes.editedOutcome, unfinishedJobsOutcome: outcomes.unfinishedJobsOutcome,
     redact: value => value, failure, sleep: denied, cancelJobs, cancelRemote: async () => true, closed: false, active: context.run,
     savedSummary: outcomes.savedSummary, projectVersion: () => fixture.facts().currentVersion, watchLoopDelay: () => {}, loopDelayReport: () => 'event-loop delay not measured', executedRouting: value => value.routing }
   const drive = evaluate(driveSource, bindings, 'return drive')
@@ -323,7 +323,7 @@ test('actual terminal driver preserves video placement and worker failure feedba
   assert.match(failed.states.at(-1).outcome, /1 processing job did not finish/)
   const done = await terminalFixture('done')
   assert.doesNotMatch(done.states.at(-1).outcome, /not applied|did not finish/)
-  assert.match(done.states.at(-1).outcome, /project changed during this request/i)
+  assert.match(done.states.at(-1).outcome, /^2 edits were saved while this request ran\. Review them in the timeline\.$/)
 })
 
 test('video state lookup remains a string for every lifecycle state and keeps receipt facts separate', () => {

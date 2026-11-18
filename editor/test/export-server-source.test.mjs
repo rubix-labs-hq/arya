@@ -6,7 +6,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { createProcessingAdmission } from '../core/processing-admission.mjs'
 import { frameJobDeadline, queuedJobWait, reserveProcessingWorker } from '../core/processing-worker.mjs'
-import { validateExportSpec } from '../core/processing-export.js'
+import { validateExportSpec, exportFileName } from '../core/processing-export.js'
 import { captureExportSources, prepareExportCohort, createExportDestination } from '../core/export-cohort.mjs'
 import { guardedOutput } from '../core/output-path.js'
 import interchangeRoutes from '../routes/interchange.mjs'
@@ -26,7 +26,7 @@ function fixture(t, overrides = {}) {
   fs.mkdirSync(path.join(ROOT, 'media')); fs.writeFileSync(path.join(ROOT, 'media/source.mp4'), 'accepted source bytes')
   const project = { name: 'Source fixture', width: 320, height: 180, fps: 30, assets: { 'media/source.mp4': {} }, tracks: [{ clips: [{ kind: 'video', src: 'media/source.mp4', start: 0, dur: 1 }] }] }
   const events = [], encoders = [], admission = createProcessingAdmission()
-  const values = { ROOT, DOT, fs, path, createProcessingAdmission, reserveProcessingWorker, validateExportSpec, captureExportSources, prepareExportCohort, createExportDestination, guardedOutput, initialProject: project, processing: admission,
+  const values = { ROOT, DOT, fs, path, createProcessingAdmission, reserveProcessingWorker, validateExportSpec, exportFileName, captureExportSources, prepareExportCohort, createExportDestination, guardedOutput, initialProject: project, processing: admission,
     armProcessingWorkerCancellation: () => () => {}, ensureWorker: async () => {}, touchWorker: () => {}, assistantCalls: { getStore: () => null },
     queuedJobWait, frameJobDeadline, parseLoudness, workerConnected: () => true, exportCopyDigests: new Map(), log: () => {}, ...overrides,
     duration: overrides.duration ?? (() => 1), compView: (p, name) => p.comps?.[name], pushActivity: () => {}, deliveries: new DeliveryHistory(ROOT),

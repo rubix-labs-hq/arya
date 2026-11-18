@@ -34,6 +34,10 @@ test('a run that is writing its reply says Writing', () => {
   assert.equal(assistantActivity({state:'thinking',text:'Trimming the'}).label,'Writing…')
   assert.equal(assistantActivity({state:'thinking',text:''}).label,'Working')
   assert.equal(assistantActivity({state:'working',text:'Partial'}).label,'Working')
+  // Text, then a tool step, then the wait after it: the label stays Working until more text arrives.
+  assert.equal(assistantActivity({state:'thinking',text:'Partial',phase:'Generating a response'}).label,'Writing…')
+  assert.equal(assistantActivity({state:'thinking',text:'Partial',phase:'Waiting for the agent’s next step after it read the project outline'}).label,'Working')
+  assert.equal(assistantActivity({state:'thinking',text:'Partial',phase:'Thinking'}).label,'Working')
 })
 test('the status word follows the order the Mac app uses', () => {
   assert.equal(assistantStatusWord({hosted:true}),'Unavailable in beta')

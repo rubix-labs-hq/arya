@@ -21,10 +21,8 @@ const assistantDrafts = new Map()
 let signInNotice = null
 
 function md(text) {
-  // Minimal formatting: code spans, bold, line breaks.
-  const esc = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-
-  return esc.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>')
+  // Escaped first, then code, bold, https links, tables and lists. Local paths show as file names.
+  return assistantPanel.messageHTML(text, { root: store.root })
 }
 
 const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
@@ -66,8 +64,8 @@ function ReceiptDetails({ receipt }) {
     ? scope.changes.every(assetChange) ? 'Media metadata' : 'Media and project settings' : scope.track == null ? 'Project or composition settings' : 'Track settings'
   return html`<div class="receipt-edit" key=${receipt.version}>
     <p class="receipt-meta">Edit ${receipt.version}${receipt.undone ? ' · undone' : ''}${receipt.projectChanges.length ? ` · ${receipt.projectChanges.join(', ')}` : ''}</p>
-    ${(receipt.scopes ?? []).map(scope => html`<div class="receipt-layer"><b>${scope.name}</b><span class="receipt-meta">${scopeLabel(scope)} · ${scope.status}</span>${scope.asset != null ? html`<p class="receipt-meta">${scope.asset}</p>` : null}<dl>${scope.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
-    ${receipt.clips.map(clip => html`<div class="receipt-layer"><b>${clip.name}</b><span class="receipt-meta">${clip.compositionName} · ${clip.id} · ${clip.status}</span><dl>${clip.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
+    ${(receipt.scopes ?? []).map(scope => html`<div class="receipt-layer"><b>${scope.name}</b><span class="receipt-meta">${scopeLabel(scope)} · ${scope.status}</span>${scope.asset != null ? html`<p class="receipt-meta">${scope.asset}</p>` : null}${assistantPanel.ChangeList({ changes: scope.changes, fps: assistantPanel.fpsOf(store.project, scope.comp) })}</div>`)}
+    ${receipt.clips.map(clip => html`<div class="receipt-layer"><b>${clip.name}</b><span class="receipt-meta">${clip.compositionName} · ${clip.id} · ${clip.status}</span>${assistantPanel.ChangeList({ changes: clip.changes, fps: assistantPanel.fpsOf(store.project, clip.comp) })}</div>`)}
     ${receipt.truncated ? html`<p class="receipt-meta">Some changes or values are shortened. Showing ${receipt.clips.length} of ${receipt.total} changed layers${receipt.totalScopes == null ? '' : ` and ${(receipt.scopes ?? []).length} of ${receipt.totalScopes} ${receipt.totalAssets ? 'Media and settings' : 'settings'} groups`}.</p>` : null}
     <details class="receipt-json"><summary>Read-only JSON diff</summary><pre>${JSON.stringify({ clips: receipt.clips, scopes: receipt.scopes, projectChanges: receipt.projectChanges, totalLayers: receipt.total, totalScopes: receipt.totalScopes, totalAssets: receipt.totalAssets, truncated: receipt.truncated }, null, 2)}</pre></details>
   </div>`
@@ -270,11 +268,12 @@ export function ChatPanel() {
       const options = store.caps?.host !== 'native' && store.assistantPreview !== false ? { review: true } : {}
       const sent = await api('/api/bridge/send', { ...request, sharing: permit.sharing, ...options })
       lastSent.current = { request, options, runId: sent?.runId ?? null }
+      // A sent script or screenplay leaves an empty Prompt, so the next message is not read as a script.
       if (captured.draft && assistantDrafts.get(captured.root) === captured.draft) {
-        assistantDrafts.set(captured.root, { ...captured.draft, text: '' })
+        assistantDrafts.set(captured.root, { ...captured.draft, text: '', inputKind: 'prompt' })
       }
       if (assistantDraftIsCurrent(captured, store)) {
-        setText('')
+        setText('', 'prompt')
         set({ refs: store.refs.filter(ref => !consumedRefs.has(ref) || consumedRefs.get(ref) !== JSON.stringify(ref)) })
       }
     } catch (error) {
@@ -384,6 +383,8 @@ export function ChatPanel() {
   const scopeName = openTimeline ? openTimeline.name ? `${openTimeline.name} (${s.openComp})` : s.openComp : 'Main timeline'
   // Preview changes and one-step undo need the browser server; the native host keeps its own flow.
   const preview = !native && s.assistantPreview !== false
+  // The Preview setting is kept between requests, so the placeholder and Send say which mode the next request uses.
+  const mode = native ? '' : preview ? 'Preview first' : 'Applies directly'
   const review = native ? null : s.assistantReview
   const [reviewBusy, setReviewBusy] = useState('')
   // Whether a change is undone comes from the server, which hears every Undo and Redo.
@@ -563,13 +564,13 @@ export function ChatPanel() {
                 <span class="chip small" title=${scopeName}>${openTimeline ? openTimeline.name ?? s.openComp : 'Main timeline'}</span>
                 <span class="chip small" title=${view.under.join(', ') || undefined}>${!view.time || view.time === 'unavailable' ? 'Playhead unavailable' : `Playhead ${view.time}`}</span>
               </div>
-              ${native ? null : html`<label class="assistant-preview-toggle" title="Preview changes"><input type="checkbox" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview</span></label>`}
+              ${native ? null : html`<label class="assistant-preview-toggle" title=${preview ? 'Preview changes: edits wait for Apply' : 'Preview changes is off: edits apply directly'}><input type="checkbox" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview</span></label>`}
               ${selection.length ? html`<div class="assistant-selection-chips" role="group" aria-label="Current selection included when sending">${selection.map(item => html`<span class="chip small" key=${item.id}><b>${item.label}</b>${item.track || item.id !== item.label ? html`<small>${item.id}${item.track ? ` · ${item.track}` : ''}</small>` : null}</span>`)}</div>` : null}
               ${s.refs.length ? html`<div class="refs" role="group" aria-label="Attached references">${s.refs.map(r => html`<span class="chip"><${Icon} name="attach" size=${14} /> ${r.label}<button aria-label=${`Remove reference ${r.label}`} onClick=${() => set({ refs: s.refs.filter(x => x !== r) })}><${Icon} name="close" size=${14} /></button></span>`)}</div>` : null}
             </div>
           </div>
           <div class="composer">
-            <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${draft.inputKind !== 'prompt' ? 'Paste a script to build editable scenes' : s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'} value=${text}
+            <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${`${draft.inputKind !== 'prompt' ? 'Paste a script to build editable scenes' : s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'}${mode ? ` · ${mode}` : ''}`} value=${text}
               onInput=${e => setText(e.target.value)}
               onCompositionStart=${() => { composing.current = true }} onCompositionEnd=${() => { composing.current = false }}
               onKeyDown=${e => {
@@ -608,7 +609,7 @@ export function ChatPanel() {
             <div class="assistant-primary-action"><button
               class=${working ? 'assistant-stop' : 'send'}
               aria-label=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : 'Send message'}
-              title=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : draft.inputKind === 'prompt' ? 'Send (Return)' : 'Send (⌘Return)'}
+              title=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : `${draft.inputKind === 'prompt' ? 'Send (Return)' : 'Send (⌘Return)'}${mode ? `. ${preview ? 'Preview first: edits wait for Apply' : 'Applies edits directly'}` : ''}`}
               disabled=${working ? !pending && !activity.canStop : Boolean(sharingReview) || !canSend || text.length > inputLimit || !text.trim() && !s.refs.length}
               onClick=${working ? stop : () => { closeComposerMenus(); return send() }}><${Icon} name=${working ? 'stop' : 'send'} size=${18} />${working ? html`<span>${activity.state === 'cancelling' ? 'Stopping…' : 'Stop'}</span>` : null}</button></div>
           </div>

@@ -289,7 +289,7 @@ test('a committed edit is one result card: title, caption, actions and a collaps
   const before = { name: 'Cut', width: 1920, height: 1080, fps: 30, assets: {}, comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', title: { text: 'Old' }, start: 0, dur: 2 }] }] }
   const after = structuredClone(before); after.tracks[0].clips[0].title.text = 'New'
   const updates = [], seeks = []
-  const ResultCard = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', `${cardSource}\nreturn ResultCard`)(htm.bind(h), () => ({ comp: null, ids: ['c1'], start: 0 }), { project: after }, value => updates.push(value), () => {}, { seek: value => seeks.push(value) })
+  const ResultCard = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', 'assistantPanel', `${cardSource}\nreturn ResultCard`)(htm.bind(h), () => ({ comp: null, ids: ['c1'], start: 0 }), { project: after }, value => updates.push(value), () => {}, { seek: value => seeks.push(value) }, assistantPanel)
   const receipt = changeReceipt(before, after, { version: 9, who: 'agent' })
   let undos = 0
   const card = ResultCard({ receipts: [receipt], change: { id: 'c9', kind: 'request', edits: 1, undoable: true }, onUndo: () => undos++ })
@@ -464,7 +464,7 @@ test('the preview sentence shows only while this request has a proposal to apply
   assert.equal(note({ claude: done, assistantReview: review({ proposal: { id: 'p0', runId: 'r0' } }) }), '', 'an older proposal is not this request')
   assert.equal(note({ claude: done }), PREVIEW_OUTCOME, 'with no review state the sentence is kept')
   assert.equal(note({ claude: done, caps: { host: 'native' }, assistantReview: review() }), PREVIEW_OUTCOME, 'the Mac host reports its own flow')
-  const other = 'The project changed during this request. Review edits in the timeline.'
+  const other = 'This request made 2 edits. Review them in the timeline.'
   assert.equal(note({ claude: { ...done, outcome: other }, assistantReview: review() }), other, 'other outcomes always show')
   assert.equal(assistantActivity(done, { proposal: false }).detail, '')
   assert.equal(assistantActivity(done).detail, PREVIEW_OUTCOME)
@@ -1065,9 +1065,9 @@ test('after Stop, a change with no run id is not counted for a run with no id', 
 
 test('the Send tooltip names the key that sends for the input kind', t => {
   const title = kind => { const f = panel(t); f.state.assistantDraft = { ...f.state.assistantDraft, inputKind: kind }; return primary(f.draw())[0].props.title }
-  assert.equal(title('prompt'), 'Send (Return)')
-  assert.equal(title('script'), 'Send (⌘Return)')
-  assert.equal(title('screenplay'), 'Send (⌘Return)')
+  assert.equal(title('prompt'), 'Send (Return). Preview first: edits wait for Apply')
+  assert.equal(title('script'), 'Send (⌘Return). Preview first: edits wait for Apply')
+  assert.equal(title('screenplay'), 'Send (⌘Return). Preview first: edits wait for Apply')
 })
 
 test('the layout fixes outside the panel stay in the stylesheets', () => {

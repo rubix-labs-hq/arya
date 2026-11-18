@@ -24,7 +24,7 @@ async function complete(receipts, { version = 5, initialVersion = 5, event = 'do
     getOutline: () => ({ version }), onReply: (...value) => replies.push(value),
   }
   const injected = { options, assertRun: () => {}, request: async () => ({ events: [{ seq: 1, type: event, text: 'Render finished.' }] }),
-    state, publish: next => { Object.assign(state, next); states.push(next) }, redact: text => text, unresolvedToolOutcome: helper.unresolvedToolOutcome,
+    state, publish: next => { Object.assign(state, next); states.push(next) }, redact: text => text, unresolvedToolOutcome: helper.unresolvedToolOutcome, editedOutcome: helper.editedOutcome,
     recordCompletedJobOutcome: helper.recordCompletedJobOutcome, unfinishedJobsOutcome: helper.unfinishedJobsOutcome, cancelJobs: async () => calls.push('cancelJobs'),
     cancelRemote: async () => calls.push('cancelRemote'), tool: () => { throw new Error('Unexpected fixture tool') }, names: {},
     sleep: () => { throw new Error('Unexpected fixture wait') }, run,
@@ -62,7 +62,7 @@ test('saved-only and successful done jobs do not invent application failure', as
   for (const receipt of [{ state: 'done' }, { state: 'done', applied: true }, { state: 'done', applied: 0 }, { state: 'done', applied: 6 }, { state: 'done', applyError: '' }, { state: 'done', applyError: '  ' }]) {
     const result = await complete([receipt], { version: 6 })
     assert.equal(result.state, 'done')
-    assert.equal(result.outcome, 'The project changed during this request. Review edits in the timeline.')
+    assert.equal(result.outcome, '1 edit was saved while this request ran. Review it in the timeline.')
   }
 })
 
@@ -245,4 +245,10 @@ test('a later confirmed result or resolved music placement cannot clear unknown 
   helper.recordToolOutcome(outcomes, { method: 'POST', path: '/api/audio/compose/place', body: { path, track: 'A3' } }, { state: 'complete', path, asset })
   assert.equal(outcomes.musicPlacements.size, 0)
   assert.equal(helper.unresolvedToolOutcome(outcomes), 'A processing result was not applied. Review the result before retrying.')
+})
+
+test('a finished request counts its edits as the result card does', () => {
+  assert.equal(helper.editedOutcome(3, 3), 'This request made 3 edits. Review them in the timeline.')
+  assert.equal(helper.editedOutcome(1, 1), 'This request made 1 edit. Review it in the timeline.')
+  assert.equal(helper.editedOutcome(2, 1), '2 edits were saved while this request ran. Review them in the timeline.', 'a processing job or another editor may account for the rest')
 })

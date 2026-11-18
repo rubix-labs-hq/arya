@@ -81,6 +81,11 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, redoDe
     }
     return back
   }
+  /** Whether a frame for this run draws its pending preview (or is refused for it), as `trial` decides. Never throws. */
+  const previewing = (runId, { strict = true } = {}) => {
+    if (!runId || !proposal || proposal.runId !== runId || !proposal.ops.length) return false
+    return strict || proposal.baseVersion === version() && proposal.epoch === epoch()
+  }
 
   return {
     snapshot,
@@ -173,13 +178,13 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, redoDe
      * project itself), and otherwise counts as no preview.
      */
     trial(runId, apply, { strict = true } = {}) {
-      if (!runId || !proposal || proposal.runId !== runId || !proposal.ops.length) return null
+      if (!previewing(runId, { strict })) return null
       const stale = proposal.baseVersion !== version() || proposal.epoch !== epoch()
-      if (stale && !strict) return null
       if (stale) throw Object.assign(new Error('The project changed after this preview was made, so a frame of the preview cannot be drawn. Read the outline, propose again, then ask for the frame.'), { status: 409 })
       const imports = Object.keys(proposal.assets ?? {}).length ? [{ op: 'import', assets: proposal.assets }] : []
       return apply(getProject(), [...imports, ...proposal.ops]).project
     },
+    previewing,
     /** Drops the pending preview, or dismisses a finished preview's failure notice. */
     discard(id) {
       if (applying?.finished && applying.id === id) { applying = null; changed(); return true }

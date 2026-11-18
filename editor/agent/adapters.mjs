@@ -126,10 +126,11 @@ export async function prepareAdapter(request, transport, custom) {
   } catch (error) { await fs.rm(cwd, { recursive: true, force: true }); throw error }
 }
 
-// A tool name as a progress label shows it: the MCP server prefix goes, and only a plain name is kept.
+// A tool call as a progress label shows it: in plain words, never the tool's internal name.
+const TOOL_WORDS = { reel_api: 'Using the editor', reel_frame: 'Looking at a frame' }
 const toolLabel = name => {
   const short = typeof name === 'string' ? name.replace(/^mcp__[A-Za-z0-9_-]+?__/, '') : ''
-  return /^[A-Za-z0-9_.:-]{1,64}$/.test(short) ? `Calling ${short}` : 'Calling a tool'
+  return Object.hasOwn(TOOL_WORDS, short) ? TOOL_WORDS[short] : 'Using a tool'
 }
 
 // What the agent started, once per block and never per delta. A label names the step only: it
