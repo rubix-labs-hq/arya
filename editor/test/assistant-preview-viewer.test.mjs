@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
+import vm from 'node:vm'
 
 // "Show in viewer" on an assistant preview card. The viewer and playback draw the project with
 // the proposal applied in memory; nothing is saved, edits are refused and the preview ends on
@@ -169,10 +170,50 @@ test('Undo, Redo and grabbing a still are refused while the preview is shown', a
   assert.deepEqual([sent, grabbed.length], [['/api/undo'], 1], 'both work again once the preview is not shown')
 })
 
-test('the engine draws and identifies the shown preview, and loads its looks', () => {
+// Runs engine-host.js itself against the real store, with the engine classes stubbed, so the
+// player, its identity, its looks and the audio preload are checked by what they return.
+function engineHost() {
+  const log = { luts: [], preload: [], refresh: 0 }
+  let listener = null
+  const context = vm.createContext({
+    document: { createElement: () => ({}) },
+    Compositor: class { resize() {} clearLuts() {} },
+    Media: class { reset() {} },
+    AudioEngine: class { constructor() { this.buffers = new Map() } stop() {} preload(p) { log.preload.push(p) } },
+    Player: class { constructor(options) { Object.assign(this, options) } refresh() { log.refresh++ } requestExact() {} seek() {} pause() {} },
+    loadLuts: (comp, p) => { log.luts.push(p) },
+    api() {}, drawnProject, previewProject, set, setTime() {}, store, subscribe: fn => { listener = fn }, setInterval() {}, host: { kind: 'server' },
+  })
   const source = fs.readFileSync(new URL('../web/ui/engine-host.js', import.meta.url), 'utf8')
-  assert.match(source, /getProject: \(\) => drawnProject\(\)/)
-  assert.match(source, /getProjectIdentity: \(\) => previewProject\(\) \?\? store\.project/)
-  assert.match(source, /loadLuts\(comp, previewProject\(\) \?\? store\.project/)
-  assert.doesNotMatch(source, /\bviewProject\b/, 'the engine never draws the saved project while a preview is shown')
+  vm.runInContext(source.replace(/^import .*$/gm, '').replace(/^export /gm, '') + '\nglobalThis.engine = player', context)
+  return { player: context.engine, log, notify: () => listener() }
+}
+
+test('the engine draws and identifies the shown preview, and loads its looks', () => {
+  const p = reset()
+  const { player, log, notify } = engineHost()
+  const frame = { fps: 30, compId: null }
+  assert.equal(player.getProject(), p, 'without a preview the engine draws the saved project')
+  showPreview('a')
+  notify()
+  const drawn = player.getProject()
+  assert.deepEqual(titles(drawn), ['Sample title'], 'the player draws the proposal applied')
+  assert.equal(player.getProjectIdentity(), previewProject())
+  assert.notEqual(player.getProjectIdentity(), p)
+  player.prepareFrame(frame, 0)
+  assert.deepEqual(titles(log.luts.at(-1)), ['Sample title'], 'looks load from the previewed project')
+  assert.deepEqual(titles(log.preload.at(-1)), ['Sample title'], 'audio is prepared for the previewed project')
+  const refreshes = log.refresh
+  set({ openComp: 'k1' })
+  notify()
+  assert.equal(player.getProject().compId, 'k1', 'an open composition is drawn from the preview')
+  assert.ok(log.refresh > refreshes)
+  set({ openComp: null })
+  showPreview(null)
+  notify()
+  assert.equal(player.getProject(), p, 'Back to project draws the saved project again')
+  assert.equal(player.getProjectIdentity(), p)
+  player.prepareFrame(frame, 0)
+  assert.equal(log.luts.at(-1), p)
+  assert.equal(log.preload.at(-1), p)
 })
