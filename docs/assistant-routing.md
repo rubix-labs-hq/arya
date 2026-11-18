@@ -2,7 +2,7 @@
 
 Arya includes no AI credits. When the editor's server supports it, Sign in with ChatGPT is the main way to connect. Installed Claude Code, Codex and Antigravity remain available under **Other ways to connect**. Codex's documented client integration supports ChatGPT sign-in and account model discovery. Manual mode remains the default and keeps exact user choices. Auto is optional and can use only the models the user enables from a host-verified catalog.
 
-Setup appears in Settings and can be opened directly from the Assistant composer. With Sign in with ChatGPT, setup is **Continue with ChatGPT** in the browser and then **Use ChatGPT**. For an installed app, it guides the user through installing the official CLI, completing its own account sign-in, refreshing status, and choosing Manual or Auto. New/Open Project remain usable without connecting an assistant. A failed status request means unknown authentication, not a confirmed sign-out.
+Setup appears in Settings and as a setup card in the Assistant conversation. With Sign in with ChatGPT, setup is **Continue with ChatGPT** in the browser and then **Use ChatGPT**. For an installed app, it guides the user through installing the official CLI, completing its own account sign-in, refreshing status, and choosing Manual or Auto. New/Open Project remain usable without connecting an assistant. A failed status request means unknown authentication, not a confirmed sign-out.
 
 ## Shared companion protocol
 
