@@ -166,15 +166,16 @@ function silenceTimelineRanges(project, src, silences) {
   return merged.reverse()
 }
 
-// A filmstrip the server refuses while it is busy (HTTP 429), or that the network drops, is asked
-// for again after 1, 2, 4 and 8 s: five tries in all. It stops as soon as its card is gone.
+// A filmstrip the local server refuses while it is busy (HTTP 429), or that the network drops, is
+// asked for again after 1, 2, 4 and 8 s: five tries in all. It stops as soon as its card is gone.
+// The Mac app waits for a processing slot instead of refusing, and its errors carry no status.
 const STRIP_RETRY_MS = [1000, 2000, 4000, 8000]
 async function requestStrip(url, alive, { request = api, wait = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   for (let attempt = 0; alive(); attempt++) {
     try { return await request(url) }
     catch (error) {
-      // Only a busy server (429) or a request that never arrived (fetch's TypeError) is tried again.
-      // Any other error, with or without a status, is final.
+      // Only the local server's busy answer (429) or a request that never arrived (fetch's TypeError)
+      // is tried again. Any other error, with or without a status, is final.
       if (!(error?.status === 429 || error instanceof TypeError) || attempt >= STRIP_RETRY_MS.length) return null
       await wait(STRIP_RETRY_MS[attempt])
     }
