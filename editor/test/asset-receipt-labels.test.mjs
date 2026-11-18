@@ -9,16 +9,17 @@ const root = resolve(process.env.ARYA_RECEIPT_SOURCE_ROOT ?? fileURLToPath(new U
 const dependency = createRequire(resolve(process.env.ARYA_RECEIPT_DEPENDENCY_ROOT ?? 'editor', 'package.json'))
 const { h } = dependency('preact'), htm = dependency('htm')
 const { changeReceipt, receiptSelection } = await import(pathToFileURL(resolve(root, 'web/ui/change-receipt.js')))
+const { assistantPanel } = await import(pathToFileURL(resolve(root, 'web/ui/assistant-panel.js')))
 const source = readFileSync(resolve(root, 'web/ui/chat.js'), 'utf8')
 const receiptSource = source.slice(source.indexOf('const plural'), source.indexOf('export function ChatPanel'))
-const component = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', `${receiptSource}\nreturn ResultCard`)
+const component = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', 'assistantPanel', `${receiptSource}\nreturn ResultCard`)
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value == null || value === false ? [] : [value]
 const children = node => flatten(node?.props?.children)
 const nodes = node => node && typeof node === 'object' ? [node, ...children(node).flatMap(nodes)] : []
 const text = node => children(node).map(child => typeof child === 'object' ? text(child) : String(child)).join('')
 function render(receipt, project) {
   const updates = [], seeks = [], messages = []
-  const view = component(htm.bind(h), receiptSelection, { project }, value => updates.push(value), value => messages.push(value), { seek: value => seeks.push(value) })
+  const view = component(htm.bind(h), receiptSelection, { project }, value => updates.push(value), value => messages.push(value), { seek: value => seeks.push(value) }, assistantPanel)
   return { tree: view({ receipts: [receipt] }), updates, seeks, messages }
 }
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/asset-receipt-recorded.json', import.meta.url)))

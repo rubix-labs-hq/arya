@@ -9,6 +9,7 @@ import { editNotes } from '../../core/edit-notes.js'
 import { changeReceipt } from './change-receipt.js'
 import { assistantSuggestions } from './assistant-suggestions.js'
 import { messageHTML } from './message-text.js'
+import { readableChange, settingsSummary } from './change-values.js'
 
 const html = htm.bind(h)
 const MAX_LAYERS = 6
@@ -62,6 +63,30 @@ function expand(change) {
   } catch { return [change] }
 }
 const STATUS = { added: 'New', deleted: 'Removed', changed: 'Changed' }
+const MAX_KEYS = 4
+
+/** The frame rate of the timeline a layer or settings group belongs to. */
+const fpsOf = (project, comp) => (comp != null && Object.hasOwn(project?.comps ?? {}, comp) ? project.comps[comp].fps : null) ?? project?.fps ?? 30
+
+function Value({ text, swatch }) {
+  return html`<span>${swatch ? html`<i class="change-swatch" style=${{ background: swatch }} aria-hidden="true"></i>` : null}${text}</span>`
+}
+
+/** Receipt changes as words: seconds with timecode, one line per keyframe, colours with a swatch. */
+function ChangeList({ changes = [], fps = 30, keyLimit = Infinity }) {
+  return html`<dl class="change-list">${changes.map(change => {
+    const row = readableChange(change, { fps })
+    const arrow = html`<span class="receipt-arrow" aria-label="changed to">→</span>`
+    if (row.only) return html`<dt>${row.label}</dt><dd><span>${row.only}</span></dd>`
+    if (row.keys) {
+      const shown = row.keys.slice(0, keyLimit)
+      return html`<dt>${row.label}</dt><dd><ul class="change-keys" title="Times are seconds into the layer">${shown.map(key => html`<li>
+        <span class="change-key-time">${key.time}</span> ${key.status === 'added' ? html`<span>Added ${key.after}</span>` : key.status === 'removed' ? html`<span>Removed ${key.before}</span>` : html`<span>${key.before}</span>${arrow}<span>${key.after}</span>`}
+      </li>`)}${row.keys.length > shown.length ? html`<li>${plural(row.keys.length - shown.length, 'more keyframe')}</li>` : null}${row.keys.length ? null : html`<li>No keyframes changed</li>`}</ul></dd>`
+    }
+    return html`<dt>${row.label}</dt><dd>${Value({ text: row.before, swatch: row.swatches?.[0] })}${arrow}${Value({ text: row.after, swatch: row.swatches?.[1] })}</dd>`
+  })}</dl>`
+}
 
 function PreviewCard({ proposal, project, version, running, newRequest, busy, onApply, onDiscard }) {
   const stale = proposal.stale || proposal.baseVersion !== version
@@ -79,16 +104,16 @@ function PreviewCard({ proposal, project, version, running, newRequest, busy, on
       : html`<p class="assistant-preview-note" role="status">${headline}. Nothing has changed yet${steps.length ? ' and nothing renders until you apply' : ''}.</p>`}
     ${layers.length ? html`<ul class="assistant-preview-list">${layers.slice(0, MAX_LAYERS).map(layer => html`<li key=${`${layer.comp}:${layer.id}`}>
       <div><b>${layer.name}</b><span class=${`assistant-preview-status ${layer.status}`}>${STATUS[layer.status] ?? layer.status}</span><small>${layer.compositionName} · ${layer.track || layer.id}</small></div>
-      ${layer.status === 'changed' ? html`<dl>${layer.changes.slice(0, MAX_PROPERTIES).map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span aria-label="changes to"> → </span><span>${change.after}</span></dd>`)}</dl>` : null}
+      ${layer.status === 'changed' ? ChangeList({ changes: layer.changes.slice(0, MAX_PROPERTIES), fps: fpsOf(project, layer.comp), keyLimit: MAX_KEYS }) : null}
       ${layer.status === 'changed' && layer.changes.length > MAX_PROPERTIES ? html`<small>${plural(layer.changes.length - MAX_PROPERTIES, 'more property', 'more properties')}</small>` : null}
     </li>`)}</ul>` : null}
     ${layers.length > MAX_LAYERS ? html`<p class="assistant-preview-note">${plural(layers.length - MAX_LAYERS, 'more layer')} change.</p>` : null}
-    ${settings.length && !stale ? html`<p class="assistant-preview-note">Settings: ${settings.slice(0, 4).map(scope => scope.name).join(', ')}${settings.length > 4 ? ', …' : ''}</p>` : null}
+    ${settings.length && !stale ? html`<p class="assistant-preview-note">Settings: ${settingsSummary(settings)}</p>` : null}
     ${notes.map(note => html`<p class="assistant-note">${note}</p>`)}
     ${receipt && !stale ? html`<details class="assistant-preview-details"><summary>Show all changes</summary>
       ${[...receipt.scopes, ...receipt.clips].map(item => html`<div class="receipt-layer">
         <b>${item.name}</b><span class="receipt-meta">${item.compositionName ?? ''} ${item.id ?? ''} · ${STATUS[item.status] ?? item.status}</span>
-        <dl>${item.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span aria-label="changes to"> → </span><span>${change.after}</span></dd>`)}</dl>
+        ${ChangeList({ changes: item.changes, fps: fpsOf(project, item.comp) })}
       </div>`)}
       ${receipt.truncated ? html`<p class="assistant-preview-note">Some changes or values in this receipt are shortened.</p>` : null}
     </details>` : null}
@@ -125,4 +150,4 @@ function ChangeBar({ change, busy, onUndo }) {
   </div>`
 }
 
-export const assistantPanel = { focus, suggestions: assistantSuggestions, previewChanges, PreviewCard, ApplyingCard, ChangeBar, messageHTML }
+export const assistantPanel = { focus, suggestions: assistantSuggestions, previewChanges, PreviewCard, ApplyingCard, ChangeBar, messageHTML, ChangeList, fpsOf }

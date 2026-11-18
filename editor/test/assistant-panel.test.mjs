@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { applyOps, newProject } from '../core/project.js'
 import { assistantPanel } from '../web/ui/assistant-panel.js'
+import { readableChange } from '../web/ui/change-values.js'
 import { assistantSuggestions } from '../core/assistant-suggestions.js'
 
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value == null || value === false ? [] : [value]
@@ -166,12 +167,14 @@ test('Show all changes includes every receipt layer, setting and property value'
   const tree = assistantPanel.PreviewCard({ proposal, project: p, version: 1 })
   const details = nodes(tree).find(node => node.type === 'details' && text(node).startsWith('Show all changes'))
   assert.ok(details)
+  // Every property is listed, with its value as words rather than the stored JSON.
   for (const item of [...receipt.scopes, ...receipt.clips]) for (const change of item.changes) {
-    assert.ok(text(details).includes(change.property))
-    assert.ok(text(details).includes(change.before))
-    assert.ok(text(details).includes(change.after))
+    const row = readableChange(change, { fps: p.fps })
+    assert.ok(text(details).includes(row.label))
+    for (const value of [row.only, row.before, row.after].filter(Boolean)) assert.ok(text(details).includes(value), value)
   }
   assert.match(text(details), /1080.*1920/s)
+  assert.doesNotMatch(text(details), /[{}[\]]|"/)
   assert.equal(nodes(details).some(node => ['button', 'input'].includes(node.type)), false)
 })
 

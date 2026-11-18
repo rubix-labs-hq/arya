@@ -289,7 +289,7 @@ test('a committed edit is one result card: title, caption, actions and a collaps
   const before = { name: 'Cut', width: 1920, height: 1080, fps: 30, assets: {}, comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', title: { text: 'Old' }, start: 0, dur: 2 }] }] }
   const after = structuredClone(before); after.tracks[0].clips[0].title.text = 'New'
   const updates = [], seeks = []
-  const ResultCard = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', `${cardSource}\nreturn ResultCard`)(htm.bind(h), () => ({ comp: null, ids: ['c1'], start: 0 }), { project: after }, value => updates.push(value), () => {}, { seek: value => seeks.push(value) })
+  const ResultCard = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', 'assistantPanel', `${cardSource}\nreturn ResultCard`)(htm.bind(h), () => ({ comp: null, ids: ['c1'], start: 0 }), { project: after }, value => updates.push(value), () => {}, { seek: value => seeks.push(value) }, assistantPanel)
   const receipt = changeReceipt(before, after, { version: 9, who: 'agent' })
   let undos = 0
   const card = ResultCard({ receipts: [receipt], change: { id: 'c9', kind: 'request', edits: 1, undoable: true }, onUndo: () => undos++ })

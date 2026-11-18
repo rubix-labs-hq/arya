@@ -344,6 +344,10 @@
     "target": "editor/ui/change-receipt.js"
   },
   {
+    "source": "web/ui/change-values.js",
+    "target": "editor/ui/change-values.js"
+  },
+  {
     "source": "web/ui/chat.js",
     "target": "editor/ui/chat.js"
   },

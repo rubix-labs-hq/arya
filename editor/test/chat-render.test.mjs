@@ -213,11 +213,11 @@ test('existing drafts and active requests disable Edit request', () => {
 })
 
 const { changeReceipt, receiptSelection } = await import('../web/ui/change-receipt.js')
-const receiptComponent = new Function('h', 'htm', 'receiptSelection', 'store', 'set', 'toast', 'player', `${source}\nreturn ResultCard`)
+const receiptComponent = new Function('h', 'htm', 'receiptSelection', 'store', 'set', 'toast', 'player', 'assistantPanel', `${source}\nreturn ResultCard`)
 function renderReceipt(receipt, project, change = null) {
   const updates = [], seeks = [], messages = []
   const component = receiptComponent(h, htm, receiptSelection, { project }, update => updates.push(update),
-    message => messages.push(message), { seek: value => seeks.push(value) })
+    message => messages.push(message), { seek: value => seeks.push(value) }, assistantPanel)
   const card = component({ receipts: [receipt], change })
   const expand = node => typeof node?.type === 'function' ? expand(node.type(node.props)) : node && typeof node === 'object' ? { ...node, props: { ...node.props, children: flatten(node.props.children).map(expand) } } : node
   return { tree: expand(card), updates, seeks, messages }
