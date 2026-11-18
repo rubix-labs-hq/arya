@@ -53,8 +53,8 @@ const mobileSection = `<section class="edition" aria-labelledby="mobile">
 <p class="edition-meta">${mobilePlatforms}${mobileReady ? ` · Version ${esc(mobileVersion)}` : ''}</p>
 <p>${mobileReady ? (pro ? `${scope.store} ${proCopy.direct}` : 'Free to edit and export. Optional tips support development.') : (mobileVersion ? `Version ${esc(mobileVersion)}${mobileBuild} is waiting for App Review. It will be free to download once approved.` : 'Public downloads are coming later.')}</p>
 <div id="mobile-action">${mobileReady ? button(esc(mobileURL), 'Download on the App Store', 'secondary') : ''}</div>
-${macStoreLine}
 ${storeDetails}
+${macStoreLine}
 </section>`;
 const mobileRoadmapStatus = mobileReady
   ? `Arya ${esc(mobileVersion)} is available on the App Store as a free download.${pro ? ` ${scope.store}` : ''}`
