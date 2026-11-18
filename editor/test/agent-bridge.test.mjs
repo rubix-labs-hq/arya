@@ -156,6 +156,39 @@ const exists = async file => { try { return await fs.readFile(file, 'utf8') } ca
 // process.kill(0, 0) signals our own process group and always succeeds, so refuse a non-PID.
 const alive = pid => { const id = Number(pid); assert.ok(Number.isInteger(id) && id > 0, `Expected a process ID, got ${JSON.stringify(pid)}`); try { process.kill(id, 0); return true } catch { return false } }
 
+test('whole assistant messages join as paragraphs and streamed text stays as sent', async () => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-agent-join-'))
+  const message = text => JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } })
+  const delta = text => JSON.stringify({ type: 'stream_event', event: { delta: { type: 'text_delta', text } } })
+  const outputs = {
+    'whole messages': [message('I trimmed the opening.'), JSON.stringify({ type: 'item.completed', item: { type: 'command_execution' } }), message('The cut now lands on the beat.'), message('Nothing else changed.')],
+    'empty first message': [message(''), message('Only this.')],
+    'streamed deltas': [delta('Hel'), delta('lo'), JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Hello' }] } })],
+    'text records': [JSON.stringify({ type: 'text', text: 'One' }), JSON.stringify({ type: 'text', text: 'Two' })],
+  }
+  const bridge = await startBridge({ prepareAdapter: async request => ({ command: process.execPath, args: ['-e', `for (const line of ${JSON.stringify(outputs[request.text])}) console.log(line)`], cwd: folder, env: { PATH: process.env.PATH }, prompt: '', cleanup: async () => {} }) })
+  const texts = async text => {
+    const id = randomUUID(), events = []
+    assert.equal((await request(bridge, 'POST', '/v1/runs', { id, provider: 'claude-code', text })).status, 201)
+    for (let i = 0, cursor = 0; i < 400; i++) {
+      const batch = (await request(bridge, 'GET', `/v1/runs/${id}/events?after=${cursor}`)).body.events
+      for (const event of batch) { cursor = event.seq; events.push(event) }
+      if (events.some(event => event.type === 'done' || event.type === 'error')) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert.equal(events.at(-1)?.type, 'done', JSON.stringify(events.at(-1)))
+    assert.ok(events.every(event => !('message' in event)), 'the whole-message marker stays inside the bridge')
+    return events.filter(event => event.type === 'text').map(event => event.text)
+  }
+  try {
+    assert.deepEqual(outputEvent('codex', message('Hi')), { type: 'text', text: 'Hi', message: true })
+    assert.deepEqual(await texts('whole messages'), ['I trimmed the opening.', '\n\nThe cut now lands on the beat.', '\n\nNothing else changed.'])
+    assert.equal((await texts('empty first message')).join(''), 'Only this.', 'an empty message opens no paragraph')
+    assert.deepEqual(await texts('streamed deltas'), ['Hel', 'lo'], 'deltas are not separated and the repeated whole message is still dropped')
+    assert.deepEqual(await texts('text records'), ['One', 'Two'])
+  } finally { await bridge.close(); await fs.rm(folder, { recursive: true, force: true }) }
+})
+
 test('oversized output finalizes within bounds and keeps the companion responsive', async () => {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-agent-limit-')), marker = path.join(folder, 'pid')
   const bridge = await externalBridge('flood', marker), id = randomUUID()
