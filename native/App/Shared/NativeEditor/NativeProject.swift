@@ -262,7 +262,7 @@ struct NativeChangeReceipt: Identifiable {
     var hasAssetChanges: Bool { scopes.contains { $0.composition == nil && $0.trackID == nil && $0.changes.contains(where: Self.assetChange) } }
     var summary: String {
         var parts: [String] = []
-        if totalClips > 0 { parts.append("\(totalClips) \(totalClips == 1 ? "object" : "objects") changed") }
+        if totalClips > 0 { parts.append("\(totalClips) \(totalClips == 1 ? "layer" : "layers") changed") }
         if hasAssetChanges { parts.append("Media assets changed") }
         let settings = scopes.contains { scope in
             scope.changes.contains { change in
