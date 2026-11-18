@@ -224,3 +224,39 @@ test('the overlap scan stays quick on a long track and caps what it lists', () =
   assert.match(crowded, /; and more\. Move the hidden clip/)
   assert.ok(crowded.length <= 700)
 })
+
+test('the person form of every note names clips as the timeline does, with no ids, property paths or code', () => {
+  const person = (before, ops) => { const result = applyOps(before, ops); return { agent: editNotes(before, result.project, { ops, created: result.created }), person: editNotes(before, result.project, { ops, created: result.created, audience: 'person' }) } }
+  const media = applyOps(withMedia(wide(), { 'media/take.mp4': { assetKind: 'video', hasVideo: true, hasAudio: true, duration: 60 } }), [{ op: 'append', src: 'media/take.mp4', track: 'V1', in: 0, dur: 6 }]).project
+  const take = media.tracks.find(track => track.id === 'V1').clips[0].id
+  const timed = applyOps(wide(), [{ op: 'captions', items: [{ t: 0, end: 1, text: 'one', words: [{ t: 0, end: 1, text: 'one' }] }] }]).project
+  const shortTitle = applyOps(wide(), [{ op: 'add_title', text: 'for later.', title: { size: 40 }, track: 'V3', start: 9.9, dur: 1.1 }]).project
+  const runs = [
+    person(vertical(), [{ op: 'add_title', text: 'HARVEST FAIR OPENS SATURDAY', start: 0, dur: 3, title: { font: 'Barlow Condensed' } }]),
+    person(vertical(), [{ op: 'add_title', text: 'HARVEST FAIR OPENS SATURDAY AT THE MILL', title: { size: 120, box: { width: 4000, height: 120, wrap: true, autoHeight: true } } }]),
+    person(vertical(), [0, 1].map(start => ({ op: 'add_title', text: `Lantern ${start}`, title: { size: 40 }, track: 'V1', start, dur: 3 }))),
+    person(media, [{ op: 'speed', id: take, speed: 2 }]),
+    person(shortTitle, [{ op: 'delete_range', from: 10.3333, to: 11 }]),
+    person(wide(), [{ op: 'captions', items: [{ t: 0, end: 1, text: 'one two' }] }]),
+    person(timed, [{ op: 'update_track', id: 'C1', set: { style: { fit: 'shrink', highlightColor: '#00ff00' } } }]),
+  ]
+  const all = runs.flatMap(run => run.person)
+  const expected = [
+    /^The title "HARVEST FAIR OPENS SATURDAY" is wider than the frame\. Make it smaller or let it wrap\.$/,
+    /^The title "HARVEST FAIR OPENS SATURDAY AT THE MILL" wraps in a box wider than the frame, so its lines can run past the edges\.$/,
+    /^A track shows one clip at a time, so overlapping clips hide each other: "Lantern 1" is hidden under "Lantern 0" from 1s to 3s\. Move one to another track to show both\.$/,
+    /^"take\.mp4" now plays at 2x, so it is 3s long instead of 6s\. Its sound is higher\.$/,
+    /^Some text got shorter but kept its words: "for later\." is now 0\.43s\. Check that it still matches the sound\.$/,
+    /^1 new caption has no word timings, so a later cut shortens it without changing the text\.$/,
+    /^One caption style setting in this edit has no effect\.$/,
+    /^The caption highlight color shows only with the Karaoke style, on captions that have word timings\.$/,
+    /^"Barlow Condensed" is not a built-in font\. It shows only if this computer has it; otherwise the text uses a system font, which can be wider\.$/,
+  ]
+  for (const pattern of expected) assert.ok(all.some(note => pattern.test(note)), `${pattern}\n${all.join('\n')}`)
+  for (const note of all) assert.doesNotMatch(note, /\b[cCVA]\d+\b|title\.|style\.|[{}]|\n|\\n|\/api|semitones|units/, note)
+  // Title positions help only the agent, so the person gets no sentence for them.
+  assert.ok(runs[0].agent.some(note => note.startsWith('Title centres')))
+  assert.equal(all.some(note => /centre/i.test(note)), false)
+  // The agent's notes are unchanged by the person form.
+  assert.ok(runs[3].agent.includes(`${take} now plays at 2x (was 1x): 6s became 3s. Its sound plays 12 semitones higher than at 1x.`), runs[3].agent.join('\n'))
+})

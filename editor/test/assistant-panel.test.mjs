@@ -160,7 +160,8 @@ test('a preview shows the same edit notes a committed edit would get, as quiet l
   const p = interview()
   const proposal = { id: 'p9', baseVersion: 3, at: 1, summary: 'Speed up the opening', stale: false, ops: [{ op: 'speed', id: 'c1', speed: 1.25 }] }
   const { notes } = assistantPanel.previewChanges(p, proposal)
-  assert.ok(notes.some(note => /^c1 now plays at 1\.25x/.test(note)), JSON.stringify(notes))
+  assert.ok(notes.some(note => /^".+" now plays at 1\.25x, so it is [\d.]+s long instead of [\d.]+s\./.test(note)), JSON.stringify(notes))
+  assert.ok(notes.every(note => !/\bc1\b|semitones/.test(note)), JSON.stringify(notes))
   const tree = assistantPanel.PreviewCard({ proposal, project: p, version: 3, running: false, busy: '', onApply: () => {}, onDiscard: () => {} })
   assert.deepEqual(nodes(tree).filter(node => node.props?.class === 'assistant-note').map(text), notes)
   const plain = { ...proposal, ops: [{ op: 'update', id: 'c1', set: { opacity: 0.5 } }] }

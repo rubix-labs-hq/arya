@@ -87,8 +87,11 @@ test('the project event of an edit carries its notes, and an edit with none has 
   await event('hello')
   const edit = await server.api('POST', '/api/ops', { ops: [wide], who: 'agent', summary: 'Wide title' })
   const noted = await event('project')
-  assert.deepEqual(noted.notes, edit.body.notes)
-  assert.ok(noted.notes.some(note => /^c2 title is about \d+ units wide/.test(note)), JSON.stringify(noted.notes))
+  // The event carries the person's sentences, the reply keeps the agent's.
+  assert.equal(noted.notes.length > 0, true, JSON.stringify(noted))
+  assert.ok(noted.notes.some(note => /^The title ".+" is wider than the frame\. Make it smaller or let it wrap\.$/.test(note)), JSON.stringify(noted.notes))
+  assert.ok(noted.notes.every(note => !/\bc\d\b|title\.|units wide/.test(note)), JSON.stringify(noted.notes))
+  assert.ok(edit.body.notes.some(note => /^c2 title is about \d+ units wide/.test(note)), JSON.stringify(edit.body.notes))
   await server.api('POST', '/api/ops', { ops: [{ op: 'update', id: 'c1', set: { opacity: 0.5 } }] })
   assert.equal(Object.hasOwn(await event('project'), 'notes'), false)
 })

@@ -1258,9 +1258,13 @@ const routes = {
     // reply and of the project event the editor shows under the change: never in the project, the
     // activity list or an undo summary.
     // A note that cannot be worked out never blocks the edit.
-    let notes = []
-    try { notes = editNotes(capturedProject, result.project, { ops, created: result.created }) } catch (error) { log('Edit notes failed:', error.message) }
-    commit(result.project, body.who ?? 'you', body.summary ? [body.summary] : result.log.filter(l => !l.startsWith('imported')), { projectChanged: all.some(op => op.op === 'replace'), notes })
+    // The reply carries the agent's notes; the project event carries the sentences the person reads.
+    let notes = [], personNotes = []
+    try {
+      notes = editNotes(capturedProject, result.project, { ops, created: result.created })
+      personNotes = editNotes(capturedProject, result.project, { ops, created: result.created, audience: 'person' })
+    } catch (error) { log('Edit notes failed:', error.message) }
+    commit(result.project, body.who ?? 'you', body.summary ? [body.summary] : result.log.filter(l => !l.startsWith('imported')), { projectChanged: all.some(op => op.op === 'replace'), notes: personNotes })
     for (const [src, asset] of Object.entries(assets)) ensureProxy(src, asset).catch(e => log(e.message))
 
     return { version, log: result.log, created: result.created, ...(notes.length ? { notes } : {}), project: body.returnProject === false ? undefined : project }

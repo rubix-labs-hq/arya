@@ -42,8 +42,8 @@ function previewChanges(project, proposal) {
     const layers = receipt.clips.map(layer => ({ ...layer, name: names.get(layer.id) ?? layer.name, track: kinds.get(layer.id) ?? '', changes: layer.changes.flatMap(expand) }))
     // A clip added to or removed from a track also reorders it; the layer row already says so.
     const settings = receipt.scopes.filter(scope => scope.changes.some(change => change.property !== 'Object order')).map(scope => scope.changes.filter(change => change.property !== 'Object order').every(change => change.property === 'duration') ? { ...scope, name: 'Timeline length' } : scope)
-    // The same notes the server sends with a committed edit: overlaps, shortened text, fonts and the like.
-    const notes = editNotes(project, next, { ops, created: applied.created ?? [] })
+    // The same notes the editor shows under a committed edit: overlaps, shortened text, fonts and the like.
+    const notes = editNotes(project, next, { ops, created: applied.created ?? [], audience: 'person' })
     return { receipt, layers, settings, notes }
   } catch (error) {
     return { error: String(error?.message ?? error) }
