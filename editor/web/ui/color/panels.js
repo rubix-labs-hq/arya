@@ -7,7 +7,7 @@ import htm from 'htm'
 import { BLEND_MODES, timecode } from '/core/project.js'
 import { canvas } from '../engine-host.js'
 import { Num } from '../inspector.js'
-import { api, edit, previewing, set, store, time, toast, useStore } from '../store.js'
+import { api, edit, set, store, time, toast, useStore } from '../store.js'
 import { BUILTIN_PRESETS } from './presets.js'
 import { defaultWindow, FULL_QUALIFIER, fullWindow, graphOf, inputSlots, nodeTitle, planBypass, planPreset, planRename, presetFromClip, TYPE_LABEL } from './graph.js'
 import { nodeOps, preview } from './state.js'
@@ -250,7 +250,7 @@ export function PresetsPanel({ clip, ids }) {
 /** Grabs the viewer's current graded frame as a still (kept for this session). */
 export function grabStill(clip) {
   // While the viewer shows an assistant preview, its frame is not the project's.
-  if (previewing()) { toast('The viewer shows the assistant preview. Go back to the project to grab a still.', 'error'); return null }
+  if (store.previewShown) { toast('The viewer shows the assistant preview. Go back to the project to grab a still.', 'error'); return null }
   try {
     const url = canvas.toDataURL('image/jpeg', 0.9)
     const p = store.project

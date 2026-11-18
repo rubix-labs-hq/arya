@@ -1,5 +1,5 @@
-// The ops a pending assistant preview applies. The preview card lists their changes and the
-// viewer can draw their result, so both read the same ops from here.
+// The ops a pending assistant preview applies. The editor's preview card lists their changes and
+// its viewer can draw their result, so both read the same ops from here.
 
 /** The proposal's ops, led by an import of the media it brings that the project does not have yet. */
 export function proposalOps(project, proposal) {

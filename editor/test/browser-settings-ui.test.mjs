@@ -75,6 +75,7 @@ test('captured form versions guard the actual store before optimistic edits', as
   let source = await readFile(new URL('../web/ui/store.js', import.meta.url), 'utf8')
   source = source.replace("from 'preact/hooks'", `from '${import.meta.resolve('preact/hooks')}'`)
     .replace("from '/core/project.js'", `from '${new URL('../core/project.js', import.meta.url).href}'`)
+    .replace("from '/core/proposal-ops.js'", `from '${new URL('../core/proposal-ops.js', import.meta.url).href}'`)
     .replace("from '../host.js'", `from '${host}'`)
     .replace("from './change-receipt.js'", `from '${new URL('../web/ui/change-receipt.js', import.meta.url).href}'`)
   try {

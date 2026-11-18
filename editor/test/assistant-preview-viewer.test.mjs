@@ -16,14 +16,16 @@ registerHooks({
     return next(specifier, context)
   },
   load(url, context, next) {
-    if (url === 'arya-preview-fixture:hooks') return { format: 'module', shortCircuit: true, source: 'export const useEffect = () => {}; export const useReducer = () => [0, () => {}]' }
-    if (url === 'arya-preview-fixture:host') return { format: 'module', shortCircuit: true, source: 'export const api = async (route, body) => { globalThis.apiCalls.push(route); return { project: null, version: 0 } }; export const host = {}' }
+    if (url === 'arya-preview-fixture:hooks') return { format: 'module', shortCircuit: true, source: 'export const useEffect = () => {}; export const useReducer = () => [0, () => {}]; export const useState = value => [value, () => {}]' }
+    if (url === 'arya-preview-fixture:host') return { format: 'module', shortCircuit: true, source: 'export const api = async (route, body) => { globalThis.apiCalls.push([route, body?.id]); return { project: null, version: 0 } }; export const host = {}' }
     return next(url, context)
   },
 })
 const { applyOps, newProject } = await import('../core/project.js')
-const { drawnProject, edit, previewProject, previewing, refusePreviewEdit, set, showPreview, store, viewProject } = await import('../web/ui/store.js')
-const { proposalOps } = await import('../web/ui/assistant-preview.js')
+const { drawnProject, edit, previewProject, previewing, refusePreviewEdit, set, store, viewProject } = await import('../web/ui/store.js')
+const { proposalOps } = await import('../core/proposal-ops.js')
+const { PreviewBanner } = await import('../web/ui/preview-banner.js')
+const showPreview = id => set(id == null ? { previewShown: null } : { previewShown: { id }, viewerMode: 'timeline' })
 
 function project() {
   const p = newProject('Sample', { fps: 30 })
@@ -106,4 +108,40 @@ test('the card and the viewer apply the same ops, with the media a proposal brin
   assert.deepEqual(proposalOps(p, { ops: [{ op: 'add_title' }] }), [{ op: 'add_title' }])
   const assets = { 'media/a.mp4': { duration: 10 }, 'media/b.mp4': { duration: 3 } }
   assert.deepEqual(proposalOps(p, { ops: [{ op: 'append', src: 'media/b.mp4' }], assets }), [{ op: 'import', assets: { 'media/b.mp4': { duration: 3 } } }, { op: 'append', src: 'media/b.mp4' }])
+})
+
+test('showing records the saved project, and waits while an edit is still saving', async () => {
+  const p = reset()
+  set({ previewShown: { id: 'a' } })
+  assert.deepEqual({ ...store.previewShown }, { id: 'a', base: p, version: 5, root: '/tmp/sample' })
+  set({ previewShown: null })
+  const saving = edit({ op: 'update', id: 'c1', set: { opacity: 0.5 } })
+  set({ previewShown: { id: 'a' } })
+  assert.equal(store.previewShown, null, 'the optimistic copy of an unsaved edit is not a base to preview over')
+  await saving
+})
+
+const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value == null || value === false ? [] : [value]
+const nodes = value => value && typeof value === 'object' ? [value, ...flatten(value.props?.children).flatMap(nodes)] : []
+const text = value => flatten(value?.props?.children).map(child => typeof child === 'object' ? text(child) : String(child)).join(' ').replace(/\s+/g, ' ').trim()
+const button = (tree, label) => nodes(tree).find(node => node.type === 'button' && text(node) === label)
+
+test('the banner over the viewer says it shows the preview and offers Apply, Discard and Back to project', async () => {
+  reset()
+  showPreview('a')
+  const tree = PreviewBanner()
+  assert.match(text(tree), /^Showing the preview Add a title \. Not applied yet; editing is off\./)
+  assert.doesNotMatch(text(tree), /processing step/)
+  button(tree, 'Apply').props.onClick()
+  button(tree, 'Discard').props.onClick()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(globalThis.apiCalls, [['/api/assistant/proposal/apply', 'a'], ['/api/assistant/proposal/discard', 'a']])
+  button(tree, 'Back to project').props.onClick()
+  assert.equal(store.previewShown, null)
+  set({ assistantReview: { proposal: proposal('s', { steps: [{ path: '/api/video/denoise', body: {}, preview: { title: 'Denoise' } }, { path: '/api/retime', body: {}, preview: { title: 'Retime' } }] }) } })
+  assert.match(text(PreviewBanner()), /The viewer shows the edits only\. 2 processing steps run after you apply and are not shown\./)
+  set({ claude: { state: 'working', startedAt: Date.now() } })
+  assert.equal(button(PreviewBanner(), 'Apply').props.disabled, true, 'Apply waits for the assistant, as on the card')
+  set({ claude: { state: 'idle' }, assistantReview: { proposal: null } })
+  assert.equal(PreviewBanner(), null)
 })

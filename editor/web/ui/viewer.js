@@ -6,8 +6,8 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
 import { clipEnd, compView, duration, timecode, valueAt } from '/core/project.js'
 import { canvas, comp, media, player } from './engine-host.js'
-import { addRef, api, drawnProject, edit, previewing, set, showPreview, store, time, toast, useStore, useTime, viewProject } from './store.js'
-import { assistantActivity } from './assistant-activity.js'
+import { addRef, drawnProject, edit, set, store, time, toast, useStore, useTime, viewProject } from './store.js'
+import { PreviewBanner } from './preview-banner.js'
 import { titleAnim } from '../engine/frame.js'
 import { resolvedShape } from '../engine/shapes.js'
 import { mediaUrl } from '../engine/media.js'
@@ -166,35 +166,10 @@ function TransformOverlay({ p, rect }) {
   `
 }
 
-// Shown over the viewer while it draws an assistant preview. Apply and Discard work here too,
-// because on a phone the preview card is in the assistant sheet, which covers the viewer.
-function PreviewBanner() {
-  const s = useStore()
-  const [busy, setBusy] = useState('')
-  const proposal = s.assistantReview?.proposal
-  if (!proposal) return null
-  const running = assistantActivity(s.claude, { connected: s.connected }).active
-  const steps = proposal.steps?.length ?? 0
-  const decide = async kind => {
-    if (busy) return
-    setBusy(kind)
-    try { await api(`/api/assistant/proposal/${kind}`, { id: proposal.id }) } catch (error) { toast(error.message, 'error') } finally { setBusy('') }
-  }
-  return html`<div class="viewer-preview-banner" role="status" aria-label="Showing the preview">
-    <p><b>Showing the preview</b> ${proposal.summary || 'Assistant preview'}. Not applied yet; editing is off.</p>
-    ${steps ? html`<p class="viewer-preview-steps">The viewer shows the edits only. ${steps === 1 ? '1 processing step runs' : `${steps} processing steps run`} after you apply, such as transcription or analysis, and ${steps === 1 ? 'is' : 'are'} not shown.</p>` : null}
-    <div class="assistant-preview-actions">
-      <button class="assistant-apply" disabled=${Boolean(running || busy)} title=${running ? 'Wait for the assistant to finish' : 'Apply these edits as one undo step'} onClick=${() => decide('apply')}>${busy === 'apply' ? 'Applying…' : 'Apply'}</button>
-      <button class="ghost" disabled=${Boolean(busy)} onClick=${() => decide('discard')}>Discard</button>
-      <button class="ghost" disabled=${Boolean(busy)} onClick=${() => showPreview(null)}>Back to project</button>
-    </div>
-  </div>`
-}
-
 export function Viewer({ compact }) {
   const s = useStore()
   const p = drawnProject()
-  const shown = previewing()
+  const shown = Boolean(s.previewShown)
   const stage = useRef(null)
   const host = useRef(null)
   const rect = useFit(stage, p?.width ?? 1920, p?.height ?? 1080, s.viewerMode)
@@ -209,7 +184,7 @@ export function Viewer({ compact }) {
   const timelineName = p.compId ? s.project?.comps?.[p.compId]?.name ?? p.compId : 'Main timeline'
 
   const onStageDown = e => {
-    if (e.target.closest('.xform') || shown) return
+    if (e.target.closest('.xform')) return
     if (e.altKey) {
       const r = e.currentTarget.getBoundingClientRect()
       const px = Math.round(((e.clientX - r.left - rect.x) / rect.w) * p.width)
@@ -260,7 +235,7 @@ export function Viewer({ compact }) {
         <button class=${s.overlays.grid ? 'on' : ''} title="Rule of thirds" aria-label="Rule of thirds grid" aria-pressed=${!!s.overlays.grid} onClick=${() => set({ overlays: { ...s.overlays, grid: !s.overlays.grid } })}><${Icon} name="grid" /></button>
         <button title="Reference this frame to your assistant (⌥-click a point in the frame for a pixel)" aria-label="Reference this frame to your assistant" onClick=${() => addRef({ kind: 'frame', id: time.t.toFixed(3), label: `frame ${timecode(time.t, p.fps)}` })}><${Icon} name="attach" /></button>
       </div>
-      <div class="viewer-stage" ref=${stage} onPointerDown=${onStageDown} onDblClick=${() => player.toggle()}>
+      <div class="viewer-stage" ref=${stage} onPointerDown=${shown ? undefined : onStageDown} onDblClick=${() => player.toggle()}>
         <div class="canvas-host" ref=${host} style=${{ left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` }}></div>
         ${s.overlays.safe ? html`<div class="safe" style=${{ left: `${rect.x + rect.w * 0.05}px`, top: `${rect.y + rect.h * 0.05}px`, width: `${rect.w * 0.9}px`, height: `${rect.h * 0.9}px` }}><div class="safe-inner"></div></div>` : null}
         ${s.overlays.grid ? html`<div class="thirds" style=${{ left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` }}></div>` : null}

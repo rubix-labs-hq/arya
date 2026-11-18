@@ -12,7 +12,7 @@ const host = moduleURL(`const f = () => globalThis[Symbol.for('arya.store-histor
 export const host = { get kind() { return f().kind }, events: handlers => { f().handlers = handlers; return () => {} } }
 export const api = (...args) => f().api(...args)`)
 let source = fs.readFileSync(new URL('web/ui/store.js', editor), 'utf8')
-for (const [from, to] of Object.entries({ 'preact/hooks': hooks, '/core/project.js': new URL('core/project.js', editor).href, '../host.js': host, './change-receipt.js': new URL('web/ui/change-receipt.js', editor).href })) source = source.replaceAll(`'${from}'`, JSON.stringify(to))
+for (const [from, to] of Object.entries({ 'preact/hooks': hooks, '/core/project.js': new URL('core/project.js', editor).href, '/core/proposal-ops.js': new URL('core/proposal-ops.js', editor).href, '../host.js': host, './change-receipt.js': new URL('web/ui/change-receipt.js', editor).href })) source = source.replaceAll(`'${from}'`, JSON.stringify(to))
 const fixture = globalThis[key] = { kind: 'http', handlers: null, api: async () => ({}) }
 globalThis.performance ??= { now: () => 0 }
 globalThis.innerWidth ??= 1440

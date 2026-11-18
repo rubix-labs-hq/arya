@@ -141,7 +141,8 @@ test('actual timeline toolbar: names, icons, pressed states in both directions a
 const viewerStubs = () => ({
   'preact/hooks': moduleURL('export const useEffect=()=>{};export const useRef=x=>({current:x===null?globalThis.__viewerVideo??null:x});export const useState=x=>{const o=globalThis.__viewerState,i=globalThis.__viewerStateIndex=(globalThis.__viewerStateIndex??0)+1;return[o&&i-1 in o?o[i-1]:x,()=>{}]};'),
   './engine-host.js': moduleURL(`export const canvas={},comp={size:[320,180]},media={titles:new Map()};export const player={seek:t=>globalThis.__viewerLog.push(['seek',t]),step:d=>globalThis.__viewerLog.push(['step',d]),toggle:()=>globalThis.__viewerLog.push(['toggle'])};`),
-  './store.js': moduleURL(`export const addRef=()=>{},toast=()=>{};export const useStore=()=>globalThis.__viewerStore;export const edit=v=>globalThis.__viewerLog.push(['edit',v]);export const set=v=>globalThis.__viewerLog.push(['set',v]);export const store=new Proxy({},{get:(_,k)=>globalThis.__viewerStore[k]});export const time={t:2};export const useTime=()=>2;export const viewProject=()=>globalThis.__viewerProject;`),
+  './store.js': moduleURL(`export const addRef=()=>{},toast=()=>{};export const useStore=()=>globalThis.__viewerStore;export const edit=v=>globalThis.__viewerLog.push(['edit',v]);export const set=v=>globalThis.__viewerLog.push(['set',v]);export const store=new Proxy({},{get:(_,k)=>globalThis.__viewerStore[k]});export const time={t:2};export const useTime=()=>2;export const viewProject=()=>globalThis.__viewerProject;export const drawnProject=()=>globalThis.__viewerProject;`),
+  './preview-banner.js': moduleURL('export const PreviewBanner=()=>null;'),
   '../engine/frame.js': moduleURL('export const titleAnim=()=>({});'),
   '../engine/media.js': moduleURL('export const mediaUrl=()=>"/media/source.mp4";'),
   '../engine/shapes.js': new URL('../web/engine/shapes.js', import.meta.url).href,

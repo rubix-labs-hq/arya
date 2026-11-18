@@ -96,7 +96,7 @@ test('preview edits of a nested view use its own markers and reserve main IDs', 
 const receiptKey = Symbol.for('arya.marker.fixture')
 const hooks = moduleURL('export const useEffect=()=>{};export const useLayoutEffect=()=>{};export const useReducer=()=>[0,()=>{}];export const useState=v=>[v,()=>{}];export const useRef=v=>({current:v});')
 const hostURL = moduleURL("export const host={events:()=>()=>{},kind:'browser'};export const api=(...args)=>globalThis[Symbol.for('arya.marker.fixture')].api(...args);")
-let storeSource = (await read('web/ui/store.js')).replace("'preact/hooks'", JSON.stringify(hooks)).replace("'/core/project.js'", JSON.stringify(coreURL)).replace("'../host.js'", JSON.stringify(hostURL)).replace("'./change-receipt.js'", JSON.stringify(new URL('web/ui/change-receipt.js', editor).href))
+let storeSource = (await read('web/ui/store.js')).replace("'preact/hooks'", JSON.stringify(hooks)).replace("'/core/project.js'", JSON.stringify(coreURL)).replace("'/core/proposal-ops.js'", JSON.stringify(new URL('core/proposal-ops.js', editor).href)).replace("'../host.js'", JSON.stringify(hostURL)).replace("'./change-receipt.js'", JSON.stringify(new URL('web/ui/change-receipt.js', editor).href))
 const originalWidth = globalThis.innerWidth; globalThis.innerWidth = 1440
 const storeURL = moduleURL(storeSource), { edit, set, store, setTime, viewProject } = await import(storeURL)
 if (originalWidth === undefined) delete globalThis.innerWidth; else globalThis.innerWidth = originalWidth

@@ -3,8 +3,7 @@
 import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
-import { api, previewing, set, showPreview, store, time, toast, useStore, useTime } from './store.js'
-import { PHONE_QUERY } from './phone.js'
+import { api, set, store, time, toast, useStore, useTime } from './store.js'
 import { assistantState, assistantPrompt, providerName } from './assistant-state.js'
 import { assistantActivity } from './assistant-activity.js'
 import { AssistantControls, RoutingReceipt } from './provider-controls.js'
@@ -373,11 +372,12 @@ export function ChatPanel() {
   const focusComposer = () => composer.current?.focus()
   const undoChange = () => decide('undo', '/api/assistant/change/undo', { id: store.assistantReview?.change?.id })
   // "Show in viewer": on a phone the sheet covers the viewer, so it drops to its bar; the banner over the viewer has Apply and Discard.
+  // The store stamps the project it was shown over and forgets it once it no longer applies.
   const showInViewer = on => {
-    showPreview(on ? review?.proposal?.id : null)
-    if (on && previewing() && globalThis.matchMedia?.(PHONE_QUERY).matches) set({ chatCollapsed: true })
+    set(on ? { previewShown: { id: review?.proposal?.id }, viewerMode: 'timeline' } : { previewShown: null })
+    if (on && store.previewShown && globalThis.document?.querySelector('#editor-assistant .chat-collapse')?.getClientRects().length) set({ chatCollapsed: true })
   }
-  const shownPreview = previewing() && store.previewShown?.id === review?.proposal?.id
+  const shownPreview = Boolean(review?.proposal?.id) && s.previewShown?.id === review.proposal.id
   // The current run's line, and what a failed run saved and how to try again.
   const liveSymbol = !s.connected ? '↻' : working ? '◌' : activity.state === 'done' ? '↵' : activity.state === 'error' ? '!' : '■'
   const liveRunLine = updates => RunLine({ live: true, state: working ? 'active' : activity.state, symbol: liveSymbol, label: activity.label, stage: activity.stage, elapsed: activity.elapsed, detail: activity.detail, updates,

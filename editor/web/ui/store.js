@@ -3,9 +3,9 @@
 
 import { useEffect, useReducer } from 'preact/hooks'
 import { applyOps, compView } from '/core/project.js'
+import { proposalOps } from '/core/proposal-ops.js'
 import { api, host } from '../host.js'
 import { changeReceipt } from './change-receipt.js'
-import { proposalOps } from './assistant-preview.js'
 
 const listeners = new Set()
 
@@ -75,8 +75,10 @@ export function viewProject() {
 }
 
 // "Show in viewer" on a preview card: the viewer and playback draw the project with the
-// pending proposal applied. Only the proposal id and the project it was shown over are kept;
-// the previewed project lives in memory, is never saved and is never edited.
+// pending proposal applied. set({ previewShown: { id } }) shows one and { previewShown: null }
+// stops; set() records the project it was shown over and forgets it once it no longer applies,
+// so store.previewShown is set exactly while a preview is drawn. The previewed project lives in
+// memory, is never saved and is never edited.
 let cachedPreview = { base: null, id: null, project: null }
 let cachedDrawn = { project: null, comp: null, view: null }
 
@@ -103,13 +105,6 @@ export function drawnProject() {
   const comp = store.openComp && p.comps?.[store.openComp] ? store.openComp : null
   if (cachedDrawn.project !== p || cachedDrawn.comp !== comp) cachedDrawn = { project: p, comp, view: comp ? compView(p, comp) : p }
   return cachedDrawn.view
-}
-
-/** Shows a proposal in the viewer, or stops showing it with null. */
-export function showPreview(id) {
-  if (id == null) return set({ previewShown: null })
-  if (pending > 0) return toast('Wait for your edits to save, then show the preview.', 'error')
-  set({ previewShown: { id, base: store.project, version: store.version, root: store.root }, viewerMode: 'timeline' })
 }
 
 const PREVIEW_LOCKED = 'Editing is off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.'
@@ -145,7 +140,9 @@ export function chatHistoryStatus(value) {
 }
 
 export function set(patch) {
-  const next = typeof patch === 'function' ? patch(store) : patch
+  let next = typeof patch === 'function' ? patch(store) : patch
+  // Showing a preview starts from the saved project; while an edit is still saving there is none.
+  if (next.previewShown && !next.previewShown.base) next = { ...next, previewShown: pending > 0 ? null : { id: next.previewShown.id, base: store.project, version: store.version, root: store.root } }
   const changedComp = Object.hasOwn(next, 'openComp') && next.openComp !== store.openComp
   Object.assign(store, next, changedComp ? { selMarker: null } : {})
   // A shown preview that ended (applied, discarded, replaced or out of date) is forgotten for good.
@@ -237,7 +234,8 @@ export async function retryEditRecovery() {
 
 /** Applies ops now and on the server. Returns the server's log and created ids. */
 export async function edit(ops, summary, options = {}) {
-  if (!store.project || refusePreviewEdit()) return null
+  if (!store.project) return null
+  if (store.previewShown) { refusePreviewEdit(); return null }
   const expectedVersion = options?.expectedVersion
   if (expectedVersion !== undefined && (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0 || expectedVersion !== store.version || pending > 0)) {
     toast('This form is out of date. Wait for pending edits, then reopen it before applying changes.', 'error')

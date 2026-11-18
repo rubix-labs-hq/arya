@@ -8,7 +8,7 @@ import { clipName } from '../../core/describe.js'
 import { editNotes } from '../../core/edit-notes.js'
 import { changeReceipt } from './change-receipt.js'
 import { assistantSuggestions } from './assistant-suggestions.js'
-import { proposalOps } from './assistant-preview.js'
+import { proposalOps } from '../../core/proposal-ops.js'
 
 const html = htm.bind(h)
 const MAX_LAYERS = 6
