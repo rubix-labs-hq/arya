@@ -357,9 +357,11 @@ struct NativeAssistantPanel: View {
             // shorter. If the setup card, a waiting preview or the newest message was in view, it
             // is brought back into view once the height settles. Someone reading earlier messages
             // is left where they are, and a taller history needs no scroll. Scrolling never
-            // changes the height, so this cannot loop.
+            // changes the height, so this cannot loop. An empty chat has nothing below its
+            // opening sentence to bring back, so it keeps that sentence at the top.
             .onGeometryChange(for: Double.self) { $0.size.height } action: { height in
-                if height < historyHeight - 1, let span = latestSpans[latestTarget],
+                let emptyChat = assistant.chat.isEmpty && assistant.configured && assistant.proposal == nil
+                if height < historyHeight - 1, !emptyChat, let span = latestSpans[latestTarget],
                    span.upperBound >= -1, span.lowerBound <= historyHeight + 1 { historyShrinks += 1 }
                 historyHeight = height
             }
@@ -813,8 +815,11 @@ struct NativeAssistantPanel: View {
                 }.padding(.horizontal, 7)
             }.padding(.horizontal, 9)
             if showsKeyboardDone {
-                Button("Done") { draftFocused = false }
-                    .fontWeight(.semibold).frame(minWidth: 44, minHeight: chipHeight).padding(.trailing, 14)
+                // The frame sits inside the label so the whole 44-point target is the button.
+                Button { draftFocused = false } label: {
+                    Text("Done").fontWeight(.semibold).frame(minWidth: 44, minHeight: chipHeight).contentShape(Rectangle())
+                }
+                    .padding(.trailing, 14)
                     .accessibilityLabel("Dismiss assistant keyboard")
             }
         }
