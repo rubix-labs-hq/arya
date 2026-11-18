@@ -81,7 +81,7 @@ Every product claim on Home must be true of the code today. Before changing feat
 
 Home leads with the suite headline and a lead that names the assistant. The assistant section is the first section after the hero, ahead of the launch film. It says where the assistant works (the Mac app, the iPad and iPhone apps while the App Store release is live, and the local browser editor), what it reads, that every change has a receipt and reverses with Undo, and that Arya includes no AI credits. Its copy lives in `assistantCopy` in `scripts/product-home.mjs`.
 
-The download page shows one section per edition: Mac download, App Store and Browser editor. Each states its own version or requirements and keeps longer detail (checksum, purchase options, browser storage) in a disclosure. Its heading and lead change when no Mac release is ready, and the browser script changes the lead when it withdraws the Mac link.
+The download page shows one section per edition: Mac download, App Store and Browser editor. Each states its own version or requirements and keeps longer detail (checksum, purchase options, browser storage) in a disclosure. Its heading and lead change when no Mac release is ready, and the browser script changes the lead when it withdraws the Mac link. On Home, the script also replaces "Free Mac download" under the hero buttons with "Check the download page for the Mac release."
 
 Wherever a page offers the hosted browser editor, a visible sentence beside the link says it has no assistant, Figma import or transcription. Keep that sentence when moving or adding a link to `/editor/`.
 

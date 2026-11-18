@@ -107,6 +107,7 @@ const configLoad=fetch('/config.json',{cache:'no-store',signal:configController.
     }
   } else {
     if (directDownload) directDownload.textContent = 'Check Mac availability';
+    document.querySelector('#hero-release')?.replaceChildren(document.createTextNode('Check the download page for the Mac release.'));
     document.querySelector('#release-state')?.replaceChildren(document.createTextNode('Release validation in progress'));
     document.querySelector('#release-description')?.replaceChildren(document.createTextNode('The public installer is not ready.'));
     document.querySelector('.download-hero .lead')?.replaceChildren(document.createTextNode('See which editions are available.'));
@@ -117,6 +118,7 @@ const configLoad=fetch('/config.json',{cache:'no-store',signal:configController.
 }).catch(()=>{
   config=null;
   if (directDownload) directDownload.textContent = 'Check Mac availability';
+  document.querySelector('#hero-release')?.replaceChildren(document.createTextNode('Check the download page for the Mac release.'));
   document.querySelector('#release-state')?.replaceChildren(document.createTextNode('Release status unavailable'));
   document.querySelector('#release-description')?.replaceChildren(document.createTextNode('Reload this page to check the release status before downloading.'));
   document.querySelector('.download-hero .lead')?.replaceChildren(document.createTextNode('See which editions are available.'));

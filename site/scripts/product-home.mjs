@@ -265,7 +265,7 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
 <div class="hero-side">
 <p class="lead">Work by hand on a timeline, or tell the <a href="#ai">built-in assistant</a> what should change. Every change is an ordinary edit you can adjust and undo.</p>
 <div class="actions hero-actions">${heroActions}</div>
-<p class="hero-meta">${releaseReady ? `Free Mac download · ${minimumOS} or later.` : releaseLine}${browserEditor ? ` ${assistantCopy.hostedLimit}` : ''}</p>
+<p class="hero-meta">${releaseReady ? `<span id="hero-release">Free Mac download · ${minimumOS} or later.</span>` : releaseLine}${browserEditor ? ` ${assistantCopy.hostedLimit}` : ''}</p>
 <div class="actions hero-links">${browserEditor ? link(browserEditor, 'Open browser editor') : ''}${link('/download/', releaseReady ? 'All downloads' : 'Release status')}</div>
 </div>
 </div>
