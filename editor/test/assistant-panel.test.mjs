@@ -43,6 +43,25 @@ test('timeline suggestions follow the footage, format and captions', () => {
   }
 })
 
+test('one take cut in two is not offered a match grade, and captions anywhere count', () => {
+  const p = newProject('Synthetic take', { width: 1920, height: 1080 })
+  p.assets['media/take.mp4'] = { duration: 30, width: 1920, height: 1080, hasVideo: true, hasAudio: true }
+  const cut = applyOps(p, [{ op: 'append', src: 'media/take.mp4', track: 'V1', dur: 20 }, { op: 'blade', at: 8 }]).project
+  const pieces = cut.tracks.find(track => track.id === 'V1').clips.map(clip => clip.id)
+  assert.equal(pieces.length, 2)
+  const ids = list => list.map(item => item.id)
+  assert.ok(!ids(assistantSuggestions(cut, {})).includes('match-all'))
+  assert.deepEqual(ids(assistantSuggestions(cut, { selection: pieces })).slice(0, 1), ['grade-shot'])
+  assert.ok(ids(assistantSuggestions(cut, {})).includes('captions'))
+  // Captions that live in Main still count while a composition is open.
+  const captioned = applyOps(cut, [{ op: 'add_track', kind: 'caption' }]).project
+  const track = captioned.tracks.find(item => item.kind === 'caption')
+  track.clips = [{ id: 'cap1', kind: 'caption', start: 0, dur: 2, text: 'Sample words' }]
+  captioned.comps = { k1: { name: 'Short', width: 1080, height: 1920, fps: 30, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'k1c', kind: 'video', src: 'media/take.mp4', start: 0, dur: 5, in: 0 }] }] } }
+  assert.ok(!ids(assistantSuggestions(captioned, {})).includes('captions'))
+  assert.ok(!ids(assistantSuggestions(captioned, { comp: 'k1' })).includes('captions'))
+})
+
 test('focus names the timeline, playhead timecode and visible layers under it', () => {
   const p = interview()
   assert.deepEqual(assistantPanel.focus(p, { playhead: 1 }), { scope: 'Main timeline', time: '00:00:01:00', under: ['Opening', 'a.mp4'] })
