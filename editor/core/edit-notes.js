@@ -12,7 +12,7 @@
 // fix to send, and the person's, a short sentence that names clips as the timeline does. Notes
 // that only help the agent (title positions) have no person form.
 
-import { clipEnd, hasAudio, round, valueAt } from './project.js'
+import { EASES, clipEnd, ease, hasAudio, round, sortedKeys, valueAt } from './project.js'
 import { BUNDLED_FONTS, knownFont } from './fonts.js'
 import { clipName } from './describe.js'
 
@@ -285,18 +285,30 @@ function briefTextNotes(before, after, made) {
   ]
 }
 
+/** Whether an ease can pass beyond the keys on either side of it (backOut, or a custom curve that does). */
+const overshoots = kind => { const points = Array.isArray(kind) ? kind : EASES[kind]; return Array.isArray(points) && [points[1], points[3]].some(y => y < 0 || y > 1) }
+
 /**
  * A clip's largest scale while it is on screen (clip-local 0 to dur). Keys outside that range, which a
- * trim or blade leaves behind, count only through the value they give inside it, and an overshooting
- * ease is sampled between keys.
+ * trim or blade leaves behind, count only through the value they give inside it. Between keys the
+ * value stays within its two keys unless the ease overshoots, so only those segments are sampled.
  */
 function shownScale(project, clip) {
   const dur = clip.dur > 0 ? clip.dur : 0
-  const keys = Array.isArray(clip.anim?.scale) ? clip.anim.scale.map(key => key?.[0]).filter(Number.isFinite).sort((a, b) => a - b) : []
-  const times = [0, dur, ...keys]
-  for (let i = 0; i < keys.length - 1; i++) for (let step = 1; step < 8; step++) times.push(keys[i] + (keys[i + 1] - keys[i]) * step / 8)
-  const values = times.filter(t => t >= 0 && t <= dur).map(t => valueAt(project, clip, 'scale', t)).filter(Number.isFinite)
-  return values.length ? Math.max(...values) : NaN
+  const at = t => valueAt(project, clip, 'scale', t)
+  if (clip.expr?.scale) return Math.max(...Array.from({ length: 65 }, (_, i) => at(dur * i / 64)).filter(Number.isFinite))
+  let most = Math.max(...[at(0), at(dur)].filter(Number.isFinite))
+  const keys = sortedKeys(Array.isArray(clip.anim?.scale) ? clip.anim.scale : [])
+  for (let i = 0; i < keys.length; i++) {
+    const [time, value, kind] = keys[i], next = keys[i + 1]
+    if (time >= 0 && time <= dur && Number.isFinite(value)) most = Math.max(most, value)
+    if (!next || !overshoots(kind)) continue
+    for (let step = 1; step < 8; step++) {
+      const t = time + (next[0] - time) * step / 8, v = value + (next[1] - value) * ease(kind, step / 8)
+      if (t >= 0 && t <= dur && Number.isFinite(v)) most = Math.max(most, v)
+    }
+  }
+  return most
 }
 
 /** Video this batch scaled past the scale that fills its frame. Scale 1 fits the whole picture inside the frame. */

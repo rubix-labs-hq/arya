@@ -373,6 +373,16 @@ test('video zoomed more than 10% past the scale that fills a frame of another sh
   assert.match(early.notes.join('\n'), new RegExp(`${id} reaches scale 3\\.8, 20% past 3\\.16`))
   // A base scale that keys override does not count.
   assert.equal(run(media, [{ op: 'update', id, set: { scale: 4, anim: { scale: [[0, 3.2], [6, 3.3]] } } }]).notes.some(note => /fill scale/.test(note)), false)
+  // An ease that overshoots counts by its peak between the keys.
+  // 2.5 to 3.45 stays under 3.48 (10% past fill) unless backOut carries it to about 3.54 on the way.
+  const overshoot = run(media, [{ op: 'update', id, set: { anim: { scale: [[0, 2.5, 'backOut'], [4, 3.45]] } } }])
+  assert.match(overshoot.notes.join('\n'), new RegExp(`${id} reaches scale 3\\.54`))
+  assert.equal(run(media, [{ op: 'update', id, set: { anim: { scale: [[0, 2.5, 'inOut'], [4, 3.45]] } } }]).notes.some(note => /fill scale/.test(note)), false)
+  // A tracker's dense keys stay quick to check.
+  const dense = Array.from({ length: 2000 }, (_, i) => [i * 0.003, 3.2 + (i % 7) * 0.05])
+  const started = performance.now()
+  assert.match(run(media, [{ op: 'update', id, set: { anim: { scale: dense } } }]).notes.join('\n'), new RegExp(`${id} reaches scale 3\\.5`))
+  assert.ok(performance.now() - started < 200, 'dense keys are checked without sampling every segment')
   // A zoom that grows on screen is noted again.
   const grown = run(keyed.project, [{ op: 'keyframe', id, prop: 'scale', at: 4, value: 4.2 }])
   assert.match(grown.notes.join('\n'), new RegExp(`${id} reaches scale 4\\.2`))
