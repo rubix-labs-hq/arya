@@ -143,6 +143,7 @@ test('dialog shows the warning a preview carries when a cut removes words', asyn
 
 test('the dialog buttons are full touch targets on a touch screen', () => {
   assert.match(source, /@media \(pointer: coarse\) \{ \.cap-dialog \.modal-actions button \{ min-height: 44px; \} \}/)
+  assert.match(source, /\.cap-dialog \{ overflow-y: auto; \}/, 'a short screen scrolls the dialog instead of pushing its buttons outside it')
 })
 
 test('dialog says transcription is not installed with the server next step', async t => {

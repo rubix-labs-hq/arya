@@ -44,6 +44,8 @@ const CSS = `
 .cap-preview div { padding: 2px 0; border-bottom: 1px solid var(--line); white-space: pre-wrap; }
 .cap-preview div:last-child { border-bottom: none; }
 .cap-dialog .field > label { width: 110px; }
+/* On a short screen the dialog scrolls, so its buttons stay inside it. */
+.cap-dialog { overflow-y: auto; }
 @media (pointer: coarse) { .cap-dialog .modal-actions button { min-height: 44px; } }
 `
 if (typeof document !== 'undefined' && !document.getElementById('reel-captions-css')) {
