@@ -270,3 +270,15 @@ test('actual pending assistant send blocks both recovery entries and their stale
   staleClicks[0]()
   assert.equal(opened.length, 1)
 })
+
+test('a recovery copy shows a readable local time and keeps the exact stamp as its tooltip', async t => {
+  const f = fixture(t); await tick()
+  const meta = f.document.body.querySelectorAll('small').find(node => /KiB/.test(node.textContent))
+  assert.ok(meta)
+  const expected = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date('2026-10-04T00:00:00Z'))
+  assert.ok(meta.textContent.startsWith(`${expected} · browser · 1 KiB · SHA256 cccccccccccc`), meta.textContent)
+  assert.doesNotMatch(meta.textContent, /2026-10-04T00:00:00Z/)
+  assert.equal(meta.title, '2026-10-04T00:00:00Z')
+  const odd = fixture(t, { initial: listing({ snapshots: [{ id: copyID, host: 'browser', name: 'Saved project', createdAt: 'not a date', bytes: 900, sha256: 'c'.repeat(64) }] }) }); await tick()
+  assert.match(odd.document.body.querySelectorAll('small').find(node => /KiB/.test(node.textContent)).textContent, /^not a date · /)
+})

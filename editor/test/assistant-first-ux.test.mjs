@@ -834,3 +834,174 @@ test('phone, larger-text and short-window layouts keep Send, the header controls
   assert.match(assistantCSS, /@media \(max-height: 520px\) \{\s*\.chat-head \{ padding-block: 0; \}\s*\.chat > :is\(\.assistant-route-preview, \.assistant-plugin-note\) \{ padding-block: 2px; font-size: 11px; line-height: 1\.25; \}/, 'both pinned notices leave room for Send in a short window')
   assert.match(baseCSS, /font: 11px ui-monospace, Menlo, monospace;/)
 })
+
+// ---- Tests the round 2 mutation review found missing.
+
+test('entry focus selector names the hosted link as well as the field', async () => {
+  const selectors = []
+  const context = shell({ document: { querySelector: selector => { selectors.push(selector); return { focus() {} } } }, patch: { chatOpen: true } })
+  entryOf(context).props.onClick()
+  assert.equal(selectors[0], '#editor-assistant :is(textarea, .assistant-setup a.primary)')
+})
+
+test('the entry reads capabilities for its status only on the native host', () => {
+  const state = patch => text(byClass(entryOf(shell({ patch })), 'assistant-entry-state'))
+  assert.equal(state({ caps: { assistant: ready } }), 'Checking', 'a browser server status has not arrived yet')
+  assert.equal(state({ caps: { host: 'native', assistant: ready } }), 'Ready')
+})
+
+test('the list follows the undo bar when it arrives on its own', t => {
+  const review = changes => ({ proposal: null, applying: null, change: null, running: false, runId: null, ...changes })
+  // Both are states agent/assistant-review.mjs publishes: finishApply with a failed step keeps `applying` and adds `change`;
+  // a request sent without Preview changes gets its `change` when the run has already ended.
+  for (const [name, claude, before, after] of [
+    ['an apply that failed after some steps', { state: 'idle' }, review({ applying: { id: 'p1', finished: false } }), review({ applying: { id: 'p1', finished: true, error: 'Step 2 failed.' }, change: { id: 'c1', kind: 'preview', runId: null, edits: 1 } })],
+    ['a committed request whose change arrives after the run ended', { state: 'done', runId: 'r1' }, review(), review({ change: { id: 'c1', kind: 'request', runId: 'r1', edits: 1 } })],
+  ]) {
+    const f = panel(t, { claude, chat: [{ role: 'user', text: 'First', at: 1 }], assistantReview: before })
+    const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
+    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    element.scrollTop = 100; byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
+    f.state.assistantReview = after; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    assert.equal(element.scrollTop, 900, name)
+  }
+})
+
+test('Return closes an open composer menu before it sends', async t => {
+  const previous = globalThis.document
+  t.after(() => { if (previous === undefined) delete globalThis.document; else globalThis.document = previous })
+  globalThis.document = { addEventListener() {}, removeEventListener() {}, getElementById: () => null }
+  const f = panel(t), tree = f.draw(), menus = [{ open: true }, { open: true }]
+  const field = nodes(tree).find(node => node.type === 'textarea')
+  field.ref.current = { focus() {}, closest: selector => selector === '.assistant-composer-card' ? { querySelectorAll: () => menus } : null }
+  field.props.onKeyDown({ key: 'Enter', stopPropagation() {}, preventDefault() {} }); await tick()
+  assert.deepEqual(menus.map(menu => menu.open), [false, false])
+  assert.deepEqual(f.calls.map(call => call.route), ['/api/assistant/sharing', '/api/bridge/send'])
+})
+
+const unset = { provider: 'codex', mode: 'manual', configured: false, providers: [{ id: 'codex', installed: false, authenticated: false, available: false, reason: 'Install Codex.' }] }
+test('a sign-in that is exchanging its code is not shown as Checking', t => {
+  const status = { ...unset, loading: true, checkedAt: null, chatgpt: account({ attempt: { state: 'exchanging', message: '', startURL: null } }) }
+  assert.equal(assistantState(status).checking, false)
+  const tree = panel(t, { assistantStatus: status }).draw()
+  assert.equal(byClass(tree, 'assistant-checking'), undefined)
+  assert.match(text(byClass(tree, 'assistant-setup')), /Waiting for ChatGPT sign-in/)
+})
+
+test('a refresh state without ChatGPT on this server still links to Assistant settings', t => {
+  const stale = { provider: 'codex', configured: false, mode: 'auto', autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } }
+  const reason = 'The selected account session expired. Sign in again.'
+  const failing = { provider: 'codex', mode: 'manual', configured: false, reason, providers: [{ id: 'codex', installed: true, authenticated: false, available: false, reason }] }
+  for (const [status, first] of [[stale, 'Refresh availability'], [failing, 'Refresh status']]) {
+    const f = panel(t, { assistantStatus: status }), buttons = nodes(byClass(f.draw(), 'assistant-setup')).filter(node => node.type === 'button')
+    assert.deepEqual(buttons.map(text), [first, 'Assistant settings'])
+    buttons[1].props.onClick(); assert.equal(f.state.settingsOpen, true); assert.notEqual(f.state.settingsOtherWays, true)
+  }
+})
+
+test('setup actions are off while a request runs, and Refresh is off without a connection', t => {
+  const reason = 'The selected account session expired. Sign in again.'
+  const failing = chatgpt => ({ provider: 'codex', mode: 'manual', configured: false, reason, chatgpt, providers: [{ id: 'codex', installed: true, authenticated: false, available: false, reason }] })
+  const buttons = (status, patch) => Object.fromEntries(nodes(byClass(panel(t, { assistantStatus: status, ...patch }).draw(), 'assistant-setup')).filter(node => node.type === 'button').map(node => [text(node), Boolean(node.props.disabled)]))
+  assert.deepEqual(buttons(failing(account()), { claude: { state: 'working' } }), { 'Refresh status': true, 'Continue with ChatGPT': true, 'Other ways to connect': false })
+  assert.deepEqual(buttons(failing(account()), { connected: false }), { 'Refresh status': true, 'Continue with ChatGPT': false, 'Other ways to connect': false })
+  assert.deepEqual(buttons({ ...failing(account()), loading: true, checkedAt: 1 }, {}), { 'Refreshing…': true, 'Continue with ChatGPT': false, 'Other ways to connect': false })
+  assert.deepEqual(buttons({ ...unset, chatgpt: account() }, { claude: { state: 'working' } }), { 'Continue with ChatGPT': true, 'Other ways to connect': false })
+})
+
+test('waiting for sign-in offers the sign-in page as the one primary link', t => {
+  const waiting = url => ({ ...unset, chatgpt: account({ attempt: { state: 'waiting', message: '', startURL: url } }) })
+  const card = byClass(panel(t, { assistantStatus: waiting('https://auth.example/start') }).draw(), 'assistant-setup')
+  const link = nodes(card).find(node => node.type === 'a')
+  assert.equal(text(link), 'Open the sign-in page ↗'); assert.equal(link.props.href, 'https://auth.example/start'); assert.ok(cls(link, 'primary'))
+  assert.equal(nodes(byClass(panel(t, { assistantStatus: waiting(null) }).draw(), 'assistant-setup')).some(node => node.type === 'a'), false)
+})
+
+test('every CSS variable used without a fallback is defined', () => {
+  const sheets = fs.readdirSync(new URL('../web/ui/', import.meta.url)).filter(name => name.endsWith('.css')).map(name => [name, read(`ui/${name}`)]).concat([['styles.css', baseCSS]])
+  const scripts = fs.readdirSync(new URL('../web/ui/', import.meta.url)).filter(name => name.endsWith('.js')).map(name => read(`ui/${name}`)).join('\n')
+  const defined = new Set([...sheets.map(item => item[1]).join('\n').matchAll(/(--[\w-]+)\s*:/g), ...scripts.matchAll(/['"`](--[\w-]+)['"`]?\s*[:,]/g), ...scripts.matchAll(/(--[\w-]+)\s*:/g)].map(match => match[1]))
+  for (const [name, css] of sheets) assert.deepEqual([...new Set([...css.matchAll(/var\((--[\w-]+)\s*\)/g)].map(match => match[1]))].filter(item => !defined.has(item)), [], `${name} uses an undefined variable`)
+})
+
+test('composer menus open above the field unless the window is 520px tall or shorter', () => {
+  assert.match(assistantCSS, /@media \(min-height: 521px\) \{\s*\.chat \.assistant-composer-card \{ position: relative; \}\s*\}/)
+  assert.match(assistantCSS, /@media \(max-height: 520px\) \{\s*\.assistant-model-popover \{ top: 46px; bottom: auto;/)
+})
+
+test('a proposal or a run without an id still shows the preview sentence', t => {
+  const review = changes => ({ proposal: null, applying: null, change: null, running: false, runId: null, ...changes })
+  const lines = state => nodes(byClass(panel(t, state).draw(), 'assistant-run')).filter(node => node.type === 'p').map(text)
+  assert.deepEqual(lines({ claude: { state: 'done', runId: 'r1', outcome: PREVIEW_OUTCOME }, assistantReview: review({ proposal: { id: 'p1' } }) }), [PREVIEW_OUTCOME], 'a proposal with no run id')
+  assert.deepEqual(lines({ claude: { state: 'done', outcome: PREVIEW_OUTCOME }, assistantReview: review({ proposal: { id: 'p1', runId: 'r1' } }) }), [PREVIEW_OUTCOME], 'a run with no id')
+})
+
+test('after Stop, an applied preview from the same run is not called a committed edit of this request', t => {
+  const stopped = { state: 'cancelled', runId: 'r1', startedAt: 1000, finishedAt: 13000 }
+  const run = byClass(panel(t, { claude: stopped, assistantReview: { proposal: null, applying: null, change: { id: 'c1', kind: 'preview', runId: 'r1', edits: 2 }, running: false, runId: null } }).draw(), 'assistant-run')
+  assert.equal(text(run), '■ Stopped 12s')
+})
+
+test('each ChatGPT setup action passes the same arguments to the sign-in flow', async t => {
+  const reason = 'The selected account session expired. Sign in again.'
+  const failing = chatgpt => ({ provider: 'codex', mode: 'manual', configured: false, reason, chatgpt, providers: [{ id: 'codex', installed: true, authenticated: false, available: false, reason }] })
+  const press = async (status, label) => { const f = panel(t, { assistantStatus: status }); await nodes(byClass(f.draw(), 'assistant-setup')).find(node => node.type === 'button' && text(node) === label).props.onClick(); return f.calls }
+  for (const make of [failing, chatgpt => ({ ...unset, chatgpt })]) {
+    assert.deepEqual(await press(make(account()), 'Continue with ChatGPT'), [{ route: 'sign-in', body: [{}] }])
+    assert.deepEqual(await press(make(signedIn({ planUsage: false })), 'Turn on ChatGPT plan usage'), [{ route: 'sign-in', body: [{ account: 'a1', enablePlan: true }] }])
+    const status = make(signedIn()), calls = await press(status, 'Use ChatGPT')
+    assert.equal(calls.length, 1); assert.equal(calls[0].route, 'use-chatgpt'); assert.equal(calls[0].body[0], status)
+  }
+  const selected = { provider: 'chatgpt', mode: 'manual', configured: false, reason: 'ChatGPT is not available right now.', chatgpt: signedIn() }
+  assert.deepEqual(nodes(byClass(panel(t, { assistantStatus: selected }).draw(), 'assistant-setup')).filter(node => node.type === 'button').map(text), ['Assistant settings', 'Other ways to connect'], 'no Use ChatGPT when it is already the provider')
+})
+
+test('the reconnect note is only for an assistant that is ready', t => {
+  assert.equal(byClass(panel(t, { connected: false, assistantStatus: { provider: 'codex', configured: false } }).draw(), 'assistant-send-reason'), undefined)
+})
+
+test('a finished run that lost its connection keeps its reconnecting notice in view', t => {
+  const review = { proposal: null, applying: null, change: null, running: false, runId: null }
+  const run = byClass(panel(t, { connected: false, claude: { state: 'done', runId: 'r1', outcome: PREVIEW_OUTCOME }, assistantReview: review }).draw(), 'assistant-run')
+  assert.equal(cls(run, 'silent'), false)
+  assert.match(text(run), /Reconnecting\. Showing the last confirmed result\./)
+})
+
+test('every icon the assistant panel and the entry name is drawn', () => {
+  for (const source of [read('ui/chat.js'), app.match(/function TopBar\([^]*?\n}\n/)[0]]) {
+    const names = new Set([...source.matchAll(/<\$\{Icon\} name="([a-z-]+)"/g)].map(match => match[1]))
+    for (const expression of source.matchAll(/<\$\{Icon\} name=\$\{([^}]*)\}/g)) for (const literal of expression[1].matchAll(/'([a-z-]+)'/g)) names.add(literal[1])
+    assert.ok(names.size > 0)
+    for (const name of names) assert.notEqual(Icon({ name }), null, `icon "${name}" is not drawn`)
+  }
+})
+
+test('after Stop, a change with no run id is not counted for a run with no id', t => {
+  const run = byClass(panel(t, { claude: { state: 'cancelled', startedAt: 1000, finishedAt: 13000 }, assistantReview: { proposal: null, applying: null, change: { id: 'c1', kind: 'request', edits: 2 }, running: false, runId: null } }).draw(), 'assistant-run')
+  assert.equal(text(run), '■ Stopped 12s')
+})
+
+test('the Send tooltip names the key that sends for the input kind', t => {
+  const title = kind => { const f = panel(t); f.state.assistantDraft = { ...f.state.assistantDraft, inputKind: kind }; return primary(f.draw())[0].props.title }
+  assert.equal(title('prompt'), 'Send (Return)')
+  assert.equal(title('script'), 'Send (⌘Return)')
+  assert.equal(title('screenplay'), 'Send (⌘Return)')
+})
+
+test('the layout fixes outside the panel stay in the stylesheets', () => {
+  assert.match(baseCSS, /@media \(max-width: 720px\) \{\s*\.deliver-preset-picker \{ display: grid;/)
+  assert.doesNotMatch(baseCSS, /@container delivery-workspace[^{]*\{\s*\.deliver-preset-picker/)
+  assert.match(baseCSS, /\.settings-nav \{ display: flex; flex-flow: row wrap; gap: 4px; max-height: none; overflow: visible; \}/)
+  assert.match(baseCSS, /\.modal\.keys \{ width: min\(880px, 94vw\); max-height: min\(96dvh, 860px\); \}/)
+  assert.match(phoneCSS, /\.page\.phone-edit \.tl-toolbar \{[^}]*padding-right: 48px;[^}]*mask-image: linear-gradient\(to right, #000 calc\(100% - 48px\), transparent\); \}/)
+  assert.match(baseCSS, /\.welcome-formats button\.ghost \{ border-color: var\(--line-2\); \}/)
+  assert.doesNotMatch(baseCSS + assistantCSS, /\.chat-head[^{},]*\.muted[^{}]*\{[^}]*text-overflow/)
+  assert.match(keys, /\['\/', 'Ask Arya'\]/)
+})
+
+test('a stale catalog that is being rechecked for the first time says Needs refresh, not Checking', () => {
+  const stale = { provider: 'codex', configured: false, mode: 'auto', loading: true, checkedAt: null, autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } }
+  const state = assistantState(stale)
+  assert.equal(state.refreshRequired, true); assert.equal(state.checking, false)
+  assert.equal(text(byClass(entryOf(shell({ patch: { assistantStatus: stale } })), 'assistant-entry-state')), 'Needs refresh')
+})
