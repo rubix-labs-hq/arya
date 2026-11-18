@@ -2,7 +2,7 @@
 
 Every image in this folder is a capture of running Arya software, or a frame or clip that Arya rendered. None is a mockup or a recomposition. There are two sets:
 
-- `native-*.webp`, `after-the-tide.mp4` and `after-the-tide-poster.webp` come from the native Mac, iPad and iPhone apps, build 1.1.0 (3), captured in November 2026. Four of them come from the 1.3.0 development build at f6fa4d5 instead, captured on 2026-11-18 (see the table).
+- `native-*.webp`, `after-the-tide.mp4` and `after-the-tide-poster.webp` come from the native Mac, iPad and iPhone apps, build 1.1.0 (3), captured in November 2026. Three of them come from the 1.3.0 development build at f6fa4d5 instead, captured on 2026-11-18 (see the table).
 - Every other image is a capture of the browser editor (development build, 2026-10-09) or a frame that editor rendered.
 
 The home page leads with the native captures. It uses browser captures only where no native capture of that feature exists yet: the node graph, the transform inspector, the loudness reading, the film in the timeline and the assistant panel. Each figure names the edition it shows.
@@ -14,7 +14,7 @@ The home page leads with the native captures. It uses browser captures only wher
 | File | Capture and treatment |
 | --- | --- |
 | `native-mac-color.webp` | Mac, Color page, whole window, 2560 by 1600. |
-| `native-mac-edit.webp` | Mac, Edit page with Ask Arya in the toolbar, whole window, 2560 by 1600. 1.3.0 development build at f6fa4d5, Mac App Store edition (Mac Catalyst), Release, ad-hoc signed, not submitted. |
+| `native-mac-edit.webp` | Mac, Edit page, whole window, 2560 by 1600. |
 | `native-mac-color-inspector.webp` | Mac, Color page: the inspector panel at its own size. |
 | `native-mac-motion-inspector.webp` | Mac, Motion page: the inspector panel at its own size. |
 | `native-mac-media-panel.webp` | Mac, Edit page: the Media panel at its own size. |
@@ -26,7 +26,7 @@ The home page leads with the native captures. It uses browser captures only wher
 | `after-the-tide.mp4` | The 12 second export the iPhone app rendered from the After the Tide project, at 1280 by 720 without sound. |
 | `after-the-tide-poster.webp` | One frame of that export. |
 
-Captures are cropped or scaled down, then converted with `cwebp`. Nothing is drawn over them and none is enlarged. Every capture shows the After the Tide sample project, except `native-mac-motion-inspector.webp`, which shows Motion Study, a generated title over a shape layer. The Mac captures of After the Tide come from the Mac App Store build of 1.1.0 (3), except `native-mac-edit.webp`, which comes from a 1.3.0 development build of that edition. The Motion Study capture comes from the direct build. Images from the 1.3.0 development build carry `"edition": "Development build"` in `native.json` (the Mac one keeps `"Mac App Store"`), so the capture note says they come from a build that is not released. `native.json` and the pages do not name the version number, because the site never names a release that is still being prepared. Their capture records and SHA-256 sums are in `build/arya-1.3.0-campaign/captures/provenance.json`, which is not committed. `link-preview.png` in `assets/brand` uses `native-mac-color-inspector.webp`; its source is `docs/design/link-preview.html`.
+Captures are cropped or scaled down, then converted with `cwebp`. Nothing is drawn over them and none is enlarged. Every capture shows the After the Tide sample project, except `native-mac-motion-inspector.webp`, which shows Motion Study, a generated title over a shape layer. The Mac captures of After the Tide come from the Mac App Store build of 1.1.0 (3). The Motion Study capture comes from the direct build. Images from the 1.3.0 development build carry `"edition": "Development build"` in `native.json`, so the capture note says they come from a build that is not released. `native.json` and the pages do not name the version number, because the site never names a release that is still being prepared. Their capture records and SHA-256 sums are in `build/arya-1.3.0-campaign/captures/provenance.json`, which is not committed. `native-mac-edit.webp` stays the 1.1.0 (3) capture: the 1.3.0 Mac capture (Mac App Store edition) shows the Ask Arya button, but its timeline has only two tracks and its Media panel and inspector are cut off, and it would no longer match `native-mac-media-panel.webp`. `link-preview.png` in `assets/brand` uses `native-mac-color-inspector.webp`; its source is `docs/design/link-preview.html`.
 
 ### After the Tide
 
