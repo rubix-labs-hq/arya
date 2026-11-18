@@ -88,6 +88,7 @@ Arya runs as a native SwiftUI and Metal app for Mac, iPhone and iPad, and as a b
 **AI assistant**
 - Select clips, a title or a range and say what should change.
 - The assistant reads the project, can look at rendered frames and edits through the same operations as the timeline. Undo reverses its edits.
+- In the local browser editor, each request also carries your first request and the latest messages of the conversation, and the assistant can read older saved messages when it needs them.
 - Sign in with ChatGPT to use your own ChatGPT plan, or connect your own Claude Code, Codex or Google Antigravity account through the provider's official sign-in. Arya includes no AI credits.
 - Optional. Editing and export never need an assistant.
 
@@ -140,7 +141,12 @@ The official website is https://editwitharya.app. Browser projects are stored pe
 - Google Chrome (headless Chrome renders browser exports and frame snapshots)
 - Xcode Command Line Tools (`xcode-select --install`) to build the local persistence helper
 - Xcode 26.4.1 or newer for the native app
-- Optional: whisper.cpp for browser transcription (`brew install whisper-cpp`, model in `~/.reel/models/ggml-base.en.bin`)
+- Optional: whisper.cpp and its English base model for browser transcription. The editor looks for both on every request, so you can install them while it runs, with no restart:
+
+  ```bash
+  brew install whisper-cpp
+  mkdir -p ~/.reel/models && curl -L -o ~/.reel/models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+  ```
 
 ### Install
 
