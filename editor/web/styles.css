@@ -716,9 +716,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
   .chat > .chat-list:has(> :not(.chat-empty)) { min-height: 44px; }
 }
 
-.assistant-tool-card, .assistant-result-card { min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); overflow-wrap: anywhere; }
+.assistant-result-card { min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); overflow-wrap: anywhere; }
 .assistant-card-label { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.5; }
-.assistant-tool-card p { margin: 4px 0 0; font-size: 12px; line-height: 1.5; text-wrap: pretty; }
 .assistant-result-card .change-receipt { margin-top: 5px; padding: 0; border: 0; background: transparent; }
 .assistant-selection-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 10px; }
 .assistant-selection-chips .chip, .assistant-composer-card .refs .chip { max-width: 100%; overflow-wrap: anywhere; }
