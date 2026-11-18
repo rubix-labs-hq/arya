@@ -209,6 +209,19 @@ test('a saved permission copied to another project folder, or edited on disk, as
   assert.equal((await w.start().sharing()).approved, true, 'the untouched file is still accepted')
 })
 
+test('a saved permission edited to name another model of the same provider asks again', async t => {
+  const w = world(t), first = w.start()
+  await first.configure({ provider: 'codex', model: 'one' })
+  await w.allow(first)
+  await first.close()
+  const file = path.join(w.root, '.reel', 'assistant-sharing.json'), value = JSON.parse(fs.readFileSync(file, 'utf8'))
+  value.sharing.scope.models = [{ provider: 'codex', model: 'two' }]
+  fs.writeFileSync(file, JSON.stringify(value))
+  const next = w.start()
+  await next.configure({ provider: 'codex', model: 'two' })
+  assert.equal((await next.sharing()).approved, false)
+})
+
 test('an account that changes between the review and Allow is refused', async t => {
   const w = world(t), service = w.start({ options: { accountCacheMs: 0 } })
   const review = await service.sharing()

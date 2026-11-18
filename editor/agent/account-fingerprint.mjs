@@ -1,6 +1,7 @@
 // A stable, non-reversible name for the account a provider CLI is signed in to. A saved sharing
-// permission is tied to it, so the permission holds across server restarts and stops holding when
-// another account signs in. The identifiers are hashed at once and are never logged or stored.
+// permission is tied to it, so the permission holds across server restarts and is not accepted by
+// a new server when another account is signed in. A running server does not read the account
+// again after Allow. The identifiers are hashed at once and are never logged or stored.
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
