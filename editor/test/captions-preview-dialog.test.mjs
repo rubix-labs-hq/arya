@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import test from 'node:test'
+import { transcriptNotes, transcriptionSetup } from '../web/ui/transcript-jobs.js'
 
 const require = createRequire(path.join(process.cwd(), 'editor/package.json'))
 const html = require('htm').bind(require('preact').h)
@@ -28,7 +29,7 @@ async function fixture(t, configure) {
     return { items: [{ t: .2, end: .8, text: 'Saved' }], clips: ['a1'], warnings: [], version: c.s.version, sourceFingerprint: body.expectedSourceFingerprint, transcriptRevision: body.expectedTranscriptRevision }
   }
   c.Confirm = function CaptionsConfirm() {}
-  const Dialog = new Function('html', 'useStore', 'viewProject', 'store', 'useState', 'useRef', 'useMemo', 'useEffect', 'api', 'runTranscriptJob', 'toast', 'set', 'CaptionsConfirm', 'Num', `${component}; return TranscriptDialog;`)(html, () => c.s, () => c.s.project, c.s, state, ref, memo, effect, api, async () => { throw new Error('Unexpected transcription') }, value => c.notes.push(value), value => { c.updates.push(value); Object.assign(c.s, value) }, c.Confirm, function Num() {})
+  const Dialog = new Function('html', 'useStore', 'viewProject', 'store', 'useState', 'useRef', 'useMemo', 'useEffect', 'api', 'runTranscriptJob', 'toast', 'set', 'CaptionsConfirm', 'Num', 'transcriptNotes', 'transcriptionSetup', `${component}; return TranscriptDialog;`)(html, () => c.s, () => c.s.project, c.s, state, ref, memo, effect, api, async (...args) => { if (c.transcribe) return c.transcribe(...args); throw new Error('Unexpected transcription') }, value => c.notes.push(value), value => { c.updates.push(value); Object.assign(c.s, value) }, c.Confirm, function Num() {}, transcriptNotes, transcriptionSetup)
   const render = (effects = true) => { c.index = 0; const tree = Dialog({ onClose: () => c.closed++ }); if (effects) c.pending.splice(0).forEach(fn => fn()); return tree }
   const nodes = () => walk(render())
   const button = label => nodes().find(node => node.type === 'button' && text(node) === label)
@@ -109,4 +110,42 @@ test('dialog refuses a preview response bound to another transcript revision', a
   await f.preview()
   assert.equal(f.confirm(), undefined)
   assert.match(f.c.notes[0], /changed during caption preview/)
+})
+
+const strings = node => { const out = []; const visit = value => { if (typeof value === 'string') out.push(value); else if (Array.isArray(value)) value.forEach(visit); else if (value && typeof value === 'object') visit(value.props?.children) }; visit(node); return out.join('') }
+
+test('dialog says that a finished transcript holds no words, with its warnings, and can run again', async t => {
+  const silent = 'Invented warning: the sample source holds no speech.'
+  const f = await fixture(t, c => { c.saved = { ...c.saved, words: [], status: 'missing', revision: 0 }; c.s.transcript = null })
+  let jobs = 0
+  f.c.transcribe = async () => { jobs++; f.c.saved = { ...f.c.saved, status: 'complete', revision: 1, words: [], warnings: [silent] } }
+  await f.button('Preview captions').props.onClick(); await f.settle()
+  assert.equal(f.confirm(), undefined)
+  assert.equal(f.c.notes.length, 0, 'the reason stays in the dialog and is not a toast')
+  const shown = strings(f.render())
+  assert.ok(shown.includes(silent) && shown.includes('No words were recognized.'))
+  assert.equal(f.c.calls.filter(call => call.route === '/api/captions/from-transcript').length, 0)
+  assert.equal(f.button('Preview captions').props.disabled, false)
+  await f.button('Preview captions').props.onClick(); await f.settle()
+  assert.equal(jobs, 2, 'the dialog is not left holding the finished request')
+})
+
+test('dialog shows the warning a preview carries when a cut removes words', async t => {
+  const dropped = '2 transcript words are in source time the timeline cuts out, so no caption shows them: "sample" at 1.2s, "words" at 1.6s'
+  const f = await fixture(t)
+  f.c.handler = (route, body) => route === '/api/captions/from-transcript' && !body.apply ? { items: [{ t: .2, end: .8, text: 'Saved' }], clips: ['a1'], warnings: [dropped], version: f.c.s.version, sourceFingerprint: body.expectedSourceFingerprint, transcriptRevision: body.expectedTranscriptRevision } : undefined
+  const preview = await f.preview()
+  assert.deepEqual(preview.props.warnings, [dropped])
+  assert.ok(!preview.props.note.includes('transcript words'))
+  const confirm = source.slice(source.indexOf('function CaptionsConfirm('), source.indexOf('// ---------------------------------------------------------------- captions from a transcript'))
+  assert.match(confirm, /\(warnings \?\? \[\]\)\.map\(warning => html`<div class="cap-warn" role="status">\$\{warning\}<\/div>`\)/)
+})
+
+test('dialog says transcription is not installed with the server next step', async t => {
+  const f = await fixture(t, c => { c.s.transcript = null; c.s.caps = { whisper: false, transcription: { available: false, provider: 'whisper.cpp', reason: 'Install whisper.cpp to transcribe locally.', install: ['brew install whisper-cpp'] } } })
+  const shown = strings(f.render())
+  assert.ok(shown.includes('Transcription is not installed on this computer. Install whisper.cpp to transcribe locally. You can also import a timed transcript.'))
+  assert.ok(shown.includes('brew install whisper-cpp'))
+  const native = await fixture(t, c => { c.s.transcript = null; c.s.caps = { host: 'native' } })
+  assert.ok(strings(native.render()).includes('Apple Speech is unavailable on this device.'))
 })

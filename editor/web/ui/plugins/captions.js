@@ -15,7 +15,7 @@ import { player } from '../engine-host.js'
 import { Num } from '../inspector.js'
 import { registerBrowserTab, registerDeliver, registerInspector } from '../registry.js'
 import { api, edit, set, store, time, toast, useStore, useTime, viewProject } from '../store.js'
-import { runTranscriptJob } from '../transcript-jobs.js'
+import { runTranscriptJob, transcriptNotes, transcriptionSetup } from '../transcript-jobs.js'
 import { captionPlate, captionWordUpdate } from '../caption-word-edit.js'
 
 const html = htm.bind(h)
@@ -197,7 +197,7 @@ function FilePicker({ kind, title, onPick, onClose }) {
 }
 
 /** Shows caption items and offers to add them to a track or replace it. */
-function CaptionsConfirm({ title, items, tracks, initialTrack, note, onClose, onApply, expectedVersion }) {
+function CaptionsConfirm({ title, items, tracks, initialTrack, note, warnings, onClose, onApply, expectedVersion }) {
   const s = useStore()
   const usedTracks = new Set(viewProject().tracks.map(t => t.id))
   let nextTrack = 1
@@ -225,6 +225,7 @@ function CaptionsConfirm({ title, items, tracks, initialTrack, note, onClose, on
       <div class="modal cap-dialog" onClick=${e => e.stopPropagation()}>
         <h3>${title}</h3>
         ${note ? html`<div class="hint">${note}</div>` : null}
+        ${(warnings ?? []).map(warning => html`<div class="cap-warn" role="status">${warning}</div>`)}
         <div class="cap-preview">${items.slice(0, 200).map(c => html`<div><span class="cap-n">${tc(c.t, fps)} → ${tc(c.end, fps)}</span><br />${c.text}</div>`)}</div>
         ${items.length > 200 ? html`<div class="hint">…and ${items.length - 200} more.</div>` : null}
         <div class="field"><label>Caption track</label><select value=${track} onChange=${e => setTrack(e.target.value)}>
@@ -258,6 +259,8 @@ function TranscriptDialog({ onClose }) {
   const [job, setJob] = useState(null)
   const [result, setResult] = useState(null)
   const [requestBody, setRequestBody] = useState(null)
+  const [notes, setNotes] = useState([])
+  const setup = transcriptionSetup(s.caps)
   const request = useRef(null), active = useRef(true), renderIdentity = useRef(null)
   const local = s.transcript?.src === src && s.transcript.ownerRoot === s.root ? s.transcript : null
   const identity = useMemo(() => ({ root: s.root, project: s.project, comp: s.openComp ?? null, version: s.version, src, local, maxChars, maxLines, style, onlySelected, selected: selected?.id }), [s.root, s.project, s.openComp, s.version, src, local, maxChars, maxLines, style, onlySelected, selected?.id])
@@ -276,7 +279,7 @@ function TranscriptDialog({ onClose }) {
   const run = async () => {
     if (request.current || !src || renderIdentity.current !== identity || store.root !== identity.root || store.project !== identity.project || store.version !== identity.version || (store.openComp ?? null) !== identity.comp) return
     const owned = { identity, ctrl: new AbortController(), applying: false }
-    request.current = owned; setBusy(true)
+    request.current = owned; setBusy(true); setNotes([])
     try {
       const locale = local?.locale ?? 'en-US'
       const readSaved = () => api(`/api/transcript?src=${encodeURIComponent(src)}&locale=${encodeURIComponent(locale)}`)
@@ -290,6 +293,9 @@ function TranscriptDialog({ onClose }) {
         saved = await readSaved()
         if (!owns(owned)) return
       }
+      // A finished transcript with no words is an answer, not a missing file: say why and stay in the dialog.
+      const empty = saved.words?.length ? [] : transcriptNotes(saved)
+      if (empty.length) { request.current = null; setBusy(false); setJob(null); setNotes(empty); return }
       if (!['complete', 'ready', 'partial'].includes(saved.status) || !Number.isSafeInteger(saved.revision) || saved.revision <= 0 || typeof saved.fingerprint !== 'string' || !saved.words?.length) throw new Error('Load a saved transcript for this source before previewing captions.')
       const body = { src, locale, words: saved.words, maxChars, maxLines, style, comp: identity.comp, id: onlySelected && selected?.src === src ? selected.id : undefined, expectedVersion: identity.version, expectedSourceFingerprint: saved.fingerprint, expectedTranscriptRevision: saved.revision }
       const preview = await api('/api/captions/from-transcript', body)
@@ -303,7 +309,8 @@ function TranscriptDialog({ onClose }) {
   if (result) {
     const owned = request.current
     return html`<${CaptionsConfirm} title="Captions from the transcript" items=${result.items} tracks=${p.tracks.filter(t => t.kind === 'caption')}
-      note=${`${result.items.length} captions on ${result.clips.join(', ')}. The ${style === 'karaoke' ? 'word highlight' : style === 'word' ? 'one word at a time' : style} style and all word timings remain editable. ${result.warnings?.join(' ') ?? ''}`}
+      note=${`${result.items.length} captions on ${result.clips.join(', ')}. The ${style === 'karaoke' ? 'word highlight' : style === 'word' ? 'one word at a time' : style} style and all word timings remain editable.`}
+      warnings=${result.warnings}
       expectedVersion=${result.version}
       onApply=${async (track, replace) => {
         if (!owned || !owns(owned) || owned.applying) throw new Error('This caption preview changed. Close it and preview the saved transcript again.')
@@ -323,13 +330,14 @@ function TranscriptDialog({ onClose }) {
       <div class="modal cap-dialog" onClick=${e => e.stopPropagation()}>
         <h3>Captions from a transcript</h3>
         ${sources.length ? html`
-          <div class="field"><label>Media</label><select disabled=${busy} value=${src} onChange=${e => (setSrc(e.target.value), setResult(null))}>${sources.map(x => html`<option value=${x}>${x.split('/').pop()}</option>`)}</select></div>
+          <div class="field"><label>Media</label><select disabled=${busy} value=${src} onChange=${e => (setSrc(e.target.value), setResult(null), setNotes([]))}>${sources.map(x => html`<option value=${x}>${x.split('/').pop()}</option>`)}</select></div>
           <div class="field"><label>Style</label><select disabled=${busy} value=${style} onChange=${e => setStyle(e.target.value)}><option value="plain">Plain</option><option value="boxed">Boxed</option><option value="karaoke">Word highlight</option><option value="word">One word at a time</option></select></div>
           ${selected?.src === src ? html`<label class="row gap"><input type="checkbox" disabled=${busy} checked=${onlySelected} onChange=${e => setOnlySelected(e.target.checked)} />Only selected clip ${selected.id}</label>` : null}
           <${Num} label="Characters/line" value=${maxChars} step=${1} min=${16} max=${80} onCommit=${setMaxChars} />
           <${Num} label="Lines" value=${maxLines} step=${1} min=${1} max=${3} onCommit=${setMaxLines} />
           <div class="hint">Uses the saved transcript revision and maps its words to the clip's timeline positions. Save word corrections in Transcript before previewing captions.</div>
-          ${!local && !(s.caps.analysis?.transcript ?? s.caps.whisper) ? html`<div class="cap-warn">${s.caps.host === 'native' ? 'Apple Speech is unavailable on this device. You can import a timed transcript.' : 'Install whisper.cpp and a model to transcribe, or import a timed transcript.'}</div>` : null}`
+          ${!local && !(s.caps.analysis?.transcript ?? s.caps.whisper) ? html`<div class="cap-warn">${setup ? `${setup.text} You can also import a timed transcript.` : s.caps.host === 'native' ? 'Apple Speech is unavailable on this device. You can import a timed transcript.' : 'Install whisper.cpp and a model to transcribe, or import a timed transcript.'}</div>${setup?.commands.map(command => html`<div class="cap-warn">Run in Terminal: <code>${command}</code></div>`)}` : null}
+          ${notes.map(note => html`<div class="cap-warn" role="status">${note}</div>`)}`
         : html`<div class="empty-hint">Put a clip with sound on the timeline first.</div>`}
         <div class="modal-actions">
           <button class="ghost" onClick=${() => { request.current?.ctrl.abort(); onClose() }}>Cancel</button>

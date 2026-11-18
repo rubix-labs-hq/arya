@@ -7,7 +7,7 @@ import { MAX_TIMED_TRANSCRIPT_BYTES, parseTimedTranscript, updateTranscriptTimin
 import { addRef, api, edit, set, store, time, toast, useStore, viewProject } from './store.js'
 import { revealMedia } from './layout.js'
 import { host } from '../host.js'
-import { runTranscriptJob } from './transcript-jobs.js'
+import { runTranscriptJob, transcriptNotes, transcriptionSetup } from './transcript-jobs.js'
 import { transcriptDrafts, transcriptDraftKey, transcriptDraftMatches, transcriptRecoverySession } from './transcript-drafts.js'
 
 const html = htm.bind(h)
@@ -83,6 +83,10 @@ function ConnectedTranscript() {
   currentKey.current = key
   const dirty = useMemo(() => record && JSON.stringify(words) !== JSON.stringify(record.words ?? []), [record, words])
   const available = s.caps.analysis?.transcript ?? s.caps.whisper ?? false
+  // The local server says when its recognizer is missing and what to install. Other hosts keep their own wording.
+  const setup = available ? null : transcriptionSetup(s.caps)
+  const setupCommands = setup?.commands.map(command => html`<div class="tr-status">Run in Terminal: <code>${command}</code></div>`)
+  const notes = record?.status === 'partial' || loading || busy ? [] : transcriptNotes(record, words.length)
   const lo = selection ? Math.min(selection.a, selection.b) : -1
   const hi = selection ? Math.max(selection.a, selection.b) : -1
   const chosen = selection ? words.slice(lo, hi + 1) : []
@@ -333,13 +337,14 @@ function ConnectedTranscript() {
       <div class="tr-status">${s.caps.transcriber === 'speech' ? 'Apple Speech uses on-device recognition when available. Server recognition requires your choice below.' : 'whisper.cpp recognizes audio locally with the installed model. Language support depends on that model.'}</div>
       ${s.caps.transcriber === 'speech' ? html`<label class="row gap"><input type="checkbox" checked=${allowServer} disabled=${busy || saving} onChange=${e => setAllowServer(e.target.checked)} />Allow Apple server recognition if this language needs it</label>` : null}
     </details>
-    ${!available && words.length ? html`<div class="tr-status">${s.caps.transcriber === 'speech' ? 'Speech recognition is unavailable on this device.' : 'Install whisper.cpp and a model to transcribe again locally.'}</div>` : null}
+    ${!available && words.length ? html`<div class="tr-status">${setup ? setup.text : s.caps.transcriber === 'speech' ? 'Speech recognition is unavailable on this device.' : 'Install whisper.cpp and a model to transcribe again locally.'}</div>${setupCommands}` : null}
     ${recoveryStatus ? html`<div class="tr-status" role="status">${recoveryStatus}</div>` : null}
     ${recoveryOffers.map(offer => html`<div class="tr-selection"><div class="tr-status">Recovery copy from ${new Date(offer.createdAt).toLocaleString()}, ${offer.wordCount} words. ${offer.recoverable ? 'Review it as unsaved corrections.' : 'Its project, source or saved transcript changed. Copy its text.'}</div><div class="row gap">${offer.recoverable ? html`<button class="ghost btn-small" disabled=${dirty || busy || saving || loading} onClick=${() => recoveryAction(offer, 'recover')}>Recover corrections</button>` : null}<button class="ghost btn-small" disabled=${busy || saving || loading} onClick=${() => recoveryAction(offer, 'copy')}>Copy recovery text</button><button class="ghost btn-small danger" disabled=${busy || saving} onClick=${() => recoveryAction(offer, 'discard')}>Discard recovery copy</button></div></div>`)}
     ${loading ? html`<div class="tr-status" role="status">Loading the saved transcript...</div>` : null}
     ${busy ? html`<div class="tr-progress" role="status"><span class="tr-status">${job?.message ?? 'Transcribing audio...'}</span><progress max="1" value=${Number.isFinite(job?.progress) ? job.progress : undefined}></progress><button class="ghost btn-small" onClick=${() => controller.current?.abort()}>Cancel</button></div>` : null}
     ${error ? html`<div class="tr-status error" role="alert">${error}</div>` : null}
     ${record?.status === 'partial' ? html`<div class="tr-status error">This transcript is partial. ${record.warnings?.join(' ') ?? 'Review the recognized portion before using it.'}</div>` : null}
+    ${notes.map(note => html`<div class="tr-status" role="status">${note}</div>`)}
     ${record?.status === 'stale' ? html`<div class="tr-status error">${record.warning ?? 'The source changed. Transcribe it again.'}</div>` : null}
     ${dirty ? html`<div class="row gap"><button class="ghost btn-small" disabled=${busy || saving || loading} onClick=${() => setReload(value => value + 1)}>Recheck saved transcript</button><button class="ghost btn-small" onClick=${copyCorrections}>Copy retained corrections</button><button class="ghost btn-small danger" disabled=${busy || saving} onClick=${() => setConfirmDiscard(true)}>Discard unsaved corrections</button></div>` : null}
     ${confirmDiscard ? html`<div class="tr-status error">Discard this unsaved draft and load the saved words?</div><div class="row gap"><button class="ghost btn-small danger" disabled=${busy || saving} onClick=${discard}>Discard corrections</button><button class="ghost btn-small" onClick=${() => setConfirmDiscard(false)}>Keep corrections</button></div>` : null}
@@ -369,6 +374,6 @@ function ConnectedTranscript() {
         <div class="row gap"><label for="transcript-word-start">Start seconds</label><input id="transcript-word-start" type="number" min="0" max=${s.project.assets[src]?.duration} step="0.001" aria-label="Selected word start seconds" value=${chosen[0].t} disabled=${busy || saving || loading || draftConflict} onChange=${e => correctTiming('t', e.target.value)} /><label for="transcript-word-end">End seconds</label><input id="transcript-word-end" type="number" min="0" max=${s.project.assets[src]?.duration} step="0.001" aria-label="Selected word end seconds" value=${chosen[0].end} disabled=${busy || saving || loading || draftConflict} onChange=${e => correctTiming('end', e.target.value)} /></div>` : html`<p>${chosen.map(w => w.text).join(' ')}</p>`}
         <div class="row gap"><button class="ghost btn-small" disabled=${timelineLease.blocked} onClick=${() => place('append')}>Append selection</button><button class="ghost btn-small" disabled=${timelineLease.blocked} onClick=${() => place('insert')}>Insert at playhead</button><button class="ghost btn-small" onClick=${() => addRef({ kind: 'transcript', id: `${src}@${chosen[0].t}-${chosen.at(-1).end}`, label: chosen.map(w => w.text).join(' ').slice(0, 100) })}>Ask agent about selection</button></div>
         ${selectedClip ? html`<div class="row gap"><button class="ghost btn-small danger" disabled=${!deletion || timelineLease.blocked} onClick=${lift}>Lift from selected clip</button><span class="tr-status">${deleteError || `Cuts ${selectedClip.id} and its linked audio. Other tracks keep their timing.`}</span></div>` : html`<p>Select a matching timeline clip to lift this passage from the edit.</p>`}
-      </div>` : null}` : !loading && !busy ? html`<div class="tr-status tr-next">${!src ? 'Import media with audio to transcribe it.' : available ? 'Press Transcribe to search, correct and caption this source.' : s.caps.transcriber === 'speech' ? 'Speech recognition is unavailable here. Import a transcript file above.' : 'Install whisper.cpp and a model to transcribe, or import a transcript file above.'}</div>` : null}
+      </div>` : null}` : !loading && !busy ? html`<div class="tr-status tr-next">${!src ? 'Import media with audio to transcribe it.' : available ? notes.length ? 'Transcribe again, or import a transcript file above.' : 'Press Transcribe to search, correct and caption this source.' : setup ? `${setup.text} You can also import a transcript file above.` : s.caps.transcriber === 'speech' ? 'Speech recognition is unavailable here. Import a transcript file above.' : 'Install whisper.cpp and a model to transcribe, or import a transcript file above.'}</div>${src && !available ? setupCommands : null}` : null}
   </section>`
 }
