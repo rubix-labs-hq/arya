@@ -100,6 +100,16 @@ test('a stopped native request that changed nothing says so', () => {
   const record = between(app, '    func recordRunChange(', '\n    }\n')
   assert.ok(record.indexOf('lastRunEdited = nil') < record.indexOf('guard let baseline'), 'an unknown run is not reported as unchanged')
   assert.match(record, /lastRunEdited = version > baseline\.version/)
+  // A Stop clears activeID first, so the run's task returns before recordRunChange; Stop measures the run itself.
+  const cancel = between(app, '    func cancel() {', '\n    }\n')
+  assert.ok(cancel.indexOf('let stoppedRun = activeID') >= 0 && cancel.indexOf('let stoppedRun = activeID') < cancel.indexOf('activeID = nil'), 'Stop notes the run before clearing it')
+  assert.ok(cancel.indexOf('lastRunEdited = nil') < cancel.indexOf('stoppingTask = Task'), 'an earlier run’s answer is cleared at once')
+  const measured = cancel.indexOf('self.lastRunEdited = version > baseline.version')
+  assert.ok(measured > cancel.indexOf('await runningTask?.value') && measured < cancel.indexOf('self.state = failed'), 'after the run ends and before it reads Stopped')
+  assert.match(cancel, /let baseline = self\.runBaseline, baseline\.id == stoppedRun/, 'only for the run that was stopped')
+  const send = between(app, '        activeID = id\n', 'publish()')
+  assert.match(send, /lastRunEdited = nil/, 'a new run starts unknown')
+  assert.match(between(app, '    func clearPreviewState() {', '\n    }\n'), /lastRunEdited = nil/)
   // Undo then Redo in one request leaves the project as it was, so there is no change to undo.
   assert.match(record, /guard version > baseline\.version, let after = await backend\.currentProject\(\), after != baseline\.project else \{ return \}/)
   assert.match(panel, /let stoppedNote = assistant\.lastRunEdited == false \? "Nothing was changed\." : "Review or undo any committed edits\."/)

@@ -748,6 +748,9 @@ final class NativeAssistant: ObservableObject {
     func cancel() {
         guard stoppingTask == nil else { return }
         let wasWorking = activeID != nil
+        // A stopped run never reaches recordRunChange, so Stop measures its edits itself below.
+        let stoppedRun = activeID, stoppedBackend = session?.backend
+        lastRunEdited = nil
         let runningTask = task
         let jobs = activeJobs
         activeJobs.removeAll()
@@ -770,6 +773,12 @@ final class NativeAssistant: ObservableObject {
             // AgentBridge.run awaits its independently owned remote cancel before returning.
             await runningTask?.value
             guard let self, self.stopID == id else { return }
+            if let stoppedRun, let backend = stoppedBackend, let baseline = self.runBaseline, baseline.id == stoppedRun {
+                self.runBaseline = nil
+                let version = await backend.currentVersion()
+                guard self.stopID == id else { return }
+                if self.session?.backend === backend { self.lastRunEdited = version > baseline.version }
+            }
             self.lastStopResult = (id, !failed && !self.stopHadFailure)
             self.stoppingTask = nil; self.stopID = nil
             if self.state == "cancelling" {
@@ -1256,6 +1265,7 @@ final class NativeAssistant: ObservableObject {
             }, events: { [weak self] event in await self?.receive(event, clientID: generation) })
         }
         activeID = id
+        lastRunEdited = nil
         outcome = ""
         route = [:]
         jobOutcomes = [:]
@@ -3471,7 +3481,7 @@ extension NativeAssistant {
     /// can apply to or undo in the next. reset() calls this when a project closes.
     func clearPreviewState() {
         proposal = nil; applyingProposal = nil; lastChange = nil; proposalStale = false
-        previewRunID = nil; runBaseline = nil
+        previewRunID = nil; runBaseline = nil; lastRunEdited = nil
     }
 
     /// Rechecks the pending preview against the open project's backend, version and exact text.
