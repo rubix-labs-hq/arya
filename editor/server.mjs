@@ -1052,6 +1052,19 @@ const transcriptService = createTranscriptRoutes({
   },
 })
 
+// What a run is told about local transcription. getOutline is synchronous, so it reads this copy.
+// It is refreshed at startup, on GET /api/caps and before each assistant request, because the
+// whisper.cpp binary and model are looked up on every call and can be installed while Arya runs.
+let transcriptionState = null
+async function refreshTranscription() {
+  try {
+    const { available, provider, reason, install } = await transcriptService.capability()
+    transcriptionState = { available, provider, ...(reason ? { reason } : {}), ...(install ? { install } : {}) }
+  } catch (error) { log('transcription check:', error.message) }
+  return transcriptionState
+}
+refreshTranscription()
+
 const customExecutable = args['custom-executable']
 const customArguments = process.argv.slice(2).flatMap((value, index, values) => value === '--custom-arg' ? [values[index + 1]] : [])
 if (customArguments.length > 64 || customArguments.some(value => typeof value !== 'string' || value.length > 4096 || value.includes('\0'))) throw new Error('Invalid startup custom-agent arguments')
@@ -1063,7 +1076,7 @@ const assistantService = createBrowserAssistant({
   chatgpt: chatgptAccount,
   getIdentity: () => projectEpoch,
   // exportFolder tells the prompt this is the browser editor, whose exports land in renders/ (see EXPORT_GUIDE).
-  getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus), exportFolder: 'renders' } : {}) }),
+  getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus), exportFolder: 'renders' } : {}), ...(focus && transcriptionState ? { transcription: transcriptionState } : {}) }),
   renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null, { queueMs: ASSISTANT_FRAME_QUEUE_MS }) }),
   dispatch: (call, assertCurrent, acceptIdentity, registerJob, run = {}) => {
     assertCurrent()
@@ -1251,6 +1264,7 @@ const routes = {
 
   'GET /api/caps': async () => {
     const transcription = await transcriptService.capability()
+    refreshTranscription()
     const whisper = transcription.available
     const chrome = fs.existsSync(CHROME)
     const presets = Object.keys(PRESETS)
@@ -1288,7 +1302,10 @@ const routes = {
   },
 
   // Built-in sends use consent guards. Legacy plugins cannot identify their recipients.
-  'POST /api/bridge/send': body => {
+  'POST /api/bridge/send': async body => {
+    if (body.mode !== 'plugin' && assistantReview.applying()) throw Object.assign(new Error('Wait for the preview to finish applying before sending another request.'), { status: 409 })
+    // The run's outline says whether transcription works now. Two seconds at most: a slow check keeps the last answer.
+    if (body.mode !== 'plugin') await Promise.race([refreshTranscription(), new Promise(resolve => setTimeout(resolve, 2000))])
     if (body.mode !== 'plugin' && assistantReview.applying()) throw Object.assign(new Error('Wait for the preview to finish applying before sending another request.'), { status: 409 })
     if (body.mode !== 'plugin') return assistantService.send({ ...body, ids: body.ids ?? uiState.selection ?? [], comp: Object.hasOwn(body, 'comp') ? body.comp : uiState.openComp ?? null, playhead: body.playhead ?? uiState.playhead ?? 0 })
     throw Object.assign(new Error('This plugin connection has no verified AI recipient. Choose a built-in assistant provider and review sharing permission before sending.'), { status: 403 })

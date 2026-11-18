@@ -29,9 +29,10 @@ async function freePort() {
  * The real server, bridge and sharing gate on a temporary project, with a fake `claude` CLI on
  * PATH. The fake agent runs `steps` (a list of reel_api or reel_frame calls) on every request and
  * writes the prompt it received and each result to agent-log.json. `tools` adds the real ffmpeg.
- * `setup(root, project)` may add files and return the starting project.
+ * `setup(root, project)` may add files and return the starting project. `env(root)` returns
+ * variables the server process gets on top of this one's.
  */
-export async function runningServer(t, steps = [], { tools = false, setup } = {}) {
+export async function runningServer(t, steps = [], { tools = false, setup, env } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arya-server ')), bin = path.join(root, 'bin')
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   fs.mkdirSync(bin)
@@ -50,7 +51,7 @@ console.log(JSON.stringify({type:'done',text:'Finished the fixture steps.'}));\n
   fs.writeFileSync(path.join(bin, 'claude'), `#!${process.execPath}\nif(process.argv[2]==='auth'&&process.argv[3]==='status')console.log(JSON.stringify({loggedIn:true,authMethod:'oauth',apiProvider:'anthropic'}));else import(${JSON.stringify(script)});\n`, { mode: 0o700 })
   const port = await freePort(), url = `http://127.0.0.1:${port}`
   const ffmpeg = tools ? path.dirname(execFileSync('/usr/bin/which', ['ffmpeg'], { encoding: 'utf8' }).trim()) : null
-  const child = spawn(process.execPath, [path.join(here, '../../server.mjs'), '--root', root, '--port', String(port)], { env: { ...process.env, PATH: ffmpeg ? `${bin}:${ffmpeg}` : bin }, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(process.execPath, [path.join(here, '../../server.mjs'), '--root', root, '--port', String(port)], { env: { ...process.env, PATH: ffmpeg ? `${bin}:${ffmpeg}` : bin, ...(env ? env(root) : {}) }, stdio: ['ignore', 'pipe', 'pipe'] })
   let output = ''; child.stdout.on('data', bytes => { output += bytes }); child.stderr.on('data', bytes => { output += bytes })
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGTERM'); await new Promise(resolve => child.once('exit', resolve)) } })
   await waitFor(async () => { if (child.exitCode !== null) assert.fail(output); try { return (await fetch(url + '/api/state')).ok } catch { return false } })
