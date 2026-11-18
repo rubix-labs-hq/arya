@@ -1,6 +1,6 @@
 # Arya website
 
-A framework-free static website with six pages, real editor captures, local fonts and no third-party scripts. It is a separate marketing site, not the editing application.
+A framework-free static website with seven pages and a 404 page, real editor captures, local fonts and no third-party scripts. It is a separate marketing site, not the editing application.
 
 ## Build and check
 
@@ -46,6 +46,8 @@ Update `macAppStoreRelease` whenever the Mac App Store version changes. It can c
 Contribution URLs have a separate allowlist. A preset checkout URL must represent that exact one-time USD amount at the provider. The custom destination must let the user explicitly choose the amount at the provider. The site never creates a payment, changes provider amounts by query string or claims payment success. Test the actual hosted checkout and receipt before configuring it.
 
 `publicSourceURL` holds the public repository URL once it is published. An approved HTTPS `contactURL` on `externalHosts` adds a footer support link. A configured `siteURL` adds canonical links and the link preview metadata, which points at `assets/brand/link-preview.png`. Neither field proves deployment or reachability. The six pages explain current product and release limits. Check those facts against the product before every release.
+
+The assistant section describes the top-bar button, change card and preview controls for each live 1.3 or later download separately. The direct Mac download follows `release`, and the iPhone and iPad apps follow `mobileRelease`. The desktop App Store edition has its own release schedule. The home page uses the reviewed local browser capture until the mobile gate admits the iPhone assistant capture in `native.next`.
 
 Beta access: until a form service is chosen, `requestAccessURL` stays `null` and the download page shows a placeholder form marked "Placeholder. This form is not connected yet." Its controls start disabled, it has no `action`, and its handler validates the email in the browser, sends nothing and says so. Until then, primary buttons read "Beta access" and no page asks visitors to request access. After a release is approved, the header button reads "Downloads" and goes to `/download/`. The Home hero button reads "Download Arya for Mac" and links to the release URL; the browser script points it at `/download/#mac` until it has re-checked `config.json`. The closing button reads "Download for Mac" and goes to `/download/#mac`. At 650px and below, the App Store button comes first and takes the primary color in the Home hero and the closing section, because a phone visitor cannot use the Mac download. To connect the form, put the hosted form's HTTPS URL in `requestAccessURL` and its host in `externalHosts`; the build then replaces the placeholder with a link to that form. Update the data guide in the same change to name the service.
 

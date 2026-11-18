@@ -191,6 +191,32 @@ test('screens of the next App Store release appear only once that release is liv
   assert.ok(text(later.home).includes(next.edition));
 });
 
+test('Ask Arya instructions follow each released edition independently', async () => {
+  const buildAt = async (macVersion, mobileVersion, ready = true, macReady = true) => {
+    const result = await build({
+      ...shipped,
+      release: { ...shipped.release, version: macVersion, ready: macReady },
+      mobileRelease: { ...shipped.mobileRelease, version: mobileVersion, ready },
+    });
+    assert.equal(result.result.status, 0, result.result.stderr);
+    return result.home;
+  };
+  const screenshot = native.next.images['iphone-assistant'];
+  for (const page of [live.home, macOnly.home, await buildAt('1.3.0', '1.2.0', true, false), await buildAt('1.2.9', '1.3.0', false), await buildAt('1.2.9', '2.0-rc')]) {
+    assert.doesNotMatch(page, /Open Ask Arya|Undo this change|choose Apply or Discard/);
+    assert.ok(!page.includes(screenshot.src));
+  }
+  const direct = await buildAt('1.3.0', '1.2.0');
+  assert.match(direct, /Using Ask Arya in the direct Mac download<\/h3>/);
+  assert.ok(!direct.includes(screenshot.src));
+  const mobile = await buildAt('1.1.1', '1.3.0');
+  assert.match(mobile, /Using Ask Arya in the iPhone and iPad apps<\/h3>/);
+  assert.ok(mobile.includes(screenshot.src) && mobile.includes(screenshot.caption));
+  const both = await buildAt('1.4.0', '2.0');
+  assert.match(both, /Using Ask Arya in the direct Mac download and the iPhone and iPad apps<\/h3>/);
+  for (const page of [direct, mobile, both]) assert.match(page, /Undo this change.*choose Apply or Discard/);
+});
+
 test('the six pages keep the app’s tab order and native screens stay apart from browser screens', () => {
   assert.deepEqual([...live.home.matchAll(/<article class="chapter chapter-[a-z]+" id="([a-z]+)"/g)].map(match => match[1]), ['media', 'edit', 'motion', 'color', 'audio', 'deliver']);
   assert.deepEqual([...live.home.matchAll(/<nav class="page-rail"[^>]*>(.*?)<\/nav>/gs)].flatMap(match => [...match[1].matchAll(/href="#([a-z]+)"/g)].map(link => link[1])), ['media', 'edit', 'motion', 'color', 'audio', 'deliver']);
