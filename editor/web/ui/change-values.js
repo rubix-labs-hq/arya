@@ -30,7 +30,7 @@ function plain(value, depth = 0, exact = false) {
   if (typeof value === 'string') return value === '' ? 'Empty' : value
   if (Array.isArray(value)) {
     if (!value.length) return 'Empty list'
-    if (value.every(item => item === null || typeof item !== 'object')) return value.map(item => plain(item)).join(', ')
+    if (value.every(item => item === null || typeof item !== 'object')) return value.map(item => plain(item, depth, exact)).join(', ')
     if (value.every(item => typeof item?.type === 'string')) return value.map(item => item.type).join(', ')
     return plural(value.length, 'item')
   }
@@ -38,28 +38,35 @@ function plain(value, depth = 0, exact = false) {
   const entries = Object.entries(value)
   if (!entries.length) return 'No settings'
   const shown = entries.slice(0, MAX_FIELDS).map(([key, item]) => {
-    const text = plain(item, depth + 1)
+    const text = plain(item, depth + 1, exact)
     return item !== null && typeof item === 'object' && !Array.isArray(item) ? `${key} (${text})` : `${key} ${text}`
   })
   return `${shown.join(', ')}${entries.length > MAX_FIELDS ? `, ${plural(entries.length - MAX_FIELDS, 'more setting')}` : ''}`
 }
 
 const isKeys = value => Array.isArray(value) && value.length > 0 && value.every(key => Array.isArray(key) && key.length >= 2 && key.length <= 3 && Number.isFinite(key[0]))
-const easeName = ease => ease == null ? 'linear' : Array.isArray(ease) ? 'custom curve' : String(ease)
+const easeName = (ease, exact = false) => ease == null ? 'linear' : Array.isArray(ease) ? (exact ? `custom curve ${ease.join(', ')}` : 'custom curve') : String(ease)
+const same = (a, b) => JSON.stringify([a[1], a[2] ?? null]) === JSON.stringify([b[1], b[2] ?? null])
 
-/** Before and after keyframes paired by time, so one added key does not mark every later key changed. */
+/**
+ * Before and after keyframes paired by their exact time, so one added key does not mark every later
+ * key changed. A change too small for the rounded text shows every digit, as a single value does.
+ */
 function keyRows(before, after) {
-  const index = keys => new Map((keys ?? []).map(key => [number(key[0]), key]))
+  const index = keys => new Map((keys ?? []).map(key => [key[0], key]))
   const old = index(before), next = index(after)
-  const times = [...new Set([...old.keys(), ...next.keys()])].sort((a, b) => Number(a) - Number(b))
+  const times = [...new Set([...old.keys(), ...next.keys()])].sort((a, b) => a - b)
+  const text = (key, exact) => `${plain(key[1], 0, exact)}, ${easeName(key[2], exact)}`
   const rows = []
   for (const time of times) {
     const a = old.get(time), b = next.get(time)
-    const value = key => `${plain(key[1])}, ${easeName(key[2])}`
-    if (a && b && value(a) === value(b)) continue
-    rows.push({ time: `at ${seconds(Number(time))}`, before: a ? value(a) : '', after: b ? value(b) : '', status: !a ? 'added' : !b ? 'removed' : 'changed' })
+    if (a && b && same(a, b)) continue
+    const exact = Boolean(a && b && text(a) === text(b))
+    rows.push({ at: time, before: a ? text(a, exact) : '', after: b ? text(b, exact) : '', status: !a ? 'added' : !b ? 'removed' : 'changed' })
   }
-  return rows
+  // Two times that round alike are written out in full, so no two lines read the same.
+  const rounded = rows.map(row => seconds(row.at))
+  return rows.map(({ at, ...row }, index) => ({ time: `at ${rounded.indexOf(rounded[index]) === rounded.lastIndexOf(rounded[index]) ? rounded[index] : `${at} s`}`, ...row }))
 }
 
 // `exact` shows every digit, for when rounding would make a real change read the same on both sides.

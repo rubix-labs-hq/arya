@@ -49,6 +49,25 @@ test('keyframes become one line each, paired by time, with the ease named', () =
   assert.deepEqual(readableChange({ property: 'anim.x', before: 'Absent', after: '[[0,1],[0.5,2],[1,…' }), { property: 'anim.x', label: 'anim.x', only: 'Keyframes too long to show here' })
 })
 
+test('a keyframe change smaller than the rounding still shows, and no two lines read the same', () => {
+  const keys = (property, before, after) => readableChange({ property, before, after }).keys
+  assert.deepEqual(keys('anim.opacity', '[[0,0],[1,1]]', '[[0,0],[1,1.0001]]'), [{ time: 'at 1.00 s', before: '1, linear', after: '1.0001, linear', status: 'changed' }])
+  assert.deepEqual(keys('anim.x', '[[0,0],[1,1]]', '[[0,0],[1.0004,1]]'), [
+    { time: 'at 1 s', before: '1, linear', after: '', status: 'removed' },
+    { time: 'at 1.0004 s', before: '', after: '1, linear', status: 'added' },
+  ])
+  assert.deepEqual(keys('anim.x', '[[0,0,[0.1,0,0.2,1]]]', '[[0,0,[0.3,0,0.2,1]]]'), [{ time: 'at 0.00 s', before: '0, custom curve 0.1, 0, 0.2, 1', after: '0, custom curve 0.3, 0, 0.2, 1', status: 'changed' }])
+  assert.deepEqual(keys('anim.scale', '[[0,[1,2]]]', '[[0,[1,2.0001]]]'), [{ time: 'at 0.00 s', before: '1, 2, linear', after: '1, 2.0001, linear', status: 'changed' }])
+  // A key written with an explicit linear ease is the same key.
+  assert.deepEqual(keys('anim.x', '[[0,0],[1,1]]', '[[0,0],[1,1,null]]'), [])
+  for (const [before, after] of [['[[0,0],[0.3,1]]', '[[0,0],[0.30000000000000004,1]]'], ['[[0,0.12341]]', '[[0,0.12342]]'], ['[[2,[0.5,0.25]]]', '[[2,[0.5,0.2500001]]]']]) {
+    const rows = keys('anim.y', before, after)
+    assert.ok(rows.length, after)
+    assert.ok(rows.every(row => row.before !== row.after), after)
+    assert.equal(new Set(rows.map(row => row.time)).size, rows.length, after)
+  }
+})
+
 test('colours get a swatch only for a strict hex value, and nothing reads as JSON', () => {
   const colour = readableChange({ property: 'title.color', before: json('#ffffff'), after: json('#FF8800cc') })
   assert.deepEqual([colour.before, colour.after, colour.swatches], ['#ffffff', '#FF8800cc', ['#ffffff', '#FF8800cc']])
