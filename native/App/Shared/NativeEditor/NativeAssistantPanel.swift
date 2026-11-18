@@ -348,6 +348,9 @@ struct NativeAssistantPanel: View {
             .onChange(of: model.changeReceipts.count) { _, _ in scrollToLatest(proxy) }
             .onChange(of: assistant.proposal?.id) { _, _ in scrollToLatest(proxy) }
             .onChange(of: runLineGrowth) { _, _ in scrollToLatest(proxy) }
+            #if DEBUG
+            .onChange(of: assistant.fixtureScroll) { _, _ in scrollToLatest(proxy) }
+            #endif
             // The keyboard, a smaller sheet detent or window, or a longer draft makes the history
             // shorter. Once it settles, the setup card, a waiting preview or the newest message is
             // brought back into view. Taller history keeps those in view on its own, and a drag

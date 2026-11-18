@@ -172,6 +172,8 @@ final class NativeAssistant: ObservableObject {
     @Published private(set) var proposalStale = false
     #if DEBUG
     private(set) var fixtureMode = false
+    /// Bumped by a capture hook that changes a card without changing anything the history scrolls on.
+    @Published private(set) var fixtureScroll = 0
     #endif
     private var previewRunID: UUID?
     private var runBaseline: (id: UUID, project: String, version: Int)?
@@ -3570,7 +3572,15 @@ extension NativeAssistant {
 
     /// Debug builds: forgets the change "Undo this change" would restore, so the result card
     /// shows "Undo latest edit" as it does for edits from an earlier run. The project is untouched.
-    func forgetFixtureChange() { lastChange = nil }
+    /// The card changes without any of the history's scroll triggers changing, so this asks the
+    /// panel to scroll to the latest item once the card has been laid out again.
+    func forgetFixtureChange() {
+        lastChange = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            fixtureScroll += 1
+        }
+    }
 
     /// Debug builds: stages a preview from a JSON body through the agent's own path, so the
     /// card can be checked without a model request.
