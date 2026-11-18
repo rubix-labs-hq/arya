@@ -198,6 +198,11 @@ struct NativeAssistantPanel: View {
     @State private var setupNotice: String?
     /// The wrapped placeholder with its padding, measured at the draft's width.
     @State private var placeholderHeight = 0.0
+    /// The history's height, the times it got shorter while the latest item was in view, and
+    /// where the setup card, the preview and the end sit in the visible history.
+    @State private var historyHeight = 0.0
+    @State private var historyShrinks = 0
+    @State private var latestSpans: [String: ClosedRange<Double>] = [:]
 
     private var chipHeight: Double { max(Self.touch ? 44 : 26, scaledChipHeight) }
     private var headerHeight: Double { max(Double(NativeEditorStyle.minimumControlHeight), Self.touch ? actionHeight : 0) }
@@ -334,6 +339,7 @@ struct NativeAssistantPanel: View {
             ScrollView {
                 conversationContent.padding(12)
             }.frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+            .coordinateSpace(.named(Self.historySpace))
             #if os(iOS)
             .scrollDismissesKeyboard(.interactively)
             #endif
@@ -344,6 +350,26 @@ struct NativeAssistantPanel: View {
             .onChange(of: model.changeReceipts.count) { _, _ in scrollToLatest(proxy) }
             .onChange(of: assistant.proposal?.id) { _, _ in scrollToLatest(proxy) }
             .onChange(of: runLineGrowth) { _, _ in scrollToLatest(proxy) }
+            #if DEBUG
+            .onChange(of: assistant.fixtureScroll) { _, _ in scrollToLatest(proxy) }
+            #endif
+            // The keyboard, a smaller sheet detent or window, or a longer draft makes the history
+            // shorter. If the setup card, a waiting preview or the newest message was in view, it
+            // is brought back into view once the height settles. Someone reading earlier messages
+            // is left where they are, and a taller history needs no scroll. Scrolling never
+            // changes the height, so this cannot loop. An empty chat has nothing below its
+            // opening sentence to bring back, so it keeps that sentence at the top.
+            .onGeometryChange(for: Double.self) { $0.size.height } action: { height in
+                let emptyChat = assistant.chat.isEmpty && assistant.configured && assistant.proposal == nil
+                if height < historyHeight - 1, !emptyChat, let span = latestSpans[latestTarget],
+                   span.upperBound >= -1, span.lowerBound <= historyHeight + 1 { historyShrinks += 1 }
+                historyHeight = height
+            }
+            .task(id: historyShrinks) {
+                guard historyShrinks > 0 else { return }
+                try? await Task.sleep(for: .milliseconds(150))
+                if !Task.isCancelled { scrollToLatest(proxy) }
+            }
         }
     }
 
@@ -352,18 +378,24 @@ struct NativeAssistantPanel: View {
     /// keep its heading, reason and primary action in view. In a short phone sheet, scrolling to
     /// the end would hide them, with or without earlier messages.
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
-        if assistant.proposal != nil && !assistant.isWorking {
-            proxy.scrollTo("preview", anchor: .bottom)
-        } else if !assistant.configured {
-            proxy.scrollTo("setup", anchor: .top)
-        } else {
-            proxy.scrollTo("end", anchor: .bottom)
-        }
+        proxy.scrollTo(latestTarget, anchor: latestTarget == "setup" ? .top : .bottom)
+    }
+
+    private var latestTarget: String {
+        if assistant.proposal != nil && !assistant.isWorking { return "preview" }
+        return assistant.configured ? "end" : "setup"
+    }
+
+    fileprivate static let historySpace = "editor.assistant.history"
+
+    /// Records where a scroll target sits in the visible history.
+    private func latestSpan(_ id: String) -> some ViewModifier {
+        LatestSpan { latestSpans[id] = $0 }
     }
 
     private var conversationContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if !assistant.configured && assistant.chat.isEmpty { setupCard.id("setup") }
+            if !assistant.configured && assistant.chat.isEmpty { setupCard.id("setup").modifier(latestSpan("setup")) }
             if let diagnostic = assistant.localDiagnostic {
                 VStack(alignment: .leading, spacing: 5) {
                     Label("Latest local tool failure", systemImage: "exclamationmark.triangle").font(.system(size: 11, weight: .semibold))
@@ -406,8 +438,8 @@ struct NativeAssistantPanel: View {
             }
             changeCards
             // After a conversation the reason Send is off sits last, and the history scrolls to its top.
-            if !assistant.configured && !assistant.chat.isEmpty { setupCard.id("setup") }
-            Color.clear.frame(height: 1).id("end")
+            if !assistant.configured && !assistant.chat.isEmpty { setupCard.id("setup").modifier(latestSpan("setup")) }
+            Color.clear.frame(height: 1).id("end").modifier(latestSpan("end"))
         }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
@@ -615,13 +647,14 @@ struct NativeAssistantPanel: View {
                         else { Image(systemName: assistant.state == "done" ? "checkmark.circle" : assistant.state == "cancelled" ? "stop.circle" : "exclamationmark.circle")
                             .foregroundStyle(assistant.state == "error" ? NativeEditorStyle.error : NativeEditorStyle.muted) }
                         Text(label).fontWeight(.semibold).lineLimit(1).fixedSize()
-                        if !stage.isEmpty && !below { Text(stage).foregroundStyle(NativeEditorStyle.muted).lineLimit(quiet || stopped ? 2 : 1).truncationMode(.tail) }
+                        if !stage.isEmpty && !below { Text(stage).foregroundStyle(NativeEditorStyle.muted).lineLimit(quiet || stopped ? 2 : 1).truncationMode(.tail).multilineTextAlignment(.leading) }
                         Spacer(minLength: 4)
                         Text(elapsed).monospacedDigit().foregroundStyle(NativeEditorStyle.muted).lineLimit(1).fixedSize()
                     }
                     if below { Text(stage).foregroundStyle(NativeEditorStyle.muted).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true) }
                 }.frame(minHeight: Self.touch ? 44 : 22)
-                .onChange(of: below) { _, grown in if grown { runLineGrowth += 1 } }
+                // Fires when the line appears and again when its text gets longer or changes.
+                .onChange(of: below ? stage : "") { _, text in if !text.isEmpty { runLineGrowth += 1 } }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(label), \(quiet ? detail : stage), \(elapsed)")
             }
@@ -637,6 +670,7 @@ struct NativeAssistantPanel: View {
             NativeAssistantPreviewCard(proposal: proposal, stale: assistant.proposalStale || proposal.baseVersion != model.version, running: assistant.isWorking,
                                        newRequest: assistant.isWorking && proposal.runID != assistant.currentRunID,
                                        apply: { Task { await assistant.applyProposal() } }, discard: { assistant.discardProposal() }).id("preview")
+                .modifier(latestSpan("preview"))
         }
         if let applying = assistant.applyingProposal {
             NativeAssistantApplyingCard(applying: applying, dismiss: { assistant.dismissApplyFailure() })
@@ -747,38 +781,58 @@ struct NativeAssistantPanel: View {
     /// What Send attaches, as chips: the selection or timeline, the playhead, the input kind and
     /// any look reference. Send captures the selection again when pressed.
     private var contextRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                // First, so the reason Send is off is never scrolled out of the row.
-                if model.assistantDraft.count > assistant.inputCharacterLimit {
-                    chip { Text("Too long: \(model.assistantDraft.count) of \(assistant.inputCharacterLimit)").monospacedDigit() }
-                        .foregroundStyle(NativeEditorStyle.error)
-                        .accessibilityLabel(draftLimitExplanation)
-                }
-                Button { inspectCurrentRequestContext() } label: {
-                    chip { Label(contextLabel, systemImage: "scope").lineLimit(1) }
-                }.buttonStyle(.plain)
-                    .foregroundStyle(model.selectedIDs.isEmpty ? NativeEditorStyle.text : NativeEditorStyle.accent)
-                    .disabled(model.project == nil || model.renderPreviewBackendID == nil)
-                    .help("Inspect the current selection and request context. Send captures the current selection again.")
-                    .accessibilityLabel("Inspect current request context: \(contextDescription)")
-                    .accessibilityIdentifier("editor.assistant.composerContext")
-                chip { HStack(spacing: 5) { Text("Playhead").foregroundStyle(NativeEditorStyle.muted); footerTimecode } }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Playhead \(nativeTimecode(model.time, fps: model.fps))")
-                if model.assistantInputKind != "prompt" {
-                    Button { model.assistantInputKind = "prompt" } label: {
-                        chip { HStack(spacing: 4) { Text(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script"); Image(systemName: "xmark").font(.caption2) } }
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    // First, so the reason Send is off is never scrolled out of the row.
+                    if model.assistantDraft.count > assistant.inputCharacterLimit {
+                        chip { Text("Too long: \(model.assistantDraft.count) of \(assistant.inputCharacterLimit)").monospacedDigit() }
+                            .foregroundStyle(NativeEditorStyle.error)
+                            .accessibilityLabel(draftLimitExplanation)
+                    }
+                    Button { inspectCurrentRequestContext() } label: {
+                        chip { Label(contextLabel, systemImage: "scope").lineLimit(1) }
                     }.buttonStyle(.plain)
-                        .accessibilityLabel("\(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script") input. Switch back to prompt")
+                        .foregroundStyle(model.selectedIDs.isEmpty ? NativeEditorStyle.text : NativeEditorStyle.accent)
+                        .disabled(model.project == nil || model.renderPreviewBackendID == nil)
+                        .help("Inspect the current selection and request context. Send captures the current selection again.")
+                        .accessibilityLabel("Inspect current request context: \(contextDescription)")
+                        .accessibilityIdentifier("editor.assistant.composerContext")
+                    chip { HStack(spacing: 5) { Text("Playhead").foregroundStyle(NativeEditorStyle.muted); footerTimecode } }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Playhead \(nativeTimecode(model.time, fps: model.fps))")
+                    if model.assistantInputKind != "prompt" {
+                        Button { model.assistantInputKind = "prompt" } label: {
+                            chip { HStack(spacing: 4) { Text(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script"); Image(systemName: "xmark").font(.caption2) } }
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel("\(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script") input. Switch back to prompt")
+                    }
+                    if let reference = model.lookReference {
+                        Button { model.lookReference = nil } label: {
+                            chip { HStack(spacing: 4) { Label((reference as NSString).lastPathComponent, systemImage: "photo").lineLimit(1).truncationMode(.middle); Image(systemName: "xmark").font(.caption2) } }
+                        }.buttonStyle(.plain).accessibilityLabel("Look reference \((reference as NSString).lastPathComponent). Remove")
+                    }
+                }.padding(.horizontal, 7)
+            }.padding(.horizontal, 9)
+            if showsKeyboardDone {
+                // The frame sits inside the label so the whole 44-point target is the button.
+                Button { draftFocused = false } label: {
+                    Text("Done").fontWeight(.semibold).frame(minWidth: 44, minHeight: chipHeight).contentShape(Rectangle())
                 }
-                if let reference = model.lookReference {
-                    Button { model.lookReference = nil } label: {
-                        chip { HStack(spacing: 4) { Label((reference as NSString).lastPathComponent, systemImage: "photo").lineLimit(1).truncationMode(.middle); Image(systemName: "xmark").font(.caption2) } }
-                    }.buttonStyle(.plain).accessibilityLabel("Look reference \((reference as NSString).lastPathComponent). Remove")
-                }
-            }.padding(.horizontal, 7)
-        }.padding(.horizontal, 9)
+                    .padding(.trailing, 14)
+                    .accessibilityLabel("Dismiss assistant keyboard")
+            }
+        }
+    }
+
+    /// A phone puts the keyboard's Done in the composer. In the keyboard toolbar it covered
+    /// Send: the sheet's keyboard inset leaves out part of that bar, so the pane ran under it.
+    private var showsKeyboardDone: Bool {
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        horizontalSizeClass == .compact && draftFocused
+        #else
+        false
+        #endif
     }
 
     private func chip<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -792,16 +846,6 @@ struct NativeAssistantPanel: View {
     private func draftEditor(height: Double) -> some View {
         TextEditor(text: $model.assistantDraft)
         .focused($draftFocused)
-        #if os(iOS)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { draftFocused = false }
-                    .frame(minWidth: 44, minHeight: actionHeight)
-                    .accessibilityLabel("Dismiss assistant keyboard")
-            }
-        }
-        #endif
         .font(.body).scrollContentBackground(.hidden)
         .frame(height: height)
         .padding(4)
@@ -865,6 +909,8 @@ struct NativeAssistantPanel: View {
                 modelControls(short: width < 420)
                 if Self.touch && width < 440 { primaryAction.labelStyle(NativeAssistantIconActionStyle()) } else { primaryAction }
             }
+            // The row is as tall while a request runs as when idle, so Stop keeps Send's target.
+            .frame(minHeight: actionHeight)
         }
     }
 
@@ -874,7 +920,7 @@ struct NativeAssistantPanel: View {
             previewToggle(iconOnly: width < 260 || (dynamicTypeSize.isAccessibilitySize && width < 600))
             Spacer(minLength: 0)
             primary()
-        }
+        }.frame(minHeight: actionHeight)
     }
 
     @ViewBuilder private var primaryAction: some View {
@@ -1471,3 +1517,14 @@ private struct NativeAssistantApplyingCard: View {
     }
 }
 // END ASSISTANT PREVIEW CARDS
+
+/// Reports a view's top and bottom in the assistant history's visible area.
+private struct LatestSpan: ViewModifier {
+    let action: (ClosedRange<Double>) -> Void
+    func body(content: Content) -> some View {
+        content.onGeometryChange(for: ClosedRange<Double>.self) { geometry in
+            let frame = geometry.frame(in: .named(NativeAssistantPanel.historySpace))
+            return Double(frame.minY)...Double(max(frame.minY, frame.maxY))
+        } action: { action($0) }
+    }
+}
