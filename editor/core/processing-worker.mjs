@@ -55,6 +55,7 @@ export function acknowledgeProcessingWorkerExit(jobs, ownedWorker, failJob, reas
 /** What a job is told when its worker page closed and did not come back. */
 export const workerClosedMessage = job => job.kind === 'frame'
   ? 'The render worker closed while this frame was rendering. Try again.'
+  : job.kind === 'measure-mix' ? 'The render worker closed while the mix was being measured. Measure again.'
   : 'The render worker closed while this export was running. Export again.'
 
 export function processingWorkerConnected(worker, clients) {
@@ -349,12 +350,14 @@ export function failStalledWorkerJob(job, failJob, now = workerClock(), { retire
   const stall = workerStall(job, now) ?? { phase: 'frames', limit: workerStallLimit(job) }
   const seconds = Math.round(stall.limit / 1000)
   const owner = job.processing?.worker
-  const next = 'Export again. Arya starts a new render worker and the export starts from the first frame.'
+  // A mix measurement writes no export, so it is not told to export again.
+  const measuring = job.kind === 'measure-mix', what = measuring ? 'measurement' : 'export'
+  const next = measuring ? 'Measure again. Arya starts a new render worker.' : 'Export again. Arya starts a new render worker and the export starts from the first frame.'
   // During setup the page says which step it is on, so a hang names the step it stopped in.
   const step = stall.phase !== 'frames' && WORKER_SETUP_STEPS[job.workerStep] ? ` (last step: ${WORKER_SETUP_STEPS[job.workerStep]})` : ''
   failJob(job, stall.phase === 'setup-cap'
-    ? `The render worker was still preparing this export after ${seconds} s${step}, so it stopped. ${next}`
-    : `The render worker sent nothing for ${seconds} s${step}, so this export stopped. ${next}`)
+    ? `The render worker was still preparing this ${what} after ${seconds} s${step}, so it stopped. ${next}`
+    : `The render worker sent nothing for ${seconds} s${step}, so this ${what} stopped. ${next}`)
   if (!owner || owner.exitCode != null || owner.signalCode != null) job.processing?.acknowledge()
   if (owner) retireWorker(owner)
 }

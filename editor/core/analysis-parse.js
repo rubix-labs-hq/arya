@@ -1,4 +1,5 @@
-// Reads what ffmpeg prints for the loudness and silence analyses of POST /api/analyze, and holds
+// Reads what ffmpeg prints for the loudness and silence analyses of POST /api/analyze and for
+// the mix measurement of POST /api/audio/measure-mix, and holds
 // the help text GET /api/caps gives for them. Kept apart from server.mjs so both are tested
 // against recorded ffmpeg output without starting a process.
 
@@ -40,5 +41,5 @@ export const ANALYSIS_HELP = Object.freeze({
   loudness: 'POST /api/analyze {src, kind:"loudness", in?, dur?} measures the sound of one media file and writes no file. It returns lufs (integrated loudness, LUFS), lra (loudness range, LU) and truePeak (dBTP), or silent:true with no truePeak when that part has no sound. in and dur are source seconds and limit the measurement to that part of the file.',
   silence: 'POST /api/analyze {src, kind:"silence", noise?, min?, in?, dur?} returns ranges [[start,end]] in source seconds and writes no file. Sound below noise (dB, default -32) for at least min seconds (default 0.45) counts as silence. Raise noise toward -25 for a noisy recording; lower min to catch shorter pauses. in and dur limit the search to that part of the file.',
   clip: 'A timeline clip that is not reversed or frozen plays its source from clip.in for clip.dur * speed seconds, and speed is 1 unless set. Source second s plays at timeline second clip.start + (s - clip.in) / speed.',
-  mix: 'Both measure one source file, not the timeline mix with its volumes and effects. To measure the mix, export it with the audio-wav preset and analyze the output of the finished job.',
+  mix: 'Both measure one source file, not the timeline mix with its volumes and effects. To measure the mix, POST /api/audio/measure-mix {from?, to?, comp?} with from and to in timeline seconds. It writes no file and returns a job: wait with GET /api/jobs/wait?id=ID and read lufs, lra and truePeak, or silent:true, from result of the finished job.',
 })

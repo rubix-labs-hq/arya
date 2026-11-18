@@ -54,7 +54,7 @@ export function recordCompletedJobOutcome(outcomes, result) {
 }
 
 const JOB_REASON_LIMIT = 160
-const jobLabel = failure => failure.kind === 'export' ? `The export${failure.name ? ` ${failure.name}` : ''}` : failure.kind === 'frame' ? 'The frame render' : `The ${failure.kind} job`
+const jobLabel = failure => failure.kind === 'export' ? `The export${failure.name ? ` ${failure.name}` : ''}` : failure.kind === 'frame' ? 'The frame render' : failure.kind === 'measure-mix' ? 'The mix measurement' : `The ${failure.kind} job`
 
 function jobReason(failure) {
   if (typeof failure?.kind !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(failure.kind)) return null

@@ -21,6 +21,7 @@ const ROUTES = {
   'GET /api/assistant/history': step('Reading earlier messages', 'read earlier messages'),
   'GET /api/jobs/wait': JOB_WAIT, 'GET /api/analysis/jobs/wait': JOB_WAIT, 'GET /api/video/jobs/wait': JOB_WAIT,
   'POST /api/export': step('Starting an export', 'started an export'),
+  'POST /api/audio/measure-mix': step('Measuring the mix', 'started measuring the mix'),
   'POST /api/undo': step('Undoing an edit', 'undid an edit'),
   'POST /api/redo': step('Redoing an edit', 'redid an edit'),
   'POST /api/ui/show': step('Showing a moment in the editor', 'showed a moment in the editor'),

@@ -934,6 +934,70 @@ async function startExport(spec) {
   return job
 }
 
+// Measures the loudness of the timeline mix and leaves no file. The render worker mixes the range
+// as it does for an audio export, into .reel/<job>.wav; ffmpeg measures that file, and it is
+// removed when the job settles, also when the job fails or is cancelled. Nothing is written to
+// renders/ or the delivery record, and the project does not change. The numbers are in job.result.
+async function startMixMeasure(body = {}) {
+  if (!project) throw new Error('no project')
+  processing.assertCapacity()
+  const guard = captureProcessing()
+  const selected = body.comp ? compView(project, body.comp) : project
+  if (!selected) throw new Error('no such composition')
+  const end = duration(selected)
+  if (!(end > 0)) throw new Error('There is nothing on the timeline to measure.')
+  const given = key => body[key] !== undefined && body[key] !== null
+  for (const key of ['from', 'to']) if (given(key) && !(Number.isFinite(body[key]) && body[key] >= 0)) throw new Error(`${key} must be a time on the timeline in seconds`)
+  // With no from and no to, the measured part is what an export with no range would render.
+  const whole = !given('from') && !given('to') && selected.range ? selected.range : { in: 0, out: end }
+  const from = given('from') ? body.from : whole.in, to = Math.min(given('to') ? body.to : whole.out, end)
+  if (!(to > from)) throw new Error(`Nothing to measure from ${from} s to ${to} s: the timeline is ${end} s long and from must be before to.`)
+  const validated = validateExportSpec({ preset: 'audio-wav', ...(body.comp ? { comp: body.comp } : {}), range: { in: from, out: to } }, selected)
+  guard.assertCurrent()
+  const captured = captureExportSources(ROOT, project)
+  const snapshot = structuredClone(project)
+  const job = newJob('measure-mix', validated)
+  job.projectVersion = version
+  job.exportSources = captured
+  job.audioFile = path.join(DOT, `${job.id}.wav`)
+  try { queueWorkerJob(job, snapshot, guard) } catch (error) { jobs.delete(job.id); throw error }
+  return job
+}
+
+async function finishMixMeasure(job) {
+  if (job.state === 'done' || job.state === 'failed' || job.finishing) return
+  job.finishing = true
+  job.processing?.assertCurrent()
+  if (!job.audioUploaded) throw new Error('The render worker sent no mix to measure.')
+  // The same measurement POST /api/analyze makes of one file, here of the rendered mix.
+  const ff = spawn('ffmpeg', ['-nostdin', '-i', guardedOutput(ROOT, job.audioFile), '-vn', '-af', 'ebur128=peak=true:framelog=quiet', '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] })
+  let err = ''
+  ff.stderr.on('data', d => (err = (err + d).slice(-1024 * 1024)))
+  // failJob stops this process as it stops an encoder, and the reservation waits for it to close.
+  job.ffmpeg = ff
+  job.done = new Promise(resolve => {
+    ff.once('error', error => { err = error.message })
+    ff.once('close', code => {
+      if (job.processing) { clearTimeout(job.processing.encoderKillTimer); job.processing.encoderKillTimer = null; job.processing.encoderClosed = true }
+      cleanupExportAudio(job)
+      resolve({ code })
+    })
+  })
+  const { code } = await job.done
+  if (job.state === 'done' || job.state === 'failed') return
+  if (code !== 0) throw new Error(`ffmpeg: ${err.slice(-500)}`)
+  job.processing?.assertCurrent()
+  await job.exportSources.assertCurrent(() => job.processing.assertCurrent())
+  job.processing.assertCurrent()
+  const { in: from, out: to } = job.spec.range
+  job.result = { ...parseLoudness(err), from, to, dur: Math.round((to - from) * 1e6) / 1e6 }
+  job.state = 'done'
+  job.progress = 1
+  job.finished = Date.now()
+  broadcast('job', jobPublic(job))
+  pushActivity('reel', `measured the mix in ${((job.finished - job.created) / 1000).toFixed(1)}s`)
+}
+
 function cleanupExportAudio(job) {
   if (!job.audioFile || job.processing?.audioCleaned) return
   try {
@@ -1367,6 +1431,8 @@ const routes = {
 
   // Rendering.
   'POST /api/export': body => startExport(body).then(jobPublic),
+  // The loudness of the timeline mix as a job: wait with GET /api/jobs/wait and read `result`. Writes no file.
+  'POST /api/audio/measure-mix': body => startMixMeasure(body).then(jobPublic),
   'POST /api/frame': async body => renderFrame(body.at ?? uiState.playhead ?? 0, body.width ?? 1280, body.comp ?? null),
   'GET /api/jobs': () => ({ jobs: [...jobs.values()].map(jobPublic) }),
 
@@ -1441,7 +1507,7 @@ async function handleJobUpload(req, res, url) {
     if (!job.processing?.dispatched || job.processing.drained) return send(res, 409, { error: 'This job has no active worker reservation' })
     job.processing.assertCurrent()
     if (what === 'start') {
-      if (job.kind !== 'export' || job.state !== 'queued') return send(res, 409, { error: 'This export job has already started.' })
+      if (!['export', 'measure-mix'].includes(job.kind) || job.state !== 'queued') return send(res, 409, { error: 'This export job has already started.' })
       job.state = 'running'
       noteWorkerActivity(job, workerClock(), 'setup')
       if (job.kind === 'export') startEncoder(job)
@@ -1458,7 +1524,7 @@ async function handleJobUpload(req, res, url) {
     }
     if (what === 'audio') {
       noteWorkerActivity(job, workerClock(), 'setup')
-      if (job.kind !== 'export' || job.state !== 'queued' || job.audioUploaded) return send(res, 409, { error: 'Audio must arrive once before the export starts.' })
+      if (!['export', 'measure-mix'].includes(job.kind) || job.state !== 'queued' || job.audioUploaded) return send(res, 409, { error: 'Audio must arrive once before the export starts.' })
       const buf = await readBody(req, Math.min(1024 ** 3, Math.ceil((job.spec.range.out - job.spec.range.in) * 48000 * 8 + 4096)))
       job.processing.assertCurrent()
       if (job.state !== 'queued' || job.audioUploaded) return send(res, 410, { error: 'The export changed while audio was uploading.' })
@@ -1509,8 +1575,8 @@ async function handleJobUpload(req, res, url) {
       return send(res, 200, { ok: true })
     }
     if (what === 'done') {
-      if (job.kind !== 'export' || job.state !== 'running' || job.finishing) return send(res, 409, { error: 'The export is already finishing or has not started.' })
-      await finishExport(job)
+      if (!['export', 'measure-mix'].includes(job.kind) || job.state !== 'running' || job.finishing) return send(res, 409, { error: 'The export is already finishing or has not started.' })
+      await (job.kind === 'export' ? finishExport(job) : finishMixMeasure(job))
       if (job.state === 'failed') return send(res, 410, { error: job.error })
 
       return send(res, 200, { ok: true })
@@ -1598,7 +1664,7 @@ const server = http.createServer(async (req, res) => {
       let file
       if (owner) {
         const job = jobs.get(owner)
-        if (!job || job.kind !== 'export' || job.state !== 'queued' || !job.processing?.dispatched || job.processing.drained) return send(res, 410, { error: 'This worker job cannot request audio' })
+        if (!job || !['export', 'measure-mix'].includes(job.kind) || job.state !== 'queued' || !job.processing?.dispatched || job.processing.drained) return send(res, 410, { error: 'This worker job cannot request audio' })
         job.processing.assertCurrent()
         file = await processing.within(job.processing.lease, audioWork)
       } else file = await admitSourceDerivative(audioWork)

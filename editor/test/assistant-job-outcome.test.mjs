@@ -84,6 +84,9 @@ test('a failed job says what it was and why, and a cancelled one says it was can
   // The server marks a stopped render job failed with the error "cancelled".
   const two = await complete([{ state: 'failed', kind: 'frame', error: 'cancelled' }, { state: 'cancelled', kind: 'denoise', error: 'aborted' }], { failure: true })
   assert.equal(two.outcome, '2 processing jobs did not finish. The frame render was cancelled. The denoise job was cancelled. Review any committed edits.')
+  const lost = 'The render worker closed while the mix was being measured. Measure again.'
+  const three = await complete([{ state: 'failed', kind: 'measure-mix', error: lost }], { failure: true })
+  assert.equal(three.outcome, `1 processing job did not finish. The mix measurement failed: ${lost} Review any committed edits.`)
 })
 
 test('the reasons are short: two jobs at most, 160 characters each, one line', async () => {

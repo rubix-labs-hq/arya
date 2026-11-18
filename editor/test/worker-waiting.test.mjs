@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { ASSISTANT_FRAME_QUEUE_MS, failStalledWorkerJob, FRAME_QUEUE_MS, FRAME_RENDER_MS, frameJobDeadline, noteWorkerActivity, noteWorkerSetupStep, queuedJobWait } from '../core/processing-worker.mjs'
+import { ASSISTANT_FRAME_QUEUE_MS, failStalledWorkerJob, FRAME_QUEUE_MS, FRAME_RENDER_MS, frameJobDeadline, noteWorkerActivity, noteWorkerSetupStep, queuedJobWait, workerClosedMessage } from '../core/processing-worker.mjs'
 
 function timers() {
   let now = 0, next = 1
@@ -102,4 +102,12 @@ test('a setup that hangs names the step the page last reported', () => {
   assert.equal(rendering.workerStep, 'first', 'a late heartbeat cannot move the step back')
   failStalledWorkerJob(rendering, (_job, message) => failures.push(message), 180000)
   assert.match(failures[1], /^The render worker sent nothing for 120 s, so this export stopped\./)
+  // A mix measurement writes no export, so it is not told to export again.
+  const measuring = { kind: 'measure-mix', state: 'queued', spec: job.spec, workerStep: 'audio' }
+  measuring.processing = { dispatched: true, drained: false, worker: { exitCode: null, signalCode: null } }
+  noteWorkerActivity(measuring, 0, 'dispatch')
+  failStalledWorkerJob(measuring, (_job, message) => failures.push(message), 150000)
+  assert.equal(failures[2], 'The render worker sent nothing for 120 s (last step: rendering the audio mix), so this measurement stopped. Measure again. Arya starts a new render worker.')
+  assert.equal(workerClosedMessage(measuring), 'The render worker closed while the mix was being measured. Measure again.')
+  assert.equal(workerClosedMessage({ kind: 'export' }), 'The render worker closed while this export was running. Export again.')
 })

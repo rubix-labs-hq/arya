@@ -24,6 +24,7 @@ test('a tool step is named from its route, a count and a time', () => {
   assert.equal(doing({ method: 'POST', path: '/api/analyze', body: { kind: 'silence' } }), 'Finding silence')
   assert.equal(doing({ method: 'POST', path: '/api/analyze', body: { kind: 'constructor' } }), 'Running analyze')
   assert.equal(doing({ method: 'POST', path: '/api/export', body: { name: 'client-cut' } }), 'Starting an export')
+  assert.deepEqual(stepLabel({ method: 'POST', path: '/api/audio/measure-mix', body: { from: 0, to: 12 } }), { doing: 'Measuring the mix', done: 'started measuring the mix' })
   assert.equal(doing({ method: 'POST', path: '/api/audio/loudnorm', body: { src: 'media/a.wav' } }), 'Running audio loudnorm')
   assert.equal(doing({ method: 'POST', path: '/api/captions/from-transcript' }), 'Running captions from transcript')
   assert.deepEqual(stepLabel({ method: 'POST', path: '/api/ops', body: { ops: [{}, {}] } }), { doing: 'Applying 2 edits', done: 'applied 2 edits' })

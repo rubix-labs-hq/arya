@@ -11,6 +11,7 @@ import { captureExportSources, prepareExportCohort, createExportDestination } fr
 import { guardedOutput } from '../core/output-path.js'
 import interchangeRoutes from '../routes/interchange.mjs'
 import { DeliveryHistory } from '../core/delivery-history.js'
+import { parseLoudness } from '../core/analysis-parse.js'
 
 const source = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
 const exportSource = source.slice(source.indexOf('const PRESETS ='), source.indexOf('// ---------------------------------------------------------------- routes'))
@@ -27,12 +28,12 @@ function fixture(t, overrides = {}) {
   const events = [], encoders = [], admission = createProcessingAdmission()
   const values = { ROOT, DOT, fs, path, createProcessingAdmission, reserveProcessingWorker, validateExportSpec, captureExportSources, prepareExportCohort, createExportDestination, guardedOutput, initialProject: project, processing: admission,
     armProcessingWorkerCancellation: () => () => {}, ensureWorker: async () => {}, touchWorker: () => {}, assistantCalls: { getStore: () => null },
-    queuedJobWait, frameJobDeadline, workerConnected: () => true, exportCopyDigests: new Map(), log: () => {}, ...overrides,
-    duration: () => 1, compView: (p, name) => p.comps?.[name], pushActivity: () => {}, deliveries: new DeliveryHistory(ROOT),
+    queuedJobWait, frameJobDeadline, parseLoudness, workerConnected: () => true, exportCopyDigests: new Map(), log: () => {}, ...overrides,
+    duration: overrides.duration ?? (() => 1), compView: (p, name) => p.comps?.[name], pushActivity: () => {}, deliveries: new DeliveryHistory(ROOT),
     broadcast: (type, data) => events.push({ type, data }), spawn: (_cmd, args) => {
       const ff = new EventEmitter(); ff.stderr = new EventEmitter(); ff.stdin = new EventEmitter(); ff.stdin.end = () => {}; ff.kills = []; ff.kill = signal => ff.kills.push(signal); ff.argv = args; encoders.push(ff); return ff
     } }
-  const f = new Function(...Object.keys(values), `let project = initialProject, version = 1; const jobs = new Map(), worker = {}; function captureProcessing() { const initial = project, revision = version; return { assertCurrent() { if (project !== initial || version !== revision) throw new Error('The project changed') } } }\n${exportSource}\nreturn { startExport, startEncoder, finishExport, failJob, jobPublic, renderFrame, jobs, changeProject() { project = {...project}; version++ } }`)(...Object.values(values))
+  const f = new Function(...Object.keys(values), `let project = initialProject, version = 1; const jobs = new Map(), worker = {}; function captureProcessing() { const initial = project, revision = version; return { assertCurrent() { if (project !== initial || version !== revision) throw new Error('The project changed') } } }\n${exportSource}\nreturn { startExport, startEncoder, finishExport, startMixMeasure, finishMixMeasure, failJob, jobPublic, renderFrame, jobs, changeProject() { project = {...project}; version++ } }`)(...Object.values(values))
   return { ROOT, project, f, events, encoders, admission, exportCopyDigests: values.exportCopyDigests }
 }
 
@@ -244,4 +245,105 @@ test('an export name that is taken gets the next free number instead of failing'
   assert.deepEqual([path.basename(first.spec.out), path.basename(second.spec.out)], ['queued.mp4', 'queued-2.mp4'])
   const fresh = await f.startExport({ name: 'fresh', preset: 'png-seq' })
   assert.equal(path.relative(ROOT, fresh.spec.out), path.join('renders', 'fresh-frames', 'frame_%05d.png'))
+})
+
+// Seen on 2026-11-17: asked "How loud is it?", the assistant exported the mix to
+// renders/check-loudness.wav to measure it, and the file stayed in the project.
+const SUMMARY = '[Parsed_ebur128_0 @ 0x1] Summary:\n\n  Integrated loudness:\n    I:         -16.4 LUFS\n    Threshold: -26.4 LUFS\n\n  Loudness range:\n    LRA:         3.2 LU\n\n  True peak:\n    Peak:       -1.7 dBFS\n'
+// Every file and folder under the project and what each file holds. The one thing left out is
+// .reel/export-cohorts, the folder Arya keeps for the media copies of every frame and export; it
+// is checked to be empty.
+function everyFile(root, relative = '') {
+  return fs.readdirSync(path.join(root, relative), { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1).flatMap(entry => {
+    const name = path.join(relative, entry.name)
+    if (name === path.join('.reel', 'export-cohorts')) { assert.deepEqual(fs.readdirSync(path.join(root, name)), [], 'no media copy is left'); return [] }
+    return entry.isDirectory() ? [`${name}/`, ...everyFile(root, name)] : [`${name} ${fs.readFileSync(path.join(root, name)).toString('hex')}`]
+  })
+}
+// What the worker does for a mix measurement: upload the mix, then say start.
+async function measuring(f, events, body) {
+  const job = await f.startMixMeasure(body)
+  await until(() => events.some(e => e.type === 'render' && e.data.job.id === job.id))
+  fs.writeFileSync(job.audioFile, 'synthetic mix'); job.audioUploaded = true; job.state = 'running'
+  return job
+}
+
+test('measuring the mix returns its loudness in the job and leaves the project folder as it was', async t => {
+  const { ROOT, f, events, encoders, admission } = fixture(t)
+  const before = everyFile(ROOT)
+  const job = await measuring(f, events)
+  const payload = events.find(e => e.type === 'render').data.job
+  assert.equal(payload.kind, 'measure-mix'); assert.equal(payload.spec.preset, 'audio-wav', 'the worker mixes it as it mixes an audio export')
+  assert.deepEqual(payload.spec.range, { in: 0, out: 1 }); assert.equal('out' in payload.spec, false, 'no output path')
+  const finished = f.finishMixMeasure(job)
+  assert.equal(encoders.length, 1)
+  assert.deepEqual(encoders[0].argv, ['-nostdin', '-i', job.audioFile, '-vn', '-af', 'ebur128=peak=true:framelog=quiet', '-f', 'null', '-'])
+  encoders[0].stderr.emit('data', SUMMARY); encoders[0].emit('close', 0)
+  await finished
+  assert.equal(job.state, 'done')
+  assert.deepEqual(job.result, { lufs: -16.4, lra: 3.2, truePeak: -1.7, from: 0, to: 1, dur: 1 })
+  assert.deepEqual(f.jobPublic(job).result, job.result); assert.equal(job.output, undefined)
+  assert.equal(fs.existsSync(job.audioFile), false, 'the mix is removed as soon as it has been measured')
+  job.processing.acknowledge(); await until(() => admission.snapshot().active === 0)
+  assert.deepEqual(everyFile(ROOT), before, 'no file is added, changed or left behind')
+  assert.equal(fs.existsSync(path.join(ROOT, 'renders')), false)
+  assert.deepEqual(new DeliveryHistory(ROOT).read(), [], 'a measurement is not a delivery')
+})
+
+test('a mix measurement takes a part of the timeline, and refuses a part with nothing in it', async t => {
+  const { f, events, admission } = fixture(t, { duration: () => 12 })
+  const job = await measuring(f, events, { from: 2.5, to: 40 })
+  assert.deepEqual(job.spec.range, { in: 2.5, out: 12 }, 'to is cut at the end of the timeline')
+  f.failJob(job, 'cancelled'); job.processing.acknowledge(); await until(() => admission.snapshot().active === 0)
+  await assert.rejects(f.startMixMeasure({ from: 12 }), /Nothing to measure from 12 s to 12 s: the timeline is 12 s long/)
+  await assert.rejects(f.startMixMeasure({ from: -1 }), /from must be a time on the timeline in seconds/)
+  await assert.rejects(f.startMixMeasure({ to: '3' }), /to must be a time on the timeline in seconds/)
+  await assert.rejects(f.startMixMeasure({ comp: 'none' }), /no such composition/)
+  const empty = fixture(t, { duration: () => 0 })
+  await assert.rejects(empty.f.startMixMeasure(), /There is nothing on the timeline to measure\./)
+  assert.equal(f.jobs.size, 1, 'a refused measurement queues no job')
+})
+
+test('with no from and no to, a mix measurement covers the export range', async t => {
+  const { f, events, project, admission } = fixture(t, { duration: () => 12 })
+  project.range = { in: 3, out: 9 }
+  const job = await measuring(f, events)
+  assert.deepEqual(job.spec.range, { in: 3, out: 9 })
+  f.failJob(job, 'cancelled'); job.processing.acknowledge(); await until(() => admission.snapshot().active === 0)
+  const whole = await measuring(f, events, { from: 0 })
+  assert.deepEqual(whole.spec.range, { in: 0, out: 12 }, 'a given from measures to the end of the timeline')
+  f.failJob(whole, 'cancelled'); whole.processing.acknowledge(); await until(() => admission.snapshot().active === 0)
+})
+
+test('a mix measurement that fails or is cancelled also leaves the project folder as it was', async t => {
+  const { ROOT, f, events, encoders, admission } = fixture(t)
+  const before = everyFile(ROOT)
+  // ffmpeg fails.
+  const failed = await measuring(f, events)
+  const refused = f.finishMixMeasure(failed)
+  encoders[0].stderr.emit('data', 'Invalid data found when processing input'); encoders[0].emit('close', 1)
+  await assert.rejects(refused, /ffmpeg: Invalid data found/)
+  f.failJob(failed, 'ffmpeg: Invalid data found'); failed.processing.acknowledge(); await until(() => admission.snapshot().active === 0)
+  assert.equal(failed.state, 'failed'); assert.equal(failed.result, undefined)
+  assert.deepEqual(everyFile(ROOT), before)
+  // Cancelled while ffmpeg measures: the process is stopped and the mix removed.
+  const cancelled = await measuring(f, events)
+  const stopped = f.finishMixMeasure(cancelled)
+  f.failJob(cancelled, 'cancelled')
+  assert.deepEqual(encoders[1].kills, ['SIGTERM'])
+  encoders[1].emit('close', null)
+  await stopped
+  assert.equal(cancelled.state, 'failed'); assert.equal(cancelled.result, undefined)
+  cancelled.processing.acknowledge(); await until(() => admission.snapshot().active === 0)
+  assert.deepEqual(everyFile(ROOT), before)
+  // Cancelled before the worker has it, with the mix never uploaded.
+  const early = await f.startMixMeasure()
+  f.failJob(early, 'cancelled'); await until(() => admission.snapshot().active === 0)
+  assert.deepEqual(everyFile(ROOT), before)
+  // The project changes while it is measured: no numbers for a mix that is no longer the project's.
+  const stale = await measuring(f, events)
+  f.changeProject()
+  await assert.rejects(f.finishMixMeasure(stale), /changed/)
+  f.failJob(stale, 'The project changed'); stale.processing.acknowledge(); await until(() => admission.snapshot().active === 0)
+  assert.deepEqual(everyFile(ROOT), before)
 })
