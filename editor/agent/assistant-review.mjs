@@ -102,6 +102,21 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, onChan
       return publicProposal()
     },
     proposal: () => proposal,
+    /**
+     * The project the run's own pending preview would make, built in memory by `apply`
+     * (core applyOps) and never saved. Null when that run has no ops waiting, so a frame then
+     * shows the saved project. Another run's preview is never shown. A preview made from an
+     * older project is refused when `strict` (a Preview changes request, which cannot edit the
+     * project itself), and otherwise counts as no preview.
+     */
+    trial(runId, apply, { strict = true } = {}) {
+      if (!runId || !proposal || proposal.runId !== runId || !proposal.ops.length) return null
+      const stale = proposal.baseVersion !== version() || proposal.epoch !== epoch()
+      if (stale && !strict) return null
+      if (stale) throw Object.assign(new Error('The project changed after this preview was made, so a frame of the preview cannot be drawn. Read the outline, propose again, then ask for the frame.'), { status: 409 })
+      const imports = Object.keys(proposal.assets ?? {}).length ? [{ op: 'import', assets: proposal.assets }] : []
+      return apply(getProject(), [...imports, ...proposal.ops]).project
+    },
     /** Drops the pending preview, or dismisses a finished preview's failure notice. */
     discard(id) {
       if (applying?.finished && applying.id === id) { applying = null; changed(); return true }

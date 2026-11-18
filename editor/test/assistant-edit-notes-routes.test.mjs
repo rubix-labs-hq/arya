@@ -44,7 +44,8 @@ test('a preview reply carries notes for the whole preview and says what still sh
   const [first, second, outline] = agent.results
   assert.equal(first.previewed, true, JSON.stringify(first))
   assert.match(first.note, /^Not applied\. The user reviews this preview and applies or discards it\. Steps render only after the user applies\./)
-  assert.match(first.note, /reel_frame, GET \/api\/outline and GET \/api\/describe still show the saved project, not this preview/)
+  assert.match(first.note, /reel_frame now shows this preview: the project with every op of the preview applied, without saving it\. Check a frame of what you changed before you reply\./)
+  assert.match(first.note, /GET \/api\/outline and GET \/api\/describe still show the saved project, not this preview/)
   assert.ok(first.notes.some(note => /^c2 title is about \d+ units wide/.test(note)), JSON.stringify(first.notes))
   // The second call adds to the same preview, and its notes cover both calls.
   assert.equal(second.ops, 2)

@@ -153,6 +153,33 @@ test('a frame whose worker goes away is rendered once more, and a second loss sa
   assert.equal(renders().length, count + 4)
 })
 
+test('a frame of an assistant preview draws the previewed project, with its media copied, and saves nothing', async t => {
+  const { ROOT, project, f, events, admission } = fixture(t)
+  const saved = structuredClone(project), file = fs.readdirSync(ROOT).sort()
+  // What a preview would make: the saved project with a title over it.
+  const preview = structuredClone(project)
+  preview.tracks.push({ id: 'V9', kind: 'video', name: 'Preview titles', clips: [{ id: 'p1', kind: 'title', start: 0, dur: 1, title: { text: 'PREVIEWED' } }] })
+  const frame = f.renderFrame(0.5, 320, null, { preview }); frame.catch(() => {})
+  await until(() => events.some(e => e.type === 'render'))
+  const sent = events.find(e => e.type === 'render').data
+  assert.equal(sent.job.kind, 'frame'); assert.equal(sent.job.preview, true)
+  assert.deepEqual(sent.project.tracks.at(-1).clips.map(clip => clip.title?.text), ['PREVIEWED'], 'the worker is given the previewed project')
+  // The media is the copy made for this job, as for any frame, not the project file.
+  assert.notEqual(sent.project.tracks[0].clips[0].src, project.tracks[0].clips[0].src); assert.ok(fs.existsSync(path.join(ROOT, sent.project.tracks[0].clips[0].src)))
+  assert.deepEqual(project, saved, 'the open project is not changed')
+  assert.deepEqual(fs.readdirSync(ROOT).sort(), file, 'nothing is added beside the project')
+  const job = [...f.jobs.values()].at(-1); f.failJob(job, 'stopped by the test'); job.processing.acknowledge()
+  await assert.rejects(frame, /stopped by the test/)
+  await until(() => admission.snapshot().active === 0)
+  // Without a preview the same call draws the saved project.
+  const plain = f.renderFrame(0.5, 320); plain.catch(() => {})
+  await until(() => events.filter(e => e.type === 'render').length === 2)
+  const second = events.filter(e => e.type === 'render')[1].data
+  assert.equal(second.project.tracks.some(track => track.id === 'V9'), false); assert.equal(second.job.preview, undefined)
+  const last = [...f.jobs.values()].at(-1); f.failJob(last, 'stopped by the test'); last.processing.acknowledge()
+  await until(() => admission.snapshot().active === 0)
+})
+
 test('the digests of an export\'s source copies are dropped when the job has left the queue', async t => {
   const { ROOT, f, events, admission, exportCopyDigests } = fixture(t)
   const job = await f.startExport({ name: 'digest-result' })

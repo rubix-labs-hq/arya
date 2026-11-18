@@ -123,7 +123,7 @@ test('an actual stdio CLI builds native editable layers, selection context, fram
   const root = temporary(t), fixture = path.join(here, 'fixtures', 'agent-cli.mjs'), mcp = path.join(here, '../agent/mcp.mjs')
   fs.copyFileSync(path.join(here, 'golden', 'basics-1.png'), path.join(root, 'frame.png'))
   let project = newProject('Browser subscription fixture', { width: 160, height: 90 }), version = 1
-  const past = [], replies = [], frames = [], states = []
+  const past = [], replies = [], frames = [], frameRuns = [], states = []
   const service = createBrowserAssistant(options(root, { custom: { executable: process.execPath, args: [fixture, mcp] },
     getOutline: () => ({ outline: outline(project), version }),
     dispatch: async (call, assertCurrent) => {
@@ -131,7 +131,7 @@ test('an actual stdio CLI builds native editable layers, selection context, fram
       if (call.method === 'GET') return call.path === '/api/caps' ? { host: 'browser', editable: true } : { outline: outline(project), version }
       if (call.path === '/api/ops') { past.push(project); const result = applyOps(project, call.body.ops); project = result.project; return { version: ++version, created: result.created } }
       throw new Error('Unexpected fixture route')
-    }, renderFrame: async frame => { frames.push(frame); return { path: path.join(root, 'frame.png') } }, onReply: reply => replies.push(reply), onState: state => states.push(state),
+    }, renderFrame: async (frame, _assertCurrent, _registerJob, run) => { frames.push(frame); frameRuns.push(run); return { path: path.join(root, 'frame.png') } }, onReply: reply => replies.push(reply), onState: state => states.push(state),
   }))
   t.after(() => service.close())
   await service.configure({ provider: 'claude-code' }); await approveFixture(service)
@@ -156,6 +156,9 @@ test('an actual stdio CLI builds native editable layers, selection context, fram
   assert.equal(title.title.text, 'EDITABLE SCENE')
   assert.equal(project.comps.k1.tracks.find(track => track.kind === 'audio').clips[0].volume, 0.5)
   assert.equal(frames.length, 2); assert.match(replies[0], /editable scene/)
+  // The frame renderer is told which request asks, so it can draw that request's own preview.
+  assert.ok(frameRuns.every(run => typeof run.runId === 'string' && run.runId && run.review === false), JSON.stringify(frameRuns))
+  assert.equal(new Set(frameRuns.map(run => run.runId)).size, 1)
   const shape = JSON.stringify(project.comps.k1.tracks.flatMap(track => track.clips).find(clip => clip.shape))
   await service.send({ text: 'Change the selected title.', ids: [title.id], comp: 'k1', playhead: 1.25, refs: [] })
   await waitFor(() => service.snapshot().state === 'done')

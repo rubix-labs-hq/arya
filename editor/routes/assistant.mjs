@@ -4,9 +4,11 @@ import { editNotes } from '../core/edit-notes.js'
 import { historyPage } from '../agent/agent-views.mjs'
 import { describeStep, PREVIEW_STEP_WAITS } from '../core/assistant-steps.js'
 
-// Every propose reply ends with this. reel_frame, /api/outline and /api/describe read the saved
-// project (server.mjs renderFrame and the two routes), which a preview never changes.
-export const PREVIEW_NOTE = 'Not applied. The user reviews this preview and applies or discards it. Steps render only after the user applies. reel_frame, GET /api/outline and GET /api/describe still show the saved project, not this preview, so no frame can show a previewed change. Judge the preview from the outline in this reply and from notes, when this reply has them.'
+// Every propose reply ends with this. During the request that made a preview, reel_frame draws
+// the project with the preview's ops applied in memory (server.mjs renderFrame and
+// assistant-review.mjs trial). /api/outline and /api/describe read the saved project, which a
+// preview never changes, and steps have not run.
+export const PREVIEW_NOTE = 'Not applied. The user reviews this preview and applies or discards it. Steps render only after the user applies. reel_frame now shows this preview: the project with every op of the preview applied, without saving it. Check a frame of what you changed before you reply. A frame does not show steps, because they have not run. GET /api/outline and GET /api/describe still show the saved project, not this preview; use the outline in this reply and notes, when this reply has them.'
 
 const ID = /^[a-zA-Z0-9_-]{1,128}$/
 const PAGES = ['media', 'edit', 'motion', 'color', 'audio', 'deliver']

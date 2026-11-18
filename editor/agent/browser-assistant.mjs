@@ -566,7 +566,7 @@ export function createBrowserAssistant(options) {
   }
   const image = async (frame, run) => {
     assertRun(run)
-    const result = frame.src ? { path: confinedFile(root, frame.src) } : await options.renderFrame(frame, () => assertRun(run), job => registerJob(run, job))
+    const result = frame.src ? { path: confinedFile(root, frame.src) } : await options.renderFrame(frame, () => assertRun(run), job => registerJob(run, job), { runId: run.id, review: run.review === true })
     assertRun(run)
     const file = confinedFile(root, result.path)
     const type = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }[path.extname(file).toLowerCase()]

@@ -80,6 +80,36 @@ test('previews accumulate within one request, reset on request and refuse unsafe
   assert.equal(review.propose({ runId: 'r2', ops: [{ op: 'add_color', color: '#fff' }] }).ops.length, 1, 'another request starts its own preview')
 })
 
+test('the run that made a preview gets the project it would make, and nobody else does', () => {
+  const { state, review } = tracker(), saved = state.project
+  assert.equal(review.trial('r1', applyOps), null, 'nothing is proposed yet, so a frame shows the saved project')
+  review.stage(review.propose({ runId: 'r1', ops: [{ op: 'add_title', track: 'V2', start: 0, dur: 2, title: { text: 'PREVIEWED' } }], summary: 'Add a title' }))
+  const trial = review.trial('r1', applyOps)
+  assert.deepEqual(trial.tracks.flatMap(track => track.clips).map(clip => clip.title?.text), ['PREVIEWED'])
+  assert.equal(state.project, saved); assert.equal(saved.tracks.flatMap(track => track.clips).length, 0, 'the saved project is not changed')
+  assert.equal(review.trial('r2', applyOps), null, 'another request never sees this preview')
+  assert.equal(review.trial(null, applyOps), null); assert.equal(review.trial(undefined, applyOps), null)
+  // A second propose adds to the preview, and the trial holds both.
+  review.stage(review.propose({ runId: 'r1', ops: [{ op: 'add_title', track: 'V2', start: 2, dur: 2, title: { text: 'SECOND' } }] }))
+  assert.deepEqual(review.trial('r1', applyOps).tracks.flatMap(track => track.clips).map(clip => clip.title?.text), ['PREVIEWED', 'SECOND'])
+  // The project moved on: a Preview changes request is told so, and any other request gets the saved project.
+  state.version = 5
+  assert.throws(() => review.trial('r1', applyOps), error => error.status === 409 && /The project changed after this preview was made, so a frame of the preview cannot be drawn\. Read the outline, propose again, then ask for the frame\./.test(error.message))
+  assert.equal(review.trial('r1', applyOps, { strict: false }), null)
+})
+
+test('a preview of steps alone, or one that imports media, draws what its ops would make', () => {
+  const { state, review } = tracker()
+  review.stage({ ...review.propose({ runId: 'r1', steps: [{ path: '/api/audio/clean', body: { id: 'c1' } }] }), steps: [] })
+  assert.equal(review.trial('r1', applyOps), null, 'steps have not run, so there is nothing to draw but the saved project')
+  const asset = { duration: 5, width: 1920, height: 1080, fps: 30, hasVideo: true, hasAudio: false }
+  review.stage({ ...review.propose({ runId: 'r1', ops: [{ op: 'append', src: 'media/new.mp4', track: 'V1', dur: 2 }], reset: true }), assets: { 'media/new.mp4': asset } })
+  const trial = review.trial('r1', applyOps)
+  assert.deepEqual(trial.assets['media/new.mp4'], asset, 'media the preview would import is in the drawn project')
+  assert.equal(trial.tracks.find(track => track.id === 'V1').clips[0].src, 'media/new.mp4')
+  assert.equal(Object.hasOwn(state.project.assets ?? {}, 'media/new.mp4'), false)
+})
+
 test('an applied preview becomes one undoable change and discard needs the current preview', () => {
   const { state, review } = tracker(), before = state.project
   review.stage(review.propose({ runId: null, ops: [{ op: 'add_color', color: '#000' }] }))

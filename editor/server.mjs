@@ -1034,30 +1034,36 @@ function failJob(job, error) {
 
 // A still frame. When the render worker goes away under it, the frame is tried once more: the
 // next job starts a new worker, so the caller does not see a failure that a retry cures.
-async function renderFrame(at, width = 1280, comp = null, { queueMs } = {}) {
+// `preview` is a project to draw instead of the saved one: what an assistant preview would make.
+// It is rendered from memory and never saved.
+async function renderFrame(at, width = 1280, comp = null, { queueMs, preview = null } = {}) {
   const began = Date.now()
   let lost
-  try { return await (lost = frameAttempt(at, width, comp, { queueMs })).done } catch (error) { if (!lost?.job.workerLost) throw error }
+  try { return await (lost = frameAttempt(at, width, comp, { queueMs, preview })).done } catch (error) { if (!lost?.job.workerLost) throw error }
   // The retry waits only for what is left of the first attempt's wait, so the answer is no later.
   const left = queueMs === undefined ? undefined : queueMs - (Date.now() - began)
   if (left !== undefined && left < 1000) throw new Error('The preview renderer restarted. Try again.')
   log('the render worker went away under a frame; rendering it again on a new worker')
-  try { return await (lost = frameAttempt(at, width, comp, { queueMs: left })).done } catch (error) {
+  try { return await (lost = frameAttempt(at, width, comp, { queueMs: left, preview })).done } catch (error) {
     throw lost?.job.workerLost ? new Error('The preview renderer restarted. Try again.') : error
   }
 }
 
-function frameAttempt(at, width, comp, { queueMs } = {}) {
+function frameAttempt(at, width, comp, { queueMs, preview = null } = {}) {
   if (!project) throw new Error('no project')
   processing.assertCapacity()
   const guard = captureProcessing()
-  if (comp && !project.comps?.[comp]) throw new Error(`no composition ${comp}`)
-  const selected = comp ? compView(project, comp) : project
+  // The guard still watches the saved project: a preview is only valid on the version it was made from.
+  const shown = preview ?? project
+  if (comp && !shown.comps?.[comp]) throw new Error(`no composition ${comp}`)
+  const selected = comp ? compView(shown, comp) : shown
   const spec = validateExportSpec({ at, width, comp, range: { in: 0, out: Math.max(duration(selected), 1 / selected.fps) } }, selected, { frame: true })
   guard.assertCurrent()
-  const captured = captureExportSources(ROOT, project)
-  const snapshot = structuredClone(project)
+  // The media copies are taken for the project that is drawn, so media a preview adds is copied too.
+  const captured = captureExportSources(ROOT, shown)
+  const snapshot = structuredClone(shown)
   const job = newJob('frame', spec)
+  if (preview) job.preview = true
   job.projectVersion = version
   job.exportSources = captured
   const done = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject })
@@ -1111,7 +1117,9 @@ const assistantService = createBrowserAssistant({
   hostKeyFile: path.join(os.homedir(), '.arya', 'assistant-host-key'),
   // exportFolder tells the prompt this is the browser editor, whose exports land in renders/ (see EXPORT_GUIDE).
   getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus), exportFolder: 'renders' } : {}), ...(focus && transcriptionState ? { transcription: transcriptionState } : {}) }),
-  renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null, { queueMs: ASSISTANT_FRAME_QUEUE_MS }) }),
+  // A frame shows the request's own pending preview, so the assistant can check a change the
+  // project does not hold yet. Any other frame shows the saved project.
+  renderFrame: (frame, assertCurrent, registerJob, run = {}) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null, { queueMs: ASSISTANT_FRAME_QUEUE_MS, preview: assistantReview.trial(run.runId, applyOps, { strict: run.review === true }) }) }),
   dispatch: (call, assertCurrent, acceptIdentity, registerJob, run = {}) => {
     assertCurrent()
     const url = new URL(call.path, 'http://127.0.0.1')
