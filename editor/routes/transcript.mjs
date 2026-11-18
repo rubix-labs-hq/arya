@@ -5,7 +5,8 @@ import { runProcessingProcess } from '../core/processing-process.mjs'
 import { buildShortsOps, captionItems, framingKeys, proposeShorts, subjectCenters, transcriptDeleteOps, validateWords } from '../core/shorts.js'
 import { guardedOutput } from '../core/output-path.js'
 import { findClip } from '../core/project.js'
-import { wavHasSignal } from '../core/wav-signal.mjs'
+import { wavHasSignal, wavPauses } from '../core/wav-signal.mjs'
+import { clampWordsToDuration, keepWordsInSpeech } from '../core/word-timing.js'
 import { MAX_TIMED_TRANSCRIPT_BYTES, parseTimedTranscript } from '../core/transcript-edit.js'
 
 const digest = value => createHash('sha256').update(value).digest('hex')
@@ -16,6 +17,7 @@ const refused = (message, status = 409) => Object.assign(new Error(message), { s
 // Saved with an empty transcript when the extracted audio never reaches -60 dBFS. whisper.cpp
 // answers digital silence with an invented word, so recognition is skipped for such a source.
 export const SILENT_SOURCE_WARNING = 'No audible audio in this clip. Its sound never reaches -60 dBFS, so speech recognition was not run.'
+export const lateWordsWarning = count => `${count} recognized word${count === 1 ? ' was' : 's were'} timed after the end of the file and ${count === 1 ? 'was' : 'were'} left out.`
 // What to run when local transcription is unavailable. server.mjs sends these to the assistant.
 export const WHISPER_INSTALL_COMMAND = 'brew install whisper-cpp'
 export const WHISPER_MODEL_COMMAND = 'mkdir -p ~/.reel/models && curl -L -o ~/.reel/models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin'
@@ -85,6 +87,8 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
     const valid = validateWords(words, info.duration)
     const value = { ...previous, ...(previous.status === 'missing' ? { provider: 'manual' } : {}), ...metadata, src: info.src, locale: info.locale, words: valid, revision: previous.revision + 1, fingerprint: info.fingerprint, status: metadata.status ?? (['missing', 'stale'].includes(previous.status) ? 'complete' : previous.status), updatedAt: Date.now() }
     if (previous.status === 'stale') delete value.warning
+    // Words saved by hand replace a silent result, so its warning no longer describes this transcript.
+    if (valid.length && metadata.warnings === undefined && Array.isArray(value.warnings)) value.warnings = value.warnings.filter(warning => warning !== SILENT_SOURCE_WARNING)
     const encoded = JSON.stringify(value)
     if (Buffer.byteLength(encoded) > MAX_TRANSCRIPT_BYTES) throw new Error('The transcript is larger than 16 MB')
     const temp = path.join(directory, `${randomUUID()}.json.part`)
@@ -132,7 +136,7 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
         // read gives null and is recognized as before.
         const silent = await wavHasSignal(wav, { signal: controller.signal }) === false
         check(controller.signal)
-        let words = []
+        let words = [], late = 0
         if (!silent) {
           job.message = 'Recognizing speech'; publish(job)
           await process(binary, ['-m', modelFile, '-f', wav, '-l', locale.split('-')[0].toLowerCase(), '-oj', '-ml', '1', '-sow', '-of', prefix], { signal: controller.signal })
@@ -141,10 +145,18 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
           if (fs.statSync(recognized).size > MAX_TRANSCRIPT_BYTES) throw new Error('The recognized transcript is larger than 16 MB')
           const raw = JSON.parse(fs.readFileSync(recognized, 'utf8'))
           words = (raw.transcription ?? []).map(segment => ({ t: Number(segment.offsets?.from) / 1000, end: Number(segment.offsets?.to) / 1000, text: String(segment.text ?? '').trim() })).filter(word => word.text && word.end > word.t)
+          // whisper.cpp can time the last word past the end of the file, which the save refuses.
+          const clamped = clampWordsToDuration(words, info.duration)
+          words = clamped.words; late = clamped.dropped
+          // It also charges a pause to the words beside it. Words it timed inside a pause are moved
+          // into the speech next to it, so a cut that removes the pause keeps their captions.
+          const sound = await wavPauses(wav, { signal: controller.signal })
+          check(controller.signal)
+          if (sound) words = keepWordsInSpeech(words, sound.pauses, Math.min(info.duration, sound.duration)).words
         } else unchanged(info)
         check(controller.signal)
         if (job.state === 'failed') throw cancelled()
-        const result = save(info, words, previousRevision, { status: 'complete', onDevice: true, provider: 'whisper.cpp', warnings: silent ? [SILENT_SOURCE_WARNING] : [] }, true)
+        const result = save(info, words, previousRevision, { status: 'complete', onDevice: true, provider: 'whisper.cpp', warnings: silent ? [SILENT_SOURCE_WARNING] : late ? [lateWordsWarning(late)] : [] }, true)
         job.state = 'done'; job.progress = 1; job.finished = Date.now(); job.result = result; job.message = silent ? 'No audible audio found' : 'Transcript saved'; publish(job)
         return result
       } catch (error) {

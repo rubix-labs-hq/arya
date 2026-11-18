@@ -25,7 +25,7 @@ function wav(samples, { list = true, bits = 16 } = {}) {
 const silence = seconds => new Array(16000 * seconds).fill(0)
 const tone = seconds => Array.from({ length: 16000 * seconds }, (_, i) => Math.round(8000 * Math.sin(i * 2 * Math.PI * 440 / 16000)))
 
-function fixture(t, audio) {
+function fixture(t, audio, recognized = [{ offsets: { from: 0, to: 2000 }, text: ' You' }]) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arya-silence-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   fs.mkdirSync(path.join(root, 'media'))
@@ -38,7 +38,7 @@ function fixture(t, audio) {
     process: async (command, args) => {
       runs.push(command)
       // The recognizer answers every input the way whisper.cpp answers silence.
-      if (args.includes('-of')) fs.writeFileSync(args[args.indexOf('-of') + 1] + '.json', JSON.stringify({ transcription: [{ offsets: { from: 0, to: 2000 }, text: ' You' }] }))
+      if (args.includes('-of')) fs.writeFileSync(args[args.indexOf('-of') + 1] + '.json', JSON.stringify({ transcription: recognized }))
       else if (audio !== null) fs.writeFileSync(args.at(-1), audio)
     } })
   return { root, routes, jobs, runs }
@@ -78,7 +78,8 @@ test('a source with sound still runs the recognizer and keeps its words', async 
   const f = fixture(t, wav([...silence(3), ...tone(2)]))
   const result = await f.routes.transcribe({ src: 'media/clip.mp4' })
   assert.deepEqual(f.runs, ['ffmpeg', 'fixture-whisper'])
-  assert.deepEqual(result.words, [{ t: 0, end: 2, text: 'You' }]); assert.deepEqual(result.warnings, [])
+  // The fixture recognizer times its word in the 3 s of silence. It is moved to where the sound starts.
+  assert.deepEqual(result.words, [{ t: 3, end: 3.31, text: 'You' }]); assert.deepEqual(result.warnings, [])
 })
 
 test('audio whose level cannot be read is recognized as before', async t => {
@@ -88,4 +89,46 @@ test('audio whose level cannot be read is recognized as before', async t => {
     assert.deepEqual(f.runs, ['ffmpeg', 'fixture-whisper'])
     assert.equal(result.words.length, 1); assert.deepEqual(result.warnings, [])
   }
+})
+
+test('words imported over a silent result clear its warning, and other warnings stay', async t => {
+  const f = fixture(t, wav(silence(10)))
+  const silent = await f.routes.transcribe({ src: 'media/clip.mp4' })
+  assert.deepEqual(silent.warnings, [SILENT_SOURCE_WARNING])
+  const text = JSON.stringify([{ t: 1, end: 1.4, text: 'Low' }, { t: 1.4, end: 2, text: 'tide' }])
+  const reply = f.routes.importTimed({ src: 'media/clip.mp4', format: 'json', text, revision: silent.revision })
+  assert.equal(reply.wordCount, 2); assert.deepEqual(reply.warnings, [])
+  const saved = f.routes.get({}, new URLSearchParams({ src: 'media/clip.mp4' }))
+  assert.equal(saved.words.length, 2)
+  assert.deepEqual(saved.warnings, [], 'the transcript no longer says recognition was not run')
+  // A hand save from the Transcript panel does the same, and a save of no words keeps the warning.
+  const again = fixture(t, wav(silence(10)))
+  const first = await again.routes.transcribe({ src: 'media/clip.mp4' })
+  assert.deepEqual(again.routes.save({ src: 'media/clip.mp4', words: [], revision: first.revision }).warnings, [SILENT_SOURCE_WARNING])
+  assert.deepEqual(again.routes.save({ src: 'media/clip.mp4', words: [{ t: 1, end: 2, text: 'Low' }], revision: first.revision + 1 }).warnings, [])
+})
+
+test('a last word timed past the end of the file is cut at the end, and the transcript is saved', async t => {
+  // The file is 10 s long. whisper.cpp timed the last word to 10.24 s, and the save refused every word.
+  const f = fixture(t, wav(tone(10)), [{ offsets: { from: 200, to: 9200 }, text: ' Steady' }, { offsets: { from: 9200, to: 10240 }, text: ' on.' }])
+  const result = await f.routes.transcribe({ src: 'media/clip.mp4' })
+  assert.deepEqual(result.words, [{ t: 0.2, end: 9.2, text: 'Steady' }, { t: 9.2, end: 10, text: 'on.' }])
+  assert.deepEqual(result.warnings, []); assert.equal(f.jobs[0].state, 'done')
+  // A word that starts after the file ends has no place in it. It is left out and the transcript says so.
+  const late = fixture(t, wav(tone(10)), [{ offsets: { from: 200, to: 9200 }, text: ' Steady' }, { offsets: { from: 10100, to: 10400 }, text: ' on.' }])
+  const cut = await late.routes.transcribe({ src: 'media/clip.mp4' })
+  assert.deepEqual(cut.words, [{ t: 0.2, end: 9.2, text: 'Steady' }])
+  assert.deepEqual(cut.warnings, ['1 recognized word was timed after the end of the file and was left out.'])
+})
+
+test('words the recognizer times inside a pause are saved inside the speech beside it', async t => {
+  // 3 s of sound, 3 s of nothing, 4 s of sound. The recognizer runs the first sentence on into the pause.
+  const said = [{ offsets: { from: 500, to: 1500 }, text: ' Tide' }, { offsets: { from: 1500, to: 3100 }, text: ' comes' }, { offsets: { from: 3100, to: 5200 }, text: ' in.' }, { offsets: { from: 5200, to: 6800 }, text: ' Boats' }, { offsets: { from: 6800, to: 8000 }, text: ' lift.' }]
+  const f = fixture(t, wav([...tone(3), ...silence(3), ...tone(4)]), said)
+  const { words } = await f.routes.transcribe({ src: 'media/clip.mp4' })
+  assert.deepEqual(words.map(word => word.text), ['Tide', 'comes', 'in.', 'Boats', 'lift.'])
+  assert.ok(words[2].end <= 3 && words[2].t >= words[1].t, `"in." ends with the first sound: ${JSON.stringify(words[2])}`)
+  assert.deepEqual(words[3], { t: 6, end: 6.8, text: 'Boats' }, 'a word that began in the pause starts with the sound after it')
+  assert.deepEqual(words[4], { t: 6.8, end: 8, text: 'lift.' }, 'a word in sound is untouched')
+  for (const word of words) assert.ok(!((word.t + word.end) / 2 > 3 && (word.t + word.end) / 2 < 6), `${word.text} is not centred in the pause`)
 })
