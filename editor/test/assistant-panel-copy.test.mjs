@@ -62,12 +62,12 @@ test('not-ready setup reason appears once, only in the setup card', () => {
   assert.equal(find(tree, 'assistant-route-preview'), undefined)
 })
 
-test('an expired model catalog reads as Needs refresh in the header, not as disconnected', () => {
+test('an expired model catalog shows the Not set up status word, and the setup card says why', () => {
   const expired = { ...setupStatus, autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } }
   const tree = render(expired)
   const head = text([find(tree, 'chat-head')])
-  assert.ok(head.includes('Needs refresh'), head)
-  assert.equal(head.includes('Not set up'), false)
+  assert.ok(head.includes('Not set up'), head)
+  assert.equal(head.includes('Reconnecting'), false)
   assert.ok(text([find(tree, 'assistant-setup')]).includes('Model availability needs a refresh'))
 })
 
@@ -96,12 +96,16 @@ test('the empty state has one sentence and Input tips retains the attachment hin
   assert.ok(text([find(render(readyStatus, { chat: [{ role: 'user', text: 'Earlier edit' }] }), 'assistant-input-help')]).includes(hint))
 })
 
-test('not-ready headers preserve active, terminal and disconnected activity labels', () => {
+const headWord = tree => text([find([find(tree, 'chat-title')], 'muted')])
+test('not-ready headers show the same status word as the Ask Arya entry', () => {
   for (const [patch, label] of [
-    [{ claude: { state: 'working' } }, 'Using tools'],
-    [{ claude: { state: 'done' } }, 'Response finished'],
+    [{ claude: { state: 'working' } }, 'Working'],
+    [{ claude: { state: 'cancelling' } }, 'Stopping'],
+    [{ claude: { state: 'error' } }, 'Failed'],
+    [{ claude: { state: 'done' } }, 'Not set up'],
     [{ connected: false }, 'Reconnecting'],
-  ]) assert.ok(text([find(render(setupStatus, patch), 'chat-head')]).includes(label))
+  ]) assert.equal(headWord(render(setupStatus, patch)), label)
+  assert.equal(headWord(render(readyStatus)), 'Ready')
 })
 
 test('assistant update cards retain their labels and reference chips use drawn icons with named close buttons', () => {
@@ -119,10 +123,10 @@ test('assistant update cards retain their labels and reference chips use drawn i
   const iconsIn = node => walk([node]).filter(child => child.type === 'svg')
   const drawing = svg => svg.props.children.map(path => path.props.d)
   const expected = name => drawing(expand(Icon({ name }))[0])
-  const update = find(tree, 'assistant-tool-card')
+  const update = find(tree, 'assistant-run done')
   assert.equal(update.type, 'details')
-  assert.equal(update.props.open, undefined)
-  assert.equal(text([update]), '1 tool updateInspecting clips')
+  assert.equal(update.props.open, false)
+  assert.equal(text([update]), '↵Done1 tool updateInspecting clips')
   const chips = all.filter(node => ['chip', 'chip small'].includes(node.props.class) && iconsIn(node).length)
   assert.equal(chips.length, 2)
   for (const chip of chips) {

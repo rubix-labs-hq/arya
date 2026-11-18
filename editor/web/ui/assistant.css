@@ -20,10 +20,11 @@
 .assistant-preview-actions .assistant-apply { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .assistant-preview-actions .assistant-apply:hover:not(:disabled) { background: #f6ce8d; border-color: #f6ce8d; }
 
-/* One-step undo of the latest assistant change. */
+/* One-step undo of the latest assistant change. In the panel it sits inside the result card. */
 .chat .assistant-change { flex: none; display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
 .chat .assistant-change span { flex: 1; min-width: 0; }
 .chat .assistant-change button { min-height: 40px; }
+.chat .assistant-result-card .assistant-change { display: contents; }
 
 /* Processing steps in a preview, and a preview being applied. */
 .assistant-preview-steps { margin: 8px 0 0; padding: 0 0 0 18px; display: grid; gap: 6px; font-size: 12px; }
@@ -73,7 +74,7 @@
 .chat-head .chat-collapse { display: none; }
 /* The list is the positioning root for its hidden speaker labels, so they cannot stretch the panel. */
 .chat-list { position: relative; padding: 12px; gap: 10px; min-height: min(4em, 12dvh); overscroll-behavior: contain; }
-.chat-list :is(.sr-only, .assistant-stream > small, .assistant-run.done .assistant-run-heading, .assistant-run.silent) {
+.chat-list .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
 /* The empty state and the status check sit just above the field, where the eye already is. */
@@ -86,6 +87,8 @@
 .chat > :is(.assistant-route-preview, .assistant-plugin-note) { flex: none; margin: 0; padding: 6px 12px; border-bottom: 1px solid var(--line); }
 .chat-list .assistant-setup { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line-2); border-radius: 10px; overflow-wrap: anywhere; }
 .chat-list .assistant-setup p { margin: 0; line-height: 1.5; }
+.chat-list .assistant-setup .assistant-setup-state { color: var(--text); }
+.chat-list .assistant-setup .assistant-setup-note { font-size: 11px; }
 .assistant-setup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
 .assistant-setup-actions > :is(a, button) { min-height: 36px; margin: 0; text-wrap: wrap; }
 .assistant-setup-actions .settings-link { display: inline-flex; align-items: center; padding-inline: 7px; color: var(--text); }
@@ -102,29 +105,42 @@
 }
 @keyframes assistant-caret { 50% { opacity: .2; } }
 
-/* Tool activity is one quiet line. A committed edit is one compact card. */
-.chat-list .assistant-tool-card { padding: 0 2px; border: 0; background: none; color: var(--muted); font-size: .9em; overflow-wrap: anywhere; }
-.assistant-tool-card summary, .change-receipt > summary { cursor: pointer; padding-block: 4px; }
-.assistant-tool-card ul { margin: 0 0 3px; padding-left: 25px; }
-.assistant-tool-card li + li { margin-top: 3px; }
-.assistant-result-card { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; padding: 8px 11px; border-left: 2px solid var(--sage); }
-.assistant-result-card > .receipt-heading, .assistant-result-card > .change-receipt[open] { flex-basis: 100%; }
+/* Each turn reads in order: the reply, one quiet run line, then one result card. */
+.chat-list .assistant-turn { display: contents; }
+.assistant-session-divider { display: flex; align-items: center; gap: 8px; margin: 4px 0; color: var(--muted); font-size: 11px; }
+.assistant-session-divider::before, .assistant-session-divider::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+.assistant-result-card { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 11px; border-left: 2px solid var(--sage); }
+.assistant-result-card > :is(.receipt-heading, .assistant-result-caption, .assistant-note, .change-receipt[open]) { flex-basis: 100%; }
+.assistant-result-card.undone { border-left-color: var(--line-2); }
 .receipt-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; }
 .receipt-heading small { color: var(--muted); }
+.assistant-result-caption { margin: 0; color: var(--muted); font-size: 12px; }
 .assistant-result-card .change-receipt { margin: 0; }
-.assistant-result-card .receipt-actions { margin: 0; }
+.assistant-result-card .receipt-actions { flex-direction: row; flex-wrap: wrap; gap: 6px; margin: 0; }
 .receipt-actions button { align-self: flex-start; }
+.change-receipt > summary { cursor: pointer; padding-block: 4px; }
+.assistant-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
 
-/* Run status is one quiet row. A finished run leaves only its outcome note; a failure keeps a card. */
-.chat-list .assistant-run { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0; padding: 0 2px; border: 0; background: none; }
-.chat-list .assistant-run-heading { flex: none; }
-.chat-list .assistant-run .assistant-run-time { margin-left: 0; }
-.chat-list .assistant-run p { flex: 1 1 14em; margin: 0; }
-.chat-list .assistant-run.done p + p { flex-basis: 100%; }
-.chat-list .assistant-run.error { display: block; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line)); border-radius: 10px; background: var(--panel-2); }
-.chat-list .assistant-run.error .assistant-run-time { margin-left: auto; }
-.chat-list .assistant-run.error p { margin: 5px 0 0; }
-.chat-list .assistant-route { padding: 0 2px; border: 0; }
+/* A run is one quiet line: label, stage and time. It opens to the tool updates. */
+.chat-list .assistant-run { min-width: 0; margin: 0; padding: 0 2px; border: 0; background: none; color: var(--muted); font-size: 12px; }
+.chat-list .assistant-run-heading { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12px; list-style: none; }
+.chat-list summary.assistant-run-heading { cursor: pointer; }
+.chat-list summary.assistant-run-heading::-webkit-details-marker { display: none; }
+.chat-list summary.assistant-run-heading::after { content: '▸'; flex: none; font-size: 10px; }
+.chat-list .assistant-run[open] > summary.assistant-run-heading::after { content: '▾'; }
+.chat-list .assistant-run-symbol { flex: none; width: 14px; font-size: 13px; text-align: center; }
+.chat-list .assistant-run-heading b { flex: none; font-weight: 500; color: var(--text); }
+.chat-list .assistant-run-stage { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-list .assistant-run .assistant-run-time { margin-left: auto; }
+.chat-list .assistant-run p { margin: 4px 0 0 20px; overflow-wrap: anywhere; }
+.chat-list .assistant-run-updates { margin: 4px 0 0; padding-left: 34px; }
+.chat-list .assistant-run-updates li + li { margin-top: 3px; }
+.chat-list .assistant-run.error :is(.assistant-run-symbol, b) { color: var(--danger); }
+.chat-list .assistant-route { margin: 4px 0 0 20px; padding: 0; border: 0; }
+.chat-list .assistant-failure { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line)); border-radius: 10px; background: var(--panel-2); font-size: 12px; overflow-wrap: anywhere; }
+.assistant-failure :is(.assistant-plan-error, .assistant-saved) p { margin: 4px 0 0; }
+.assistant-saved ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); }
+.assistant-failure-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .chat-list .assistant-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
 /* With a conversation above, suggestions are one row that stays at the bottom, next to the field.
    The right edge fades to show that the row scrolls, and a focused chip keeps its ring inside the row. */
@@ -208,7 +224,7 @@
 .chat .assistant-primary-action { flex: none; min-width: 0; margin-left: auto; position: static; align-self: center; }
 .chat .assistant-primary-action button { display: grid; place-items: center; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 10px; }
 .chat .assistant-primary-action .send { color: var(--accent-ink); }
-.chat .assistant-primary-action .assistant-stop { color: var(--text); border: 1px solid var(--accent); background: var(--panel-2); }
+.chat .assistant-primary-action .assistant-stop { display: inline-flex; gap: 5px; width: auto; padding: 0 10px 0 8px; color: var(--text); border: 1px solid var(--accent); background: var(--panel-2); font-size: 12px; }
 .chat .assistant-plan-note { display: block; padding: 5px 4px 0; }
 .chat .assistant-import-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 4px 0; color: var(--muted); font-size: 11px; }
 /* Menus open above the field. A window too short for that opens them under the header instead. */
@@ -243,9 +259,8 @@
   .chat .assistant-composer-card .refs .chip button { min-width: 44px; min-height: 44px; margin-block: -14px; }
   /* The link keeps a 44px target while its row stays one line tall. */
   .chat-list .msg.user .assistant-edit-request { min-height: 44px; margin-block: -8px -12px; }
-  .chat :is(.assistant-tool-card summary, .change-receipt > summary, .receipt-json > summary, .assistant-preview-details > summary) { padding-block: 15px; }
-  .chat .assistant-tool-card { padding-block: 0; }
-  .chat .assistant-tool-card[open] { padding-bottom: 9px; }
+  .chat :is(.change-receipt > summary, .receipt-json > summary, .assistant-preview-details > summary) { padding-block: 15px; }
+  .chat .chat-list summary.assistant-run-heading { min-height: 44px; align-items: center; }
 }
 @media (max-width: 720px) {
   .assistant-entry kbd { display: none; }

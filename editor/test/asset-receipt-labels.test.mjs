@@ -10,8 +10,8 @@ const dependency = createRequire(resolve(process.env.ARYA_RECEIPT_DEPENDENCY_ROO
 const { h } = dependency('preact'), htm = dependency('htm')
 const { changeReceipt, receiptSelection } = await import(pathToFileURL(resolve(root, 'web/ui/change-receipt.js')))
 const source = readFileSync(resolve(root, 'web/ui/chat.js'), 'utf8')
-const receiptSource = source.slice(source.indexOf('function ChangeReceipt'), source.indexOf('export function ChatPanel'))
-const component = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', `${receiptSource}\nreturn ChangeReceipt`)
+const receiptSource = source.slice(source.indexOf('const plural'), source.indexOf('export function ChatPanel'))
+const component = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', `${receiptSource}\nreturn ResultCard`)
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value == null || value === false ? [] : [value]
 const children = node => flatten(node?.props?.children)
 const nodes = node => node && typeof node === 'object' ? [node, ...children(node).flatMap(nodes)] : []
@@ -19,7 +19,7 @@ const text = node => children(node).map(child => typeof child === 'object' ? tex
 function render(receipt, project) {
   const updates = [], seeks = [], messages = []
   const view = component(htm.bind(h), receiptSelection, { project }, value => updates.push(value), value => messages.push(value), { seek: value => seeks.push(value) })
-  return { tree: view({ receipt }), updates, seeks, messages }
+  return { tree: view({ receipts: [receipt] }), updates, seeks, messages }
 }
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/asset-receipt-recorded.json', import.meta.url)))
 const actualBefore = recorded.before, actualAfter = recorded.after, actualRecord = recorded.record
@@ -44,7 +44,7 @@ test('saved-only actual asset renders as Media registration and exposes separate
   assert.equal(receipt.scopes[0].asset, path)
   assert.equal(receipt.scopes[0].status, 'added')
   const { tree } = render(receipt, after), displayed = text(tree)
-  assert.match(displayed, /^1 Media asset changedEdit 4View changes/)
+  assert.match(displayed, /^Made 1 edit1 Media asset changedDetailsEdit 4/)
   assert.match(displayed, /Media registration · added/)
   assert.doesNotMatch(displayed, /Project settings changed|Project or composition settings/)
   assert.ok(displayed.includes(path))
@@ -62,7 +62,7 @@ test('saved-only actual asset renders as Media registration and exposes separate
 test('the actual saved-only component headline does not classify registration as project settings', () => {
   const after = saved(), receipt = changeReceipt(actualBefore, after, { version: 4, who: 'agent' })
   const displayed = text(render(receipt, after).tree)
-  assert.match(displayed, /^1 Media asset changedEdit 4View changes/)
+  assert.match(displayed, /^Made 1 edit1 Media asset changedDetailsEdit 4/)
   assert.doesNotMatch(displayed, /Project settings changed/)
 })
 
