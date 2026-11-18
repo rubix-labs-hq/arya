@@ -199,6 +199,36 @@ test('an account that changes between the review and Allow is refused', async t 
   assert.equal(fs.existsSync(path.join(w.root, '.reel', 'assistant-sharing.json')), false); assert.equal(fs.existsSync(w.keyFile), false)
 })
 
+test('a stored permission is accepted only on an account read made after the restart question', async t => {
+  const w = world(t), first = w.start(), granted = await w.allow(first)
+  await first.close()
+  const next = w.start()
+  // Signed in as someone else: asked, and that answer is remembered for a few seconds.
+  w.state.fingerprints['claude-code'] = C
+  assert.equal((await next.sharing()).approved, false)
+  // The first account signs back in. The next question reads the account again and does not use the remembered one.
+  w.state.fingerprints['claude-code'] = A
+  const reads = w.state.reads.length
+  assert.equal((await next.sharing()).approved, true); assert.equal(w.state.reads.length, reads + 1)
+  // And the other way round on a send: an account remembered as matching is read again before it counts.
+  const third = w.start(), review = await third.sharing()
+  assert.equal(review.approved, true)
+  await third.close()
+  const fourth = w.start()
+  w.state.fingerprints['claude-code'] = C
+  await assert.rejects(fourth.send({ text: 'Draft', sharing: granted }), /permission.*required/)
+  assert.equal(w.state.adapters, 0)
+})
+
+test('a project replaced between the review and Allow is refused', async t => {
+  let identity = 1
+  const w = world(t), service = w.start({ options: { getIdentity: () => identity } })
+  const review = await service.sharing()
+  w.state.fingerprints['claude-code'] = () => { identity = 2; return A }
+  await assert.rejects(service.grantSharing({ reviewID: review.reviewID, sharing: { version: 1, approved: true, scope: review.scope } }), /changed during|expired or was withdrawn/)
+  assert.equal(fs.existsSync(path.join(w.root, '.reel', 'assistant-sharing.json')), false)
+})
+
 test('withdrawing while the account is being read does not bring the permission back', async t => {
   const w = world(t), first = w.start(), granted = await w.allow(first)
   await first.close()

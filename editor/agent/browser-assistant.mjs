@@ -452,7 +452,8 @@ export function createBrowserAssistant(options) {
     const binding = credentialBinding(owner, scope)
     // A permission this server already holds needs no account read. A review that may end in a
     // grant, or in accepting the stored permission, does.
-    const accounts = approvedScope({ scope, ...binding }) ? null : await readAccounts(scope, binding.chatgptIdentity)
+    // A stored permission is accepted only on an account read made now, not one from seconds ago.
+    const accounts = approvedScope({ scope, ...binding }) ? null : await readAccounts(scope, binding.chatgptIdentity, needsAdoption(scope, binding))
     unchanged()
     if (accounts) adoptSavedGrant(scope, binding, accounts)
     return { scope, ...binding, accounts, generation, identity, configuration }
@@ -477,7 +478,7 @@ export function createBrowserAssistant(options) {
     const envelope = normalizeSharingEnvelope(body.sharing)
     if (!sameSharingScope(envelope.scope, review.scope)) throw failure('Allow only the exact recipients and data categories shown in this review.', 403)
     const value = await currentSharing()
-    const current = () => reviews.get(body.reviewID) === review && review.generation === sharingGeneration && value.generation === sharingGeneration && review.expiresAt >= Date.now() && review.configuration === value.configuration && review.credentialDigest === value.credentialDigest && sameSharingScope(review.scope, value.scope)
+    const current = () => reviews.get(body.reviewID) === review && review.generation === sharingGeneration && value.generation === sharingGeneration && review.identity === options.getIdentity() && review.expiresAt >= Date.now() && review.configuration === value.configuration && review.credentialDigest === value.credentialDigest && sameSharingScope(review.scope, value.scope)
     if (!current()) throw failure('The assistant destination or model pool changed during review. Review again.', 403)
     // The accounts as they are now, not as a few seconds ago: this is the moment of consent.
     const accounts = await readAccounts(value.scope, value.chatgptIdentity, true)
@@ -740,7 +741,7 @@ export function createBrowserAssistant(options) {
       // The first send after a restart can arrive before any review. The stored permission is
       // checked against the signed-in accounts here, once per server.
       if (needsAdoption(scope, binding)) {
-        const accounts = await readAccounts(scope, binding.chatgptIdentity)
+        const accounts = await readAccounts(scope, binding.chatgptIdentity, true)
         assertRun(run)
         adoptSavedGrant(scope, binding, accounts)
       }
