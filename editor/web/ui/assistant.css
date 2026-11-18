@@ -67,6 +67,7 @@
 .chat.panel { position: relative; overflow: auto; }
 .chat-head { padding: 5px 8px 5px 12px; }
 .chat-title { display: flex; flex: 1 1 0; flex-wrap: wrap; align-items: center; gap: 0 6px; min-width: 0; }
+.chat-title > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-title > .muted { min-width: 0; font-size: 11px; overflow-wrap: break-word; }
 .chat-head button { min-height: 36px; min-width: 36px; }
 .chat-head .chat-collapse { display: none; }
@@ -81,7 +82,8 @@
 .chat-empty p { margin: 0; font-size: 1em; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
 .assistant-checking { display: flex; align-items: center; gap: 7px; margin-bottom: 0; color: var(--muted); font-size: 12px; }
 .assistant-checking .assistant-run-symbol { animation: assistant-spin 1.4s linear infinite; }
-.chat-list .assistant-plugin-note { padding: 0; border: 0; }
+/* The history warning and the plugin session note are pinned between the header and the conversation. */
+.chat > :is(.assistant-route-preview, .assistant-plugin-note) { flex: none; margin: 0; padding: 6px 12px; border-bottom: 1px solid var(--line); }
 .chat-list .assistant-setup { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line-2); border-radius: 10px; overflow-wrap: anywhere; }
 .chat-list .assistant-setup p { margin: 0; line-height: 1.5; }
 .assistant-setup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
@@ -124,8 +126,13 @@
 .chat-list .assistant-run.error p { margin: 5px 0 0; }
 .chat-list .assistant-route { padding: 0 2px; border: 0; }
 .chat-list .assistant-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
-/* With a conversation above, suggestions are one row that stays at the bottom, next to the field. */
-.chat-list .assistant-suggestions.compact { flex: none; flex-wrap: nowrap; margin-top: auto; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+/* With a conversation above, suggestions are one row that stays at the bottom, next to the field.
+   The right edge fades to show that the row scrolls, and a focused chip keeps its ring inside the row. */
+.chat-list .assistant-suggestions.compact {
+  flex: none; flex-wrap: nowrap; margin: auto -4px -4px; padding: 4px 28px 4px 4px; overflow-x: auto; overscroll-behavior-x: contain;
+  scrollbar-width: none; scroll-padding-inline: 4px 28px;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
 .chat-list .assistant-suggestions.compact .assistant-suggestion { flex: none; white-space: nowrap; }
 .chat-list .assistant-suggestion {
   min-height: 30px; padding: 3px 11px; background: transparent; border: 1px solid var(--line-2);
@@ -138,7 +145,8 @@
   flex: 0 0 auto; max-height: none; min-height: 0; margin: 0; border: 0;
   border-radius: 0; padding: 2px 10px 10px; background: transparent;
 }
-.chat .assistant-field { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--line-2); border-radius: 12px; background: var(--input); }
+/* The border is lighter than --line-2 so the edge of the one field reads at 3:1 against the panel. */
+.chat .assistant-field { display: flex; flex-direction: column; min-width: 0; border: 1px solid #6f7a5f; border-radius: 12px; background: var(--input); }
 .chat .assistant-field:has(textarea:focus-visible) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .chat .assistant-field .composer textarea:focus-visible { outline: none; }
 /* Context chips flow as one run of inline items around the Preview changes switch, which takes the
@@ -166,7 +174,7 @@
 .chat .assistant-field-bar { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 0 5px 5px; }
 .chat .assistant-input-tools { flex: 1 1 auto; flex-wrap: nowrap; gap: 2px; min-width: 0; padding: 0; }
 .chat .assistant-input-tools > * { flex: 0 1 auto; min-width: 0; }
-.chat .assistant-input-tools > .assistant-input-help { flex: none; margin: 0; }
+.chat .assistant-input-tools > :is(.assistant-model-menu, .assistant-input-help) { flex: none; margin: 0; }
 .chat .assistant-input-tools > label { font-size: .88em; }
 .chat .assistant-input-tools > label > select, .chat .assistant-input-tools > .assistant-script-import, .chat .assistant-script-import span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat .assistant-input-kind { position: relative; }
@@ -190,7 +198,7 @@
 .chat .assistant-input-help summary::before { content: none; }
 .chat .assistant-input-tools > [open] > summary { border-color: var(--accent); }
 .assistant-model-popover {
-  position: absolute; z-index: 2; bottom: 100%; inset-inline: 10px; max-height: min(24dvh, 16rem);
+  position: absolute; z-index: 2; bottom: 100%; inset-inline: 10px; max-height: min(46dvh, 16rem);
   overflow: auto; overscroll-behavior: contain; padding: 8px; background: var(--panel); border: 1px solid var(--line-2);
   border-radius: 10px; box-shadow: 0 8px 26px #0009;
 }
@@ -208,13 +216,12 @@
   .chat .assistant-composer-card { position: relative; }
 }
 @media (max-height: 520px) {
-  .assistant-model-popover { top: 46px; bottom: auto; max-height: min(46dvh, 16rem); }
+  .assistant-model-popover { top: 46px; bottom: auto; }
 }
 /* A short window keeps the field to one context row and one text row so Send stays on screen. */
 @media (max-height: 520px) {
   .chat-head { padding-block: 0; }
-  /* A short window gives its few lines to the conversation; suggestions return when it is empty. */
-  .chat-list .assistant-suggestions.compact { display: none; }
+  .chat > :is(.assistant-route-preview, .assistant-plugin-note) { padding-block: 2px; font-size: 11px; line-height: 1.25; }
   .chat .assistant-composer-content { display: flex; align-items: center; gap: 4px; max-height: none; overflow: auto hidden; padding: 0; scrollbar-width: none; }
   .chat .assistant-field :is(.assistant-context-chips, .assistant-selection-chips, .refs) { display: contents; }
   .chat .assistant-composer-content .chip { flex: none; flex-wrap: nowrap; max-width: none; margin: 0; white-space: nowrap; }
@@ -242,11 +249,15 @@
 }
 @media (max-width: 720px) {
   .assistant-entry kbd { display: none; }
+  /* Ready and Working take the same width, so the entry does not move when a run starts or ends. */
+  .assistant-entry-state { min-width: min(8.2ch, 16vw); }
   .main > .chat.panel {
     top: auto; right: 0; bottom: 0; left: 0; width: 100%; min-width: 0;
     height: min(62dvh, calc(100dvh - var(--topbar-height) - 6px)); margin: 0;
     padding-bottom: env(safe-area-inset-bottom); border-radius: 14px 14px 0 0; box-shadow: 0 -10px 32px #0009;
   }
+  /* The sheet is 62dvh. Larger text can grow it up to the top bar, so Send stays on screen. */
+  .main > .chat.panel:not(.assistant-unavailable) { height: auto; min-height: min(62dvh, calc(100dvh - var(--topbar-height) - 6px)); max-height: calc(100dvh - var(--topbar-height) - 6px); }
   .main > .chat.assistant-unavailable { height: auto; max-height: calc(100dvh - var(--topbar-height) - 6px); }
   .assistant-unavailable .chat-list { flex: 0 1 auto; }
   .chat .composer textarea { font-size: max(16px, 1em); }
@@ -259,14 +270,17 @@
   .app.chat-open:not(.chat-collapsed):has(.assistant-composer-card) .page.phone-edit .edit-viewer { height: clamp(110px, calc(38dvh - var(--topbar-height) - 12px), 320px); }
   .app.chat-open:not(.chat-collapsed):has(.assistant-composer-card) .page.phone-edit :is(.viewer-bar, .viewer-info, .transport .buttons.right) { display: none; }
 }
-@media (max-width: 359px) {
-  /* The narrowest phones tighten the bar so Model, the input kind, Import text and Send fit on one line. */
+/* The narrowest phones and the 320px landscape side panel tighten the bar so Model, the input kind, Import text and Send fit on one line. */
+@media (max-width: 379px), (max-height: 500px) and (max-width: 1000px) and (orientation: landscape) {
   .chat .assistant-field-bar { padding-inline: 2px 4px; }
   .chat .assistant-input-tools { gap: 0; font-size: .92em; }
   .chat .assistant-input-tools > details > summary, .chat .assistant-input-tools .assistant-script-import { padding-inline: 5px; }
   .chat .assistant-input-kind select { padding-inline: 5px 18px; }
   .chat .assistant-input-kind::after { right: 6px; }
-  .chat .assistant-input-help summary { min-width: 36px; }
+}
+@media (max-width: 359px) {
+  .topbar .assistant-entry { gap: 4px; padding-inline: 7px; }
+  .assistant-entry-state { overflow-wrap: anywhere; }
   .app.chat-open:not(.chat-collapsed):has(.assistant-composer-card) .page.phone-edit .timeline-transport .buttons:not(.right) > :is(:first-child, :last-child) { display: none; }
 }
 /* The phone sheet has a second detent: it slides down to a one-line bar so the timeline is reachable.
@@ -276,23 +290,45 @@
   .main > .chat.panel { transition: transform .18s ease-out; }
   .main > .chat.panel.collapsed { overflow: hidden; transform: translateY(calc(100% - 54px - env(safe-area-inset-bottom))); }
   .chat.collapsed > :not(.chat-head), .chat.collapsed .chat-settings { visibility: hidden; }
-  .chat.collapsed .chat-head { border-bottom-color: transparent; }
-  .chat.collapsed .chat-title { align-self: stretch; cursor: pointer; }
+  /* The bar is 54px at any text size, so Expand and Close stay on screen. Its one line clips. */
+  .chat.collapsed .chat-head { box-sizing: border-box; height: 54px; overflow: hidden; border-bottom-color: transparent; }
+  .chat.collapsed .chat-title { flex-wrap: nowrap; align-self: stretch; overflow: hidden; white-space: nowrap; cursor: pointer; }
+  .chat.collapsed .chat-title > :not(.claude-dot) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .app.chat-collapsed .main { padding-bottom: calc(54px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 480px) {
   .topbar .assistant-entry { gap: 6px; }
-  .assistant-entry-state { line-height: 1.12; }
+  /* Larger text wraps the state under itself before the entry can run off the screen. */
+  .assistant-entry-state { flex: 0 1 auto; line-height: 1.12; white-space: normal; }
 }
 @media (max-width: 720px) and (max-height: 580px) and (orientation: portrait) {
   .main > .chat.panel:not(.assistant-unavailable) { height: calc(100dvh - var(--topbar-height) - 6px); }
 }
 @media (max-height: 500px) and (max-width: 1000px) and (orientation: landscape) {
   .main > .chat.panel { position: fixed; top: calc(var(--topbar-height) + 6px); right: 6px; bottom: 6px; left: auto; width: min(max(46vw, 320px), var(--chat-width, 360px)); height: auto; border-radius: var(--radius); }
+  .main > .chat.panel:not(.assistant-unavailable) { min-height: 0; max-height: none; }
+  /* The list here is about two lines tall, so the suggestion row gives its space to the conversation. */
+  .chat-list .assistant-suggestions.compact { display: none; }
   .workspace-divider.divider-chat { display: none; }
   .app.chat-open:has(.assistant-composer-card) .page.phone-edit .edit-viewer { height: auto; }
   .app.chat-open:has(.assistant-composer-card) .page.phone-edit .viewer-bar { display: flex; }
   .app.chat-open:has(.assistant-composer-card) .page.phone-edit .viewer.compact .transport .buttons.right { display: flex; }
+}
+/* On a phone a long draft scrolls inside four lines, so the conversation keeps most of the sheet. */
+@media (max-width: 720px) and (min-height: 521px) {
+  .chat .assistant-field .composer textarea { max-height: min(4lh, 20dvh); }
+}
+/* The empty field is a full touch target. */
+@media (pointer: coarse) and (min-height: 521px) {
+  .chat .assistant-field .composer textarea { min-height: 44px; }
+}
+/* A very short window with a mouse (a zoomed desktop) does not need touch-sized controls. The lines go to the conversation. */
+@media (max-height: 400px) and (pointer: fine) {
+  .chat :is(.chat-head button, .assistant-setup-actions > *, .assistant-input-tools :is(select, summary, .assistant-script-import), .assistant-primary-action button, .assistant-preview-toggle, .assistant-preview-actions button, .assistant-change button) { min-height: 30px; }
+  .chat .chat-head button { min-width: 32px; }
+  .chat .assistant-input-help summary { min-width: 30px; }
+  .chat .assistant-primary-action button { width: 32px; min-width: 32px; height: 32px; }
+  .chat .composer textarea { font-size: 1em; }
 }
 @media (prefers-reduced-motion: reduce) {
   .chat .claude-dot.busy { animation: none; }

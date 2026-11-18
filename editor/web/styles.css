@@ -273,7 +273,7 @@ label.btn { background: var(--accent); color: var(--accent-ink); border-radius: 
 .menu-item.has-sub:hover .submenu { display: block; }
 .modal-back { position: fixed; inset: 0; background: #0009; display: grid; place-items: center; z-index: 900; }
 .modal { background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 16px; width: min(560px, 92vw); max-height: 80vh; display: flex; flex-direction: column; gap: 8px; }
-.modal.keys { width: min(880px, 94vw); max-height: min(92dvh, 860px); }
+.modal.keys { width: min(880px, 94vw); max-height: min(96dvh, 860px); }
 .keys-grid { display: grid; grid-template-columns: max-content 1fr max-content 1fr; gap: 6px 12px; overflow: auto; align-items: center; }
 .file-list { overflow: auto; max-height: 50vh; border: 1px solid var(--line); border-radius: 6px; }
 .file-row { padding: 5px 9px; cursor: pointer; }
@@ -657,7 +657,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .assistant-run-heading { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; }
 .assistant-run-symbol { color: var(--accent); font-size: 16px; }
 .assistant-run.active .assistant-run-symbol { animation: assistant-spin 1.4s linear infinite; }
-.assistant-run-time { margin-left: auto; color: var(--muted); font: 11px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.assistant-run-time { margin-left: auto; color: var(--muted); font: 11px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .assistant-run p { margin: 5px 0 0; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .assistant-run button { margin-top: 7px; min-height: 44px; }
 .assistant-run.error .assistant-run-symbol { color: var(--danger); }

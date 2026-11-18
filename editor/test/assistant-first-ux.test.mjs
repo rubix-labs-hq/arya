@@ -111,10 +111,16 @@ test('the entry dot and label agree in every assistant state, and the state stay
   assert.equal(hosted.props['data-state'], 'idle')
 })
 
-test('the entry is never hidden by CSS and only drops its key hint on a phone', () => {
+test('the entry is never hidden or clipped by CSS and only drops its key hint on a phone', () => {
+  // Every rule in every sheet whose subject is the entry, its label, its state or a direct child span.
   for (const [name, css] of [['assistant.css', assistantCSS], ['phone.css', phoneCSS], ['styles.css', baseCSS]]) {
-    assert.doesNotMatch(css, /\.assistant-entry(?:-label|-state)?(?:\[[^\]]*\]|:[\w-]+)*\s*(?:,[^{}]*)?\{[^{}]*display:\s*none/, `${name} hides the entry, its label or its state`)
-    assert.doesNotMatch(css, /\.assistant-entry(?:-label|-state)?\s*(?:,[^{}]*)?\{[^{}]*font-size:\s*0[;\s}]/, `${name} collapses the entry to an icon`)
+    for (const [, selectors, body] of css.replace(/\/\*[^]*?\*\//g, '').matchAll(/([^{}@;]+)\{([^{}]*)\}/g)) {
+      for (const selector of selectors.split(',').map(item => item.trim())) {
+        const subject = selector.split(/\s*[\s>+~]\s*/).at(-1)
+        const entryPart = /^\.assistant-entry(?:-label|-state)?(?![\w-])/.test(subject) || /\.assistant-entry(?![\w-])[^\s>]*\s*>\s*(?:span|\*)$/.test(selector)
+        if (entryPart) assert.doesNotMatch(body, /display:\s*none|visibility:\s*hidden|opacity:\s*0(?![.\d])|font-size:\s*0[;\s}]|text-overflow|overflow:\s*hidden|max-width:\s*\d/, `${name}: ${selector}`)
+      }
+    }
   }
   const phone = media(assistantCSS, '(max-width: 720px)')
   assert.match(phone, /\.assistant-entry kbd \{ display: none; \}/)
@@ -691,4 +697,35 @@ test('the entry only opens the conversation, so it does not claim an expanded st
   assert.equal(context.store.chatOpen, true, 'a second press returns to the field. Close is in the panel')
   assert.equal('aria-expanded' in entryOf(context).props, false)
   assert.equal(focused, 2)
+})
+
+test('phone, larger-text and short-window layouts keep Send, the header controls and the conversation on screen', () => {
+  const phone = media(assistantCSS, '(max-width: 720px)')
+  assert.match(phone, /\.main > \.chat\.panel:not\(\.assistant-unavailable\) \{ height: auto; min-height: min\(62dvh, calc\(100dvh - var\(--topbar-height\) - 6px\)\); max-height: calc\(100dvh - var\(--topbar-height\) - 6px\); \}/, 'larger text grows the sheet up to the top bar')
+  assert.match(phone, /\.assistant-entry-state \{ min-width: min\(8\.2ch, 16vw\); \}/, 'Ready and Working take the same width')
+  assert.match(media(assistantCSS, '(max-width: 720px) and (min-height: 521px)'), /\.chat \.assistant-field \.composer textarea \{ max-height: min\(4lh, 20dvh\); \}/, 'a long draft scrolls inside four lines')
+  assert.match(media(assistantCSS, '(pointer: coarse) and (min-height: 521px)'), /\.chat \.assistant-field \.composer textarea \{ min-height: 44px; \}/, 'the empty field is a full touch target')
+  const landscape = media(assistantCSS, '(max-height: 500px) and (max-width: 1000px) and (orientation: landscape)')
+  assert.match(landscape, /\.main > \.chat\.panel:not\(\.assistant-unavailable\) \{ min-height: 0; max-height: none; \}/, 'the side panel keeps its own height')
+  const fine = media(assistantCSS, '(max-height: 400px) and (pointer: fine)')
+  assert.match(fine, /\.chat :is\(\.chat-head button, [^{]*\.assistant-preview-actions button, \.assistant-change button\) \{ min-height: 30px; \}/, 'a zoomed desktop window does not get touch-sized rows')
+  assert.match(fine, /\.chat \.assistant-primary-action button \{ width: 32px; min-width: 32px; height: 32px; \}/)
+  assert.doesNotMatch(fine, /assistant-suggestion|receipt-actions|edit-request/, 'only the fixed rows shrink')
+  const tight = media(assistantCSS, '(max-width: 379px), (max-height: 500px) and (max-width: 1000px) and (orientation: landscape)')
+  assert.match(tight, /\.chat \.assistant-input-tools \{ gap: 0; font-size: \.92em; \}/, 'the 320px landscape side panel gets the tight bar too')
+  assert.match(tight, /\.chat \.assistant-input-kind select \{ padding-inline: 5px 18px; \}/)
+  const narrow = media(assistantCSS, '(max-width: 359px)')
+  assert.doesNotMatch(narrow, /min-width: 36px/, 'the tips button stays 44px wide')
+  assert.match(narrow, /\.assistant-entry-state \{ overflow-wrap: anywhere; \}/)
+  assert.match(media(assistantCSS, '(max-width: 480px)'), /\.assistant-entry-state \{ flex: 0 1 auto; line-height: 1\.12; white-space: normal; \}/, 'larger text wraps the state before the entry runs off the screen')
+  const detent = media(assistantCSS, '(max-width: 720px) and (orientation: portrait), (max-width: 720px) and (min-height: 501px)')
+  assert.match(detent, /\.chat\.collapsed \.chat-head \{ box-sizing: border-box; height: 54px; overflow: hidden; border-bottom-color: transparent; \}/, 'the minimized bar is 54px at any text size')
+  assert.match(detent, /\.chat\.collapsed \.chat-title \{ flex-wrap: nowrap; align-self: stretch; overflow: hidden; white-space: nowrap; cursor: pointer; \}/)
+  assert.match(detent, /\.chat\.collapsed \.chat-title > :not\(\.claude-dot\) \{ flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; \}/)
+  assert.match(assistantCSS, /\n\.chat-title > b \{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/, 'the title gives way to Settings')
+  assert.match(assistantCSS, /\n\.chat \.assistant-input-tools > :is\(\.assistant-model-menu, \.assistant-input-help\) \{ flex: none; margin: 0; \}/, 'the Model label is never squeezed under the next control')
+  assert.match(assistantCSS, /\n\.assistant-model-popover \{\s*position: absolute; z-index: 2; bottom: 100%; inset-inline: 10px; max-height: min\(46dvh, 16rem\);/, 'the Model menu shows its controls at 521px to 675px heights')
+  assert.match(assistantCSS, /\n\.chat \.assistant-field \{[^}]*border: 1px solid #6f7a5f;/, 'the field edge is 3:1 against the panel')
+  assert.match(assistantCSS, /@media \(max-height: 520px\) \{\s*\.chat-head \{ padding-block: 0; \}\s*\.chat > :is\(\.assistant-route-preview, \.assistant-plugin-note\) \{ padding-block: 2px; font-size: 11px; line-height: 1\.25; \}/, 'both pinned notices leave room for Send in a short window')
+  assert.match(baseCSS, /font: 11px ui-monospace, Menlo, monospace;/)
 })
