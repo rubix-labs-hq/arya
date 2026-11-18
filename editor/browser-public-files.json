@@ -48,6 +48,10 @@
     "target": "core/figma.js"
   },
   {
+    "source": "core/fonts.js",
+    "target": "core/fonts.js"
+  },
+  {
     "source": "core/interchange.js",
     "target": "core/interchange.js"
   },
