@@ -203,10 +203,11 @@
 .chat .assistant-primary-action .assistant-stop { color: var(--text); border: 1px solid var(--accent); background: var(--panel-2); }
 .chat .assistant-plan-note { display: block; padding: 5px 4px 0; }
 .chat .assistant-import-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 4px 0; color: var(--muted); font-size: 11px; }
-@media (min-height: 601px) {
+/* Menus open above the field. A window too short for that opens them under the header instead. */
+@media (min-height: 521px) {
   .chat .assistant-composer-card { position: relative; }
 }
-@media (max-height: 600px) {
+@media (max-height: 520px) {
   .assistant-model-popover { top: 46px; bottom: auto; max-height: min(46dvh, 16rem); }
 }
 /* A short window keeps the field to one context row and one text row so Send stays on screen. */
