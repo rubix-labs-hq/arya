@@ -18,6 +18,8 @@ import { clipName } from './describe.js'
 const MAX_NOTES = 10
 const MAX_NOTE = 700
 const LISTED = 6
+// The person's overlap sentence names two clips per pair, so it lists fewer pairs than the agent's.
+const PEOPLE_LISTED = 3
 
 /** Caption style keys core/caption-render.js and the frame renderer read. */
 export const CAPTION_STYLE_KEYS = ['preset', 'font', 'size', 'weight', 'color', 'highlightColor', 'plate', 'padding', 'radius', 'align', 'lineHeight', 'maxLines', 'y']
@@ -138,7 +140,7 @@ function overlapNote(before, after, made) {
   }
   if (!pairs.length) return []
   const listed = more ? `${pairs.slice(0, LISTED).join('; ')}; and more` : capped(pairs)
-  const shown = more ? `${people.slice(0, LISTED).join('; ')}; and more` : capped(people)
+  const shown = more || people.length > PEOPLE_LISTED ? `${people.slice(0, PEOPLE_LISTED).join('; ')}; and ${more ? 'more' : `${people.length - PEOPLE_LISTED} more`}` : people.join('; ')
   return [note(`Overlaps on one track (a track shows one clip at a time, the one that comes first in the track's clip list): ${listed}. Move the hidden clip to another track, or omit track when adding so it gets a free one.`,
     `A track shows one clip at a time, so overlapping clips hide each other: ${shown}. Move one to another track to show both.`)]
 }

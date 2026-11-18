@@ -260,3 +260,30 @@ test('the person form of every note names clips as the timeline does, with no id
   // The agent's notes are unchanged by the person form.
   assert.ok(runs[3].agent.includes(`${take} now plays at 2x (was 1x): 6s became 3s. Its sound plays 12 semitones higher than at 1x.`), runs[3].agent.join('\n'))
 })
+
+test('the person overlap note lists three pairs and a count, so its advice is never cut', () => {
+  const names = ['Morning ferry crossing at the north pier', 'Lighthouse keeper repaints the red stripe', 'Gulls circle the fishing boats at dawn now', 'Harbour market opens its striped awnings', 'Kite festival gathers on the long sand bar', 'Evening tide carries the rowing club home', 'Lamplighter walks the sea wall at seven pm', 'Last bus waits by the shuttered ice kiosk']
+  const ops = names.map((label, index) => ({ op: 'add_title', text: label, title: { size: 40 }, track: 'V1', start: index * 0.5, dur: 5 }))
+  const result = applyOps(wide(), ops)
+  const notes = audience => editNotes(wide(), result.project, { ops, created: result.created, audience }).filter(note => /hidden under/.test(note))
+  const [person] = notes('person'), [agent] = notes('agent')
+  assert.ok(person.endsWith('Move one to another track to show both.'), person)
+  assert.ok(person.length < 700, String(person.length))
+  assert.equal(person.match(/is hidden under/g).length, 3, person)
+  assert.match(person, /; and 25 more\. Move one/)
+  // The agent form keeps its six pairs and its own count.
+  assert.equal(agent.match(/is hidden under/g).length, 6, agent)
+  assert.match(agent, /; and 22 more\. Move the hidden clip/)
+})
+
+test('the person overlap note on a crowded track says there are more and keeps its advice', () => {
+  const before = newProject('Crowded')
+  before.tracks.find(track => track.id === 'V2').clips = Array.from({ length: 40 }, (_, index) => ({ id: `t${index}`, kind: 'title', start: 0, dur: 5, title: { text: `Paper lantern number ${index} drifts past the old stone bridge` } }))
+  const [person] = editNotes(before, structuredClone(before), { ops: [], audience: 'person' }).filter(note => /hidden under/.test(note))
+  assert.equal(person, undefined, 'nothing moved, so no note')
+  const after = structuredClone(before)
+  for (const clip of after.tracks.find(track => track.id === 'V2').clips) clip.start = 0.25
+  const [crowded] = editNotes(before, after, { ops: [], audience: 'person' }).filter(note => /hidden under/.test(note))
+  assert.equal(crowded.match(/is hidden under/g).length, 3, crowded)
+  assert.match(crowded, /; and more\. Move one to another track to show both\.$/)
+})
