@@ -71,3 +71,24 @@ test('a failure of the work itself is passed on, and the next request still runs
   await assert.rejects(broken, /ffmpeg failed/)
   assert.equal(await next, 'ok')
 })
+
+test('a list for proxies names proxies when it refuses, and never gives up on a waiting one', async () => {
+  let now = 0, timer = null
+  const busy = () => { const error = new Error('Processing queue is full. Wait for an active operation to finish.'); error.status = 429; throw error }
+  const waiters = createDerivativeWaiters({ what: 'proxies', limit: 1, maxWait: Infinity, admit: busy, now: () => now, setTimer: fn => { timer = fn; return 1 }, clearTimer: () => { timer = null } })
+  let settled = false
+  waiters.run(async () => 'proxy').then(() => { settled = true }, () => { settled = true })
+  await assert.rejects(waiters.run(async () => 'second'), /^Error: Too many proxies are waiting\. Try again in a moment\.$/)
+  now = 24 * 3600 * 1000; timer(); await turn()
+  assert.equal(settled, false)
+  assert.deepEqual(waiters.snapshot(), { waiting: 1, admitted: 0 })
+})
+
+test('the server sends import proxies and pre-warmed filmstrips through the waiting lists', async () => {
+  const fs = await import('node:fs')
+  const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
+  assert.match(server, /const proxyWaiters = createDerivativeWaiters\(\{ what: 'proxies', share: 2, maxWait: Infinity, admit: work => processing\.submit\(work, captureProcessing\(\)\)\.promise \}\)/)
+  assert.match(server, /async function ensureProxy\(rel, asset\) \{\n  if \(!asset\?\.proxy \|\| fs\.existsSync\(path\.join\(ROOT, asset\.proxy\)\)\) return\n  return proxyWaiters\.run\(\(\) => makeProxy\(rel, asset\)\)\n\}/)
+  assert.match(server, /if \(asset\.hasVideo && !asset\.proxy\) waitForSourceDerivative\(\(\) => filmstrip\(src\)\)\.catch\(\(\) => \{\}\)/)
+  assert.equal(server.match(/processing\.submit\(\(\) => makeProxy/g), null, 'no proxy goes straight to the queue')
+})

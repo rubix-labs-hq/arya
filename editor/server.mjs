@@ -485,7 +485,14 @@ async function probe(rel) {
   return asset
 }
 
-async function ensureProxy(rel, asset) { return processing.submit(() => makeProxy(rel, asset), captureProcessing()).promise }
+// A proxy waits for a processing slot. An import of more than 8 files used to fill the queue in one
+// tick: the proxies past the eighth were refused and never made, and an export started in the same
+// second was refused too. At most 2 proxies sit in the queue at a time; a file that needs none takes no slot.
+const proxyWaiters = createDerivativeWaiters({ what: 'proxies', share: 2, maxWait: Infinity, admit: work => processing.submit(work, captureProcessing()).promise })
+async function ensureProxy(rel, asset) {
+  if (!asset?.proxy || fs.existsSync(path.join(ROOT, asset.proxy))) return
+  return proxyWaiters.run(() => makeProxy(rel, asset))
+}
 
 async function makeProxy(rel, asset) {
   if (!asset.proxy) return
@@ -1194,7 +1201,7 @@ const routes = {
     }
     for (const [src, asset] of Object.entries(assets)) {
       ensureProxy(src, asset).catch(e => log(e.message))
-      if (asset.hasVideo && !asset.proxy) filmstrip(src).catch(() => {})
+      if (asset.hasVideo && !asset.proxy) waitForSourceDerivative(() => filmstrip(src)).catch(() => {})
     }
 
     return { assets, version, failures, warnings: warnings.filter(item => assets[item.path]) }

@@ -19,17 +19,18 @@ function full(message) {
  * export started during an import still gets a slot. A request is refused only when `limit`
  * requests already wait, or when it has waited `maxWait` without getting into the queue.
  *
+ * `what` names the waiting work in the two refusal messages. `maxWait` may be Infinity.
  * `admit(work)` hands work to the processing queue. It returns a promise, or throws an error with
  * status 429 when the queue is full; the request then stays here and is offered again.
  */
-export function createDerivativeWaiters({ admit, limit = DERIVATIVE_WAIT_LIMIT, share = DERIVATIVE_QUEUE_SHARE, maxWait = DERIVATIVE_WAIT_MS, retryMs = 250, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout }) {
+export function createDerivativeWaiters({ admit, what = 'thumbnails', limit = DERIVATIVE_WAIT_LIMIT, share = DERIVATIVE_QUEUE_SHARE, maxWait = DERIVATIVE_WAIT_MS, retryMs = 250, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout }) {
   const waiting = []
   let admitted = 0, retry = null
   function pump() {
     if (retry !== null) { clearTimer(retry); retry = null }
     while (waiting.length) {
       const item = waiting[0]
-      if (now() - item.since >= maxWait) { waiting.shift(); item.reject(full('Thumbnails are waiting behind other processing. Try again when it has finished.')); continue }
+      if (now() - item.since >= maxWait) { waiting.shift(); item.reject(full(`${what[0].toUpperCase()}${what.slice(1)} are waiting behind other processing. Try again when it has finished.`)); continue }
       if (admitted >= share) break
       let promise
       try { promise = item.submit() } catch (error) {
@@ -45,7 +46,7 @@ export function createDerivativeWaiters({ admit, limit = DERIVATIVE_WAIT_LIMIT, 
   }
   return {
     run(work) {
-      if (waiting.length >= limit) return Promise.reject(full('Too many thumbnails are waiting. Try again in a moment.'))
+      if (waiting.length >= limit) return Promise.reject(full(`Too many ${what} are waiting. Try again in a moment.`))
       return new Promise((resolve, reject) => {
         // The work runs in the caller's context, whichever request frees the slot.
         waiting.push({ submit: AsyncResource.bind(() => admit(work)), resolve, reject, since: now() })
