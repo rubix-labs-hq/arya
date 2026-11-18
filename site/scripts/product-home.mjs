@@ -163,7 +163,7 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
 
   const releaseLine = releaseReady
     ? `${minimumOS} or later · free · ${architectures}`
-    : `Private beta for Mac, by invitation. The public download is not available yet.${accessURL ? '' : ` ${betaRequestsClosed}`}`;
+    : `Private beta for Mac, by invitation. The public Mac download is not available yet.${accessURL ? '' : ` ${betaRequestsClosed}`}`;
   const captureNote = nativeCaptureNote({ native, shown: shownIds, releaseReady, version, mobileURL, mobileVersion });
 
   const heroActions = [
@@ -245,7 +245,7 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
   ].map(([from, carries, missing]) => `<tr role="row"><th scope="row" role="rowheader">${from}</th><td role="cell"><span class="comparison-label" aria-hidden="true">Carries over</span>${carries}</td><td role="cell"><span class="comparison-label" aria-hidden="true">Not yet</span>${missing}</td></tr>`).join('');
   const downloadAnswer = releaseReady
     ? `Yes. Arya ${version} for Mac is on the download page with its version, requirements and SHA-256 checksum. It is free, signed, notarized and licensed under MIT. ${mobileURL ? `Arya ${mobileVersion} is also available on the App Store for iPhone and iPad.${pro ? ` ${scope.store}` : ''}` : 'iPhone and iPad builds are coming later.'}`
-    : `Not yet. Arya is in a private beta by invitation. The Mac app needs final interface checks, a signed package and Apple notarization before a public download. ${accessURL ? 'You can request beta access on the download page.' : betaRequestsClosed}`;
+    : `${mobileURL ? 'Not for Mac yet. The Mac app is in a private beta by invitation. It' : 'Not yet. Arya is in a private beta by invitation. The Mac app'} needs final interface checks, a signed package and Apple notarization before a public download. ${accessURL ? 'You can request beta access on the download page.' : betaRequestsClosed}${mobileURL ? ` Arya ${mobileVersion} is available on the App Store for iPhone and iPad.${pro ? ` ${scope.store}` : ''}` : ''}`;
 
   // The assistant's points. The iPad and iPhone point shows only while the App Store release is live.
   const assistantPoints = [...assistantCopy.points.slice(0, 2), ...(mobileURL ? [assistantCopy.mobilePoint] : []), ...assistantCopy.points.slice(2)];
