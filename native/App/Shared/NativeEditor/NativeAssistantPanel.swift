@@ -587,6 +587,7 @@ struct NativeAssistantPanel: View {
             if let latest, !latest.summary.isEmpty {
                 Text(latest.summary).font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
             }
+            // Bordered on every platform: on iPhone and iPad a default button in a list card reads as plain text.
             HStack(spacing: 8) {
                 if undoable != nil {
                     Button("Undo this change") { Task { await assistant.undoLastChange() } }
@@ -604,6 +605,7 @@ struct NativeAssistantPanel: View {
                     }.controlSize(Self.touch ? .regular : .small).fixedSize().frame(minHeight: Self.touch ? 44 : nil)
                 }
             }
+            .buttonStyle(.bordered)
             if !model.changeReceipts.isEmpty {
                 DisclosureGroup("Details") {
                     VStack(alignment: .leading, spacing: 8) {
