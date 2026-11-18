@@ -3272,6 +3272,8 @@ struct NativeAssistantChange: Identifiable {
     let afterVersion: Int
     let edits: Int
     let safe: Bool
+    /// For kind "history", the assistant's Undo and Redo presses in order.
+    var moves: [String] = []
 }
 
 struct NativeAssistantSuggestion: Identifiable, Hashable {
@@ -3288,13 +3290,14 @@ extension NativeAssistant {
                                                         "/api/shorts/propose", "/api/multicam/sync", "/api/luts/inspect", "/api/analysis/saliency"]
     /// Routes that change the project only with apply:true.
     private static let previewWhenNotApplied: Set<String> = ["/api/shorts/build", "/api/captions/from-transcript", "/api/transcript/edit", "/api/interchange/import", "/api/looks/match", "/api/analysis/track", "/api/analysis/autoreframe"]
-    private static let agentAttributed: Set<String> = ["/api/ops", "/api/new", "/api/import", "/api/captions/from-transcript", "/api/shorts/build", "/api/transcript/edit", "/api/luts/apply", "/api/looks/match", "/api/interchange/import",
+    private static let agentAttributed: Set<String> = ["/api/ops", "/api/undo", "/api/redo", "/api/new", "/api/import", "/api/captions/from-transcript", "/api/shorts/build", "/api/transcript/edit", "/api/luts/apply", "/api/looks/match", "/api/interchange/import",
                                                        "/api/stabilize/render", "/api/retime", "/api/video/denoise", "/api/analysis/person-mask", "/api/audio/clean", "/api/audio/loudnorm",
                                                        "/api/analysis/track", "/api/analysis/autoreframe", "/api/audio/compose", "/api/audio/compose/place"]
 
     /// Marks the assistant's edits as its own, so receipts and one-step undo can tell them apart.
     static func agentBody(route: String, body: String?) -> String? {
-        guard agentAttributed.contains(route), let body, var fields = try? JSON.parse(body) as? [String: Any] else { return body }
+        // Undo and Redo take no body, so theirs is made here.
+        guard agentAttributed.contains(route), var fields = try? JSON.parse(body ?? "{}") as? [String: Any] else { return body }
         fields["who"] = "agent"
         if route == "/api/ops" { fields["returnProject"] = false }
         return JSON(any: fields).text
@@ -3430,9 +3433,11 @@ extension NativeAssistant {
         let version = await backend.currentVersion()
         guard version > baseline.version, let after = await backend.currentProject() else { return }
         let owners = await backend.commitOwners(after: baseline.version)
+        // A request that only pressed Undo or Redo is a history move, and undoing it moves back the same way.
+        let moves = await backend.historyMoves(after: baseline.version) ?? []
         guard session?.backend === backend else { return }
-        lastChange = NativeAssistantChange(backend: ObjectIdentifier(backend), kind: "request", before: baseline.project, after: after, afterVersion: version, edits: version - baseline.version,
-                                           safe: owners?.allSatisfy { ["agent", "claude"].contains($0) } ?? false)
+        lastChange = NativeAssistantChange(backend: ObjectIdentifier(backend), kind: moves.isEmpty ? "request" : "history", before: baseline.project, after: after, afterVersion: version, edits: version - baseline.version,
+                                           safe: owners?.allSatisfy { ["agent", "claude"].contains($0) } ?? false, moves: moves)
     }
 
     /// Whether "Undo this change" can restore the project from before the latest assistant change.

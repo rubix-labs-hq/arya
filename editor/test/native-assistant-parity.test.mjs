@@ -85,6 +85,16 @@ test('native proposals keep the agent’s step request and fill the range again 
   assert.match(stage, /let summaries = held \+ \(summary\.isEmpty \|\| held\.contains\(summary\) \? \[\] : \[summary\]\)/, 'a repeated summary is kept once, as the browser keeps it')
 })
 
+test('a native request that only pressed Undo or Redo is recorded as a history move and titled by it', () => {
+  const app = swift('App/Shared/NativeAssistant.swift'), panel = swift('App/Shared/NativeEditor/NativeAssistantPanel.swift')
+  assert.match(app, /agentAttributed: Set<String> = \["\/api\/ops", "\/api\/undo", "\/api\/redo",/, 'the agent’s Undo and Redo are its own commits')
+  assert.match(app, /guard agentAttributed\.contains\(route\), var fields = try\? JSON\.parse\(body \?\? "\{\}"\)/, 'Undo and Redo send no body, so one is made')
+  const record = between(app, '    func recordRunChange(', '\n    }\n')
+  assert.match(record, /let moves = await backend\.historyMoves\(after: baseline\.version\) \?\? \[\]/)
+  assert.match(record, /kind: moves\.isEmpty \? "request" : "history"/)
+  assert.match(panel, /\$0\.kind == "history" \? ReelBackend\.historyChangeTitle\(moves: \$0\.moves\)/)
+})
+
 test('a native request waits while a preview is applying, as the browser does', () => {
   const app = swift('App/Shared/NativeAssistant.swift'), panel = swift('App/Shared/NativeEditor/NativeAssistantPanel.swift')
   const send = between(app, '    func send(_ text: String', 'let referenceText')

@@ -686,7 +686,7 @@ struct NativeAssistantPanel: View {
         let undoable = assistant.lastChange.flatMap { assistant.canUndoLastChange(version: model.version) ? $0 : nil }
         let latest = model.changeReceipts.last
         let changed = (latest?.clips ?? []).filter { $0.status != "deleted" && model.receiptSelection($0) != nil }
-        let title = undoable.map { $0.kind == "preview" ? "Applied the preview" : "Made \($0.edits) edit\($0.edits == 1 ? "" : "s")" }
+        let title = undoable.map { $0.kind == "preview" ? "Applied the preview" : $0.kind == "history" ? ReelBackend.historyChangeTitle(moves: $0.moves) : "Made \($0.edits) edit\($0.edits == 1 ? "" : "s")" }
             ?? "Recent assistant edits"
         return VStack(alignment: .leading, spacing: 8) {
             Label(title, systemImage: "checkmark.circle.fill").font(.callout.weight(.semibold))
