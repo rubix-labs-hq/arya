@@ -307,19 +307,22 @@ test('an overlap of half a frame or less says nothing, and a one-frame overlap i
   assert.match(titles(2.1).notes.join('\n'), /c2 is hidden under c1 on V1 from 2\.1s to 2\.13s/)
 })
 
-test('captions that overlap on their track get a caption note with caption advice', () => {
+test('captions that overlap on their track get a caption note that does not claim one hides the other', () => {
   const ops = [{ op: 'captions', items: [{ t: 0, end: 1.0333, text: 'first line' }, { t: 1, end: 2, text: 'second line' }] }]
   const { notes, project } = run(wide(), ops)
   const [first, second] = project.tracks.find(track => track.kind === 'caption').clips
   const overlap = notes.find(note => note.startsWith('Caption overlaps'))
   assert.ok(overlap, notes.join('\n'))
-  assert.ok(overlap.includes(`${second.id} is hidden under ${first.id} on C1 from 1s to 1.03s`), overlap)
+  assert.ok(overlap.includes(`${second.id} overlaps ${first.id} on C1 from 1s to 1.03s`), overlap)
+  // The native renderer draws every covering caption (render-plan.js filters, it does not find one).
+  assert.match(overlap, /one caption hides the other or both draw on top of each other/)
+  assert.equal(/hidden under|one caption at a time/.test(overlap), false, overlap)
   assert.match(overlap, /Trim the earlier caption to end where the next one starts\./)
   assert.equal(notes.some(note => note.startsWith('Overlaps on one track')), false, 'captions do not get the move-to-another-track advice')
   const person = editNotes(wide(), project, { ops, created: [first.id, second.id], audience: 'person' })
-  assert.ok(person.includes('A caption track shows one caption at a time, so overlapping captions hide each other: "second line" is hidden under "first line" from 1s to 1.03s. Shorten the earlier one.'), person.join('\n'))
+  assert.ok(person.includes('Overlapping captions hide each other or show on top of each other: "second line" overlaps "first line" from 1s to 1.03s. Shorten the earlier one.'), person.join('\n'))
   const apart = run(wide(), [{ op: 'captions', items: [{ t: 0, end: 1, text: 'first line' }, { t: 1, end: 2, text: 'second line' }] }])
-  assert.equal(apart.notes.some(note => /hidden under/.test(note)), false, apart.notes.join('\n'))
+  assert.equal(apart.notes.some(note => /hidden under|Caption overlaps/.test(note)), false, apart.notes.join('\n'))
 })
 
 test('text left for two frames or less is called a flash, and a title shorter than its reading time is called brief', () => {

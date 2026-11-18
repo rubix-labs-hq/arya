@@ -1,5 +1,5 @@
 // Facts about a batch of ops that its log lines do not state: text likely wider than the frame,
-// clips or captions hidden under another on the same track, what a speed change did to length and
+// clips hidden under another on the same track, overlapping captions, what a speed change did to length and
 // pitch, text that lost time in a cut and kept its words, caption style keys that draw nothing,
 // fonts that may fall back, text too brief to read, and video zoomed past the scale that fills
 // the frame. The server returns them beside the log of POST /api/ops and
@@ -120,7 +120,9 @@ function overlapNote(before, after, made) {
   let more = false
   const moved = id => { const old = before.clips.get(id), now = after.clips.get(id); return !old || made.has(id) || old.track.id !== now.track.id || old.comp !== now.comp || old.clip.start !== now.clip.start || old.clip.dur !== now.clip.dur || (old.clip.enabled === false) !== (now.clip.enabled === false) }
   for (const { track, fps } of after.tracks) {
-    // Picture tracks and caption tracks both draw only the first clip in their list that covers a time.
+    // A picture track draws only the first clip in its list that covers a time. Captions that overlap
+    // either hide one another (the browser viewer) or draw on top of each other (render-plan.js, so the
+    // native renderer and its exports), so they get their own wording.
     if (!['video', 'caption'].includes(track.kind) || more) continue
     const clips = (track.clips ?? []).map((clip, order) => ({ clip, order })).filter(({ clip }) => clip.enabled !== false)
     if (!clips.some(({ clip }) => moved(clip.id))) continue
@@ -136,8 +138,13 @@ function overlapNote(before, after, made) {
         const from = Math.max(first.start, second.start), to = Math.min(clipEnd(first), clipEnd(second))
         // Stored times are rounded, so an overlap of one frame can be a little short of 1/fps; half a frame or less hides nothing.
         if (to - from > 0.5 / fps) {
-          ;(track.kind === 'caption' ? captions : pairs).push(`${second.id} is hidden under ${first.id} on ${track.id} from ${num(from)}s to ${num(to)}s`)
-          ;(track.kind === 'caption' ? spoken : people).push(`${named(after, second)} is hidden under ${named(after, first)} from ${num(from)}s to ${num(to)}s`)
+          if (track.kind === 'caption') {
+            captions.push(`${second.id} overlaps ${first.id} on ${track.id} from ${num(from)}s to ${num(to)}s`)
+            spoken.push(`${named(after, second)} overlaps ${named(after, first)} from ${num(from)}s to ${num(to)}s`)
+          } else {
+            pairs.push(`${second.id} is hidden under ${first.id} on ${track.id} from ${num(from)}s to ${num(to)}s`)
+            people.push(`${named(after, second)} is hidden under ${named(after, first)} from ${num(from)}s to ${num(to)}s`)
+          }
         }
       }
     }
@@ -147,8 +154,8 @@ function overlapNote(before, after, made) {
   return [
     ...(pairs.length ? [note(`Overlaps on one track (a track shows one clip at a time, the one that comes first in the track's clip list): ${listed(pairs)}. Move the hidden clip to another track, or omit track when adding so it gets a free one.`,
       `A track shows one clip at a time, so overlapping clips hide each other: ${shown(people)}. Move one to another track to show both.`)] : []),
-    ...(captions.length ? [note(`Caption overlaps (a caption track shows one caption at a time, the one that comes first in its clip list): ${listed(captions)}. Trim the earlier caption to end where the next one starts.`,
-      `A caption track shows one caption at a time, so overlapping captions hide each other: ${shown(spoken)}. Shorten the earlier one.`)] : []),
+    ...(captions.length ? [note(`Caption overlaps (depending on the renderer, one caption hides the other or both draw on top of each other): ${listed(captions)}. Trim the earlier caption to end where the next one starts.`,
+      `Overlapping captions hide each other or show on top of each other: ${shown(spoken)}. Shorten the earlier one.`)] : []),
   ]
 }
 
