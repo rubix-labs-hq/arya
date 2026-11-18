@@ -208,6 +208,34 @@ export function createProcessingWorkerHost({ launch, clients, onExit = () => {},
   }
 }
 
+// ---------------------------------------------------------------- waiting jobs
+
+export const FRAME_RENDER_MS = 30000
+export const FRAME_QUEUE_MS = 5 * 60 * 1000
+
+/**
+ * The time limits of a still-frame job. The 30 s render limit starts when the worker is given the
+ * frame (`dispatched`), not when the job is queued: the wait behind a running export, the source
+ * copy and a worker start are not the frame's fault. The whole request is capped at 5 minutes.
+ */
+export function frameJobDeadline(fail, { setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+  let timer = setTimer(() => fail('This frame waited 5 minutes behind other processing, so it stopped. Try again when the running export has finished.'), FRAME_QUEUE_MS)
+  return {
+    dispatched() { clearTimer(timer); timer = setTimer(() => fail('The render worker did not finish this frame in 30 s. Try again.'), FRAME_RENDER_MS) },
+    clear() { clearTimer(timer) },
+  }
+}
+
+/**
+ * Why a job still in the processing queue is waiting: behind another render job (with its id) or
+ * behind other processing such as a proxy or an analysis. Null once it has its turn.
+ */
+export function queuedJobWait(job, jobs, otherProcessingActive = false) {
+  if (job.state !== 'queued' || job.admissionState !== 'queued') return null
+  for (const other of jobs) if (other !== job && other.processing && ['running', 'cancelling'].includes(other.admissionState)) return { reason: 'behind-job', job: other.id }
+  return otherProcessingActive ? { reason: 'behind-processing' } : null
+}
+
 // A worker job that stops making progress has hung (seen when the page's renderer stops
 // answering on a loaded machine) or lost the server. Silence is measured on a clock that does not
 // run while the Mac sleeps (performance.now), and a check that fires much later than planned
@@ -254,6 +282,14 @@ export function workerSetupLimit(job) {
   return Math.min(SETUP_MAX_MS, SETUP_BASE_MS + (Number.isFinite(range) && range > 0 ? range * SETUP_PER_RANGE_SECOND_MS : 0))
 }
 
+// The setup steps the worker page names in its heartbeat, in the words a failure message uses.
+export const WORKER_SETUP_STEPS = Object.freeze({ luts: 'loading LUTs', audio: 'rendering the audio mix', upload: 'uploading the audio mix', plans: 'planning video decoding', first: 'rendering the first frame' })
+
+/** Keeps the setup step from a heartbeat body. Unknown or late values are ignored. */
+export function noteWorkerSetupStep(job, step) {
+  if (!job.workerFramesSeen && Object.hasOwn(WORKER_SETUP_STEPS, step)) job.workerStep = step
+}
+
 /**
  * Records what the worker did at `now` (workerClock): `dispatch`, `setup` (audio upload, start),
  * `heartbeat` (counts only before the first batch) or `batch` (a frame batch).
@@ -298,9 +334,11 @@ export function failStalledWorkerJob(job, failJob, now = workerClock(), { retire
   const seconds = Math.round(stall.limit / 1000)
   const owner = job.processing?.worker
   const next = 'Export again. Arya starts a new render worker and the export starts from the first frame.'
+  // During setup the page says which step it is on, so a hang names the step it stopped in.
+  const step = stall.phase !== 'frames' && WORKER_SETUP_STEPS[job.workerStep] ? ` (last step: ${WORKER_SETUP_STEPS[job.workerStep]})` : ''
   failJob(job, stall.phase === 'setup-cap'
-    ? `The render worker was still preparing this export after ${seconds} s, so it stopped. ${next}`
-    : `The render worker sent nothing for ${seconds} s, so this export stopped. ${next}`)
+    ? `The render worker was still preparing this export after ${seconds} s${step}, so it stopped. ${next}`
+    : `The render worker sent nothing for ${seconds} s${step}, so this export stopped. ${next}`)
   if (!owner || owner.exitCode != null || owner.signalCode != null) job.processing?.acknowledge()
   if (owner) retireWorker(owner)
 }

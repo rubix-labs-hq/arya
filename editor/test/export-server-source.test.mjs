@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { createProcessingAdmission } from '../core/processing-admission.mjs'
-import { reserveProcessingWorker } from '../core/processing-worker.mjs'
+import { frameJobDeadline, queuedJobWait, reserveProcessingWorker } from '../core/processing-worker.mjs'
 import { validateExportSpec } from '../core/processing-export.js'
 import { captureExportSources, prepareExportCohort, createExportDestination } from '../core/export-cohort.mjs'
 import { guardedOutput } from '../core/output-path.js'
@@ -27,6 +27,7 @@ function fixture(t) {
   const events = [], encoders = [], admission = createProcessingAdmission()
   const values = { ROOT, DOT, fs, path, createProcessingAdmission, reserveProcessingWorker, validateExportSpec, captureExportSources, prepareExportCohort, createExportDestination, guardedOutput, initialProject: project, processing: admission,
     armProcessingWorkerCancellation: () => () => {}, ensureWorker: async () => {}, touchWorker: () => {}, assistantCalls: { getStore: () => null },
+    queuedJobWait, frameJobDeadline, workerConnected: () => true, exportCopyDigests: new Map(), log: () => {},
     duration: () => 1, compView: (p, name) => p.comps?.[name], pushActivity: () => {}, deliveries: new DeliveryHistory(ROOT),
     broadcast: (type, data) => events.push({ type, data }), spawn: (_cmd, args) => {
       const ff = new EventEmitter(); ff.stderr = new EventEmitter(); ff.stdin = new EventEmitter(); ff.stdin.end = () => {}; ff.kills = []; ff.kill = signal => ff.kills.push(signal); ff.argv = args; encoders.push(ff); return ff

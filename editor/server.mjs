@@ -24,7 +24,7 @@ import { storeMediaUpload } from './core/media-upload.mjs'
 import { colorCapabilities } from './routes/color.mjs'
 import { createProcessingAdmission, captureProcessingIdentity, processingCancelled } from './core/processing-admission.mjs'
 import { runProcessingProcess } from './core/processing-process.mjs'
-import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, createProcessingWorkerHost, workerClosedMessage, createWorkerWatchdog, noteWorkerActivity, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
+import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, createProcessingWorkerHost, workerClosedMessage, createWorkerWatchdog, noteWorkerActivity, noteWorkerSetupStep, frameJobDeadline, queuedJobWait, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
 import { validateExportSpec } from './core/processing-export.js'
 import { ProjectRecovery, recoveryProject } from './core/project-recovery.mjs'
 import { runRecoveryJournal } from './core/project-recovery-bridge.mjs'
@@ -436,6 +436,8 @@ async function cacheKey(abs, ...extra) {
 }
 
 const inflight = new Map()
+// Export source copies that are alive now: absolute path of the copy to the SHA-256 of its bytes.
+const exportCopyDigests = new Map()
 function once(key, fn) {
   if (!inflight.has(key)) inflight.set(key, fn().finally(() => inflight.delete(key)))
 
@@ -575,7 +577,11 @@ async function peaks(rel) {
 async function audioRange(rel, from, dur) {
   if (!Number.isFinite(from) || from < 0 || !Number.isFinite(dur) || dur <= 0 || dur > 3600) throw new Error('Audio range must be finite, nonnegative and at most one hour')
   const abs = resolveMedia(rel)
-  const key = await cacheKey(abs, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3))
+  // An export reads a private copy of each source, at a new path for every job. Keyed by path,
+  // every export left new WAV files in the cache and none was ever reused. A copy is keyed by the
+  // SHA-256 of its bytes instead, so the second export of the same media reuses the first one's audio.
+  const digest = exportCopyDigests.get(abs)
+  const key = digest ? hashOf('export-copy', digest, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3)) : await cacheKey(abs, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3))
   const file = path.join(CACHE, 'audio', `${key}.wav`)
   if (fs.existsSync(file)) return file
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -740,7 +746,7 @@ function newJob(kind, spec) {
 }
 
 function jobPublic(job) {
-  const { ffmpeg: _f, resolve: _r, reject: _j, exportSources: _s, exportDestination: _d, ...rest } = job
+  const { ffmpeg: _f, resolve: _r, reject: _j, exportSources: _s, exportDestination: _d, frameDeadline: _t, ...rest } = job
 
   return rest
 }
@@ -756,15 +762,41 @@ function checkExportOutput(file, sequence = false) {
   return out
 }
 
+// A job that has not reached the worker says why in `waiting`: { reason, since, job? }.
+// reason is 'behind-job' (job is the id of the render job that has the worker), 'behind-processing'
+// (a proxy, analysis or other processing has the queue), 'copying-sources' (its media is being
+// copied and hashed) or 'worker-starting' (waiting for the render worker to connect).
+function setJobWait(job, wait) {
+  if ((job.waiting?.reason ?? null) === (wait?.reason ?? null) && (job.waiting?.job ?? null) === (wait?.job ?? null)) return false
+  if (wait) job.waiting = { ...wait, since: Date.now() }
+  else delete job.waiting
+  return true
+}
+
+function refreshQueuedJobWaits(except) {
+  for (const queued of jobs.values()) {
+    if (queued === except || !queued.processing || queued.admissionState !== 'queued') continue
+    if (setJobWait(queued, queuedJobWait(queued, jobs.values(), processing.snapshot().active > 0))) broadcast('job', jobPublic(queued))
+  }
+}
+
 function queueWorkerJob(job, snapshot, guard) {
   const state = reserveProcessingWorker(processing, job, {
     ...guard, ensureWorker: async signal => {
       const check = () => { guard.assertCurrent(); if (signal.aborted) throw new Error('Export cancelled') }
+      if (setJobWait(job, { reason: 'copying-sources' })) broadcast('job', jobPublic(job))
+      const copyStarted = performance.now()
       const cohort = await prepareExportCohort(ROOT, job.exportSources, check)
+      // Every frame and export copies and hashes all project media first. Keep the cost visible.
+      job.sourceCopyMs = Math.round(performance.now() - copyStarted)
+      log(`job ${job.id} (${job.kind}): copied ${cohort.receipt.count} source${cohort.receipt.count === 1 ? '' : 's'} in ${job.sourceCopyMs} ms`)
       job.exportSources = cohort
+      job.exportCopies = cohort.copies.map(copy => path.resolve(copy.file))
+      for (const copy of cohort.copies) exportCopyDigests.set(path.resolve(copy.file), copy.digest)
       job.spec.sourceCohort = cohort.receipt
       for (const key of Object.keys(snapshot)) delete snapshot[key]
       Object.assign(snapshot, cohort.project)
+      if (setJobWait(job, workerConnected() ? null : { reason: 'worker-starting' })) broadcast('job', jobPublic(job))
       await ensureWorker(signal)
       check()
     },
@@ -774,6 +806,9 @@ function queueWorkerJob(job, snapshot, guard) {
       if (job.kind === 'export') job.exportDestination.assertCurrent()
       reservation.worker = worker
       job.lastWorkerActivity = job.workerDispatchedAt = performance.now()
+      delete job.waiting
+      // A still frame's 30 s limit starts now, when the worker has it.
+      job.frameDeadline?.dispatched()
       reservation.payload = { job: jobPublic(job), project: snapshot, version: job.projectVersion }
       broadcast('render', reservation.payload, 'worker')
     },
@@ -783,15 +818,23 @@ function queueWorkerJob(job, snapshot, guard) {
       if (ownedWorker) job.processing.cancelWorker = armProcessingWorkerCancellation(ownedWorker, { isCurrent: () => worker === ownedWorker, isDrained: () => job.processing.drained })
     },
     waitEncoder: () => job.done ?? Promise.resolve(),
-    onState: state => { job.admissionState = state; if (job.kind !== 'export' || job.state !== 'done') broadcast('job', jobPublic(job)) },
+    onState: state => {
+      job.admissionState = state
+      setJobWait(job, queuedJobWait(job, jobs.values(), processing.snapshot().active > 0) ?? (state === 'queued' || job.waiting?.reason?.startsWith('behind-') ? null : job.waiting))
+      refreshQueuedJobWaits(job)
+      if (job.kind !== 'export' || job.state !== 'done') broadcast('job', jobPublic(job))
+    },
   })
   state.ticket.promise.catch(error => failJob(job, error)).finally(() => {
     state.cancelWorker?.(); state.cancelWorker = null
     state.worker = null; state.payload = null; state.ticket = null; state.assertCurrent = () => { throw new Error('This worker reservation has drained') }
     delete job.ffmpeg; delete job.done
+    for (const copy of job.exportCopies ?? []) exportCopyDigests.delete(copy)
+    delete job.exportCopies
     for (const owned of [job.exportSources, job.exportDestination]) try { owned?.cleanup?.() } catch { job.cleanupWarning = 'An export stage changed or could not be removed. Its files were retained.' }
     delete job.exportSources; delete job.exportDestination
     cleanupExportAudio(job)
+    if (setJobWait(job, null)) broadcast('job', jobPublic(job))
   })
 }
 
@@ -943,9 +986,10 @@ async function renderFrame(at, width = 1280, comp = null) {
   job.projectVersion = version
   job.exportSources = captured
   const done = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject })
-  queueWorkerJob(job, snapshot, guard)
-  const timeout = setTimeout(() => failJob(job, 'frame render timed out'), 30000)
-  return done.finally(() => clearTimeout(timeout))
+  // 30 s to render once the worker has the frame, 5 minutes for the whole request.
+  job.frameDeadline = frameJobDeadline(message => failJob(job, message))
+  try { queueWorkerJob(job, snapshot, guard) } catch (error) { job.frameDeadline.clear(); jobs.delete(job.id); throw error }
+  return done.finally(() => job.frameDeadline.clear())
 }
 
 // ---------------------------------------------------------------- routes
@@ -1285,6 +1329,8 @@ async function handleJobUpload(req, res, url) {
     }
     if (what === 'alive') {
       noteWorkerActivity(job, workerClock(), 'heartbeat')
+      // The body names the setup step the page is on, so a setup that hangs can say where.
+      noteWorkerSetupStep(job, (await readBody(req, 64).catch(() => Buffer.alloc(0))).toString('utf8'))
 
       return send(res, 200, { ok: true })
     }

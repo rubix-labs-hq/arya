@@ -233,7 +233,9 @@ export function startWorker() {
     active = scope
     // While this job prepares or renders, tell the server the page is alive; the server only
     // trusts this before the first frame batch, so a stuck render still counts as stalled.
-    const heartbeat = setInterval(() => { void notify(`/api/job/${job.id}/alive`) }, 5000)
+    // The body names the setup step, so the server can say where a setup that hangs stopped.
+    let step = 'luts'
+    const heartbeat = setInterval(() => { void notify(`/api/job/${job.id}/alive`, step) }, 5000)
     try {
       if (cancelled.has(job.id)) scope.abort('cancelled')
       scope.controller.signal.throwIfAborted()
@@ -259,17 +261,21 @@ export function startWorker() {
       const audioOnly = preset.startsWith('audio')
       const noAudio = preset === 'gif' || preset === 'png-seq'
       if (!noAudio) {
+        step = 'audio'
         const wav = await scope.wait(() => scope.audio.renderWav(p, range.in, range.out, { signal: scope.controller.signal, processingJob: job.id }))
+        step = 'upload'
         await post(scope, `${base}/audio`, wav, 'audio/wav')
       }
       await post(scope, `${base}/start`, '')
       if (!audioOnly) {
+        step = 'plans'
         const plans = await scope.wait(() => buildDecoderPlans(spec, p, neededVideos, frameCenter, { check: () => scope.controller.signal.throwIfAborted() }))
         await scope.wait(() => media.planDecoders(plans))
         const frameBytes = width * height * 4
         const batch = Math.max(1, Math.min(4, Math.floor(32e6 / frameBytes)))
         let buf = new Uint8Array(frameBytes * batch)
         let n = 0
+        step = 'first'
         for (let i = 0; i < frames; i++) {
           scope.controller.signal.throwIfAborted()
           await scope.wait(() => player.renderExact(range.in + (i + 0.0001) / fps))
