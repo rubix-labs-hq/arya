@@ -183,6 +183,7 @@ function shell(status, kind = 'http', history) {
   const store = { project: null, version: 7, root: '/selected', recovery: { status, history }, jobs: [], claude: { state: 'idle' }, refs: [] }, requests = [], opened = []
   const context = vm.createContext({ html: htm.bind(h), h, Icon, assistantState, assistantActivity, store, host: { kind }, useStore: () => store, useState: value => [value, () => {}], useRef: value => ({ current: value }), showRecovery: () => opened.push(true), api: async route => { requests.push(route); return {} }, set: value => Object.assign(store, value), toast() {}, PAGES: [], registry: { pages: [] }, ScrollTabs() {}, LayoutMenu() {} })
   vm.runInContext(storeSource.match(/export function chatHistoryStatus\([^]*?\n}\n/)[0].replace('export ', ''), context)
+  vm.runInContext(storeSource.match(/export function historyDepth\([^]*?\n}\n/)[0].replace('export ', ''), context)
   for (const name of ['Welcome', 'TopBar']) vm.runInContext(app.match(new RegExp(`function ${name}\\([^]*?\\n}\\n`))[0], context)
   return { context, store, requests, opened }
 }

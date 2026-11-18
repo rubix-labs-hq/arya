@@ -113,6 +113,22 @@ export function runEditorCommand(command) {
   return 'handled'
 }
 
+/**
+ * Undo or Redo through the server. With nothing to move it says so and sends nothing; a reply that
+ * moved nothing says so too, so a no-op never reads as success. The reply's depth keeps the
+ * buttons honest. A host that does not report a depth leaves both enabled.
+ */
+export function moveHistory(direction) {
+  const nothing = direction === 'undo' ? 'Nothing to undo.' : 'Nothing to redo.'
+  if (store.history?.[direction] === 0) { toast(nothing); return Promise.resolve(null) }
+  return Promise.resolve().then(() => api(`/api/${direction}`, {})).then(r => {
+    const history = r?.history, counted = Number.isSafeInteger(history?.undo) && Number.isSafeInteger(history?.redo)
+    set({ project: r.project, version: r.version, ...(counted ? { history: { undo: history.undo, redo: history.redo } } : {}) })
+    if (r?.moved === false) toast(nothing)
+    return r
+  }, error => { toast(error.message, 'error'); return null })
+}
+
 export function installKeys() {
   window.addEventListener('keydown', e => {
     if (e.defaultPrevented) return
@@ -146,7 +162,7 @@ export function installKeys() {
     if (cmd) {
       switch (lower) {
         case 'z':
-          api(e.shiftKey ? '/api/redo' : '/api/undo', {}).then(r => set({ project: r.project, version: r.version }))
+          moveHistory(e.shiftKey ? 'redo' : 'undo')
           break
         case 'b': {
           runEditorCommand('split')
