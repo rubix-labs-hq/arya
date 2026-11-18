@@ -34,7 +34,7 @@ test('an account that cannot be read, or has unusable fields, changes nothing', 
 test('the server fills its environment before any other module loads', () => {
   const server = fs.readFileSync(path.join(editor, 'server.mjs'), 'utf8')
   const first = server.split('\n').find(line => line.startsWith('import '))
-  assert.equal(first, "import './core/process-identity.mjs'")
+  assert.equal(first, "import {} from './core/process-identity.mjs'")
 })
 
 test('a CLI that reports signed in only when USER is set is seen as signed in from a process started without USER', t => {

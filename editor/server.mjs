@@ -4,8 +4,9 @@
 // node server.mjs --root <project folder> [--port 4870]
 
 // First on purpose: it fills USER, LOGNAME and HOME when the server was started without them,
-// before any module below reads the environment or starts a CLI.
-import './core/process-identity.mjs'
+// before any module below reads the environment or starts a CLI. Written with `from` so the tests
+// that run a copy of this file from another folder rewrite its path like every other import.
+import {} from './core/process-identity.mjs'
 import { spawn } from 'node:child_process'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHash, randomUUID } from 'node:crypto'
