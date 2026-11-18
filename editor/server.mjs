@@ -13,6 +13,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import http from 'node:http'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -1092,6 +1093,7 @@ const assistantService = createBrowserAssistant({
   getVersion: () => version,
   // Ties a saved sharing permission to the signed-in provider account, so it holds across restarts.
   accountFingerprint: createAccountFingerprint(),
+  hostKeyFile: path.join(os.homedir(), '.arya', 'assistant-host-key'),
   // exportFolder tells the prompt this is the browser editor, whose exports land in renders/ (see EXPORT_GUIDE).
   getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus), exportFolder: 'renders' } : {}), ...(focus && transcriptionState ? { transcription: transcriptionState } : {}) }),
   renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null, { queueMs: ASSISTANT_FRAME_QUEUE_MS }) }),

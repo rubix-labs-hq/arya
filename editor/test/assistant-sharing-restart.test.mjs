@@ -161,6 +161,24 @@ test('a changed, missing or exposed host key asks again, and only a grant create
   }
 })
 
+test('a host that is given no key file writes nothing under the home folder', async t => {
+  // The suite once left ~/.arya/assistant-host-key on the computer that ran it. Only server.mjs
+  // names the key file; a host made without one keeps permission for its own lifetime.
+  const w = world(t), home = path.join(w.base, 'real-home'), before = process.env.HOME
+  fs.mkdirSync(home); process.env.HOME = home
+  t.after(() => { if (before === undefined) delete process.env.HOME; else process.env.HOME = before })
+  assert.equal(os.homedir(), home)
+  const first = w.start({ options: { hostKeyFile: undefined } })
+  await w.allow(first)
+  assert.deepEqual(fs.readdirSync(home), [])
+  assert.equal(w.saved().binding, undefined)
+  assert.equal((await first.sharing()).approved, true, 'this server still holds the permission')
+  await first.close()
+  assert.equal((await w.start({ options: { hostKeyFile: undefined } }).sharing()).approved, false)
+  const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
+  assert.ok(server.includes("hostKeyFile: path.join(os.homedir(), '.arya', 'assistant-host-key')"))
+})
+
 test('a saved permission copied to another project folder, or edited on disk, asks again', async t => {
   const w = world(t), first = w.start(), granted = await w.allow(first)
   await first.close()

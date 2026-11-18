@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process'
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
@@ -131,7 +130,9 @@ export function createBrowserAssistant(options) {
   let sharingGeneration = 0, grantRecord = null
   // A key kept on this computer, outside every project. A saved permission is an HMAC under it,
   // so a permission file copied from another computer, or written by hand, is never accepted.
-  const hostKeyFile = options.hostKeyFile ?? path.join(os.homedir(), '.arya', 'assistant-host-key')
+  // The caller names the file (server.mjs uses ~/.arya/assistant-host-key). Without one this host
+  // writes nothing outside the project and a permission lasts until the server stops.
+  const hostKeyFile = typeof options.hostKeyFile === 'string' && path.isAbsolute(options.hostKeyFile) ? options.hostKeyFile : null
   const accountCacheMs = options.accountCacheMs ?? 15000
   const accountCache = new Map()
   const reviews = new Map()
@@ -386,6 +387,7 @@ export function createBrowserAssistant(options) {
   // The host key, or null. Only a grant creates it. A key that is a link, is readable by other
   // users or is not 32 random bytes is not used, and is left as it is.
   const hostKey = create => {
+    if (!hostKeyFile) return null
     const read = () => {
       const stat = fs.lstatSync(hostKeyFile)
       if (!stat.isFile() || stat.mode & 0o077 || stat.size > 128 || process.getuid && stat.uid !== process.getuid()) return null
