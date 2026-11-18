@@ -198,10 +198,11 @@ struct NativeAssistantPanel: View {
     @State private var setupNotice: String?
     /// The wrapped placeholder with its padding, measured at the draft's width.
     @State private var placeholderHeight = 0.0
-    /// The history's height, and the times it got shorter, so the latest item can be brought
-    /// back into view.
+    /// The history's height, the times it got shorter while the latest item was in view, and
+    /// where the setup card, the preview and the end sit in the visible history.
     @State private var historyHeight = 0.0
     @State private var historyShrinks = 0
+    @State private var latestSpans: [String: ClosedRange<Double>] = [:]
 
     private var chipHeight: Double { max(Self.touch ? 44 : 26, scaledChipHeight) }
     private var headerHeight: Double { max(Double(NativeEditorStyle.minimumControlHeight), Self.touch ? actionHeight : 0) }
@@ -338,6 +339,7 @@ struct NativeAssistantPanel: View {
             ScrollView {
                 conversationContent.padding(12)
             }.frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+            .coordinateSpace(.named(Self.historySpace))
             #if os(iOS)
             .scrollDismissesKeyboard(.interactively)
             #endif
@@ -352,12 +354,13 @@ struct NativeAssistantPanel: View {
             .onChange(of: assistant.fixtureScroll) { _, _ in scrollToLatest(proxy) }
             #endif
             // The keyboard, a smaller sheet detent or window, or a longer draft makes the history
-            // shorter. Once it settles, the setup card, a waiting preview or the newest message is
-            // brought back into view. Taller history keeps those in view on its own, and a drag
-            // that hides the keyboard while reading earlier messages is left where it is.
-            // Scrolling never changes the height, so this cannot loop.
+            // shorter. If the setup card, a waiting preview or the newest message was in view, it
+            // is brought back into view once the height settles. Someone reading earlier messages
+            // is left where they are, and a taller history needs no scroll. Scrolling never
+            // changes the height, so this cannot loop.
             .onGeometryChange(for: Double.self) { $0.size.height } action: { height in
-                if height < historyHeight - 1 { historyShrinks += 1 }
+                if height < historyHeight - 1, let span = latestSpans[latestTarget],
+                   span.upperBound >= -1, span.lowerBound <= historyHeight + 1 { historyShrinks += 1 }
                 historyHeight = height
             }
             .task(id: historyShrinks) {
@@ -373,18 +376,24 @@ struct NativeAssistantPanel: View {
     /// keep its heading, reason and primary action in view. In a short phone sheet, scrolling to
     /// the end would hide them, with or without earlier messages.
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
-        if assistant.proposal != nil && !assistant.isWorking {
-            proxy.scrollTo("preview", anchor: .bottom)
-        } else if !assistant.configured {
-            proxy.scrollTo("setup", anchor: .top)
-        } else {
-            proxy.scrollTo("end", anchor: .bottom)
-        }
+        proxy.scrollTo(latestTarget, anchor: latestTarget == "setup" ? .top : .bottom)
+    }
+
+    private var latestTarget: String {
+        if assistant.proposal != nil && !assistant.isWorking { return "preview" }
+        return assistant.configured ? "end" : "setup"
+    }
+
+    fileprivate static let historySpace = "editor.assistant.history"
+
+    /// Records where a scroll target sits in the visible history.
+    private func latestSpan(_ id: String) -> some ViewModifier {
+        LatestSpan { latestSpans[id] = $0 }
     }
 
     private var conversationContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if !assistant.configured && assistant.chat.isEmpty { setupCard.id("setup") }
+            if !assistant.configured && assistant.chat.isEmpty { setupCard.id("setup").modifier(latestSpan("setup")) }
             if let diagnostic = assistant.localDiagnostic {
                 VStack(alignment: .leading, spacing: 5) {
                     Label("Latest local tool failure", systemImage: "exclamationmark.triangle").font(.system(size: 11, weight: .semibold))
@@ -427,8 +436,8 @@ struct NativeAssistantPanel: View {
             }
             changeCards
             // After a conversation the reason Send is off sits last, and the history scrolls to its top.
-            if !assistant.configured && !assistant.chat.isEmpty { setupCard.id("setup") }
-            Color.clear.frame(height: 1).id("end")
+            if !assistant.configured && !assistant.chat.isEmpty { setupCard.id("setup").modifier(latestSpan("setup")) }
+            Color.clear.frame(height: 1).id("end").modifier(latestSpan("end"))
         }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
@@ -659,6 +668,7 @@ struct NativeAssistantPanel: View {
             NativeAssistantPreviewCard(proposal: proposal, stale: assistant.proposalStale || proposal.baseVersion != model.version, running: assistant.isWorking,
                                        newRequest: assistant.isWorking && proposal.runID != assistant.currentRunID,
                                        apply: { Task { await assistant.applyProposal() } }, discard: { assistant.discardProposal() }).id("preview")
+                .modifier(latestSpan("preview"))
         }
         if let applying = assistant.applyingProposal {
             NativeAssistantApplyingCard(applying: applying, dismiss: { assistant.dismissApplyFailure() })
@@ -1502,3 +1512,14 @@ private struct NativeAssistantApplyingCard: View {
     }
 }
 // END ASSISTANT PREVIEW CARDS
+
+/// Reports a view's top and bottom in the assistant history's visible area.
+private struct LatestSpan: ViewModifier {
+    let action: (ClosedRange<Double>) -> Void
+    func body(content: Content) -> some View {
+        content.onGeometryChange(for: ClosedRange<Double>.self) { geometry in
+            let frame = geometry.frame(in: .named(NativeAssistantPanel.historySpace))
+            return Double(frame.minY)...Double(max(frame.minY, frame.maxY))
+        } action: { action($0) }
+    }
+}
