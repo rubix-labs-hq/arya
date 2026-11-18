@@ -426,10 +426,11 @@ struct NativeMediaPanel: View {
         }
         if assets.isEmpty && folders.isEmpty {
             let unfiltered = !browser.isSearching && kind == "All"
-            VStack(spacing: 12) {
+            // Compact enough that the action stays visible in a short Motion or Color media column.
+            VStack(spacing: 10) {
                 Image(systemName: unfiltered ? "photo.on.rectangle" : "magnifyingglass").font(.system(size: 28)).foregroundStyle(NativeEditorStyle.muted)
                 Text(unfiltered ? "Bring your footage into Arya" : "No matching media").font(.subheadline.weight(.semibold)).multilineTextAlignment(.center)
-                Text(unfiltered ? "Import video, audio or images. Each asset stays available for normal editing and AI requests." : "Try another name or media type.").font(.caption).foregroundStyle(NativeEditorStyle.muted).multilineTextAlignment(.center)
+                Text(unfiltered ? "Import video, audio or images to start editing." : "Try another name or media type.").font(.caption).foregroundStyle(NativeEditorStyle.muted).multilineTextAlignment(.center)
                 if unfiltered {
                     #if os(iOS)
                     if model.project?.assets.isEmpty != false { mobileImportSources }
@@ -442,7 +443,7 @@ struct NativeMediaPanel: View {
                         .buttonStyle(NativeToolbarButtonStyle())
                         .accessibilityIdentifier("editor.media.clearFilters")
                 }
-            }.frame(maxWidth: .infinity).padding(.vertical, 36)
+            }.frame(maxWidth: .infinity).padding(.vertical, 16).padding(.horizontal, 8)
         }
     }
 
