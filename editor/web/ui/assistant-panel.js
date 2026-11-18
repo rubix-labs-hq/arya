@@ -71,7 +71,7 @@ function PreviewCard({ proposal, project, version, running, newRequest, busy, on
     ${newRequest && !stale ? html`<p class="assistant-preview-note" role="status">The assistant is working on a new request. This preview stays until that request makes its own.</p>` : null}
     ${stale ? html`<p class="assistant-preview-note" role="status">The project changed after this preview. Ask again for a current one.</p>`
       : error ? html`<p class="assistant-preview-note" role="alert">This preview cannot be applied: ${error}</p>`
-      : html`<p class="assistant-preview-note">${headline}. Nothing has changed yet${steps.length ? ' and nothing renders until you apply' : ''}.</p>`}
+      : html`<p class="assistant-preview-note" role="status">${headline}. Nothing has changed yet${steps.length ? ' and nothing renders until you apply' : ''}.</p>`}
     ${layers.length ? html`<ul class="assistant-preview-list">${layers.slice(0, MAX_LAYERS).map(layer => html`<li key=${`${layer.comp}:${layer.id}`}>
       <div><b>${layer.name}</b><span class=${`assistant-preview-status ${layer.status}`}>${STATUS[layer.status] ?? layer.status}</span><small>${layer.compositionName} · ${layer.track || layer.id}</small></div>
       ${layer.status === 'changed' ? html`<dl>${layer.changes.slice(0, MAX_PROPERTIES).map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span aria-label="changes to"> → </span><span>${change.after}</span></dd>`)}</dl>` : null}

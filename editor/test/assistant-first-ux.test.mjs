@@ -785,6 +785,12 @@ test('a lost connection says a request may still be running only while one is', 
   assert.match(run({ claude: { state: 'working', startedAt: 1000 } }), /^↻ Reconnecting .*Live status is unavailable\. The request may still be running\.$/)
 })
 
+test('the media type filter has an accessible name', () => {
+  const selects = [...read('ui/browser.js').matchAll(/<select\b[^>]*>/g)].map(match => match[0])
+  assert.ok(selects.some(tag => /aria-label="Media type" value=\$\{kind\}/.test(tag)))
+  for (const tag of selects) assert.match(tag, /aria-label=|id=/, `a select without a name: ${tag.slice(0, 80)}`)
+})
+
 test('a focused suggestion in the one-line strip is scrolled into view, and the strip fades where it continues', t => {
   const clips = [{ id: 'c1', kind: 'video', src: 'a.mp4', start: 0, dur: 4 }]
   const tree = panel(t, { selection: ['c1'], chat: [{ role: 'user', text: 'Earlier', at: 1 }], project: { width: 1920, height: 1080, assets: { 'a.mp4': { hasAudio: true } }, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} } }, { draft: '' }).draw()

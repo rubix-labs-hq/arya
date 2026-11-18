@@ -63,6 +63,7 @@ test('a preview lists each changed layer with readable before and after values',
   const calls = []
   const tree = assistantPanel.PreviewCard({ proposal, project: p, version: 3, running: false, busy: '', onApply: () => calls.push('apply'), onDiscard: () => calls.push('discard') })
   assert.match(text(tree), /Apply changes to 2 layers ?\. Nothing has changed yet ?\./)
+  assert.equal(nodes(tree).find(node => node.type === 'p' && /Nothing has changed yet/.test(text(node))).props.role, 'status', 'the headline is announced when the preview arrives')
   assert.equal(button(tree, 'Apply').props.disabled, false)
   button(tree, 'Apply').props.onClick(); button(tree, 'Discard').props.onClick()
   assert.deepEqual(calls, ['apply', 'discard'])
