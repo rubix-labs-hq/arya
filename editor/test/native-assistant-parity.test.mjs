@@ -95,6 +95,16 @@ test('a native request that only pressed Undo or Redo is recorded as a history m
   assert.match(panel, /\$0\.kind == "history" \? ReelBackend\.historyChangeTitle\(moves: \$0\.moves\)/)
 })
 
+test('a stopped native request that changed nothing says so', () => {
+  const app = swift('App/Shared/NativeAssistant.swift'), panel = swift('App/Shared/NativeEditor/NativeAssistantPanel.swift')
+  const record = between(app, '    func recordRunChange(', '\n    }\n')
+  assert.ok(record.indexOf('lastRunEdited = nil') < record.indexOf('guard let baseline'), 'an unknown run is not reported as unchanged')
+  assert.match(record, /lastRunEdited = version > baseline\.version/)
+  assert.match(panel, /let stoppedNote = assistant\.lastRunEdited == false \? "Nothing was changed\." : "Review or undo any committed edits\."/)
+  assert.match(panel, /stopped \? stoppedNote : ""/)
+  assert.match(panel, /assistant\.state == "cancelled" \? "Stopped\. \\\(stoppedNote\)"/)
+})
+
 test('a native request waits while a preview is applying, as the browser does', () => {
   const app = swift('App/Shared/NativeAssistant.swift'), panel = swift('App/Shared/NativeEditor/NativeAssistantPanel.swift')
   const send = between(app, '    func send(_ text: String', 'let referenceText')

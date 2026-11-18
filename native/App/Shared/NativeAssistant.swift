@@ -167,6 +167,8 @@ final class NativeAssistant: ObservableObject {
     @Published private(set) var proposal: NativeAssistantProposal?
     @Published private(set) var applyingProposal: NativeAssistantApplying?
     @Published private(set) var lastChange: NativeAssistantChange?
+    /// Whether the latest finished request changed the project; nil when that is not known.
+    @Published private(set) var lastRunEdited: Bool?
     @Published private(set) var suggestions: [NativeAssistantSuggestion] = []
     /// The pending preview no longer matches the open project, checked by backend, version and text.
     @Published private(set) var proposalStale = false
@@ -3428,9 +3430,11 @@ extension NativeAssistant {
     /// Records the request's edits as one change when every commit since it started was the assistant's.
     func recordRunChange(id: UUID, backend: ReelBackend) async {
         defer { if previewRunID == id { previewRunID = nil } }
+        lastRunEdited = nil
         guard let baseline = runBaseline, baseline.id == id else { return }
         runBaseline = nil
         let version = await backend.currentVersion()
+        lastRunEdited = version > baseline.version
         guard version > baseline.version, let after = await backend.currentProject() else { return }
         let owners = await backend.commitOwners(after: baseline.version)
         // A request that only pressed Undo or Redo is a history move, and undoing it moves back the same way.

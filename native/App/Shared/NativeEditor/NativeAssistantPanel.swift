@@ -626,8 +626,10 @@ struct NativeAssistantPanel: View {
             let elapsed = seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
             let quiet = working && context.date.timeIntervalSince(assistant.updatedAt ?? context.date) >= 20
             let stopped = assistant.state == "cancelled"
-            let stage = working ? (quiet ? "No update for 20 seconds" : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress) : assistant.state == "done" ? (assistant.outcome.isEmpty ? "Results not verified" : assistant.outcome) : stopped ? "Review or undo any committed edits." : ""
-            let detail = working ? quiet ? "No update for 20 seconds. Last confirmed stage: \(assistant.progress.isEmpty ? "Working" : assistant.progress)." : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress : assistant.state == "done" ? assistant.outcome.isEmpty ? "Edit results have not been verified." : assistant.outcome : assistant.state == "cancelled" ? "Stopped. Review or undo any committed edits." : assistant.progress.isEmpty ? "Request failed. Review the error before retrying." : assistant.progress
+            // A stopped request that never moved the version says so, instead of asking for a review of edits it did not make.
+            let stoppedNote = assistant.lastRunEdited == false ? "Nothing was changed." : "Review or undo any committed edits."
+            let stage = working ? (quiet ? "No update for 20 seconds" : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress) : assistant.state == "done" ? (assistant.outcome.isEmpty ? "Results not verified" : assistant.outcome) : stopped ? stoppedNote : ""
+            let detail = working ? quiet ? "No update for 20 seconds. Last confirmed stage: \(assistant.progress.isEmpty ? "Working" : assistant.progress)." : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress : assistant.state == "done" ? assistant.outcome.isEmpty ? "Edit results have not been verified." : assistant.outcome : assistant.state == "cancelled" ? "Stopped. \(stoppedNote)" : assistant.progress.isEmpty ? "Request failed. Review the error before retrying." : assistant.progress
             DisclosureGroup(isExpanded: $activityExpanded) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(detail).foregroundStyle(NativeEditorStyle.muted).textSelection(.enabled)
