@@ -208,9 +208,14 @@ export function ChatPanel() {
   // The person's own message, a new preview, an apply, an undo bar or the end of a run brings the list to its end.
   const lastOwnAt = [...s.chat].reverse().find(m => ['user', 'you'].includes(m.role))?.at
   useEffect(() => { follow.current = true }, [lastOwnAt, s.assistantReview?.proposal?.id, s.assistantReview?.applying?.id, s.assistantReview?.change?.id, activity.terminal])
+  // The end of the list. A preview taller than the list shows from its title, not from its buttons.
+  const scrollToEnd = el => {
+    const card = s.assistantReview?.proposal ? el.querySelector?.('.assistant-preview') : null
+    el.scrollTop = card && card.offsetHeight > el.clientHeight ? el.scrollTop + card.getBoundingClientRect().top - el.getBoundingClientRect().top : el.scrollHeight
+  }
   useEffect(() => {
     const hasUpdates = s.chat.length || s.activity.length || s.receipts.length || activity.active || activity.terminal || s.assistantReview
-    if (hasUpdates && list.current && follow.current) list.current.scrollTop = list.current.scrollHeight
+    if (hasUpdates && list.current && follow.current) scrollToEnd(list.current)
   }, [s.chat, s.claude.text, activity.state, s.activity, s.receipts, s.assistantReview, s.chatHistory?.warning])
 
   const send = async (msg = text) => {
@@ -337,7 +342,7 @@ export function ChatPanel() {
   // The suggestion row is too, for a reader who is already at the end.
   const welcome = Boolean(chatgpt?.welcome)
   useEffect(() => {
-    if (list.current && (checking || !status.ready || welcome || follow.current)) list.current.scrollTop = list.current.scrollHeight
+    if (list.current && (checking || !status.ready || welcome || follow.current)) scrollToEnd(list.current)
   }, [checking, status.ready, status.refreshRequired, providerFailure, chatgptWaiting, signInState, welcome, showSuggestions])
   const lastRequest = [...s.chat].reverse().find(m => ['user', 'you'].includes(m.role) && m.text)?.text ?? ''
   const view = assistantPanel.focus(s.project, { comp: s.openComp, playhead })

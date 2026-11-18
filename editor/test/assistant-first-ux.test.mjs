@@ -514,15 +514,28 @@ test('hidden speaker labels are clipped inside the list and cannot stretch the p
   assert.match(baseCSS, /\.chat-list \{ flex: 1 1 0; min-height: 0; overflow: auto;/, 'and it is the scroll container that holds them')
 })
 
+test('a preview taller than the list shows from its title, and a short one from the end', t => {
+  const review = changes => ({ proposal: null, applying: null, change: null, running: false, runId: null, ...changes })
+  for (const [height, expected] of [[400, 520], [200, 900]]) {
+    const f = panel(t, { chat: [{ role: 'user', text: 'First', at: 1 }], assistantReview: review() })
+    // The card starts 520px down the list's content, so its top moves up as the list scrolls.
+    const card = { offsetHeight: height, getBoundingClientRect: () => ({ top: 520 - element.scrollTop }) }
+    const element = { scrollTop: 50, scrollHeight: 900, clientHeight: 300, querySelector: selector => selector === '.assistant-preview' ? card : null, getBoundingClientRect: () => ({ top: 0 }) }
+    f.state.assistantReview = review({ proposal: { id: 'p1', runId: 'r1' } })
+    const tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
+    assert.equal(element.scrollTop, expected, `a ${height}px preview in a 300px list`)
+  }
+})
+
 test('the list follows the person\'s own message, a new proposal, an apply, an undo bar and the end of a run', t => {
   const review = changes => ({ proposal: null, applying: null, change: null, running: false, runId: null, ...changes })
   const f = panel(t, { chat: [{ role: 'user', text: 'First', at: 1 }], assistantReview: review() })
   const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
   const step = (name, change, follows) => {
-    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     // The person scrolls up to read.
     element.scrollTop = 100; byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
-    change(); tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    change(); tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     assert.equal(element.scrollTop, follows ? 900 : 100, name)
   }
   step('their own message', () => { f.state.chat = [...f.state.chat, { role: 'user', text: 'Second', at: 5 }] }, true)
@@ -671,7 +684,7 @@ test('touch targets inside the conversation are 44px tall without growing their 
   assert.match(touch, /\.chat \.chat-list summary\.assistant-run-heading \{ min-height: 44px;/)
   assert.match(touch, /\.chat \.assistant-primary-action button \{ width: 44px; min-width: 44px; height: 44px; \}/, 'Send and Stop are the same height')
   assert.match(assistantCSS, /\.chat \.assistant-primary-action button \{[^}]*width: 32px; min-width: 32px; height: 32px; min-height: 32px;/)
-  assert.match(touch, /\.chat-list \.msg\.user \.assistant-edit-request \{ min-height: 44px;/)
+  assert.match(touch, /\.chat-list \.msg\.user \.assistant-edit-request \{ min-height: 44px; margin-block: -8px -10px; \}/, 'Edit request does not reach the run line below')
   assert.match(assistantCSS, /\.chat \.composer textarea::placeholder \{ color: var\(--muted\); opacity: 1; \}/, 'the placeholder meets contrast')
   assert.match(media(assistantCSS, '(max-width: 900px)'), /\.main > \.chat\.panel \{ position: fixed; width: min\(var\(--chat-width, 360px\), max\(38vw, 320px\)\); \}/, 'the floating panel never drops under 320px')
 })
@@ -728,10 +741,10 @@ test('a setup card, a sign-in wait, the first check or the ChatGPT welcome that 
   const arrive = (before, after) => {
     const f = panel(t, { chat, assistantStatus: before }, { draft: '' })
     const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
-    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     // The person scrolls up to read.
     element.scrollTop = 100; byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
-    f.state.assistantStatus = after; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    f.state.assistantStatus = after; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     return { top: element.scrollTop, last: flatten(byClass(tree, 'chat-list').props.children).filter(node => node && typeof node === 'object' && !cls(node, 'assistant-suggestions')).at(-1) }
   }
   for (const [name, after, shown] of [
@@ -754,9 +767,9 @@ test('a setup card, a sign-in wait, the first check or the ChatGPT welcome that 
 test('the list keeps its end in view when the pinned history warning takes a line from it', t => {
   const f = panel(t, { chat: [{ role: 'user', text: 'First', at: 1 }] })
   const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
-  let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+  let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
   element.scrollHeight = 946
-  f.state.chatHistory = { warning: 'Chat history could not be saved.' }; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+  f.state.chatHistory = { warning: 'Chat history could not be saved.' }; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
   assert.equal(element.scrollTop, 946)
 })
 
@@ -764,7 +777,7 @@ test('the suggestion row that arrives when the first check ends stays in view fo
   const clips = [{ id: 'c1', kind: 'video', src: 'a.mp4', start: 0, dur: 4 }]
   const f = panel(t, { selection: ['c1'], chat: [{ role: 'user', text: 'Earlier', at: 1 }, { role: 'assistant', text: 'Done.', at: 2 }], project: { width: 1920, height: 1080, assets: { 'a.mp4': { hasAudio: true } }, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} }, assistantStatus: { provider: 'codex', configured: false, loading: true, checkedAt: null } }, { draft: '' })
   const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
-  const redraw = () => { const tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /); return tree }
+  const redraw = () => { const tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/); return tree }
   assert.ok(byClass(redraw(), 'assistant-checking')); assert.equal(element.scrollTop, 900)
   // The row is taller than the line it replaces.
   element.scrollHeight = 927; f.state.assistantStatus = ready
@@ -904,9 +917,9 @@ test('the list follows the undo bar when it arrives on its own', t => {
   ]) {
     const f = panel(t, { claude, chat: [{ role: 'user', text: 'First', at: 1 }], assistantReview: before })
     const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
-    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     element.scrollTop = 100; byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
-    f.state.assistantReview = after; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    f.state.assistantReview = after; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     assert.equal(element.scrollTop, 900, name)
   }
 })

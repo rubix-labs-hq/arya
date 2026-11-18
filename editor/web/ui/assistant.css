@@ -270,7 +270,7 @@
   .chat .assistant-field-context { padding-top: 0; }
   .chat .assistant-composer-card .refs .chip button { min-width: 44px; min-height: 44px; margin-block: -14px; }
   /* The link keeps a 44px target while its row stays one line tall. */
-  .chat-list .msg.user .assistant-edit-request { min-height: 44px; margin-block: -8px -12px; }
+  .chat-list .msg.user .assistant-edit-request { min-height: 44px; margin-block: -8px -10px; }
   .chat :is(.change-receipt > summary, .receipt-json > summary, .assistant-preview-details > summary) { padding-block: 15px; }
   .chat .chat-list summary.assistant-run-heading { min-height: 44px; align-items: center; }
 }
