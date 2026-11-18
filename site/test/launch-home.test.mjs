@@ -144,7 +144,7 @@ test('every image, poster and clip the home page loads is reviewed, versioned an
     const bytes = await readFile(join(root, path));
     if (version !== undefined) assert.equal(version, createHash('sha256').update(bytes).digest('hex').slice(0, 12), `${path} has a stale version`);
   }
-  for (const item of [...Object.values(native.images), ...Object.values(native.clips)]) {
+  for (const item of [...Object.values(native.images), ...Object.values(native.next?.images ?? {}), ...Object.values(native.clips)]) {
     assert.ok(allowlist.includes(item.src.slice(1)), `${item.src} is not in public-files.json`);
     assert.ok(item.project in native.projects && item.device && item.page && item.label);
     if (item.poster) assert.ok(allowlist.includes(item.poster.slice(1)));
@@ -171,6 +171,24 @@ test('iPad and iPhone screens appear only while the App Store release is live', 
   assert.ok(macOnly.home.includes('<article class="chapter chapter-text" id="deliver"'));
   assert.ok(macOnly.home.includes('<h2 id="closing-heading">Start cutting on your Mac.</h2>'));
   assert.doesNotMatch(macOnly.download, /apple-itunes-app/);
+});
+
+test('screens of the next App Store release appear only once that release is live', async () => {
+  const next = native.next;
+  assert.ok(next && Object.keys(next.images).length > 0);
+  for (const item of Object.values(next.images)) assert.ok(item.project in native.projects && item.device && item.alt && item.label, item.src);
+  // While the shipped release is older, no page loads them and the note does not mention them.
+  for (const item of Object.values(next.images)) assert.ok(!live.home.includes(item.src), `${item.src} shows before its release`);
+  assert.ok(!text(live.home).includes(next.edition));
+  // Once the App Store release reaches that version, they replace the matching images and the
+  // capture note says where they come from.
+  const later = await build({ ...shipped, mobileRelease: { ...shipped.mobileRelease, version: `${next.version}.0` } });
+  assert.equal(later.result.status, 0, later.result.stderr);
+  for (const id of ['iphone-edit', 'ipad-color']) {
+    assert.ok(later.home.includes(next.images[id].src), id);
+    assert.ok(!later.home.includes(native.images[id].src), id);
+  }
+  assert.ok(text(later.home).includes(next.edition));
 });
 
 test('the six pages keep the app’s tab order and native screens stay apart from browser screens', () => {

@@ -9,8 +9,7 @@
     "After the Tide": "The still picture in After the Tide was AI-generated for this demo."
   },
   "editions": {
-    "Mac App Store": "The After the Tide screens on Mac come from the Mac App Store build of Arya 1.1.0. Screens in the direct Mac build can differ.",
-    "Development build": "The screens that show the Ask Arya button come from an unreleased development build. Screens in the released app can differ."
+    "Mac App Store": "The After the Tide screens on Mac come from the Mac App Store build of Arya 1.1.0. Screens in the direct Mac build can differ."
   },
   "images": {
     "mac-color": {
@@ -45,10 +44,9 @@
       "device": "iPad",
       "page": "Color",
       "project": "After the Tide",
-      "edition": "Development build",
       "still": true,
       "label": "Color on iPad",
-      "alt": "Arya on iPad, Color page. The top bar has an Ask Arya button. The viewer shows a coastal scene at dusk under the title After the Tide, beside a Color inspector with Exposure at 0.2, Temperature at 0.35, a Lift wheel and rows for nodes, scopes and LUTs. Below, a four-track timeline and a tab bar for the six pages."
+      "alt": "Arya on iPad, Color page. The viewer shows a coastal scene at dusk under the title After the Tide, beside a Color inspector with Exposure at 0.2, Temperature at 0.35, a Lift wheel and rows for nodes, scopes and LUTs. Below, a four-track timeline and a tab bar for the six pages."
     },
     "iphone-edit": {
       "src": "/assets/product/native-iphone-edit.webp",
@@ -57,9 +55,8 @@
       "device": "iPhone",
       "page": "Edit",
       "project": "After the Tide",
-      "edition": "Development build",
       "label": "Edit on iPhone",
-      "alt": "Arya on iPhone, Edit page. The top bar has an Ask Arya button. The viewer shows a coastal scene at dusk with the title After the Tide selected. Below it, a timeline with a Subtitle track and a Titles track, and a tab bar for Media, Edit, Motion, Color, Audio and Deliver.",
+      "alt": "Arya on iPhone, Edit page. The viewer shows a coastal scene at dusk with the title After the Tide selected. Below it, a timeline with a Subtitle track and a Titles track, and a tab bar for Media, Edit, Motion, Color, Audio and Deliver.",
       "still": true
     },
     "mac-color-inspector": {
@@ -118,19 +115,6 @@
       "label": "Deliver on iPhone",
       "alt": "Deliver sheet on iPhone. An export range of 00:00:00:00 to 00:00:12:00 at 1,920 by 1,080 and 30 frames per second, an Export video button, the line Export saved to renders/Export.mp4, a completed H.264 High quality Export.mp4 in the render queue and a saved export with a Share export button.",
       "caption": "The Deliver sheet on iPhone after this export finished: twelve seconds of H.264 at 1,920 × 1,080 and 30 fps, saved to the project’s renders folder and ready to share."
-    },
-    "iphone-assistant": {
-      "src": "/assets/product/native-iphone-assistant.webp",
-      "width": 603,
-      "height": 1311,
-      "device": "iPhone",
-      "page": "Edit",
-      "project": "After the Tide",
-      "edition": "Development build",
-      "still": true,
-      "label": "Ask Arya on iPhone",
-      "alt": "Arya on iPhone with the assistant open. The viewer still shows a coastal scene at dusk with the title After the Tide selected. Below it, the Assistant panel shows a card titled Set up the assistant, with a Continue with ChatGPT button and an Other ways to connect link. The message field holds chips for Film title and Playhead 00:00:00:00, the typed request Fade the title in over one second, a Preview toggle, the model choice ChatGPT plan and a send button.",
-      "caption": "Ask Arya on iPhone before an assistant account is connected. The selected title and the playhead show as chips beside a typed request, which was not sent, so no reply is shown."
     }
   },
   "clips": {
@@ -146,6 +130,48 @@
       "label": "Exported on iPhone",
       "description": "A 12 second clip without sound. A slow push in on a coastal scene at dusk: a figure in an orange raincoat on a pier watches a ferry, under the title After the Tide.",
       "caption": "The file that export produced, shown here as a 720p copy without sound. Arya on iPhone rendered it at 1,920 × 1,080 in H.264."
+    }
+  },
+  "next": {
+    "version": "1.3",
+    "captured": "November 2026",
+    "note": "Screens of the next App Store release. The site shows them in place of the matching images only once config.mobileRelease is live at this version or later. Until then no page uses them. They come from a development build, so the edition note says screens in the released app can differ.",
+    "edition": "The iPhone and iPad screens that show the Ask Arya button come from a development build of Arya 1.3. Screens in the released app can differ.",
+    "images": {
+      "iphone-edit": {
+        "src": "/assets/product/native-iphone-edit-ask-arya.webp",
+        "width": 660,
+        "height": 1434,
+        "device": "iPhone",
+        "page": "Edit",
+        "project": "After the Tide",
+        "label": "Edit on iPhone",
+        "alt": "Arya on iPhone, Edit page. The top bar has an Ask Arya button. The viewer shows a coastal scene at dusk with the title After the Tide selected. Below it, a timeline with a Subtitle track and a Titles track, and a tab bar for Media, Edit, Motion, Color, Audio and Deliver.",
+        "still": true
+      },
+      "ipad-color": {
+        "src": "/assets/product/native-ipad-color-ask-arya.webp",
+        "width": 1032,
+        "height": 1376,
+        "device": "iPad",
+        "page": "Color",
+        "project": "After the Tide",
+        "still": true,
+        "label": "Color on iPad",
+        "alt": "Arya on iPad, Color page. The top bar has an Ask Arya button. The viewer shows a coastal scene at dusk under the title After the Tide, beside a Color inspector with Exposure at 0.2, Temperature at 0.35, a Lift wheel and rows for nodes, scopes and LUTs. Below, a four-track timeline and a tab bar for the six pages."
+      },
+      "iphone-assistant": {
+        "src": "/assets/product/native-iphone-assistant.webp",
+        "width": 603,
+        "height": 1311,
+        "device": "iPhone",
+        "page": "Edit",
+        "project": "After the Tide",
+        "still": true,
+        "label": "Ask Arya on iPhone",
+        "alt": "Arya on iPhone with the assistant open. The viewer still shows a coastal scene at dusk with the title After the Tide selected. Below it, the Assistant panel shows a card titled Set up the assistant, with a Continue with ChatGPT button and an Other ways to connect link. The message field holds chips for Film title and Playhead 00:00:00:00, the typed request Fade the title in over one second, a Preview toggle, the model choice ChatGPT plan and a send button.",
+        "caption": "Ask Arya on iPhone before an assistant account is connected. The selected title and the playhead show as chips beside a typed request, which was not sent, so no reply is shown."
+      }
     }
   }
 }

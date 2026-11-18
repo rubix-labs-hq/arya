@@ -90,6 +90,25 @@ for (const item of Object.values(figures)) {
 }
 const native = JSON.parse(await readFile(join(root, 'assets/product/native.json'), 'utf8'));
 if (!/^\d+\.\d+(?:\.\d+)?$/.test(native.version)) throw new Error('Native captures must name the app version they were taken from');
+// Screens of the next App Store release wait in native.next. They replace the matching images, and
+// their edition note joins the capture note, only once the App Store release is live at that
+// version or later. Until then no page uses them.
+if (native.next) {
+  const next = native.next;
+  if (!/^\d+\.\d+$/.test(next.version) || typeof next.edition !== 'string' || !next.edition) throw new Error('Next-release captures must name their version and say where they come from');
+  for (const item of Object.values(next.images)) {
+    if (!/^\/assets\/product\/native-[a-z-]+\.webp$/.test(item.src)) throw new Error('A native capture must be a local reviewed WebP image');
+    if (!(item.project in native.projects)) throw new Error('A native capture must name its sample project');
+  }
+  const minor = value => String(value ?? '').split('.').slice(0, 2).map(Number);
+  const [major, minorNumber] = minor(mobileVersion);
+  const [nextMajor, nextMinor] = minor(next.version);
+  if (mobileReady && (major > nextMajor || (major === nextMajor && minorNumber >= nextMinor))) {
+    native.editions = { ...native.editions, Next: next.edition };
+    for (const [id, item] of Object.entries(next.images)) native.images[id] = { ...item, edition: 'Next' };
+  }
+  delete native.next;
+}
 for (const item of Object.values(native.images)) {
   if (!/^\/assets\/product\/native-[a-z-]+\.webp$/.test(item.src)) throw new Error('A native capture must be a local reviewed WebP image');
   if (!(item.project in native.projects)) throw new Error('A native capture must name its sample project');
