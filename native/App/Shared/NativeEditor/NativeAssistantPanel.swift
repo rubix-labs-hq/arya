@@ -198,6 +198,10 @@ struct NativeAssistantPanel: View {
     @State private var setupNotice: String?
     /// The wrapped placeholder with its padding, measured at the draft's width.
     @State private var placeholderHeight = 0.0
+    /// The history's height, and the times it got shorter, so the latest item can be brought
+    /// back into view.
+    @State private var historyHeight = 0.0
+    @State private var historyShrinks = 0
 
     private var chipHeight: Double { max(Self.touch ? 44 : 26, scaledChipHeight) }
     private var headerHeight: Double { max(Double(NativeEditorStyle.minimumControlHeight), Self.touch ? actionHeight : 0) }
@@ -344,6 +348,20 @@ struct NativeAssistantPanel: View {
             .onChange(of: model.changeReceipts.count) { _, _ in scrollToLatest(proxy) }
             .onChange(of: assistant.proposal?.id) { _, _ in scrollToLatest(proxy) }
             .onChange(of: runLineGrowth) { _, _ in scrollToLatest(proxy) }
+            // The keyboard, a smaller sheet detent or window, or a longer draft makes the history
+            // shorter. Once it settles, the setup card, a waiting preview or the newest message is
+            // brought back into view. Taller history keeps those in view on its own, and a drag
+            // that hides the keyboard while reading earlier messages is left where it is.
+            // Scrolling never changes the height, so this cannot loop.
+            .onGeometryChange(for: Double.self) { $0.size.height } action: { height in
+                if height < historyHeight - 1 { historyShrinks += 1 }
+                historyHeight = height
+            }
+            .task(id: historyShrinks) {
+                guard historyShrinks > 0 else { return }
+                try? await Task.sleep(for: .milliseconds(150))
+                if !Task.isCancelled { scrollToLatest(proxy) }
+            }
         }
     }
 
@@ -621,7 +639,8 @@ struct NativeAssistantPanel: View {
                     }
                     if below { Text(stage).foregroundStyle(NativeEditorStyle.muted).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true) }
                 }.frame(minHeight: Self.touch ? 44 : 22)
-                .onChange(of: below) { _, grown in if grown { runLineGrowth += 1 } }
+                // Fires when the line appears and again when its text gets longer or changes.
+                .onChange(of: below ? stage : "") { _, text in if !text.isEmpty { runLineGrowth += 1 } }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(label), \(quiet ? detail : stage), \(elapsed)")
             }
