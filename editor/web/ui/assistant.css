@@ -228,6 +228,8 @@
 .chat .assistant-primary-action { flex: none; min-width: 0; margin-left: auto; position: static; align-self: center; }
 .chat .assistant-primary-action button { display: grid; place-items: center; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 10px; }
 .chat .assistant-primary-action .send { color: var(--accent-ink); }
+/* While a run works, Import text is disabled; hide it so Stop does not squeeze the other controls. */
+.chat .assistant-field-bar:has(.assistant-stop) .assistant-script-import { display: none; }
 .chat .assistant-primary-action .assistant-stop { display: inline-flex; gap: 5px; width: auto; padding: 0 10px 0 8px; color: var(--text); border: 1px solid var(--accent); background: var(--panel-2); font-size: 12px; }
 .chat .assistant-plan-note { display: block; padding: 5px 4px 0; }
 .chat .assistant-import-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 4px 0; color: var(--muted); font-size: 11px; }

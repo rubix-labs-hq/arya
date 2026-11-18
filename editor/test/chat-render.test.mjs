@@ -129,6 +129,9 @@ test('Redo brings a change back, so its result card is no longer marked undone',
   assert.equal(redone.props.receipts[0].undone, false)
   assert.equal(redone.tree.props['aria-label'], 'Committed edit result')
   assert.ok(nodes(redone.tree).some(node => node.type === 'button' && textContent(node) === 'Undo this change'))
+  // An undone preview keeps its name.
+  const undonePreview = resultCard(panel({ state: 'done' }, true, { chat, receipts: [{ ...receipt, changeKind: 'preview' }], project: after, review: { change: null } }))
+  assert.equal(textContent(nodes(undonePreview.tree).find(node => node.type === 'b')), 'Applied the preview')
   // Another change coming back leaves this one undone.
   const other = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: { ...change, id: 'ch2' } } }))
   assert.equal(other.props.receipts[0].undone, true)

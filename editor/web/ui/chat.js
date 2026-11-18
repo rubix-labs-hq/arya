@@ -82,7 +82,9 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
   const undoable = Boolean(change?.undoable)
   const undone = !undoable && receipts.length > 0 && receipts.every(receipt => receipt.undone)
   const edits = change ? change.edits : receipts.length
-  const title = change?.kind === 'preview' ? 'Applied the preview' : `Made ${plural(edits, 'edit')}`
+  // An undone preview keeps its name: the receipts remember which kind of change they belonged to.
+  const preview = change ? change.kind === 'preview' : receipts.length > 0 && receipts.every(receipt => receipt.changeKind === 'preview')
+  const title = preview ? 'Applied the preview' : `Made ${plural(edits, 'edit')}`
   const caption = receipts.length ? receiptCaption(receipts, store.project) : ''
   const notes = [...new Set(receipts.flatMap(receipt => receipt.notes ?? []))]
   // Select works on the layers of every edit in the run, one button per timeline they are on.
@@ -350,7 +352,7 @@ export function ChatPanel() {
     setReviewBusy(kind)
     try {
       await api(route, body)
-      if (undoneChange?.id === body?.id && store.root === root) set({ receipts: store.receipts.map(receipt => receipt.version > undoneChange.beforeVersion && receipt.version <= undoneChange.afterVersion ? { ...receipt, undone: true, undoneBy: undoneChange.id } : receipt) })
+      if (undoneChange?.id === body?.id && store.root === root) set({ receipts: store.receipts.map(receipt => receipt.version > undoneChange.beforeVersion && receipt.version <= undoneChange.afterVersion ? { ...receipt, undone: true, undoneBy: undoneChange.id, changeKind: undoneChange.kind } : receipt) })
     }
     catch (error) { toast(error.message, 'error') }
     finally { setReviewBusy('') }
