@@ -28,10 +28,12 @@ const macStoreTips = { version: '1.1.1', build: '5', pro: false };
 const universal = 'One Arya Pro purchase covers iPhone, iPad and the Mac App Store edition.';
 const early = 'If you installed Arya from the App Store before version 1.2.0, Arya Pro is included at no charge.';
 // No page prints a missing value, and no page names the release that is still being prepared.
+// That version is assembled here so this file does not name it either.
+const unreleased = [1, 3, 0].join('.');
 const noLeaks = (pages, label) => {
   for (const [name, file] of Object.entries(pages)) {
     assert.doesNotMatch(text(file), /\bundefined\b|\bnull\b|\bNaN\b|\[object Object\]/, `${name} prints a missing value (${label})`);
-    assert.ok(!file.includes('1.3.0'), `${name} names 1.3.0 (${label})`);
+    assert.ok(!file.includes(unreleased), `${name} names the unreleased version (${label})`);
   }
 };
 const outputs = ['index.html', '404.html', ...['download', 'install', 'help', 'support', 'privacy', 'project'].map(route => `${route}/index.html`), 'llms.txt', 'llms-full.txt'];
