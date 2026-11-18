@@ -37,6 +37,7 @@ import { ProjectRecovery, recoveryProject } from './core/project-recovery.mjs'
 import { runRecoveryJournal } from './core/project-recovery-bridge.mjs'
 import { createTranscriptRoutes } from './routes/transcript.mjs'
 import { createBrowserAssistant, confinedFile } from './agent/browser-assistant.mjs'
+import { createAccountFingerprint } from './agent/account-fingerprint.mjs'
 import { createChatGPTAccount } from './agent/chatgpt-account.mjs'
 import { createChatHistory } from './agent/chat-history.mjs'
 import { createAssistantReview } from './agent/assistant-review.mjs'
@@ -1087,6 +1088,8 @@ const assistantService = createBrowserAssistant({
   chatgpt: chatgptAccount,
   getIdentity: () => projectEpoch,
   getVersion: () => version,
+  // Ties a saved sharing permission to the signed-in provider account, so it holds across restarts.
+  accountFingerprint: createAccountFingerprint(),
   // exportFolder tells the prompt this is the browser editor, whose exports land in renders/ (see EXPORT_GUIDE).
   getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus), exportFolder: 'renders' } : {}), ...(focus && transcriptionState ? { transcription: transcriptionState } : {}) }),
   renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null, { queueMs: ASSISTANT_FRAME_QUEUE_MS }) }),

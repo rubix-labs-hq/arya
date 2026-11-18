@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
@@ -14,7 +15,7 @@ import { createAssistantCatalog } from './assistant-catalog.mjs'
 import { readCodexCatalog } from './catalog-discovery.mjs'
 import { createProbeTiming } from './probe-timing.mjs'
 import { fileURLToPath } from 'node:url'
-import { SHARING_VERSION, normalizeSharingEnvelope, sharingScopeForRoute, sameSharingScope, canonicalCompanion, sharingDisclosure } from '../core/assistant-sharing.mjs'
+import { SHARING_VERSION, normalizeSharingEnvelope, sharingScopeForRoute, sameSharingScope, sameSharingRecipients, loopbackCompanion, canonicalCompanion, sharingDisclosure } from '../core/assistant-sharing.mjs'
 import { agentProjectView, HISTORY_NOTE, runHistory } from './agent-views.mjs'
 import { progressLabel, stepLabel, waitingAfter } from './step-labels.mjs'
 import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, unfinishedJobsOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
@@ -128,6 +129,11 @@ export function createBrowserAssistant(options) {
   if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 15000 || !Number.isInteger(cleanupTimeoutMs) || cleanupTimeoutMs < 1 || cleanupTimeoutMs > 18000) throw new TypeError('Assistant host timeouts must be positive and within their default limits.')
   const ownerClosures = new WeakMap()
   let sharingGeneration = 0, grantRecord = null
+  // A key kept on this computer, outside every project. A saved permission is an HMAC under it,
+  // so a permission file copied from another computer, or written by hand, is never accepted.
+  const hostKeyFile = options.hostKeyFile ?? path.join(os.homedir(), '.arya', 'assistant-host-key')
+  const accountCacheMs = options.accountCacheMs ?? 15000
+  const accountCache = new Map()
   const reviews = new Map()
   // ChatGPT is offered only when the host injects its Sign in with ChatGPT account.
   const providerIDs = options.chatgpt ? ['chatgpt', ...PROVIDERS] : PROVIDERS
@@ -156,7 +162,10 @@ export function createBrowserAssistant(options) {
       if (fs.statSync(file).size > 64 * 1024) throw failure('Saved sharing permission exceeded 64 KiB.')
       const saved = JSON.parse(fs.readFileSync(file, 'utf8'))
       if (typeof saved.credentialDigest !== 'string' || !/^[a-f0-9]{64}$/.test(saved.credentialDigest)) throw failure('Saved sharing permission cannot be verified.')
-      grantRecord = { sharing: normalizeSharingEnvelope(saved.sharing), credentialDigest: saved.credentialDigest }
+      // binding 2 is a digest that outlasts this server (see durableDigest). Any other record is
+      // tied to the server that wrote it and is never accepted by a later one. session is the
+      // digest of the bridge this server has confirmed the permission for; it is not stored.
+      grantRecord = { sharing: normalizeSharingEnvelope(saved.sharing), credentialDigest: saved.credentialDigest, ...(saved.binding === 2 ? { binding: 2 } : {}), session: null }
     }
   } catch (error) { options.diagnostic?.(redact(error.message)) }
   const invalidateReviews = () => { sharingGeneration++; reviews.clear() }
@@ -176,7 +185,7 @@ export function createBrowserAssistant(options) {
     if (!grantRecord) { try { fs.unlinkSync(guardedOutput(root, sharingFile)) } catch (error) { if (error.code !== 'ENOENT') throw error }; return }
     const temporary = path.join(path.dirname(sharingFile), `assistant-sharing-${randomUUID()}.part.json`)
     try {
-      fs.writeFileSync(guardedOutput(root, temporary), `${JSON.stringify(grantRecord)}\n`, { mode: 0o600, flag: 'wx' })
+      fs.writeFileSync(guardedOutput(root, temporary), `${JSON.stringify({ sharing: grantRecord.sharing, credentialDigest: grantRecord.credentialDigest, ...(grantRecord.binding === 2 ? { binding: 2 } : {}) })}\n`, { mode: 0o600, flag: 'wx' })
       fs.renameSync(guardedOutput(root, temporary), guardedOutput(root, sharingFile))
     } finally { try { fs.unlinkSync(guardedOutput(root, temporary)) } catch {} }
   }
@@ -311,7 +320,7 @@ export function createBrowserAssistant(options) {
     try { await launchLogin('/usr/bin/open', ['-a', 'Terminal', guardedOutput(root, file)], cleaned) }
     catch { try { fs.unlinkSync(guardedOutput(root, file)) } catch {}; throw failure('Terminal could not open the provider sign-in. Run the displayed login command in Terminal.') }
     assertOpen()
-    invalidateReviews(); grantRecord = null; persistGrant()
+    invalidateReviews(); grantRecord = null; persistGrant(); accountCache.clear()
     providerCache = null; providerCheckedAt = null; catalogHost.invalidate()
     return { started: true, provider, authenticated: false, reason: 'Complete the provider sign-in in Terminal, then refresh account status.' }
   }
@@ -374,16 +383,81 @@ export function createBrowserAssistant(options) {
     if (chatgptIdentity) digest.update('\0chatgpt\0' + chatgptIdentity)
     return { credentialDigest: digest.digest('hex'), chatgptIdentity }
   }
+  // The host key, or null. Only a grant creates it. A key that is a link, is readable by other
+  // users or is not 32 random bytes is not used, and is left as it is.
+  const hostKey = create => {
+    const read = () => {
+      const stat = fs.lstatSync(hostKeyFile)
+      if (!stat.isFile() || stat.mode & 0o077 || stat.size > 128 || process.getuid && stat.uid !== process.getuid()) return null
+      const value = fs.readFileSync(hostKeyFile, 'utf8').trim()
+      return /^[a-f0-9]{64}$/.test(value) ? Buffer.from(value, 'hex') : null
+    }
+    try { return read() } catch (error) { if (error.code !== 'ENOENT' || !create) return null }
+    try {
+      fs.mkdirSync(path.dirname(hostKeyFile), { recursive: true, mode: 0o700 })
+      fs.writeFileSync(hostKeyFile, `${randomBytes(32).toString('hex')}\n`, { mode: 0o600, flag: 'wx' })
+    } catch (error) { if (error.code !== 'EEXIST') { options.diagnostic?.('The assistant host key could not be created, so sharing permission will be asked again after a restart.'); return null } }
+    try { return read() } catch { return null }
+  }
+  /**
+   * The account each provider in scope is signed in to, as {provider: 64 hex characters | null}.
+   * null means unreadable. Read through options.accountFingerprint and kept for a few seconds,
+   * because a review, its grant and the next send follow each other closely.
+   */
+  const readAccounts = async (scope, chatgptIdentity, fresh = false) => {
+    const entries = await Promise.all(scope.providers.map(async provider => {
+      if (provider === 'chatgpt') return [provider, chatgptIdentity]
+      if (!options.accountFingerprint) return [provider, null]
+      let cached = accountCache.get(provider)
+      if (fresh || !cached || Date.now() - cached.at >= accountCacheMs) {
+        cached = { at: Date.now(), value: Promise.resolve().then(() => options.accountFingerprint(provider)).then(value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : null, () => null) }
+        accountCache.set(provider, cached)
+      }
+      return [provider, await cached.value]
+    }))
+    return Object.fromEntries(entries)
+  }
+  /**
+   * The digest a permission is stored under when it can outlast this server: an HMAC under the
+   * host key of the project folder, the recipients, models and data categories, and the account
+   * of every provider in scope. A loopback companion counts without its port, which changes
+   * with each start. null when any account is unreadable or there is no usable key.
+   */
+  const durableDigest = (scope, accounts, create) => {
+    if (!accounts || scope.providers.some(provider => !/^[a-f0-9]{64}$/.test(accounts[provider] ?? ''))) return null
+    let location
+    try { location = fs.realpathSync(root) } catch { return null }
+    const key = hostKey(create)
+    if (!key) return null
+    return createHmac('sha256', key).update(JSON.stringify({ v: 2, root: location, providers: scope.providers, models: scope.models, classes: scope.classes, companion: loopbackCompanion(scope.companion) ? 'loopback' : scope.companion, accounts: scope.providers.map(provider => [provider, accounts[provider]]) })).digest('hex')
+  }
+  const needsAdoption = (scope, binding) => !!grantRecord && grantRecord.binding === 2 && grantRecord.session !== binding.credentialDigest && sameSharingRecipients(grantRecord.sharing.scope, scope)
+  // Accepts the stored permission for this server's bridge when its digest matches the current
+  // recipients and accounts. Synchronous, so it cannot overtake a withdrawal: callers read the
+  // accounts first, check that nothing changed during that wait, and then call this.
+  const adoptSavedGrant = (scope, binding, accounts) => {
+    if (!needsAdoption(scope, binding)) return
+    const expected = durableDigest(scope, accounts, false)
+    if (!expected || !timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(grantRecord.credentialDigest, 'hex'))) return
+    // The envelope names the current companion address, which is what the bridge checks.
+    grantRecord = { ...grantRecord, sharing: { version: SHARING_VERSION, approved: true, scope }, session: binding.credentialDigest }
+  }
   const currentSharing = async () => {
     const generation = sharingGeneration, identity = options.getIdentity(), configuration = JSON.stringify(settings)
+    const unchanged = () => { assertOpen(); if (generation !== sharingGeneration || identity !== options.getIdentity() || configuration !== JSON.stringify(settings)) throw failure('The project or assistant settings changed during sharing review. Review again.', 409) }
     const owner = await companion()
     const route = await catalogHost.resolve(settings, { requiresImage: true })
-    assertOpen()
-    if (generation !== sharingGeneration || identity !== options.getIdentity() || configuration !== JSON.stringify(settings)) throw failure('The project or assistant settings changed during sharing review. Review again.', 409)
+    unchanged()
     const scope = sharingScopeForRoute(route, canonicalCompanion(owner.endpoint))
-    return { scope, ...credentialBinding(owner, scope), generation, identity, configuration }
+    const binding = credentialBinding(owner, scope)
+    // A permission this server already holds needs no account read. A review that may end in a
+    // grant, or in accepting the stored permission, does.
+    const accounts = approvedScope({ scope, ...binding }) ? null : await readAccounts(scope, binding.chatgptIdentity)
+    unchanged()
+    if (accounts) adoptSavedGrant(scope, binding, accounts)
+    return { scope, ...binding, accounts, generation, identity, configuration }
   }
-  const approvedScope = value => !!grantRecord && grantRecord.credentialDigest === value.credentialDigest && sameSharingScope(grantRecord.sharing.scope, value.scope)
+  const approvedScope = value => !!grantRecord && grantRecord.session === value.credentialDigest && sameSharingScope(grantRecord.sharing.scope, value.scope)
   const reviewResponse = (value, reviewID) => {
     const approved = approvedScope(value)
     return { version: SHARING_VERSION, approved, required: !approved, scope: value.scope, sharing: approved ? grantRecord.sharing : null, reviewID, disclosure: sharingDisclosure(value.scope), reason: approved ? 'Sharing permission covers the current recipients and model pool.' : 'Review these recipients and project data categories before sending.' }
@@ -403,8 +477,16 @@ export function createBrowserAssistant(options) {
     const envelope = normalizeSharingEnvelope(body.sharing)
     if (!sameSharingScope(envelope.scope, review.scope)) throw failure('Allow only the exact recipients and data categories shown in this review.', 403)
     const value = await currentSharing()
-    if (reviews.get(body.reviewID) !== review || review.generation !== sharingGeneration || review.expiresAt < Date.now() || review.configuration !== value.configuration || review.credentialDigest !== value.credentialDigest || !sameSharingScope(review.scope, value.scope)) throw failure('The assistant destination or model pool changed during review. Review again.', 403)
-    grantRecord = { sharing: envelope, credentialDigest: value.credentialDigest }
+    const current = () => reviews.get(body.reviewID) === review && review.generation === sharingGeneration && value.generation === sharingGeneration && review.expiresAt >= Date.now() && review.configuration === value.configuration && review.credentialDigest === value.credentialDigest && sameSharingScope(review.scope, value.scope)
+    if (!current()) throw failure('The assistant destination or model pool changed during review. Review again.', 403)
+    // The accounts as they are now, not as a few seconds ago: this is the moment of consent.
+    const accounts = await readAccounts(value.scope, value.chatgptIdentity, true)
+    assertOpen()
+    if (!current() || review.accounts && JSON.stringify(review.accounts) !== JSON.stringify(accounts)) throw failure('The assistant destination, model pool or signed-in account changed during review. Review again.', 403)
+    // With every account readable the permission is stored under a digest a later server can
+    // check. Otherwise it is tied to this server's bridge, as before, and asked again after a restart.
+    const durable = durableDigest(value.scope, accounts, true)
+    grantRecord = { sharing: envelope, credentialDigest: durable ?? value.credentialDigest, ...(durable ? { binding: 2 } : {}), session: value.credentialDigest }
     try { persistGrant() } catch (error) { grantRecord = null; throw error }
     reviews.delete(body.reviewID)
     return reviewResponse(value, null)
@@ -653,9 +735,19 @@ export function createBrowserAssistant(options) {
       assertRun(run)
       const route = await catalogHost.resolve(settings, { text: body.text, selectionCount: selection.length, inputKind, requiresImage: true })
       assertRun(run)
-      const scope = sharingScopeForRoute(route, owner.endpoint), envelope = normalizeSharingEnvelope(body.sharing)
+      const scope = sharingScopeForRoute(route, owner.endpoint), claimed = normalizeSharingEnvelope(body.sharing)
       const binding = credentialBinding(owner, scope)
-      if (!sameSharingScope(envelope.scope, scope) || !approvedScope({ scope, ...binding })) throw failure('Sharing permission is required for the current recipients. Review assistant sharing before sending.', 403)
+      // The first send after a restart can arrive before any review. The stored permission is
+      // checked against the signed-in accounts here, once per server.
+      if (needsAdoption(scope, binding)) {
+        const accounts = await readAccounts(scope, binding.chatgptIdentity)
+        assertRun(run)
+        adoptSavedGrant(scope, binding, accounts)
+      }
+      // A page left open across a restart holds an envelope with the old companion port. The
+      // host's own record decides, and the bridge gets the envelope for its current address.
+      if (!sameSharingRecipients(claimed.scope, scope) || !approvedScope({ scope, ...binding })) throw failure('Sharing permission is required for the current recipients. Review assistant sharing before sending.', 403)
+      const envelope = { version: SHARING_VERSION, approved: true, scope }
       run.chatgptIdentity = binding.chatgptIdentity
       // Earlier messages only: read before this request joins the conversation. The sharing
       // review names conversation history as a category, and a run without it gets none.

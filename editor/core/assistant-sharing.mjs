@@ -55,6 +55,23 @@ export function sameSharingScope(a, b) {
   try { return JSON.stringify(normalizeSharingScope(a)) === JSON.stringify(normalizeSharingScope(b)) } catch { return false }
 }
 
+/** True for the plain-HTTP companion on this computer, which listens on a new port each start. */
+export function loopbackCompanion(value) {
+  try { const url = new URL(canonicalCompanion(value)); return url.protocol === 'http:' && url.hostname === '127.0.0.1' } catch { return false }
+}
+
+/**
+ * The same recipients, models and data categories. Two companions on this computer's loopback
+ * address compare equal whatever their port. Any other companion is compared exactly.
+ */
+export function sameSharingRecipients(a, b) {
+  try {
+    const first = normalizeSharingScope(a), second = normalizeSharingScope(b)
+    const local = loopbackCompanion(first.companion) && loopbackCompanion(second.companion)
+    return JSON.stringify(local ? { ...first, companion: '' } : first) === JSON.stringify(local ? { ...second, companion: '' } : second)
+  } catch { return false }
+}
+
 export function sharingScopeForRoute(route, companion) {
   if (!route?.ok) throw failure(route?.reason || 'The assistant recipient is unavailable. Refresh account status before sharing.')
   const models = route.mode === 'auto' ? route.considered : [{ provider: route.provider, model: route.model ?? '' }]
