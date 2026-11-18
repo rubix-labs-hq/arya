@@ -138,5 +138,5 @@ export function AssistantControls({ status, active = false, text = '', selection
 
 export function RoutingReceipt({ value }) {
   if (!value?.ok) return null
-  return html`<details class="assistant-routing-receipt"><summary>${value.mode === 'auto' ? 'Auto chose' : 'Requested'} ${value.modelName ?? value.model ?? 'provider default'}${value.effort ? ` · ${value.effort}` : ''}</summary><p>${value.rationale}</p><p class="muted">${providerName(value.provider)} · Requested model: ${value.model ?? 'provider default'}. The CLI has not reported an executed model identifier.</p><p class="muted">${value.billing?.note}</p></details>`
+  return html`<details class="assistant-routing-receipt"><summary>${value.mode === 'auto' ? 'Auto chose' : 'Requested'} ${value.modelName ?? value.model ?? 'provider default'}${value.effort ? ` · ${value.effort}` : ''}</summary><p>${value.rationale}</p><p class="muted">${providerName(value.provider)} · Requested model: ${value.model ?? 'provider default'}. ${value.executedModel ? `Ran on ${value.executedModel}, as the CLI reported.` : 'The CLI has not reported an executed model identifier.'}</p><p class="muted">${value.billing?.note}</p></details>`
 }
