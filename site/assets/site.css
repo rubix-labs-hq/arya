@@ -18,6 +18,8 @@ code{font-family:var(--mono);font-size:.88em;background:#ffffff14;padding:.1em .
 .skip-link{position:fixed;top:-100px;left:24px;z-index:99;background:var(--amber);color:var(--ink);padding:12px 16px;font-weight:600}
 .skip-link:focus{top:12px}
 :focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+/* A section that takes focus from a link to it shows no ring; the next Tab lands inside it */
+main:focus-visible,section[tabindex="-1"]:focus-visible{outline:0}
 .noscript{background:var(--raised);padding:20px;text-align:center;font-size:14px}
 
 /* Header and navigation */
@@ -28,18 +30,20 @@ code{font-family:var(--mono);font-size:.88em;background:#ffffff14;padding:.1em .
 .nav{display:flex;align-items:center;gap:4px}
 .nav a:not(.button){min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;padding:0 11px;font-size:14.5px;font-weight:500;color:var(--muted);text-decoration:none;border-radius:6px;transition:color .15s var(--ease),background .15s var(--ease)}
 .nav a:not(.button):hover{color:var(--paper);background:#ffffff0d}
-.nav .button{margin-left:8px}
+.nav a[aria-current=page]{color:var(--paper);background:#ffffff0d}
+.header-download{flex:none;margin-left:4px}
+.header-download[aria-current=page]{background:#ffffff08;color:var(--paper);border-color:var(--stroke)}
+.header-download[aria-current=page]:hover{background:#ffffff12;border-color:#686c60}
 .menu-button{display:none;min-height:44px;padding:0 16px;background:transparent;color:var(--paper);border:1px solid var(--stroke);border-radius:6px;font:600 15px var(--font);cursor:pointer}
 
 /* Buttons and links */
-.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;background:var(--amber);color:var(--ink);border:1px solid transparent;border-radius:8px;font:600 15.5px/1 var(--font);text-decoration:none;cursor:pointer;transition:background .15s var(--ease),border-color .15s var(--ease),transform .12s var(--ease),box-shadow .15s var(--ease)}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:9px 20px;background:var(--amber);color:var(--ink);border:1px solid transparent;border-radius:8px;font:600 15.5px/1.25 var(--font);text-align:center;text-decoration:none;cursor:pointer;transition:background .15s var(--ease),border-color .15s var(--ease),transform .12s var(--ease),box-shadow .15s var(--ease)}
 .button:hover{background:#f6cf8b;transform:translateY(-1px)}
 .button:active{transform:scale(.98)}
-.button.small{min-height:44px;padding:0 16px;font-size:14.5px;border-radius:7px}
+.button.small{min-height:44px;padding:8px 14px;font-size:14.5px;border-radius:7px}
 .button.secondary{background:#ffffff08;color:var(--paper);border-color:var(--stroke)}
 .button.secondary:hover{background:#ffffff12;border-color:#686c60}
 .button:disabled{opacity:.6;cursor:not-allowed;transform:none}
-.button-badge{display:inline-block;padding:3px 7px;border-radius:99px;background:#ffffff17;color:var(--muted);font-size:11.5px;font-weight:600;letter-spacing:.01em}
 .text-link{display:inline-flex;align-items:center;gap:6px;min-height:44px;font-weight:600;color:var(--paper);text-decoration:underline;text-decoration-color:#ffffff59;text-underline-offset:5px}
 .text-link:hover{text-decoration-color:currentColor}
 .text-link span{display:inline-block;transition:transform .15s var(--ease)}
@@ -48,25 +52,23 @@ code{font-family:var(--mono);font-size:.88em;background:#ffffff14;padding:.1em .
 .eyebrow span{padding:4px 12px;border:1px solid #9ba98d59;border-radius:99px;background:#9ba98d12;font-weight:500;color:var(--paper)}
 .lead{font-size:clamp(18px,1.5vw,21px);line-height:1.5;color:#d6d7ce;max-width:42em}
 
-/* Home hero: the headline beside the availability ledger, then the app on each device */
+/* Home hero: product, launch actions and real editor captures */
 .hero{padding:clamp(24px,3vw,44px) 0 clamp(44px,5.5vw,80px)}
-.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,520px);gap:28px clamp(32px,5vw,80px);align-items:end}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(480px,40%);gap:24px clamp(24px,4vw,64px);align-items:end}
 .hero h1{font-size:clamp(38px,4.9vw,70px);letter-spacing:-.04em;line-height:1.02}
-.hero h1 em{display:block;margin-top:.16em;font-size:1.07em;letter-spacing:-.015em}
+.hero h1 em{display:block;margin-top:.28em;font-size:.75em;letter-spacing:-.015em}
 .hero .lead{margin:0 0 22px;color:var(--soft)}
+.hero .lead a{color:var(--paper);text-decoration-color:#ffffff59}
+.hero .lead a:hover{text-decoration-color:currentColor}
 .actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px}
-.ledger{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--stroke)}
-.ledger-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px;min-height:76px;padding:13px 0;border-bottom:1px solid var(--stroke)}
-.ledger-what{flex:1 1 210px;display:flex;flex-direction:column;gap:2px;min-width:0}
-.ledger-what strong{font-size:16px;font-weight:600}
-.ledger-what span{font-size:14px;line-height:1.4;color:var(--muted)}
-.ledger .button{flex:0 0 262px;padding-inline:14px}
-.ledger-ios .button{background:var(--paper)}
-.ledger-ios .button:hover{background:#fff}
+.hero-actions{gap:10px}
+.hero-meta{margin:10px 0 0;color:var(--muted);font-size:14px}
+.hero-links{gap:0 24px}
+.hero-links .text-link{font-size:15px}
 
 /* The app on each device: real captures as offset layers, back to front */
 /* The stage is as tall as the Mac window. iPad and iPhone sit over the Mac's empty Media panel and end on the line where its viewer ends. */
-.family{margin:clamp(40px,3.8vw,56px) 0 0}
+.family{margin:clamp(24px,3.5vw,54px) 0 0}
 .family-stage{position:relative;aspect-ratio:2/1;margin-bottom:clamp(30px,3vw,40px)}
 .family-stage:before,.family-stage:after{content:'';position:absolute;width:18px;height:18px;border:0 solid var(--amber);opacity:.75}
 .family-stage:before{left:0;top:0;border-width:1px 0 0 1px}
@@ -140,7 +142,7 @@ code{font-family:var(--mono);font-size:.88em;background:#ffffff14;padding:.1em .
 .plate-mac-media-panel .plate-frame{border-radius:10px 10px 0 0}
 .plate-mac-media-panel figcaption{margin:0}
 .plate-iphone-deliver{width:302px;max-width:100%}
-/* The launch film: one wide player under the hero. It plays only when the visitor starts it */
+/* The launch film: one wide player after the assistant section. It plays only when the visitor starts it */
 .launch-film{padding:clamp(48px,6vw,96px) 0;border-top:1px solid var(--line)}
 .launch-film-figure{margin:0}
 .launch-film video{display:block;width:100%;height:auto;aspect-ratio:16/9;border-radius:6px;background:#151615;box-shadow:0 0 0 1px #ffffff1f}
@@ -202,6 +204,7 @@ code{font-family:var(--mono);font-size:.88em;background:#ffffff14;padding:.1em .
 
 /* Comparison tables: What works where & Switching */
 .editions-section,.switching{padding:clamp(40px,5vw,72px) 0}
+.comparison-label{display:none}
 .table-wrap{overflow-x:auto;border-top:1px solid var(--stroke);border-bottom:1px solid var(--stroke)}
 table{width:100%;border-collapse:collapse;font-size:15.5px}
 th,td{text-align:left;vertical-align:top;padding:16px 24px 16px 0;border-bottom:1px solid var(--line)}
@@ -284,6 +287,8 @@ td{color:var(--soft)}
 .page-hero-grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,4fr);gap:32px 64px;align-items:end}
 .page-hero h1{font-size:clamp(38px,5vw,68px);letter-spacing:-.04em;margin-bottom:18px}
 .page-hero .lead{margin:0}
+.page-hero .actions{margin-top:24px}
+.page-404 .actions{gap:10px 16px}
 .status-card{padding:24px;border:1px solid var(--stroke);border-radius:10px;background:var(--raised)}
 .status-card-label{display:block;margin-bottom:12px;font-size:14px;font-weight:600;color:var(--sage)}
 .status-card ul{margin:0;padding:0;list-style:none}
@@ -295,10 +300,11 @@ td{color:var(--soft)}
 .contents-label{margin-bottom:8px;font-size:13px;font-weight:600;color:var(--paper-muted)}
 .article-aside a{display:flex;align-items:center;min-height:44px;min-width:44px;border-top:1px solid var(--paper-stroke);color:#3f453a;text-decoration:none}
 .article-aside a:hover{color:var(--ink);text-decoration:underline}
-.article h2{font-size:clamp(28px,3vw,38px);margin:56px 0 18px}
+.article h2{font-size:clamp(26px,3vw,38px);margin:clamp(32px,4.3vw,56px) 0 14px}
 .article>h2:first-child,.article>.access-card:first-child,.article>.notice:first-child{margin-top:0}
 .article h3{font-size:22px;margin:0 0 10px}
-.article p,.article li{color:#3f453a}
+.article p,.article li{color:var(--paper-text)}
+.article ul li+li{margin-top:.5em}
 .article a:not(.button){color:var(--amber-ink);font-weight:600}
 .reading-surface :focus-visible{outline-color:var(--amber-ink)}
 .reading-surface .button{background:var(--ink);color:var(--paper)}
@@ -308,8 +314,8 @@ td{color:var(--soft)}
 .article ul{padding-left:1.2em}
 .article .notice{padding:14px 16px;border-left:3px solid #a47937;background:#e7e3d6;font-size:15px}
 .step-list{list-style:none;counter-reset:step;padding:0;margin:0}
-.step-list>li{counter-increment:step;position:relative;padding:22px 0 22px 52px;border-top:1px solid var(--paper-stroke)}
-.step-list>li:before{content:counter(step,decimal-leading-zero);position:absolute;left:0;top:24px;font-size:14px;font-weight:600;color:var(--amber-ink)}
+.step-list>li{counter-increment:step;position:relative;padding:18px 0 18px clamp(32px,4vw,52px);border-top:1px solid var(--paper-stroke)}
+.step-list>li:before{content:counter(step,decimal-leading-zero);position:absolute;left:0;top:20px;font-size:14px;font-weight:600;color:var(--amber-ink)}
 .step-list strong{display:block;font-size:20px;color:var(--ink);margin-bottom:6px}
 .step-list p{margin:0}
 .reading-surface table{font-size:15px}
@@ -322,11 +328,26 @@ td{color:var(--soft)}
 .reading-surface .faq-list summary:after{color:var(--paper-muted)}
 .reading-surface .faq-list details p{color:#3f453a}
 .after-faq{margin-top:24px}
-.status-panel{padding:24px;border:1px solid var(--paper-stroke);border-radius:10px;background:#e7e3d6}
-.status-label{display:inline-flex;margin-bottom:10px;font-size:14px;font-weight:600;color:var(--amber-ink)}
-.status-panel h3{font-size:24px}
-.release-meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;padding-top:16px;border-top:1px solid var(--paper-stroke);font-size:14px;color:var(--paper-muted)}
-.release-meta strong{display:block;color:var(--ink);font-size:16px}
+/* Availability and setup */
+.download-hero{padding-block:clamp(30px,4vw,58px)}
+.download-layout{padding:clamp(24px,4vw,56px) 0 clamp(42px,6vw,80px)}
+.edition-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:0 clamp(20px,3vw,44px)}
+.edition{display:grid;justify-items:start;align-content:start;gap:10px;padding:20px 0 24px;border-top:2px solid var(--paper-stroke)}
+.edition:first-child{border-color:var(--amber-ink)}
+.edition h2,.download-help h2{font-size:clamp(24px,2.5vw,34px)}
+.edition p,.download-help p{margin:0;color:var(--paper-text)}
+.edition .edition-meta{font-size:14px;color:var(--paper-muted)}
+#release-action:empty,#mobile-action:empty{display:none}
+/* What follows the button belongs to its own card: an opened disclosure moves nothing in the other cards */
+.edition-more{display:grid;justify-items:start;align-content:start;align-self:start;gap:10px;width:100%}
+/* Side by side, the three editions share their first rows, so the buttons sit on one line */
+@media(min-width:961px){.edition-grid{grid-template-rows:repeat(5,auto)}.edition{grid-row:span 5;grid-template-rows:subgrid}}
+.download-details{align-self:start;width:100%;font-size:15px;color:var(--paper-text)}
+.download-details summary{min-height:44px;padding:9px 0;font-weight:650;cursor:pointer}
+.download-details p{margin:0 0 10px}
+.download-help{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:1px solid var(--paper-stroke);margin-top:20px;padding-top:24px}
+.download-help h2{margin-bottom:8px}
+.download-layout .access-card{margin-top:20px}
 .access-card{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin:0 0 16px;padding:28px;border-radius:10px;background:var(--ink);color:var(--paper)}
 .access-card h2{margin:0 0 6px;color:var(--paper)}
 .access-card p{color:#dcdcd3;margin:0 0 8px}
@@ -354,11 +375,10 @@ td{color:var(--soft)}
 .contribution :focus-visible{outline-color:var(--amber)}
 .amounts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}
 .amounts button{min-height:64px;padding:8px;background:transparent;color:var(--paper);border:1px solid #5b5f55;border-radius:6px;font:600 20px var(--font);cursor:pointer}
-.amounts button small{display:block;font-size:12px;font-weight:500;color:var(--muted)}
 .amounts button[aria-pressed=true]{border-color:var(--amber);background:#2a2a22}
 .contribution label{font-size:15px;font-weight:600}
 .amount-input{display:flex;align-items:center;gap:8px;margin:8px 0 16px;padding:0 14px;border:1px solid #5b5f55;border-radius:6px;background:#0d0e0d}
-.amount-input input{flex:1;min-height:48px;background:transparent;color:var(--paper);border:0;font:16px var(--font)}
+.amount-input input{flex:1;min-width:0;min-height:48px;background:transparent;color:var(--paper);border:0;font:16px var(--font)}
 .contribution .button{width:100%;background:var(--paper);color:var(--ink)}
 .contribution .button:hover{background:#ffffff}
 .contribution .form-state{padding:12px 14px;border:1px solid #5b5f55;border-radius:6px}
@@ -374,24 +394,35 @@ td{color:var(--soft)}
   .family-iphone{animation-delay:.22s}
 }
 
-/* The hero and the page rail go to one column before their side columns get tight */
+/* The workspace rail moves above the chapters before it crowds the captures */
 @media(max-width:1100px){
-  .hero-grid,.pages-grid{grid-template-columns:minmax(0,1fr)}
-  .hero-grid{gap:24px}
+  .pages-grid{grid-template-columns:minmax(0,1fr)}
   .page-rail{position:static;flex-direction:row;border-bottom:1px solid var(--stroke)}
   .page-rail a{flex:1 1 0;justify-content:center;min-width:44px;border-bottom:0}
+  .hero-grid{grid-template-columns:minmax(0,1fr);gap:18px}
+  .hero .lead{max-width:34em}
+}
+
+/* The closing copy keeps a readable column: the three buttons sit under it until there is room beside it */
+@media(max-width:1279px){
+  .closing{grid-template-columns:minmax(0,1fr)}
+  .closing-actions{justify-content:flex-start}
+  .closing-meta{max-width:60em}
 }
 
 /* Navigation collapses before the links crowd the header */
 @media(max-width:960px){
-  .menu-button{display:none}.nav{display:flex;position:static;z-index:15;top:68px;right:0;left:0;flex-direction:column;align-items:stretch;gap:4px;padding:16px var(--gutter) 20px;background:var(--ink);border-bottom:1px solid var(--stroke)}
-  .header-inner{flex-wrap:wrap}
+  html:not(.has-navigation) .site-header{position:static}
+  .header-inner{flex-wrap:wrap;gap:0 8px}
+  .menu-button{margin-left:auto}
+  .nav{flex-wrap:wrap;gap:4px}
+  .has-navigation .nav{inset:100% 0 auto;z-index:15;flex-wrap:nowrap;flex-direction:column;align-items:stretch;max-height:calc(100dvh - 65px);overflow:auto;padding:14px var(--gutter) 18px;background:var(--ink);border-bottom:1px solid var(--stroke)}
+  .nav a:not(.button){justify-content:flex-start}
+  .has-navigation .nav a:not(.button){flex:none;font-size:16px}
   .has-navigation .header-inner{flex-wrap:nowrap}
   .has-navigation .menu-button{display:block}
   .has-navigation .nav{display:none;position:absolute}
   .has-navigation .nav.is-open{display:flex}
-  .nav a:not(.button){justify-content:flex-start;font-size:17px;padding:0 4px}
-  .nav .button{margin:8px 0 0}
   .chapter-plate,.chapter-duo,.chapter-side,.chapter-head,.extras,.closing{grid-template-columns:minmax(0,1fr)}
   .chapter-duo{grid-template-rows:none}
   .chapter-duo .plate,.chapter-duo .chapter-figure{grid-column:auto;grid-row:auto}
@@ -401,14 +432,24 @@ td{color:var(--soft)}
   .assistant-grid,.page-hero-grid,.support-layout,.section-head,.article-layout{grid-template-columns:minmax(0,1fr)}
   .figure-assistant{justify-self:start}
   .article-aside{position:static;flex-direction:row;flex-wrap:wrap;gap:0 16px}
-  .article-aside a{border-top:0}
+  .article-aside a{border-top:0;text-decoration:underline;text-decoration-color:var(--paper-muted)}
+  .page-vignette{display:none}
   .contents-label{width:100%}
-  .footer-grid{grid-template-columns:1fr 1fr}
+  .footer-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .footer-brand{grid-column:1/-1}
+  .edition-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+/* Before the menu handlers are installed, the fallback links take one compact row under the brand, so the header shrinks less when the menu arrives */
+@media(max-width:699px){
+  html:not(.has-navigation) .nav{order:1;flex:1 0 100%;gap:0;justify-content:space-between}
+  html:not(.has-navigation) .nav a:not(.button){padding-inline:4px;font-size:14px}
 }
 
 /* Phones and small tablets: the device layers become one row to swipe, each a readable detail */
 @media(max-width:760px){
+  .edition{padding-block:16px 20px}
+  .edition #release-action,.edition #mobile-action,.edition .button{width:100%}
   .family-stage{aspect-ratio:auto;display:flex;align-items:flex-start;gap:14px;margin:0 calc(-1*var(--gutter)) 10px;padding:0 var(--gutter) 8px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:var(--gutter);-webkit-overflow-scrolling:touch}
   .family-stage:before,.family-stage:after{display:none}
   .family-layer,.family-solo .family-layer{position:static;flex:none;width:auto;scroll-snap-align:start;animation:none}
@@ -422,50 +463,58 @@ td{color:var(--soft)}
 @media(max-width:650px){
   body{font-size:16px}
   .header-inner{min-height:64px}
-  .nav{top:64px}
   .brand img{width:88px;height:41px}
   .hero{padding-top:24px}
-  .hero h1{font-size:clamp(34px,10.4vw,44px)}
+  .hero h1{font-size:clamp(34px,9.5vw,44px)}
+  .hero-grid{gap:16px}
+  .hero .lead{margin-bottom:16px}
+  .hero-actions .button{width:100%}
   /* A phone visitor's download comes first */
-  .ledger-ios{order:-1}
-  .ledger-ios .button{background:var(--amber)}
-  .ledger-ios .button:hover{background:#f6cf8b}
-  .ledger-mac:has(~.ledger-ios) .button{background:var(--paper)}
-  .ledger .button{flex:1 1 100%}
-  .closing-actions .closing-ios{order:-1;background:var(--amber);color:var(--ink);border-color:transparent}
-  .closing-actions .closing-ios:hover{background:#f6cf8b}
-  .closing-actions:has(.closing-ios) .button:not(.secondary){background:var(--paper)}
+  .hero-actions .hero-ios,.closing-actions .closing-ios{order:-1;background:var(--amber);color:var(--ink);border-color:transparent}
+  .hero-actions .hero-ios:hover,.closing-actions .closing-ios:hover{background:#f6cf8b;border-color:transparent}
+  .hero-actions:has(.hero-ios) .button:not(.secondary),.closing-actions:has(.closing-ios) .button:not(.secondary){background:#ffffff08;color:var(--paper);border-color:var(--stroke)}
+  .hero-actions:has(.hero-ios) .button:not(.secondary):hover,.closing-actions:has(.closing-ios) .button:not(.secondary):hover{background:#ffffff12;border-color:#686c60}
   .eyebrow{font-size:13px}
   .plate-mac-media-panel{grid-template-columns:150px minmax(0,1fr);gap:16px}
-  .workspace-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+  .workspace-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .workspace-tab{justify-content:center;padding:0 6px;font-size:14px}
   .workspace-meta{flex-direction:column;gap:4px}
   .workspace-full{margin-top:0}
   .extra-shorts{grid-template-columns:minmax(0,1fr)}
   .figure-shorts{width:min(64%,240px)}
-  .article p a:not(.button):not(.text-link),.article li a:not(.button):not(.text-link){display:inline-flex;align-items:center;min-height:44px;min-width:44px;vertical-align:middle}
-  /* Links in running text on the home page get a 44px touch area from padding, which leaves the line spacing alone */
-  .credit a,.chapter-figure figcaption a,.chapter-head p a,.closing-support a,.pages-note a{padding-block:13px}
+  /* Links in list items get a 44px box. Links in running text get it from padding, which leaves the line spacing alone */
+  .article li a:not(.button):not(.text-link){display:inline-flex;align-items:center;min-height:44px;min-width:44px;vertical-align:middle}
+  .article p a:not(.button):not(.text-link),.download-details a,.credit a,.chapter-figure figcaption a,.chapter-head p a,.closing-support a,.pages-note a,.hero .lead a{padding-block:13px}
   table{font-size:15px}
   tbody th{white-space:normal}
   .editions-section .table-wrap,.switching .table-wrap{border-bottom:0}
-  .editions-section thead,.switching thead{display:none}
+  .editions-section thead,.switching thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
   .editions-section table,.editions-section tbody,.editions-section tr,.editions-section th,.editions-section td,.switching table,.switching tbody,.switching tr,.switching th,.switching td{display:block}
   .editions-section tr,.switching tr{padding:16px 0;border-bottom:1px solid var(--stroke)}
   .editions-section tr:last-child,.switching tr:last-child{border-bottom:0}
   .editions-section th,.editions-section td,.switching th,.switching td{padding:0;border:0}
   .editions-section th,.switching th{font-size:17px;margin-bottom:8px}
   .editions-section td,.switching td{margin-top:8px}
-  .editions-section td:before,.switching td:before{content:attr(data-label);display:block;font-size:12.5px;font-weight:600;color:var(--sage)}
+  .comparison-label{display:block;font-size:12.5px;font-weight:600;color:var(--sage)}
   .stage-interior{grid-template-columns:minmax(0,1fr)}
   .layer-list{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--stroke)}
   .layer-inspector{display:none}
   .artboard{min-height:260px}
   .mobile-property{display:flex;justify-content:space-between;width:100%;gap:12px;color:var(--muted)}
   .mobile-property strong{color:var(--amber)}
-  .release-meta{grid-template-columns:minmax(0,1fr)}
-  .footer-grid{grid-template-columns:minmax(0,1fr)}
+  .footer-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 16px}
+  .footer-nav:last-of-type{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}
+  .footer-nav:last-of-type span{grid-column:1/-1}
+  .site-footer{padding-top:32px}
   .closing-actions,.closing-actions .button{width:100%}
-  .page-vignette{display:none}
 }
-@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}.button:hover,.button:active,.text-link:hover span{transform:none}}
+
+@media(max-width:380px){
+  .header-inner .brand img{width:76px;height:auto}
+  .header-inner .header-download,.menu-button{padding-inline:10px}
+}
+/* The six page names keep a gap between them on the narrowest phones */
+@media(max-width:359px){
+  .page-rail a{font-size:13px}
+}

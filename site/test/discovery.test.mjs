@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { structuredMetadata } from '../scripts/discovery.mjs';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { structuredMetadata, writeDiscoveryFiles } from '../scripts/discovery.mjs';
 
 const root = new URL('../', import.meta.url);
 const config = JSON.parse(await readFile(new URL('config.json', root), 'utf8'));
@@ -40,4 +42,22 @@ test('machine-readable discovery contains the real release and explicit edition 
   assert.ok(full.includes('Hosted browser limits'));
   assert.ok(full.includes('public Figma OAuth is not configured'));
   assert.ok(full.includes('Tips are voluntary one-time payments and unlock no features'));
+});
+
+test('discovery files link the source only while a public repository is configured', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'arya-site-discovery-'));
+  try {
+    for (const publicSourceURL of [null, undefined, 'https://private.example/arya', 'http://github.com/rubix-labs-hq/arya']) {
+      await writeDiscoveryFiles(directory, { ...config, publicSourceURL });
+      for (const name of ['llms.txt', 'llms-full.txt']) {
+        const file = await readFile(join(directory, name), 'utf8');
+        assert.doesNotMatch(file, /\bnull\b|\bundefined\b|Source code|private\.example/, `${name} with ${publicSourceURL}`);
+        assert.ok(file.includes('License: MIT.') || name === 'llms.txt');
+      }
+    }
+    await writeDiscoveryFiles(directory, config);
+    for (const name of ['llms.txt', 'llms-full.txt']) assert.equal(await readFile(join(directory, name), 'utf8'), await readFile(new URL(name, root), 'utf8'), `${name} matches the committed file`);
+    assert.ok((await readFile(join(directory, 'llms.txt'), 'utf8')).includes(`- [Source code](${config.publicSourceURL}): MIT-licensed repository and issue tracker.`));
+    assert.ok((await readFile(join(directory, 'llms-full.txt'), 'utf8')).includes(`Source code: ${config.publicSourceURL}\nLicense: MIT.`));
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

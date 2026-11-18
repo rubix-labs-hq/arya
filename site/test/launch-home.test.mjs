@@ -112,9 +112,9 @@ test('the exported clip never plays by itself and has a text alternative', () =>
   assert.ok(text(live.home).includes('shown here as a 720p copy without sound'));
 });
 
-test('the launch film plays only when started and sits under the hero', () => {
+test('the launch film plays only when started and sits between the assistant and the six pages', () => {
   const start = live.home.indexOf('<section class="launch-film"');
-  assert.ok(start > live.home.indexOf('<section class="hero">') && start < live.home.indexOf('<section class="pages"'));
+  assert.ok(start > live.home.indexOf('<section class="assistant"') && start < live.home.indexOf('<section class="pages"'));
   const section = live.home.slice(start, live.home.indexOf('</section>', start));
   const [video] = section.match(/<video\b[^>]*>/);
   for (const attribute of ['controls', 'playsinline', 'preload="none"', 'poster="/assets/film/launch-film-poster.webp?v=', 'width="1920"', 'height="1080"', 'aria-label="The Arya launch film, 75 seconds with narration and music.']) assert.ok(video.includes(attribute), attribute);
@@ -182,13 +182,57 @@ test('the six pages keep the app’s tab order and native screens stay apart fro
     if (!label) continue;
     const isNative = /native-(?:mac|ipad|iphone)-|after-the-tide/.test(figure);
     assert.equal(/ on (?:Mac|iPad|iPhone)$/.test(label), isNative, `${label} labels the wrong kind of screen`);
-    if (!isNative) assert.equal(label, 'Browser editor');
+    // The assistant panel is from the local browser editor. The hosted one has no assistant.
+    if (!isNative) assert.equal(label, /figure-assistant/.test(figure) ? 'Local browser editor' : 'Browser editor');
   }
   assert.ok(text(live.home).includes('Screens labelled Mac, iPad or iPhone are from the native apps. Screens labelled Browser editor are from the browser editor.'));
-  // No sentence on the page ties the assistant or a provider sign-in to iPhone or iPad.
+  // The assistant is in the Mac, iPad and iPhone apps and the local browser editor. CLI assistants
+  // run on a Mac, so no sentence puts Claude Code, Codex or Antigravity on iPhone or iPad.
   const sentences = text(live.home.slice(live.home.indexOf('<main'), live.home.indexOf('</main>'))).split(/(?<=[.?!])\s+/);
   assert.ok(sentences.length > 100);
-  for (const sentence of sentences) assert.ok(!(/iPhone|iPad/.test(sentence) && /assistant|Claude|Codex|Antigravity|sign-in|\bAI\b/i.test(sentence)), sentence.slice(0, 200));
+  for (const sentence of sentences) assert.ok(!(/iPhone|iPad/.test(sentence) && /Claude|Codex|Antigravity/.test(sentence)), sentence.slice(0, 200));
+  // The hosted browser editor is only ever named as lacking the assistant.
+  for (const sentence of sentences) if (/hosted/i.test(sentence) && /assistant|\bAI\b/i.test(sentence)) assert.match(sentence, /\b(?:no|not|without)\b/i, sentence.slice(0, 200));
+});
+
+test('the assistant leads the page and is never described as Mac only', () => {
+  const home = text(live.home), solo = text(macOnly.home);
+  // The owner's headline and a lead that says what the assistant does, on the first screen.
+  assert.ok(live.home.includes('<h1>One AI-native suite for editing, color, motion and shorts. <em>Your edit. Every layer.</em></h1>'));
+  assert.ok(home.includes('Work by hand on a timeline, or tell the built-in assistant what should change. Every change is an ordinary edit you can adjust and undo.'));
+  assert.match(live.home, /<p class="lead">[^<]*<a href="#ai">built-in assistant<\/a>/);
+  assert.doesNotMatch(home, /On Mac, ask the built-in assistant|assistant on Mac\./);
+
+  // The assistant section is the first section after the hero, ahead of the launch film.
+  const order = [...live.home.matchAll(/<section class="([a-z-]+)[ "]/g)].map(match => match[1]);
+  assert.deepEqual(order.slice(0, 4), ['hero', 'assistant', 'launch-film', 'pages']);
+  assert.deepEqual([...macOnly.home.matchAll(/<section class="([a-z-]+)[ "]/g)].map(match => match[1]).slice(0, 3), ['hero', 'assistant', 'pages']);
+  const section = text(live.home.slice(live.home.indexOf('<section class="assistant"'), live.home.indexOf('<section class="pages"')));
+
+  // Where it works, what it reads, how it edits and what it costs.
+  assert.ok(section.includes('In the Mac, iPad and iPhone apps and the local browser editor Edit with your AI account.'));
+  assert.ok(section.includes('The assistant reads your selection, playhead, transcript and rendered frames, then edits through the same timeline operations you use by hand.'));
+  assert.ok(section.includes('Each change comes with a receipt of what changed and reverses with Undo.'));
+  assert.ok(section.includes('Connect ChatGPT where offered, or Claude Code, Codex or Google Antigravity on a Mac. Arya includes no AI credits.'));
+  assert.ok(section.includes('On iPad and iPhone. Use ChatGPT where offered, an Anthropic API key, or a connection to Arya on your Mac.'));
+  assert.ok(section.includes('You can edit and export without connecting an account.'));
+  assert.equal(live.home.slice(live.home.indexOf('<section class="assistant"'), live.home.indexOf('<section class="pages"')).match(/<ul class="points">(.*?)<\/ul>/s)[1].split('<li>').length - 1, 4);
+  // The screenshot slot keeps its file and size.
+  assert.match(live.home, /<figure class="chapter-figure figure-assistant"><a href="\/assets\/product\/assistant-panel\.webp\?v=[0-9a-f]{12}" class="figure-link"><img src="\/assets\/product\/assistant-panel\.webp\?v=[0-9a-f]{12}"[^>]* width="712" height="1024"/);
+  assert.match(live.home, /<article class="platform"><h3>iPhone and iPad<\/h3>.*?<li>Assistant editing with your own AI account\.<\/li>/s);
+
+  // With no App Store release, the page makes no claim about the assistant on those devices.
+  assert.ok(solo.includes('In the Mac app and the local browser editor Edit with your AI account.'));
+  assert.doesNotMatch(solo, /iPad and iPhone apps|On iPad and iPhone\. Use ChatGPT/);
+  assert.equal(macOnly.home.match(/<ul class="points">(.*?)<\/ul>/s)[1].split('<li>').length - 1, 3);
+
+  // Wherever the hosted browser editor is offered, a visible sentence states its limits.
+  const hero = text(live.home.slice(live.home.indexOf('<section class="hero">'), live.home.indexOf('<figure class="family')));
+  assert.ok(hero.includes('The browser editor has no assistant, Figma import or transcription.') && hero.includes('Open browser editor'));
+  const closing = text(live.home.slice(live.home.indexOf('<section class="closing')));
+  assert.ok(closing.includes('The browser editor has no assistant, Figma import or transcription.') && closing.includes('Open browser editor (limited)'));
+  const browser = live.download.match(/<section class="edition" aria-labelledby="browser">([\s\S]*?)<details/)[1];
+  assert.ok(text(browser).includes('No assistant, Figma import or transcription.'));
 });
 
 test('the build refuses native media it cannot vouch for', async () => {
@@ -239,7 +283,7 @@ test('the device stage moves once on load, and not at all with reduced motion or
   assert.ok(motion > 0);
   assert.equal(css.split('animation:layer-in').length - 1, 1);
   assert.ok(css.indexOf('animation:layer-in') > motion && css.indexOf('@keyframes layer-in') > motion);
-  assert.ok(css.includes('@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}}'));
+  assert.ok(css.includes('@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}.button:hover,.button:active,.text-link:hover span{transform:none}}'));
   const phone = css.slice(css.indexOf('@media(max-width:760px){'), css.indexOf('@media(max-width:650px){'));
   assert.ok(phone.includes('scroll-snap-type:x mandatory') && phone.includes('animation:none'));
   // Device labels are links, so they keep a 44px touch height on a phone.

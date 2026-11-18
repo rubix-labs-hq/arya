@@ -76,11 +76,11 @@ test('375px phone layout prevents horizontal overflow and keeps tap targets at l
   const download=await readFile(join(root,'download/index.html'),'utf8');
   assert.ok(css.includes('.article-layout{grid-template-columns:minmax(0,1fr)}'),'.article-layout must use minmax(0,1fr) to prevent mobile overflow');
   assert.ok(css.includes('.hash,#release-description{overflow-wrap:anywhere;word-break:break-word}'),'SHA-256 hash and release description must wrap on narrow screens');
-  assert.ok(download.includes('<code class="hash">'),'download page SHA-256 must use .hash class');
-  assert.ok(css.includes('.button.small{min-height:44px;padding:0 16px;font-size:14.5px;border-radius:7px}'),'.button.small must be at least 44px tall');
+  assert.ok(download.includes('<code class="hash" id="release-checksum">'),'download page SHA-256 must use .hash class');
+  assert.ok(css.includes('.button.small{min-height:44px;padding:8px 14px;font-size:14.5px;border-radius:7px}'),'.button.small must be at least 44px tall');
   assert.ok(css.includes('.footer-nav a{display:inline-flex;align-items:center;min-height:44px;min-width:44px'),'.footer-nav links must meet 44x44 tap target');
   assert.ok(css.includes('.article-aside a{display:flex;align-items:center;min-height:44px;min-width:44px'),'.article-aside links must meet 44x44 tap target');
-  assert.ok(download.includes('<a class="button small" href="/download/#mac">Download for Mac</a>'),'navigation CTA must state Download for Mac');
+  assert.match(download, /class="button small header-download" href="\/download\/" aria-current="page">Downloads<\/a>/);
 });
 test('font distributions include their actual licenses',async()=>{
   for(const family of ['manrope','newsreader']){
@@ -105,8 +105,46 @@ test('configured tips expose only reviewed HTTPS checkout links and keep downloa
 
 test('App Store help is reachable without a payment call to action', async () => {
   const help = await readFile(join(root, 'help/index.html'), 'utf8');
-  assert.match(help, /Keep your edit moving/);
+  assert.match(help, /<h1>Arya Help<\/h1>/);
   assert.match(help, /rubix-labs-hq\/arya\/issues/);
   assert.ok(!help.includes('buy.stripe.com'));
   assert.ok(!help.includes('href="/support/"'));
+});
+
+test('no tag in a generated page repeats an attribute',async()=>{
+  for(const name of ['404.html',...routes.map(route=>join(route,'index.html'))]){
+    const html=await readFile(join(root,name),'utf8');
+    for(const [tag] of html.matchAll(/<[a-zA-Z][^<>]*>/g)){
+      const names=[...tag.replace(/"[^"]*"|'[^']*'/g,'""').matchAll(/\s([^\s=<>\/"']+)/g)].map(match=>match[1].toLowerCase());
+      assert.equal(new Set(names).size,names.length,`${name}: ${tag.slice(0,120)}`);
+    }
+  }
+});
+test('the assistant leads navigation, the phone hero can lead with the App Store, and setup names the ChatGPT steps',async()=>{
+  const home=await readFile(join(root,'index.html'),'utf8'),install=await readFile(join(root,'install/index.html'),'utf8'),css=await readFile(join(root,'assets/site.css'),'utf8');
+  assert.ok(home.includes('aria-label="Main navigation"><a href="/#ai">Assistant</a><a href="/#suite">Workspaces</a>'));
+  if(config.mobileRelease?.ready===true){
+    assert.match(home,/<div class="actions hero-actions"><a class="button[^>]*>[^<]+<\/a><a class="button secondary hero-ios" href="https:\/\/apps\.apple\.com\/[^"]+">Download on the App Store<\/a><\/div>/);
+    assert.ok(css.includes('.hero-actions .hero-ios,.closing-actions .closing-ios{order:-1;'));
+  }
+  assert.ok(install.includes('choose <strong>Continue with ChatGPT</strong> and sign in on OpenAI’s page. If Arya does not switch to ChatGPT by itself, choose <strong>Use ChatGPT</strong>.'));
+  assert.ok((await readFile(join(root,'llms.txt'),'utf8')).includes("A built-in assistant in the native apps edits with the user's own AI account. The hosted browser editor has none."));
+});
+test('layout rules keep the closing copy, the hero buttons, the page names and each edition card readable',async()=>{
+  const css=await readFile(join(root,'assets/site.css'),'utf8'),download=await readFile(join(root,'download/index.html'),'utf8');
+  // Closing copy and buttons stack until there is room for both.
+  assert.match(css,/@media\(max-width:1279px\)\{\s*\.closing\{grid-template-columns:minmax\(0,1fr\)\}\s*\.closing-actions\{justify-content:flex-start\}/);
+  // The hero side column always fits the two download buttons on one row.
+  assert.ok(css.includes('.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(480px,40%);'));
+  assert.match(css,/@media\(max-width:359px\)\{\s*\.page-rail a\{font-size:13px\}/);
+  // Edition cards share four rows and a block for the rest, so a disclosure moves only its own card.
+  assert.ok(css.includes('.edition-grid{grid-template-rows:repeat(5,auto)}.edition{grid-row:span 5;grid-template-rows:subgrid}'));
+  for(const [section] of download.matchAll(/<section class="edition"[\s\S]*?<\/section>/g)){
+    // A card with nothing after its button has no block.
+    const more=section.indexOf('<div class="edition-more">'),shared=more<0?section:section.slice(0,more);
+    assert.doesNotMatch(shared,/<details|id="requirements"|id="mac-app-store"/);
+    if(more<0)continue;
+    assert.ok(more>section.search(/class="button|id="(?:release|mobile)-action"/),'the block follows the button');
+    assert.match(section,/<\/div>\s*<\/section>$/);
+  }
 });

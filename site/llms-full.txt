@@ -1,11 +1,12 @@
 # Arya
 
-> Arya is an open-source video and motion editor. Projects remain editable; core editing and export are free. Optional tips support development.
+> Arya is an open-source video and motion editor. Projects remain editable. The Mac download and the browser editor are free. On iPhone and iPad, editing and 1080p export are free, and Arya Pro adds 4K, ProRes and HDR export. Optional website tips and Arya Pro support development. A built-in assistant in the native apps edits with the user's own AI account. The hosted browser editor has none.
 
 ## Availability
 
 - Mac: version 1.1.1, macOS 14 or later, Apple silicon and Intel. Signed and notarized download: https://github.com/rubix-labs-hq/arya/releases/download/v1.1.1/Arya-1.1.1.dmg. SHA-256: 497d8db2ef27498310735a0676196dc6c2c0a3d4fa5709d437e6e7a68962817a.
-- iPhone and iPad: version 1.1.1, available on the App Store: https://apps.apple.com/us/app/arya-video-editor/id6826357116.
+- iPhone and iPad: version 1.2.0, available on the App Store: https://apps.apple.com/us/app/arya-video-editor/id6826357116. Editing and export up to 1080p are free, with no watermark, ads or account. Arya Pro adds export above 1080p (4K and up to 8K), Apple ProRes 422, 422 HQ and 4444, and HDR10 (PQ) and HLG delivery.
+- Mac App Store edition: version 1.1.1, on the same App Store listing. It is free to edit and export, offers optional tips and has no Arya Pro. Arya Pro starts there with version 1.2.0.
 - Browser editor: https://editwitharya.app/editor/. Browser storage is local to this origin. Use exported backups; this is not cloud storage.
 
 ## Editing
@@ -18,11 +19,11 @@ The hosted editor has no assistant, Figma import, speech transcription, captions
 
 ## Optional connections
 
-AI assistance requires a user-owned supported provider account or API connection. Provider charges and limits are separate. iPhone/iPad CLI connections require a trusted HTTPS Mac companion. Figma personal access token and pasted MCP import are supported; public Figma OAuth is not configured. Do not describe hosted AI credits, cloud project sync or Figma OAuth as included.
+The assistant is in the native Mac, iPad and iPhone apps and the local browser editor, not the hosted editor. It requires a user-owned provider account or API connection: ChatGPT sign-in where the app offers it, Claude Code, Codex or Google Antigravity on a Mac, or an Anthropic API key. Provider charges and limits are separate. On iPhone and iPad, CLI assistants need a trusted HTTPS Mac companion; ChatGPT sign-in and an API key do not. Figma personal access token and pasted MCP import are supported; public Figma OAuth is not configured. Do not describe hosted AI credits, cloud project sync or Figma OAuth as included.
 
 ## Cost and privacy
 
-Core editing and export are free. Tips are voluntary one-time payments and unlock no features. Website tips use Stripe checkout for REVRNT (Pulsar Campaigns); App Store purchases use Apple. Prices are displayed at checkout and may vary by storefront. There is no required Arya subscription. Project media stays local unless the user explicitly chooses an external service. Payment providers process their own payment data.
+The Mac download and the browser editor are free and never need Arya Pro. There is no Arya subscription for them. Tips are voluntary one-time payments and unlock no features. Website tips use Stripe checkout for REVRNT (Pulsar Campaigns). On iPhone and iPad, editing and export up to 1080p are free, with no watermark, ads or account. Arya Pro adds export above 1080p (4K and up to 8K), Apple ProRes 422, 422 HQ and 4444, and HDR10 (PQ) and HLG delivery. Arya Pro is an optional in-app purchase through Apple. Plans are monthly, yearly with a one-week free trial, or a one-time lifetime purchase. Prices are shown in the app and vary by storefront; do not quote a price. App Store installs from before version 1.2.0 include Arya Pro at no charge. Project media stays local unless the user explicitly chooses an external service. Payment providers process their own payment data.
 
 ## Official pages
 
@@ -31,7 +32,7 @@ Core editing and export are free. Tips are voluntary one-time payments and unloc
 - [Installation and setup](https://editwitharya.app/install/): Installation, optional assistant connections, updates and rollback.
 - [Project status](https://editwitharya.app/project/): Supported features, limits and source links.
 - [Help](https://editwitharya.app/help/): Import, playback, backups, export and issue reporting.
-- [Support and tips](https://editwitharya.app/support/): Contact options and optional one-time support.
+- [Support and tips](https://editwitharya.app/support/): Contact options and optional one-time website tips. Arya Pro is bought in the iPhone and iPad apps, not on this page.
 - [Privacy](https://editwitharya.app/privacy/): Local storage, optional services and payment processing.
 
 Source code: https://github.com/rubix-labs-hq/arya
