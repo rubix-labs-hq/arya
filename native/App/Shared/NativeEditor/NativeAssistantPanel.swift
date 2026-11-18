@@ -747,38 +747,55 @@ struct NativeAssistantPanel: View {
     /// What Send attaches, as chips: the selection or timeline, the playhead, the input kind and
     /// any look reference. Send captures the selection again when pressed.
     private var contextRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                // First, so the reason Send is off is never scrolled out of the row.
-                if model.assistantDraft.count > assistant.inputCharacterLimit {
-                    chip { Text("Too long: \(model.assistantDraft.count) of \(assistant.inputCharacterLimit)").monospacedDigit() }
-                        .foregroundStyle(NativeEditorStyle.error)
-                        .accessibilityLabel(draftLimitExplanation)
-                }
-                Button { inspectCurrentRequestContext() } label: {
-                    chip { Label(contextLabel, systemImage: "scope").lineLimit(1) }
-                }.buttonStyle(.plain)
-                    .foregroundStyle(model.selectedIDs.isEmpty ? NativeEditorStyle.text : NativeEditorStyle.accent)
-                    .disabled(model.project == nil || model.renderPreviewBackendID == nil)
-                    .help("Inspect the current selection and request context. Send captures the current selection again.")
-                    .accessibilityLabel("Inspect current request context: \(contextDescription)")
-                    .accessibilityIdentifier("editor.assistant.composerContext")
-                chip { HStack(spacing: 5) { Text("Playhead").foregroundStyle(NativeEditorStyle.muted); footerTimecode } }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Playhead \(nativeTimecode(model.time, fps: model.fps))")
-                if model.assistantInputKind != "prompt" {
-                    Button { model.assistantInputKind = "prompt" } label: {
-                        chip { HStack(spacing: 4) { Text(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script"); Image(systemName: "xmark").font(.caption2) } }
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    // First, so the reason Send is off is never scrolled out of the row.
+                    if model.assistantDraft.count > assistant.inputCharacterLimit {
+                        chip { Text("Too long: \(model.assistantDraft.count) of \(assistant.inputCharacterLimit)").monospacedDigit() }
+                            .foregroundStyle(NativeEditorStyle.error)
+                            .accessibilityLabel(draftLimitExplanation)
+                    }
+                    Button { inspectCurrentRequestContext() } label: {
+                        chip { Label(contextLabel, systemImage: "scope").lineLimit(1) }
                     }.buttonStyle(.plain)
-                        .accessibilityLabel("\(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script") input. Switch back to prompt")
-                }
-                if let reference = model.lookReference {
-                    Button { model.lookReference = nil } label: {
-                        chip { HStack(spacing: 4) { Label((reference as NSString).lastPathComponent, systemImage: "photo").lineLimit(1).truncationMode(.middle); Image(systemName: "xmark").font(.caption2) } }
-                    }.buttonStyle(.plain).accessibilityLabel("Look reference \((reference as NSString).lastPathComponent). Remove")
-                }
-            }.padding(.horizontal, 7)
-        }.padding(.horizontal, 9)
+                        .foregroundStyle(model.selectedIDs.isEmpty ? NativeEditorStyle.text : NativeEditorStyle.accent)
+                        .disabled(model.project == nil || model.renderPreviewBackendID == nil)
+                        .help("Inspect the current selection and request context. Send captures the current selection again.")
+                        .accessibilityLabel("Inspect current request context: \(contextDescription)")
+                        .accessibilityIdentifier("editor.assistant.composerContext")
+                    chip { HStack(spacing: 5) { Text("Playhead").foregroundStyle(NativeEditorStyle.muted); footerTimecode } }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Playhead \(nativeTimecode(model.time, fps: model.fps))")
+                    if model.assistantInputKind != "prompt" {
+                        Button { model.assistantInputKind = "prompt" } label: {
+                            chip { HStack(spacing: 4) { Text(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script"); Image(systemName: "xmark").font(.caption2) } }
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel("\(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script") input. Switch back to prompt")
+                    }
+                    if let reference = model.lookReference {
+                        Button { model.lookReference = nil } label: {
+                            chip { HStack(spacing: 4) { Label((reference as NSString).lastPathComponent, systemImage: "photo").lineLimit(1).truncationMode(.middle); Image(systemName: "xmark").font(.caption2) } }
+                        }.buttonStyle(.plain).accessibilityLabel("Look reference \((reference as NSString).lastPathComponent). Remove")
+                    }
+                }.padding(.horizontal, 7)
+            }.padding(.horizontal, 9)
+            if showsKeyboardDone {
+                Button("Done") { draftFocused = false }
+                    .fontWeight(.semibold).frame(minWidth: 44, minHeight: chipHeight).padding(.trailing, 14)
+                    .accessibilityLabel("Dismiss assistant keyboard")
+            }
+        }
+    }
+
+    /// A phone puts the keyboard's Done in the composer. In the keyboard toolbar it covered
+    /// Send: the sheet's keyboard inset leaves out part of that bar, so the pane ran under it.
+    private var showsKeyboardDone: Bool {
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        horizontalSizeClass == .compact && draftFocused
+        #else
+        false
+        #endif
     }
 
     private func chip<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -792,16 +809,6 @@ struct NativeAssistantPanel: View {
     private func draftEditor(height: Double) -> some View {
         TextEditor(text: $model.assistantDraft)
         .focused($draftFocused)
-        #if os(iOS)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { draftFocused = false }
-                    .frame(minWidth: 44, minHeight: actionHeight)
-                    .accessibilityLabel("Dismiss assistant keyboard")
-            }
-        }
-        #endif
         .font(.body).scrollContentBackground(.hidden)
         .frame(height: height)
         .padding(4)
