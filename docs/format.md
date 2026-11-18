@@ -173,7 +173,7 @@ Both backends (the Node server and the native app) implement the same paths. The
 | `GET /cache/…` | | generated thumbnails |
 | `GET /core/…`, `GET /vendor/…`, `GET /ui/plugins-index.js` | | shared code, vendored libraries, the UI plugin index |
 
-The native app does not answer `POST /api/transcript/import` or `GET /api/assistant/history` yet. Its replies have no `notes`, `moved`, `history`, `session`, `fonts`, `analysisHelp` or job `waiting` fields. Its `POST /api/audio/measure-mix` returns its own result fields. The rules below describe the Node server.
+The native app does not answer `POST /api/transcript/import` or `GET /api/assistant/history` yet. Its replies have no `notes`, `moved`, `history`, `session`, `fonts`, `analysisHelp` or job `waiting` fields. Its loudness analysis measures the whole file and returns `{ lufs, lra, lraAvailable, tp }`, and its `POST /api/audio/measure-mix` returns its own result fields. The rules below describe the Node server.
 
 Jobs. A render job that has not reached the render worker says why in `waiting: { reason, since, job? }`. `reason` is `behind-job` (`job` is the id of the render job that has the worker), `behind-processing` (a proxy, an analysis or other processing has the queue), `copying-sources` (the job's media is being copied and hashed) or `worker-starting` (the render worker has not connected yet). `since` is when that reason began, in milliseconds. The field is removed once the worker has the job. `sourceCopyMs` is how long the media copy took. `workerStep` is the last setup step the worker reported before its first frames: `luts`, `audio`, `upload`, `plans` or `first`.
 

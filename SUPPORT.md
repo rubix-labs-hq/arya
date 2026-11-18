@@ -16,12 +16,12 @@ Do not post private media, account tokens or API keys in an issue.
 
 ## Export and render messages in the browser editor
 
-The local browser editor renders exports, preview frames and mix measurements in a hidden copy of Google Chrome, the render worker. Arya checks it every 10 seconds. A worker that has stopped sending progress is closed, and the next export, frame or measurement starts a new one. You do not need to restart Arya.
+The local browser editor renders exports, preview frames and mix measurements in a hidden copy of Google Chrome, the render worker. Arya checks it every 10 seconds. A worker that has stopped sending progress is closed, and the next export, frame or measurement starts a new one. You do not need to restart Arya. An export that waits behind another export, other processing or a starting worker needs nothing from you. It starts when its turn comes.
 
 | Message starts with | What to do |
 |---|---|
 | "Arya could not start Google Chrome to render" | Install Google Chrome in Applications, then try again. |
-| "The render worker did not start" | Try again. Arya starts a new worker and waits longer for it each time one fails to start, up to 80 seconds. |
+| "The render worker did not start" | Try again. Arya starts a new worker, and after each worker that fails to start it gives the next one longer, up to 80 seconds. |
 | "The render worker closed while…" | Export, render the frame or measure again. |
 | "The render worker sent nothing for…" or "The render worker was still preparing…" | Export or measure again. A new worker starts, and an export starts again from the first frame. The message names the last step the worker reported, such as loading LUTs or rendering the audio mix. Include it if you report the problem. |
 | "This frame waited 5 minutes behind other processing" | Wait for the running export to finish, then try again. |
