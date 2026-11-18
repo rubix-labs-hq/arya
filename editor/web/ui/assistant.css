@@ -144,6 +144,8 @@
 .chat-list .assistant-run.error :is(.assistant-run-symbol, b) { color: var(--danger); }
 .chat-list .assistant-route { margin: 4px 0 0 20px; padding: 0; border: 0; }
 .chat-list .assistant-failure { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line)); border-radius: 10px; background: var(--panel-2); font-size: 12px; overflow-wrap: anywhere; }
+/* A stopped request is not an error. */
+.chat-list .assistant-failure.stopped { border-color: var(--line); }
 .assistant-failure :is(.assistant-plan-error, .assistant-saved) p { margin: 4px 0 0; }
 .assistant-saved ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); }
 .assistant-failure-actions { display: flex; flex-wrap: wrap; gap: 6px; }

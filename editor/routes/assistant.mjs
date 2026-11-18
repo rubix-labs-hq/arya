@@ -178,9 +178,17 @@ export default ctx => {
       if (r.active()) throw refused('Wait for the assistant to finish before undoing its change.')
       const target = r.undoTarget(body?.id)
       if (!target.change) throw refused(target.reason)
-      // A history move, so Redo brings the change back. It falls back to a forward edit when the
-      // project from before the change is no longer in the undo history.
-      ;(ctx.restoreProject ?? ctx.commit)(target.change.before, 'you', [`Undo ${target.change.label.toLowerCase()}`])
+      if (target.change.kind === 'history') {
+        // The assistant undid edits, so undoing that is Redo, never a new edit that would empty the
+        // redo history. The review offers this only while Redo leads exactly back.
+        for (let step = 0; step < target.change.moves.undo; step++) {
+          if (!ctx.callAPI('POST', '/api/redo', {})?.moved) throw refused('Redo could not bring the undone edits back. Use Redo in the toolbar.')
+        }
+      } else {
+        // A history move, so Redo brings the change back. It falls back to a forward edit when the
+        // project from before the change is no longer in the undo history.
+        ;(ctx.restoreProject ?? ctx.commit)(target.change.before, 'you', [target.change.kind === 'preview' ? 'Undo applied assistant preview' : 'Undo assistant request'])
+      }
       r.undone(target.change.id)
       if (target.change.kind === 'preview') ctx.assistant?.settlePreview?.('undone')
       return { undone: true, version: ctx.getVersion(), ...(ctx.getHistory ? { history: ctx.getHistory() } : {}) }

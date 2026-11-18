@@ -74,6 +74,20 @@ function ReceiptDetails({ receipt }) {
 }
 
 /**
+ * A card is named for its kind of change: an applied preview, Undo or Redo the assistant ran, or
+ * edits. A request that also called Undo or Redo carries a label that counts each kind of step.
+ */
+function resultTitle(kind, label, edits) {
+  return kind === 'preview' ? 'Applied the preview' : (kind === 'history' || kind === 'request' && label !== 'Assistant request') && label ? label : `Made ${plural(edits, 'edit')}`
+}
+
+/** Compositions the receipts added that still exist and are not open, as [id, name]. */
+function addedCompositions(receipts, project, open) {
+  const ids = new Set(receipts.flatMap(receipt => (receipt.scopes ?? []).filter(scope => scope.status === 'added' && scope.comp != null && scope.track == null && scope.asset == null).map(scope => scope.comp)))
+  return [...ids].filter(id => id !== (open ?? null) && Object.hasOwn(project?.comps ?? {}, id)).map(id => [id, project.comps[id].name ?? id])
+}
+
+/**
  * One card per run: what the run changed and what you can do about it. It folds in the one-step
  * undo of the latest assistant change when that change belongs to this run. With no receipt (after
  * a reload) it still offers that undo.
@@ -82,9 +96,15 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
   const undoable = Boolean(change?.undoable)
   const undone = !undoable && receipts.length > 0 && receipts.every(receipt => receipt.undone)
   const edits = change ? change.edits : receipts.length
-  // An undone preview keeps its name: the receipts remember which kind of change they belonged to.
-  const preview = change ? change.kind === 'preview' : receipts.length > 0 && receipts.every(receipt => receipt.changeKind === 'preview')
-  const title = preview ? 'Applied the preview' : `Made ${plural(edits, 'edit')}`
+  // Older cards keep their name: each receipt carries the kind of change the server put it in.
+  const kinds = new Set(receipts.map(receipt => receipt.changeKind))
+  const kind = change ? change.kind : kinds.size === 1 ? receipts[0]?.changeKind : null
+  const title = resultTitle(kind, change ? change.label : receipts[0]?.changeLabel, edits)
+  // The assistant undid or redid edits, and the card cannot simply reverse that: the reason says what can.
+  const moved = kind === 'history' || Boolean(change?.moves?.undo || change?.moves?.redo)
+  const pointer = moved && change && !undoable && !undone ? change.reason : ''
+  const added = undone ? [] : addedCompositions(receipts, store.project, store.openComp)
+  const openComposition = id => set({ openComp: id, compParents: { ...(store.compParents ?? {}), [id]: null }, selection: [], page: 'edit', viewerMode: 'timeline', scroll: 0 })
   const caption = receipts.length ? receiptCaption(receipts, store.project) : ''
   const notes = [...new Set(receipts.flatMap(receipt => receipt.notes ?? []))]
   // Select works on the layers of every edit in the run, one button per timeline they are on.
@@ -99,14 +119,16 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
   return html`<section class=${`assistant-result-card${undone ? ' undone' : ''}`} aria-label=${undone ? 'Undone edit result' : 'Committed edit result'}>
     <div class="receipt-heading"><b>${title}</b>${undone ? html`<small>Undone</small>` : null}</div>
     ${caption ? html`<p class="assistant-result-caption">${caption}</p>` : null}
-    ${undoable || groups.length ? html`<div class="receipt-actions">
-      ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title="Restore the project from before this assistant change. Redo brings it back." onClick=${onUndo}>${busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
+    ${undoable || groups.length || added.length ? html`<div class="receipt-actions">
+      ${added.map(([id, name]) => html`<button class="ghost tiny" key=${id} onClick=${() => openComposition(id)}>Open ${name}</button>`)}
+      ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title=${kind === 'history' ? 'Redo the edits the assistant undid. Undo in the toolbar undoes them again.' : 'Restore the project from before this assistant change. Redo brings it back.'} onClick=${onUndo}>${busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
       ${groups.map(comp => {
         const selectable = receiptSelection(merged, store.project, comp)
         const name = comp == null ? 'main timeline' : store.project?.comps?.[comp]?.name ?? comp
         return html`<button class="ghost tiny" disabled=${!selectable} onClick=${() => select(comp)}>Select changed layers${groups.length > 1 ? ` · ${name}` : ''}</button>`
       })}
     </div>` : null}
+    ${pointer ? html`<p class="assistant-note">${pointer}</p>` : null}
     ${notes.map(note => html`<p class="assistant-note">${note}</p>`)}
     ${receipts.length ? html`<details class="change-receipt"><summary>Details</summary>
       ${[...receipts].reverse().map(receipt => ReceiptDetails({ receipt }))}
@@ -171,9 +193,13 @@ export function ChatPanel() {
   // The browser server reports the pending preview and the latest assistant change. The native host keeps its own flow.
   const runReview = s.caps.host === 'native' ? null : s.assistantReview
   const sameRun = id => id != null && id === s.claude?.runId
+  // The server records a change for a run whenever the project moved during it. With none and no
+  // commit of its own, a stopped run changed nothing.
+  const runCommitted = Array.isArray(s.claude?.committed) && s.claude.committed.length > 0
   const activity = assistantActivity(s.claude, { connected: s.connected, pending, stopping, now, ...(runReview ? {
     proposal: Boolean(runReview.proposal) && (runReview.proposal.runId == null || s.claude?.runId == null || sameRun(runReview.proposal.runId)),
-    edits: runReview.change?.kind === 'request' && sameRun(runReview.change.runId) && runReview.change.edits > 0,
+    edits: ['request', 'history'].includes(runReview.change?.kind) && sameRun(runReview.change.runId) && runReview.change.edits > 0,
+    unchanged: s.claude?.runId != null && !runCommitted && !sameRun(runReview.change?.runId) && !(runReview.changes ?? []).some(item => sameRun(item.runId)),
   } : {}) })
   useEffect(() => {
     if (!activity.active) return
@@ -353,19 +379,18 @@ export function ChatPanel() {
   }, [checking, status.ready, status.refreshRequired, providerFailure, chatgptWaiting, signInState, welcome, showSuggestions])
   const lastRequest = [...s.chat].reverse().find(m => ['user', 'you'].includes(m.role) && m.text)?.text ?? ''
   const view = assistantPanel.focus(s.project, { comp: s.openComp, playhead })
-  const scopeName = s.openComp ? s.project?.comps?.[s.openComp]?.name ? `${s.project.comps[s.openComp].name} (${s.openComp})` : s.openComp : 'Main timeline'
+  // A composition that Undo or Redo removed reads as the main timeline, where the store returns.
+  const openTimeline = s.openComp && Object.hasOwn(s.project?.comps ?? {}, s.openComp) ? s.project.comps[s.openComp] : null
+  const scopeName = openTimeline ? openTimeline.name ? `${openTimeline.name} (${s.openComp})` : s.openComp : 'Main timeline'
   // Preview changes and one-step undo need the browser server; the native host keeps its own flow.
   const preview = !native && s.assistantPreview !== false
   const review = native ? null : s.assistantReview
   const [reviewBusy, setReviewBusy] = useState('')
+  // Whether a change is undone comes from the server, which hears every Undo and Redo.
   const decide = async (kind, route, body) => {
     if (reviewBusy) return
-    const undoneChange = kind === 'undo' ? store.assistantReview?.change : null, root = store.root
     setReviewBusy(kind)
-    try {
-      await api(route, body)
-      if (undoneChange?.id === body?.id && store.root === root) set({ receipts: store.receipts.map(receipt => receipt.version > undoneChange.beforeVersion && receipt.version <= undoneChange.afterVersion ? { ...receipt, undone: true, undoneBy: undoneChange.id, changeKind: undoneChange.kind } : receipt) })
-    }
+    try { await api(route, body) }
     catch (error) { toast(error.message, 'error') }
     finally { setReviewBusy('') }
   }
@@ -377,26 +402,29 @@ export function ChatPanel() {
     children: [activity.connectionNotice ? html`<p>${activity.connectionNotice}</p>` : null,
       (!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><${RoutingReceipt} value=${s.claude.routing} /></div>` : null] })
   const failureBlock = lastReply => {
-    if (working || activity.state !== 'error') return null
+    // A stopped request can be sent again as well.
+    const stopped = activity.state === 'cancelled'
+    if (working || activity.state !== 'error' && !stopped) return null
     const saved = committed.length > 0 && !committed.every(item => lastReply?.text?.includes(item.summary))
-    return html`<div class="assistant-failure">
+    return html`<div class=${`assistant-failure${stopped ? ' stopped' : ''}`}>
               ${chatgptCode === 'chatgpt_usage_limit' ? html`<div class="assistant-plan-error"><b>Usage limit reached</b><p>ChatGPT account: ${chatgpt?.email || 'your signed-in account'}. Check your usage, then try again later.</p><a class="button primary" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></div>` : null}
               ${['chatgpt_sign_in_required', 'chatgpt_not_authorized', 'chatgpt_plan_disabled', 'chatgpt_account_changed', 'chatgpt_not_eligible'].includes(chatgptCode) ? html`<div class="assistant-plan-error"><button class="ghost tiny" onClick=${() => set({ settingsOpen: true })}>Review ChatGPT sign-in</button></div>` : null}
-              ${saved ? html`<div class="assistant-saved"><b>Saved before the failure</b><ul>${committed.map(item => html`<li key=${item.version}>${item.summary}</li>`)}</ul></div>` : null}
+              ${saved ? html`<div class="assistant-saved"><b>${stopped ? 'Saved before you stopped it' : 'Saved before the failure'}</b><ul>${committed.map(item => html`<li key=${item.version}>${item.summary}</li>`)}</ul></div>` : null}
               ${lastRequest || canRetry ? html`<div class="assistant-failure-actions">
-                ${lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title="Put the failed request back in the text box to edit or send again. Clear the current draft first." onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
+                ${lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title=${`Put the ${stopped ? 'stopped' : 'failed'} request back in the text box to edit or send again. Clear the current draft first.`} onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
                 ${canRetry ? html`<button class="ghost tiny assistant-resend" disabled=${pending || !s.connected} title="Send the same request again" onClick=${retry}>Retry</button>` : null}
               </div>` : null}
             </div>`
   }
-  // A plain Retry only when the request failed on the network and is the one this panel sent.
-  const canRetry = s.claude?.retryable === true && lastSent.current != null && lastSent.current.runId != null && lastSent.current.runId === s.claude?.runId
+  // A plain Retry only for the request this panel sent, when it failed on the network or you stopped it.
+  const canRetry = (s.claude?.retryable === true || activity.state === 'cancelled') && lastSent.current != null && lastSent.current.runId != null && lastSent.current.runId === s.claude?.runId
   const setPreview = on => {
     set({ assistantPreview: on })
     try { globalThis.localStorage?.setItem('arya.assistant.preview', on ? 'on' : 'off') } catch { /* The choice still applies to this session. */ }
   }
-  // A receipt undone by "Undo this change" counts as current again once Redo brings that change back.
-  const shown = receipt => receipt.undone && receipt.undoneBy != null && review?.change?.undoable && review.change.id === receipt.undoneBy ? { ...receipt, undone: false } : receipt
+  // A receipt is undone while the server says its change is, so Redo and later changes keep it right.
+  const changeState = receipt => receipt.changeId == null ? null : (review?.changes ?? []).find(item => item.id === receipt.changeId)
+  const shown = receipt => { const state = changeState(receipt); return state && Boolean(receipt.undone) !== state.undone ? { ...receipt, undone: state.undone } : receipt }
   const feed = [
     ...s.chat.map(m => ({ ...m, type: 'chat' })),
     ...s.activity.filter(a => ['claude', 'agent', 'assistant'].includes(a.who)).map(a => ({ type: 'act', text: a.text, at: a.at ?? 0 })),
@@ -532,7 +560,7 @@ export function ChatPanel() {
           <div class="assistant-field-context">
             <div class="assistant-composer-content" role="group" tabIndex="0" onMouseDown=${releasePointerFocus} aria-label=${working ? 'Next request context' : 'Editing context'}>
               <div class="assistant-context-chips">
-                <span class="chip small" title=${scopeName}>${s.openComp ? s.project?.comps?.[s.openComp]?.name ?? 'Current composition' : 'Main timeline'}</span>
+                <span class="chip small" title=${scopeName}>${openTimeline ? openTimeline.name ?? s.openComp : 'Main timeline'}</span>
                 <span class="chip small" title=${view.under.join(', ') || undefined}>${!view.time || view.time === 'unavailable' ? 'Playhead unavailable' : `Playhead ${view.time}`}</span>
               </div>
               ${native ? null : html`<label class="assistant-preview-toggle" title="Preview changes"><input type="checkbox" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview</span></label>`}

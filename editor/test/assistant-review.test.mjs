@@ -62,6 +62,88 @@ test('user edits, project replacement or no edits during a request leave nothing
   assert.equal(review.active(), false)
 })
 
+test('a request whose own commits were only Undo moves is a history change, undoable only while Redo leads back', () => {
+  const state = { version: 4, epoch: 1, project: newProject('Current'), depth: 0, events: [] }
+  const review = createAssistantReview({ getVersion: () => state.version, getEpoch: () => state.epoch, getProject: () => state.project, redoDepth: project => project === before ? state.depth : 0, onChange: value => state.events.push(value) })
+  const before = state.project
+  review.observe({ state: 'thinking', runId: 'r1' }, before)
+  for (const name of ['One back', 'Two back']) { state.project = newProject(name); state.version++; review.commitBy({ runId: 'r1' }, 'undo') }
+  state.depth = 2
+  review.observe({ state: 'done', runId: 'r1' }, state.project)
+  const change = review.snapshot().change
+  assert.equal(change.kind, 'history'); assert.equal(change.label, 'Undid 2 edits'); assert.equal(change.undoable, true)
+  assert.equal(review.undoTarget(change.id).change.moves.undo, 2)
+  // Toolbar Redo once: one more Redo is the way back, and the card says so.
+  const behind = state.project
+  state.depth = 1; state.project = newProject('One back again'); state.version++; review.commitBy(undefined, 'redo')
+  assert.equal(review.snapshot().change.undoable, false)
+  assert.equal(review.snapshot().change.reason, 'Use Redo in the toolbar to bring back the edits the assistant undid.')
+  assert.equal(state.events.at(-1).change.reason, review.snapshot().change.reason, 'and the page hears it')
+  state.depth = 2; state.project = behind; state.version++; review.commitBy(undefined, 'undo')
+  assert.equal(review.snapshot().change.undoable, true)
+  // A forward edit empties the redo history.
+  state.depth = 0; state.project = newProject('Forward'); state.version++; review.commitBy(undefined)
+  assert.match(review.snapshot().change.reason, /changed after this assistant change/)
+  // A run that also made an edit is an ordinary request; one that redid is history without a card undo.
+  review.observe({ state: 'thinking', runId: 'r2' }, state.project)
+  state.version++; review.commitBy({ runId: 'r2' }, 'undo'); state.version++; review.commitBy({ runId: 'r2' })
+  review.observe({ state: 'done', runId: 'r2' }, state.project)
+  assert.equal(review.snapshot().change.kind, 'request')
+  review.observe({ state: 'thinking', runId: 'r3' }, state.project)
+  state.version++; review.commitBy({ runId: 'r3' }, 'redo')
+  review.observe({ state: 'done', runId: 'r3' }, state.project)
+  assert.equal(review.snapshot().change.label, 'Redid 1 edit'); assert.equal(review.snapshot().change.undoable, false)
+  assert.deepEqual(review.snapshot().changes.map(item => item.kind), ['history', 'request', 'history'])
+  // A run that edits and then undoes past its start is a history change too.
+  review.observe({ state: 'thinking', runId: 'r4' }, before)
+  state.depth = 0; state.project = newProject('Edited'); state.version++; review.commitBy({ runId: 'r4' })
+  state.project = newProject('Undone'); state.version++; review.commitBy({ runId: 'r4' }, 'undo'); state.project = newProject('Twice'); state.version++; review.commitBy({ runId: 'r4' }, 'undo')
+  state.depth = 1
+  review.observe({ state: 'done', runId: 'r4' }, state.project)
+  assert.equal(review.snapshot().change.kind, 'history'); assert.equal(review.snapshot().change.label, 'Undid 1 edit')
+  assert.equal(review.undoTarget(review.snapshot().change.id).change.moves.undo, 1)
+  assert.equal(state.events.at(-1).change.undoable, true)
+  state.depth = 0; state.project = newProject('Later'); state.version++; review.commitBy(undefined)
+  assert.equal(state.events.at(-1).change.undoable, false)
+  // An edit the run undid again left the project as it was: undoing that would only empty Redo.
+  const same = state.project
+  review.observe({ state: 'thinking', runId: 'r5' }, same)
+  state.project = newProject('Briefly'); state.version++; review.commitBy({ runId: 'r5' }); state.project = same; state.version++; review.commitBy({ runId: 'r5' }, 'undo')
+  review.observe({ state: 'done', runId: 'r5' }, same)
+  assert.equal(review.snapshot().change.kind, 'request'); assert.equal(review.snapshot().change.undoable, false)
+  assert.equal(review.snapshot().change.reason, 'This change left the project as it was before.')
+})
+
+test('a change reads undone while the project is the one before it, whoever moved there, and applied again after Redo', () => {
+  const state = { version: 1, epoch: 1, project: newProject('Start'), events: [] }
+  const review = createAssistantReview({ getVersion: () => state.version, getEpoch: () => state.epoch, getProject: () => state.project, onChange: value => state.events.push(value) })
+  const move = (project, call, kind) => { state.project = project; state.version++; review.commitBy(call, kind) }
+  const start = state.project, edited = newProject('Edited')
+  // Run 1 edits. Run 2 calls Undo, which takes the project back to before run 1.
+  review.observe({ state: 'thinking', runId: 'r1' }, start)
+  move(edited, { runId: 'r1' })
+  review.observe({ state: 'done', runId: 'r1' }, edited)
+  review.observe({ state: 'thinking', runId: 'r2' }, edited)
+  move(start, { runId: 'r2' }, 'undo')
+  review.observe({ state: 'done', runId: 'r2' }, start)
+  const listed = () => review.snapshot().changes.map(item => [item.runId, item.undone])
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+  assert.deepEqual(state.events.at(-1).changes.map(item => item.undone), [true, false], 'the page hears it')
+  // Toolbar Redo brings run 1's edit back and reverses run 2.
+  move(edited, undefined, 'redo')
+  assert.deepEqual(listed(), [['r1', false], ['r2', true]])
+  assert.deepEqual(state.events.at(-1).changes.map(item => item.undone), [false, true])
+  // Toolbar Undo of a plain request marks it undone too, and a later edit elsewhere leaves that alone.
+  move(start, undefined, 'undo')
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+  move(newProject('Elsewhere'), undefined)
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+  // A replaced project keeps every state for good, even if the same objects come back.
+  state.epoch++; move(edited, undefined)
+  state.epoch--; move(edited, undefined)
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+})
+
 test('previews accumulate within one request, reset on request and refuse unsafe ops', () => {
   const { state, review } = tracker()
   review.observe({ state: 'thinking', runId: 'r1' }, newProject('A'))

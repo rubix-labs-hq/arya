@@ -79,7 +79,10 @@ const chat = chatHistory.messages()
 let claude = { state: 'idle', text: '' }
 let uiState = { playhead: 0, selection: [], page: 'edit' }
 // The latest assistant change for one-step undo, and the pending preview in Preview changes mode.
-const assistantReview = createAssistantReview({ getVersion: () => version, getEpoch: () => projectEpoch, getProject: () => project, onChange: value => broadcast('assistantReview', value, 'ui'),
+const assistantReview = createAssistantReview({ getVersion: () => version, getEpoch: () => projectEpoch, getProject: () => project,
+  // How many Redo moves lead to a project, so a run that undid edits can be reversed by Redo.
+  redoDepth: target => { const index = future.lastIndexOf(target); return index < 0 ? 0 : future.length - index },
+  onChange: value => broadcast('assistantReview', value, 'ui'),
   // Redo brought an undone preview back, so a request that says its preview was undone says
   // applied again. A later request that shows another outcome keeps it.
   onRestore: change => { if (change.kind === 'preview') assistantService.settlePreview('applied', 'undone') } })
@@ -315,7 +318,7 @@ function commit(next, who, lines, options = {}) {
   if (call) { call.version = version; call.acceptIdentity(projectEpoch) }
   lastText = publication.text
   // A commit outside the active request or preview apply makes that change unsafe to undo whole.
-  assistantReview.commitBy(call)
+  assistantReview.commitBy(call, options.historyMove)
   processing.current()?.accept()
   try {
     if (!publication.directorySynced) log('Project saved, but the directory flush failed:', publication.warningCode)

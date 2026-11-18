@@ -13,10 +13,12 @@ export const PREVIEW_OUTCOME = 'Preview mode was on. Proposed edits are applied 
 const QUIET_MS = 20000
 
 // One run as one quiet line: a label, a stage and the elapsed time. `detail` is the sentence the
-// line expands to. The words are the ones the Mac, iPad and iPhone apps use.
+// line expands to. The words are the ones the Mac, iPad and iPhone apps use, except that a stop
+// that changed nothing says so here before the native panel does.
 // `proposal` and `edits` say whether this request left a preview to apply or committed edits.
-// Leave them out when that is not known, and the full sentences are kept.
-export function assistantActivity(run = {}, { connected = true, pending = false, stopping = false, now = Date.now(), proposal, edits } = {}) {
+// `unchanged` says the project did not move at all during it. Leave them out when that is not
+// known, and the full sentences are kept.
+export function assistantActivity(run = {}, { connected = true, pending = false, stopping = false, now = Date.now(), proposal, edits, unchanged = false } = {}) {
   const preparing = pending && !stopping && !ACTIVE.has(run.state)
   const state = stopping ? 'cancelling' : preparing ? 'sending' : run.state ?? 'idle'
   const active = ACTIVE.has(state), terminal = TERMINAL.has(state)
@@ -35,7 +37,7 @@ export function assistantActivity(run = {}, { connected = true, pending = false,
     : preparing ? 'Preparing your request'
     : active ? quiet ? 'No update for 20 seconds' : phase || 'Thinking about your request'
     : state === 'done' ? run.outcome === PREVIEW_OUTCOME && proposal === false ? '' : run.outcome || 'Results not verified'
-    : state === 'cancelled' ? edits === false ? '' : 'Review or undo any committed edits.'
+    : state === 'cancelled' ? unchanged ? 'Nothing was changed.' : edits === false ? '' : 'Review or undo any committed edits.'
     : ''
   const detail = !connected && !terminal ? active ? 'Live status is unavailable. The request may still be running.' : 'Live status is unavailable.'
     : run.stopUnconfirmed ? 'Stopping could not be confirmed. Review processing jobs before retrying.'
@@ -43,7 +45,7 @@ export function assistantActivity(run = {}, { connected = true, pending = false,
     : preparing ? 'Preparing your request.'
     : active ? quiet ? `No update for 20 seconds. Last confirmed stage: ${phase || 'Working'}.` : phase || 'Thinking about your request'
     : state === 'done' ? run.outcome === PREVIEW_OUTCOME && proposal === false ? '' : run.outcome || 'Edit results have not been verified.'
-    : state === 'cancelled' ? edits === false ? '' : 'Stopped. Review or undo any committed edits.'
+    : state === 'cancelled' ? unchanged ? 'Stopped. Nothing was changed.' : edits === false ? '' : 'Stopped. Review or undo any committed edits.'
     : state === 'error' ? 'Request failed. Review the error before retrying.' : ''
   return { state, active, terminal, writing, quiet, label, stage, detail, connectionNotice: !connected && terminal ? 'Reconnecting. Showing the last confirmed result.' : '', elapsed, canStop: connected && active && !['sending', 'cancelling'].includes(state) }
 }

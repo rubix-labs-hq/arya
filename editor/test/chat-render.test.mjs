@@ -115,27 +115,90 @@ test('a result card names caption style and track settings changes and lists the
   assert.deepEqual(nodes(muted.tree).filter(node => node.props?.class === 'assistant-note'), [])
 })
 
-test('Redo brings a change back, so its result card is no longer marked undone', async () => {
+test('a result card is undone while the server says its change is, whatever change came later', async () => {
   const { changeReceipt } = await import('../web/ui/change-receipt.js')
   const at = Date.now() - 5000
   const before = { comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }] }
   const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
-  const receipt = { ...changeReceipt(before, after, { who: 'agent', version: 5, at: at + 1000 }), undone: true, undoneBy: 'ch1' }
+  const receipt = { ...changeReceipt(before, after, { who: 'agent', version: 5, at: at + 1000 }), changeId: 'ch1', changeKind: 'preview', changeLabel: 'Applied assistant preview' }
   const chat = [{ role: 'user', text: 'Make the title longer', at }]
-  const change = { id: 'ch1', kind: 'request', beforeVersion: 4, afterVersion: 5, edits: 1, undoable: true }
-  const undone = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: null } }))
+  const change = { id: 'ch1', kind: 'preview', beforeVersion: 4, afterVersion: 5, edits: 1, undoable: true }
+  const listed = undone => [{ id: 'ch1', kind: 'preview', beforeVersion: 4, afterVersion: 5, undone }]
+  const undone = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: null, changes: listed(true) } }))
   assert.equal(undone.props.receipts[0].undone, true)
   assert.equal(undone.tree.props['aria-label'], 'Undone edit result')
-  const redone = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change } }))
-  assert.equal(redone.props.receipts[0].undone, false)
+  assert.equal(textContent(nodes(undone.tree).find(node => node.type === 'b')), 'Applied the preview', 'an undone preview keeps its name')
+  const redone = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change, changes: listed(false) } }))
+  assert.equal(Boolean(redone.props.receipts[0].undone), false)
   assert.equal(redone.tree.props['aria-label'], 'Committed edit result')
   assert.ok(nodes(redone.tree).some(node => node.type === 'button' && textContent(node) === 'Undo this change'))
-  // An undone preview keeps its name.
-  const undonePreview = resultCard(panel({ state: 'done' }, true, { chat, receipts: [{ ...receipt, changeKind: 'preview' }], project: after, review: { change: null } }))
-  assert.equal(textContent(nodes(undonePreview.tree).find(node => node.type === 'b')), 'Applied the preview')
-  // Another change coming back leaves this one undone.
-  const other = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: { ...change, id: 'ch2' } } }))
-  assert.equal(other.props.receipts[0].undone, true)
+  // A later change takes the latest slot. The redone card stays applied and keeps its name.
+  const later = { id: 'ch2', kind: 'request', beforeVersion: 5, afterVersion: 6, edits: 1, undoable: true }
+  const longer = structuredClone(after); longer.tracks[0].clips[0].dur = 4
+  const next = { ...changeReceipt(after, longer, { who: 'agent', version: 6, at: at + 3000 }), changeId: 'ch2', changeKind: 'request' }
+  const kept = resultCard(panel({ state: 'done' }, true, { chat: [...chat, { role: 'user', text: 'Longer still', at: at + 2000 }], receipts: [receipt, next], project: longer, review: { change: later, changes: [...listed(false), { ...later, undone: false }] } }))
+  assert.equal(Boolean(kept.props.receipts[0].undone), false)
+  assert.equal(kept.tree.props['aria-label'], 'Committed edit result')
+  assert.equal(textContent(nodes(kept.tree).find(node => node.type === 'b')), 'Applied the preview')
+  // A receipt the server does not list is left as it is.
+  const unknown = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: null, changes: [] } }))
+  assert.equal(unknown.props.receipts[0], receipt)
+})
+
+test('a history card is named for its move and offers Undo only as the server allows', async () => {
+  const { changeReceipt } = await import('../web/ui/change-receipt.js')
+  const at = Date.now() - 5000
+  const before = { comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }] }
+  const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
+  const receipt = { ...changeReceipt(before, after, { who: 'agent', version: 5, at: at + 1000 }), changeId: 'h1', changeKind: 'history', changeLabel: 'Undid 1 edit' }
+  const chat = [{ role: 'user', text: 'Undo that', at }]
+  const change = { id: 'h1', kind: 'history', label: 'Undid 1 edit', beforeVersion: 4, afterVersion: 5, edits: 1, undoable: true, reason: '' }
+  const card = review => resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review })).tree
+  const offered = card({ change, changes: [{ ...change, undone: false }] })
+  assert.equal(textContent(nodes(offered).find(node => node.type === 'b')), 'Undid 1 edit')
+  assert.match(nodes(offered).find(node => node.type === 'button' && textContent(node) === 'Undo this change').props.title, /^Redo the edits the assistant undid/)
+  const reason = 'Use Redo in the toolbar to bring back the edits the assistant undid.'
+  const pointed = card({ change: { ...change, undoable: false, reason }, changes: [{ ...change, undone: false }] })
+  assert.equal(nodes(pointed).some(node => node.type === 'button' && textContent(node) === 'Undo this change'), false)
+  assert.deepEqual(nodes(pointed).filter(node => node.props?.class === 'assistant-note').map(textContent), [reason])
+  assert.equal(textContent(nodes(card({ change: null, changes: [] })).find(node => node.type === 'b')), 'Undid 1 edit', 'an older card keeps the name too')
+})
+
+test('a request that edited and then undid is named for both steps and says why it has no card undo', async () => {
+  const { changeReceipt } = await import('../web/ui/change-receipt.js')
+  const at = Date.now() - 5000
+  const before = { comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }] }
+  const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
+  const label = 'Made 1 edit and undid 1'
+  const receipts = [5, 6].map((version, index) => ({ ...changeReceipt(before, after, { who: 'agent', version, at: at + 1000 + index }), changeId: 'm1', changeKind: 'request', changeLabel: label }))
+  const chat = [{ role: 'user', text: 'Try a longer title, then go back', at }]
+  const reason = 'This change left the project as it was before.'
+  const change = { id: 'm1', kind: 'request', label, moves: { edit: 1, undo: 1, redo: 0 }, beforeVersion: 4, afterVersion: 6, edits: 2, undoable: false, reason }
+  const card = review => resultCard(panel({ state: 'done' }, true, { chat, receipts, project: before, review })).tree
+  const latest = card({ change, changes: [{ ...change, undone: false }] })
+  assert.equal(textContent(nodes(latest).find(node => node.type === 'b')), label, 'the undo is not counted as an edit')
+  assert.deepEqual(nodes(latest).filter(node => node.props?.class === 'assistant-note').map(textContent), [reason])
+  assert.equal(textContent(nodes(card({ change: null, changes: [] })).find(node => node.type === 'b')), label, 'an older card keeps the name too')
+  // A plain request that cannot be undone in one step keeps its quiet card.
+  const plain = { ...change, label: 'Assistant request', moves: undefined, edits: 1, afterVersion: 5, reason: 'The project changed after this assistant change. Use Undo step by step.' }
+  const quiet = resultCard(panel({ state: 'done' }, true, { chat, receipts: [{ ...receipts[0], changeLabel: 'Assistant request' }], project: after, review: { change: plain, changes: [{ ...plain, undone: false }] } })).tree
+  assert.equal(textContent(nodes(quiet).find(node => node.type === 'b')), 'Made 1 edit')
+  assert.equal(nodes(quiet).some(node => node.props?.class === 'assistant-note'), false)
+})
+
+test('a stopped request that changed nothing says so and offers Retry and Edit and retry', () => {
+  const at = Date.now() - 5000
+  const chat = [{ role: 'user', text: 'Tighten the opening', at }]
+  const stopped = { state: 'cancelled', runId: 'r1', startedAt: at, finishedAt: at + 3000 }
+  const tree = panel(stopped, true, { chat, review: { change: null, changes: [] }, lastSent: { request: { text: 'Tighten the opening' }, options: {}, runId: 'r1' } })
+  const run = nodes(tree).find(node => node.props?.class === 'assistant-run cancelled')
+  assert.equal(textContent(nodes(run).find(node => node.props?.class === 'assistant-run-stage')), 'Nothing was changed.')
+  assert.equal(nodes(tree).find(node => node.props?.class?.startsWith('assistant-failure ')).props.class, 'assistant-failure stopped', 'not drawn as an error')
+  const actions = nodes(tree).find(node => node.props?.class === 'assistant-failure-actions')
+  assert.deepEqual(nodes(actions).filter(node => node.type === 'button').map(textContent), ['Edit and retry', 'Retry'])
+  // Another request's run gets Edit and retry only.
+  const other = panel(stopped, true, { chat, review: { change: null, changes: [] }, lastSent: { request: {}, options: {}, runId: 'r0' } })
+  assert.deepEqual(nodes(nodes(other).find(node => node.props?.class === 'assistant-failure-actions')).filter(node => node.type === 'button').map(textContent), ['Edit and retry'])
 })
 
 test('a failed turn lists what was saved and offers Retry only for the same retryable request', () => {
@@ -355,4 +418,18 @@ test('actual ChatPanel keeps the draft and never dispatches if sharing review fa
   await nodes(tree).find(node => node.props?.['aria-label'] === 'Send message').props.onClick()
   assert.deepEqual(calls, ['/api/assistant/sharing'])
   assert.deepEqual(drafts, [])
+})
+
+test('a card whose change added a composition that is not open offers to open it first', () => {
+  const before = { name: 'Main', tracks: [{ id: 'V1', kind: 'video', clips: [] }], comps: {} }
+  const after = structuredClone(before)
+  after.comps.k1 = { name: 'Sample scene', width: 1080, height: 1920, fps: 30, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'color', color: '#123456', start: 0, dur: 2 }] }] }
+  const receipt = changeReceipt(before, after, { who: 'agent', version: 3 })
+  const { tree, updates } = renderReceipt(receipt, after, { id: 'p1', kind: 'preview', edits: 1, undoable: true })
+  const buttons = nodes(tree).filter(node => node.type === 'button').map(textContent)
+  assert.deepEqual(buttons, ['Open Sample scene', 'Undo this change', 'Select changed layers'])
+  nodes(tree).find(node => node.type === 'button' && textContent(node) === 'Open Sample scene').props.onClick()
+  assert.deepEqual(updates, [{ openComp: 'k1', compParents: { k1: null }, selection: [], page: 'edit', viewerMode: 'timeline', scroll: 0 }])
+  // Gone again, as after Undo, there is nothing to open.
+  assert.equal(nodes(renderReceipt(receipt, before).tree).some(node => node.type === 'button' && textContent(node).startsWith('Open ')), false)
 })
