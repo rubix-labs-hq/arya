@@ -633,7 +633,7 @@ struct NativeAssistantPanel: View {
                         else { Image(systemName: assistant.state == "done" ? "checkmark.circle" : assistant.state == "cancelled" ? "stop.circle" : "exclamationmark.circle")
                             .foregroundStyle(assistant.state == "error" ? NativeEditorStyle.error : NativeEditorStyle.muted) }
                         Text(label).fontWeight(.semibold).lineLimit(1).fixedSize()
-                        if !stage.isEmpty && !below { Text(stage).foregroundStyle(NativeEditorStyle.muted).lineLimit(quiet || stopped ? 2 : 1).truncationMode(.tail) }
+                        if !stage.isEmpty && !below { Text(stage).foregroundStyle(NativeEditorStyle.muted).lineLimit(quiet || stopped ? 2 : 1).truncationMode(.tail).multilineTextAlignment(.leading) }
                         Spacer(minLength: 4)
                         Text(elapsed).monospacedDigit().foregroundStyle(NativeEditorStyle.muted).lineLimit(1).fixedSize()
                     }
@@ -891,6 +891,8 @@ struct NativeAssistantPanel: View {
                 modelControls(short: width < 420)
                 if Self.touch && width < 440 { primaryAction.labelStyle(NativeAssistantIconActionStyle()) } else { primaryAction }
             }
+            // The row is as tall while a request runs as when idle, so Stop keeps Send's target.
+            .frame(minHeight: actionHeight)
         }
     }
 
@@ -900,7 +902,7 @@ struct NativeAssistantPanel: View {
             previewToggle(iconOnly: width < 260 || (dynamicTypeSize.isAccessibilitySize && width < 600))
             Spacer(minLength: 0)
             primary()
-        }
+        }.frame(minHeight: actionHeight)
     }
 
     @ViewBuilder private var primaryAction: some View {
