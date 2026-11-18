@@ -20,7 +20,7 @@ Report them privately. See [SECURITY.md](SECURITY.md).
 
 ## Your data
 
-The [data guide](https://arya-beta-delta.vercel.app/privacy/) explains where Arya keeps projects and media, and what a connected assistant or a Figma import receives.
+The [data guide](https://editwitharya.app/privacy/) explains where Arya keeps projects and media, and what a connected assistant or a Figma import receives.
 
 ## Documentation
 
