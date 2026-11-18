@@ -17,6 +17,16 @@ final class NativeAssistantRoutingPolicyTests: XCTestCase {
         XCTAssertEqual(NativeAssistantRoutingPolicy.initialProvider(savedProvider: nil, hasCompanionConnection: true, chatGPTSupported: true), "claude-code")
     }
 
+    func testCompactRoutingLabelNamesOnlyAutoOrTheProvider() {
+        XCTAssertEqual(NativeAssistantRoutingPolicy.compactRoutingLabel(mode: "manual", provider: "chatgpt"), "ChatGPT")
+        XCTAssertEqual(NativeAssistantRoutingPolicy.compactRoutingLabel(mode: "manual", provider: "claude-code"), "Claude")
+        XCTAssertEqual(NativeAssistantRoutingPolicy.compactRoutingLabel(mode: "auto", provider: "codex"), "Auto")
+        XCTAssertEqual(NativeAssistantRoutingPolicy.compactRoutingLabel(mode: "manual", provider: "other"), "other")
+        for provider in ["claude-code", "codex", "antigravity", "gemini-cli", "custom", "anthropic", "chatgpt"] {
+            XCTAssertLessThanOrEqual(NativeAssistantRoutingPolicy.compactRoutingLabel(mode: "manual", provider: provider).count, 11, provider)
+        }
+    }
+
     private let now = 1_000_000.0
     private var providers: [[String: Any]] {
         ["claude-code", "codex"].map { ["id": $0, "installed": true, "authenticated": true, "available": true, "adapterSupported": true, "modelSelectionSupported": true, "billingMode": "subscription"] }

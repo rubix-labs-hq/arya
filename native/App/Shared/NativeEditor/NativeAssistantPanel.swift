@@ -901,12 +901,12 @@ struct NativeAssistantPanel: View {
                 modelControls(short: dynamicTypeSize >= .accessibility3)
             }.frame(maxWidth: .infinity)
         } else {
-            // In one row the model shares the width, so a narrow pane drops "· Default" from its
-            // label and a narrow touch row shows Send or Stop as its icon.
+            // In one row the model shares the width, so a narrow pane or a phone shows only the
+            // provider in its label, and a narrow touch row shows Send or Stop as its icon.
             HStack(spacing: 6) {
                 inputMenu
                 previewToggle(iconOnly: width < 360)
-                modelControls(short: width < 420)
+                modelControls(short: width < 420 || Self.touch && horizontalSizeClass == .compact)
                 if Self.touch && width < 440 { primaryAction.labelStyle(NativeAssistantIconActionStyle()) } else { primaryAction }
             }
             // The row is as tall while a request runs as when idle, so Stop keeps Send's target.
@@ -1091,9 +1091,10 @@ struct NativeAssistantPanel: View {
         } catch { model.status = error.localizedDescription }
     }
 
-    /// Short drops "· Default" from a provider's default route, so the name fits beside Send.
+    /// Short shows only Auto or the provider's short name, so the label fits beside Send without
+    /// being cut in the middle. The menu marks the model, and VoiceOver reads the full route.
     private func modelControls(short: Bool) -> some View {
-            let label = short && assistant.routingLabel == "\(assistant.providerName) · Default" ? assistant.providerName : assistant.routingLabel
+            let label = short ? NativeAssistantRoutingPolicy.compactRoutingLabel(mode: assistant.routingMode, provider: assistant.provider) : assistant.routingLabel
             return Menu {
                 if assistant.routingSupported && !assistant.autoModels.isEmpty {
                     ForEach(NativeAssistantRoutingPolicy.priorities, id: \.self) { priority in
