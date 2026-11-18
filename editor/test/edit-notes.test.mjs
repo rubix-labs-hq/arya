@@ -299,3 +299,60 @@ test('a clip name that cannot be read costs only that name, and the agent keeps 
   const person = editNotes(before, after, { ops, created: ['c1', 'c2'], audience: 'person' })
   assert.ok(person.some(note => /^A track shows one clip at a time, so overlapping clips hide each other: "a clip" is hidden under "Pier 0"/.test(note)), person.join('\n'))
 })
+
+test('an overlap of half a frame or less says nothing, and a one-frame overlap is named', () => {
+  const titles = second => run(wide(), [{ op: 'add_title', text: 'Pier one', title: { size: 40 }, track: 'V1', start: 0, dur: 2.1334 }, { op: 'add_title', text: 'Pier two', title: { size: 40 }, track: 'V1', start: second, dur: 2 }])
+  // Rounded times leave 0.0001 s, which drew as "from 2.13s to 2.13s".
+  assert.equal(titles(2.1333).notes.some(note => /hidden under/.test(note)), false, titles(2.1333).notes.join('\n'))
+  assert.match(titles(2.1).notes.join('\n'), /c2 is hidden under c1 on V1 from 2\.1s to 2\.13s/)
+})
+
+test('captions that overlap on their track get a caption note with caption advice', () => {
+  const ops = [{ op: 'captions', items: [{ t: 0, end: 1.0333, text: 'first line' }, { t: 1, end: 2, text: 'second line' }] }]
+  const { notes, project } = run(wide(), ops)
+  const [first, second] = project.tracks.find(track => track.kind === 'caption').clips
+  const overlap = notes.find(note => note.startsWith('Caption overlaps'))
+  assert.ok(overlap, notes.join('\n'))
+  assert.ok(overlap.includes(`${second.id} is hidden under ${first.id} on C1 from 1s to 1.03s`), overlap)
+  assert.match(overlap, /Trim the earlier caption to end where the next one starts\./)
+  assert.equal(notes.some(note => note.startsWith('Overlaps on one track')), false, 'captions do not get the move-to-another-track advice')
+  const person = editNotes(wide(), project, { ops, created: [first.id, second.id], audience: 'person' })
+  assert.ok(person.includes('A caption track shows one caption at a time, so overlapping captions hide each other: "second line" is hidden under "first line" from 1s to 1.03s. Shorten the earlier one.'), person.join('\n'))
+  const apart = run(wide(), [{ op: 'captions', items: [{ t: 0, end: 1, text: 'first line' }, { t: 1, end: 2, text: 'second line' }] }])
+  assert.equal(apart.notes.some(note => /hidden under/.test(note)), false, apart.notes.join('\n'))
+})
+
+test('text left for two frames or less is called a flash, and a title shorter than its reading time is called brief', () => {
+  const { notes } = run(wide(), [{ op: 'add_title', text: 'Gate opens', title: { size: 40 }, track: 'V2', start: 3, dur: 0.0333 }])
+  assert.ok(notes.includes('Text that lasts 2 frames or less, which reads as a flash: c1 "Gate opens" at 3s lasts 0.03s. A cut usually leaves these behind from text that crossed it. Delete them, or lengthen them if they belong.'), notes.join('\n'))
+  assert.equal(notes.some(note => note.startsWith('Titles shorter')), false, 'a flash gets one note')
+  const brief = run(wide(), [{ op: 'add_title', text: 'Open late tonight', title: { size: 40 }, start: 1, dur: 0.5 }])
+  assert.ok(brief.notes.includes('Titles shorter than their reading time (about 0.6s plus 0.1s per word): c1 "Open late tonight" is on screen 0.5s and needs about 0.9s. Lengthen them or use fewer words.'), brief.notes.join('\n'))
+  const person = editNotes(wide(), brief.project, { ops: [], created: ['c1'], audience: 'person' })
+  assert.ok(person.includes('Some titles are too brief to read: "Open late tonight" shows for 0.5s. Show them longer or shorten the text.'), person.join('\n'))
+  const readable = run(wide(), [{ op: 'add_title', text: 'Open late tonight', title: { size: 40 }, start: 1, dur: 1 }])
+  assert.equal(readable.notes.some(note => /reading time|flash/.test(note)), false, readable.notes.join('\n'))
+  // A title the batch did not touch is not reported again.
+  assert.equal(editNotes(brief.project, structuredClone(brief.project), { ops: [] }).some(note => /reading time/.test(note)), false)
+})
+
+test('video zoomed more than 10% past the scale that fills a frame of another shape gets a note', () => {
+  const placed = (frame, set = {}) => {
+    const media = applyOps(withMedia(frame, { 'media/wide.mp4': { assetKind: 'video', hasVideo: true, hasAudio: false, duration: 60, width: 1920, height: 1080 } }), [{ op: 'append', src: 'media/wide.mp4', track: 'V1', in: 0, dur: 6 }]).project
+    const id = media.tracks.find(track => track.id === 'V1').clips[0].id
+    return { media, id, ...run(media, [{ op: 'update', id, set }]) }
+  }
+  // 1920x1080 media fills a 1080x1920 frame at (1920/1080) / (1080/1920) = 3.16.
+  assert.equal(placed(vertical(), { scale: 3.47 }).notes.some(note => /fill scale/.test(note)), false, '9.8% past says nothing')
+  const tight = placed(vertical(), { scale: 3.49 })
+  assert.ok(tight.notes.includes(`Zoomed past the fill scale: ${tight.id} reaches scale 3.49, 10% past 3.16, the scale at which its 1920x1080 media fills the 1080x1920 frame. The extra zoom crops the subject's margin. Render frames at least every 2 seconds and at fast moves and check the subject's distance from each edge, or lower scale toward the fill scale.`), tight.notes.join('\n'))
+  const person = editNotes(tight.media, tight.project, { ops: [], audience: 'person' })
+  assert.ok(person.includes('"wide.mp4" is zoomed 10% past the size that fills the frame, so more of the picture is cropped. Check that the subject stays in frame.'), person.join('\n'))
+  // A keyframed zoom counts by its largest key.
+  const { media, id } = placed(vertical(), { scale: 3.2 })
+  const keyed = run(media, [{ op: 'keyframe', id, prop: 'scale', at: 0, value: 3.2 }, { op: 'keyframe', id, prop: 'scale', at: 2, value: 3.8 }])
+  assert.match(keyed.notes.join('\n'), new RegExp(`${id} reaches scale 3\\.8, 20% past 3\\.16`))
+  // A punch-in on media of the frame's own shape, and a cover fit, are choices, not reframes.
+  assert.equal(placed(wide(), { scale: 1.5 }).notes.some(note => /fill scale/.test(note)), false)
+  assert.equal(placed(vertical(), { scale: 4, fit: 'cover' }).notes.some(note => /fill scale/.test(note)), false)
+})
