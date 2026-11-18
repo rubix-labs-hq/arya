@@ -32,7 +32,8 @@ test('the size list follows the project shape and never passes what the preset a
 
 test('every offered size is one the export accepts, and a chosen size renders at its listed height', () => {
   assert.match(presets, new RegExp(`edge: ${EXPORT_LIMITS.maximumEdge}, pixels: ${EXPORT_LIMITS.maximumPixels}\\b`))
-  for (const p of [{ width: 1920, height: 3414 }, { width: 3414, height: 1920 }, { width: 1000, height: 5000 }, { width: 7680, height: 4320 }, { width: 720, height: 720 }]) {
+  for (const p of [{ width: 1920, height: 3414 }, { width: 3414, height: 1920 }, { width: 1000, height: 5000 }, { width: 7680, height: 4320 }, { width: 720, height: 720 },
+    { width: 200, height: 2000 }, { width: 8192, height: 1024 }, { width: 1081, height: 1921 }, { width: 1921, height: 1081 }, { width: 101, height: 8191 }]) {
     const project = { ...p, fps: 30, duration: 2 }
     for (const id of ['youtube', '4k', 'web', 'gif', 'png']) {
       const sizes = offered(id, p)
@@ -42,10 +43,18 @@ test('every offered size is one the export accepts, and a chosen size renders at
         assert.doesNotThrow(() => validateExportSpec({ width: value.width, height: value.height }, project), `${id} ${value.width}x${value.height}`)
         assert.deepEqual(size(id, p, value.width), [value.width, value.height])
       }
+      // The size Render uses before one is chosen is accepted too.
+      const [width, height] = size(id, p)
+      assert.doesNotThrow(() => validateExportSpec({ width, height }, project), `${id} default ${width}x${height} for ${p.width}x${p.height}`)
     }
   }
-  // A width that is not in the list falls back to the preset's own size.
+  // A width that is not in the list falls back to the preset's own size, or the largest allowed size when that is too big.
   assert.deepEqual(size('youtube', { width: 1920, height: 3414 }, 3840), [1080, 1920])
+  assert.deepEqual(size('youtube', { width: 200, height: 2000 }), [720, 7200])
+  assert.deepEqual(size('youtube', { width: 8192, height: 1024 }), [8192, 1024])
+  // An odd project size is offered made even, never larger than the project.
+  assert.deepEqual(labels(offered('web', { width: 1081, height: 1921 })), ['2160x3838', '1440x2558', '1080x1920', '720x1280', '540x960'])
+  assert.deepEqual(size('png', { width: 1081, height: 1921 }), [1080, 1920])
 })
 
 test('a failed job shows its own error and a waiting job says what it waits for', () => {

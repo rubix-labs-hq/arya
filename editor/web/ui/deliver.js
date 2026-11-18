@@ -33,6 +33,8 @@ const PRESETS = [
 const SIZE_LIMIT = { edge: 8192, pixels: 33554432 }
 const SHORT_EDGES = [2160, 1440, 1080, 720, 540]
 const even = value => Math.max(2, Math.round(value / 2) * 2)
+// The project width made even without growing past it, so an odd project size is still one the export accepts.
+const projectWidth = p => Math.max(2, Math.floor(p.width / 2) * 2)
 const heightFor = (p, width) => Math.round((width * p.height) / p.width / 2) * 2
 // The project's shape with its short edge at the given length. Both sides are even.
 const shapedSize = (p, shortEdge) => {
@@ -44,7 +46,7 @@ const presetSize = (p, choice) => {
   if (choice.shortEdge) return shapedSize(p, choice.shortEdge)
   const width = choice.maxEdge
     ? Math.max(2, Math.floor(p.width * Math.min(3840 / Math.max(p.width, p.height), 2160 / Math.min(p.width, p.height)) / 2) * 2)
-    : choice.width ?? p.width
+    : choice.width ?? projectWidth(p)
   return { width, height: heightFor(p, width) }
 }
 const presetAllows = (choice, size) => {
@@ -54,13 +56,24 @@ const presetAllows = (choice, size) => {
   if (choice.maxEdge) return longEdge <= choice.maxEdge && shortEdge <= (choice.maxEdge * 9) / 16
   return choice.width ? size.width <= choice.width : true
 }
+// The largest size in the project's shape that the preset and the export both allow, for shapes no listed size fits.
+const fittedSize = (p, choice) => {
+  let width = even(p.width * Math.min(SIZE_LIMIT.edge / Math.max(p.width, p.height), Math.sqrt(SIZE_LIMIT.pixels / (p.width * p.height))))
+  while (width > 2 && !presetAllows(choice, { width, height: heightFor(p, width) })) width -= 2
+  return { width, height: heightFor(p, width) }
+}
 // Every size the Resolution menu offers, largest first: the preset's own size, the common short edges and the project size.
+// Each one passes the same limits, so the menu never lists a size the export refuses.
 const deliverSizes = (p, choice) => {
-  const first = presetSize(p, choice), seen = new Set()
-  return [first, ...[...SHORT_EDGES.map(edge => shapedSize(p, edge)), { width: p.width, height: heightFor(p, p.width) }].filter(size => presetAllows(choice, size))]
+  const seen = new Set(), project = projectWidth(p)
+  const sizes = [presetSize(p, choice), ...SHORT_EDGES.map(edge => shapedSize(p, edge)), { width: project, height: heightFor(p, project) }]
+    .filter(size => presetAllows(choice, size))
     .filter(size => !seen.has(size.width) && seen.add(size.width))
     .sort((a, b) => b.width - a.width)
+  return sizes.length ? sizes : [fittedSize(p, choice)]
 }
+// The size Render uses when none is chosen: the preset's own size when it is allowed, else the largest allowed.
+const defaultSize = (p, choice, sizes) => sizes.find(size => size.width === presetSize(p, choice).width) ?? sizes[0]
 
 // The tip card counts only exports started in this tab, even if Deliver closed before the reply.
 // Retry re-sends exactly what this tab requested, including the composition, so it never renders something else.
@@ -102,7 +115,7 @@ export function DeliverPage() {
   const [fps, setFps] = useState(null)
   const [dismissed, setDismissed] = useState({ root: s.root, ids: [] })
   const sizes = deliverSizes(p, choice)
-  const { width: outW, height: outH } = sizes.find(size => size.width === width) ?? presetSize(p, choice)
+  const { width: outW, height: outH } = sizes.find(size => size.width === width) ?? defaultSize(p, choice, sizes)
   const range = rangeMode === 'range' && p.range ? p.range : { in: 0, out: duration(p) }
   const native = host.kind === 'native' || host.kind === 'browser-local'
   // In the Mac app's Web Editor the page encodes with WebCodecs, so offer only what that route renders.
