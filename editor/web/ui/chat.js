@@ -117,7 +117,7 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
     ${caption ? html`<p class="assistant-result-caption">${caption}</p>` : null}
     ${undoable || groups.length || added.length ? html`<div class="receipt-actions">
       ${added.map(([id, name]) => html`<button class="ghost tiny" key=${id} onClick=${() => openComposition(id)}>Open ${name}</button>`)}
-      ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title="Restore the project from before this assistant change. Redo brings it back." onClick=${onUndo}>${busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
+      ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title=${kind === 'history' ? 'Redo the edits the assistant undid. Undo in the toolbar undoes them again.' : 'Restore the project from before this assistant change. Redo brings it back.'} onClick=${onUndo}>${busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
       ${groups.map(comp => {
         const selectable = receiptSelection(merged, store.project, comp)
         const name = comp == null ? 'main timeline' : store.project?.comps?.[comp]?.name ?? comp

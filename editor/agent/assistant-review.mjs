@@ -19,17 +19,17 @@ const invalid = message => Object.assign(new Error(message), { status: 400 })
 const MAX_CHANGES = 30
 const plural = (count, one) => `${count} ${one}${count === 1 ? '' : 's'}`
 
-// A run whose own commits were all Undo or Redo moved through history. Its change is named for
-// that move, so a card never calls an undo an edit.
+// A run that ended behind where it started, or whose own commits were all Undo or Redo, moved
+// through history. Its change is named for that move, so a card never calls an undo an edit.
 function historyLabel({ undo, redo }) {
   return redo === 0 ? `Undid ${plural(undo, 'edit')}` : undo === 0 ? `Redid ${plural(redo, 'edit')}` : 'Moved through the undo history'
 }
 
 /**
- * `redoReaches(project, steps)` says whether `steps` Redo moves from the current project end on
- * `project`. Without it a history change cannot be reversed from its card.
+ * `redoDepth(project)` is how many Redo moves from the current project end on `project`, or 0 when
+ * Redo never reaches it. Without it a history change cannot be reversed from its card.
  */
-export function createAssistantReview({ getVersion, getEpoch, getProject, redoReaches = () => false, onChange = () => {}, onRestore = () => {}, now = Date.now } = {}) {
+export function createAssistantReview({ getVersion, getEpoch, getProject, redoDepth = () => 0, onChange = () => {}, onRestore = () => {}, now = Date.now } = {}) {
   let run = null, change = null, proposal = null, applying = null
   // The change "Undo this change" removed. Redo can bring its project back, and the change with it.
   let undoneChange = null
@@ -43,13 +43,15 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, redoRe
     // Undo and redo restore the same project objects, so identity survives a round trip.
     const current = getProject() === change.after && epoch() === change.epoch
     // A run that undid edits is reversed by Redo, and only when Redo leads exactly back.
-    const history = change.kind === 'history'
-    const redoable = history && change.moves.redo === 0 && redoReaches(change.before, change.moves.undo)
+    const history = change.kind === 'history', back = history && change.moves.redo === 0
+    const depth = back ? redoDepth(change.before) : 0, redoable = back && depth === change.moves.undo
+    const changedProject = 'The project changed after this assistant change. Use Undo step by step.'
     const reason = !change.safe ? 'You or another tool edited the project while the assistant change was being made. Use Undo step by step.'
-      : !current ? 'The project changed after this assistant change. Use Undo step by step.'
-      : history && change.moves.redo === 0 && !redoable ? 'Use Redo in the toolbar to bring back the edits the assistant undid.'
-      : history && !redoable ? 'Use Undo and Redo in the toolbar to move through these steps.' : ''
-    return { id: change.id, kind: change.kind, runId: change.runId, label: change.label, beforeVersion: change.beforeVersion, afterVersion: change.afterVersion, edits: change.afterVersion - change.beforeVersion, at: change.at, undoable: change.safe && current && (!history || redoable), reason }
+      : back && !redoable ? depth > 0 ? 'Use Redo in the toolbar to bring back the edits the assistant undid.' : changedProject
+      : history && !back ? 'Use Undo and Redo in the toolbar to move through these steps.'
+      : !current ? changedProject
+      : change.before === change.after ? 'This change left the project as it was before.' : ''
+    return { id: change.id, kind: change.kind, runId: change.runId, label: change.label, beforeVersion: change.beforeVersion, afterVersion: change.afterVersion, edits: change.afterVersion - change.beforeVersion, at: change.at, undoable: !reason, reason }
   }
   const publicProposal = () => proposal && { id: proposal.id, runId: proposal.runId, replaced: proposal.replaced ?? '', baseVersion: proposal.baseVersion, ops: proposal.ops, steps: proposal.steps.map(({ path, body, preview }) => ({ path, body, preview })), assets: proposal.assets ?? {}, summary: proposal.summaries.join('; '), at: proposal.at, stale: version() !== proposal.baseVersion || epoch() !== proposal.epoch }
   const publicApplying = () => applying && { id: applying.id, summary: applying.summary, total: applying.total, index: applying.index, title: applying.title, finished: applying.finished, error: applying.error ?? '' }
@@ -70,9 +72,11 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, redoRe
         run.finished = true
         const edits = version() - run.beforeVersion
         if (edits > 0) undoneChange = null
-        const { moves } = run, history = moves.edit === 0 && moves.undo + moves.redo > 0
+        // A run that ends behind where it started is undone by as many Redo moves, whatever it did between.
+        const { moves } = run, depth = edits > 0 ? redoDepth(run.before) : 0
+        const steps = depth > 0 ? { undo: depth, redo: 0 } : moves.edit === 0 && moves.undo + moves.redo > 0 ? { undo: moves.undo, redo: moves.redo } : null
         if (edits > 0) {
-          change = { id: randomUUID(), kind: history ? 'history' : 'request', runId: run.runId, label: history ? historyLabel(moves) : 'Assistant request', ...(history ? { moves: { undo: moves.undo, redo: moves.redo } } : {}),
+          change = { id: randomUUID(), kind: steps ? 'history' : 'request', runId: run.runId, label: steps ? historyLabel(steps) : 'Assistant request', ...(steps ? { moves: steps } : {}),
             before: run.before, after: project, beforeVersion: run.beforeVersion, afterVersion: version(), epoch: run.epoch, safe: !run.foreign && epoch() === run.epoch, at: now() }
           remember(change)
         }

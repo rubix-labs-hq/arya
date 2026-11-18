@@ -238,6 +238,18 @@ test('a request that undid two edits is undone by two Redo moves', async t => {
   assert.deepEqual(after.project, before.project); assert.deepEqual(after.history, { undo: 3, redo: 0 })
 })
 
+test('a request that edits and then undoes past its start is undone with Redo too', async t => {
+  const server = await runningServer(t, [{ method: 'POST', path: '/api/ops', body: { ops: [{ op: 'marker', t: 3, label: 'Agent' }] } }, { method: 'POST', path: '/api/undo' }, { method: 'POST', path: '/api/undo' }])
+  for (const label of ['One', 'Two']) await server.api('POST', '/api/ops', { ops: [{ op: 'marker', t: 1, label }] })
+  const before = (await server.api('GET', '/api/project')).body
+  await server.ask('Add a marker, then undo back past it.')
+  const change = (await server.api('GET', '/api/assistant/review')).body.change
+  assert.equal(change.kind, 'history'); assert.equal(change.label, 'Undid 1 edit'); assert.equal(change.undoable, true)
+  assert.equal((await server.api('POST', '/api/assistant/change/undo', { id: change.id })).status, 200)
+  const after = (await server.api('GET', '/api/project')).body
+  assert.deepEqual(after.project, before.project); assert.deepEqual(after.history, { undo: 2, redo: 1 }, 'the agent\'s own marker is still one Redo away')
+})
+
 test('a request that redid an edit offers no card undo and points at the toolbar', async t => {
   const server = await runningServer(t, [{ method: 'POST', path: '/api/redo' }])
   await server.api('POST', '/api/ops', { ops: [{ op: 'marker', t: 1, label: 'Only' }] })

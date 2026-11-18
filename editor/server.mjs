@@ -80,8 +80,8 @@ let claude = { state: 'idle', text: '' }
 let uiState = { playhead: 0, selection: [], page: 'edit' }
 // The latest assistant change for one-step undo, and the pending preview in Preview changes mode.
 const assistantReview = createAssistantReview({ getVersion: () => version, getEpoch: () => projectEpoch, getProject: () => project,
-  // A run that undid edits is reversed by as many Redo moves, when they lead back to its project.
-  redoReaches: (target, steps) => steps > 0 && future.length >= steps && future.at(-steps) === target,
+  // How many Redo moves lead to a project, so a run that undid edits can be reversed by Redo.
+  redoDepth: target => { const index = future.lastIndexOf(target); return index < 0 ? 0 : future.length - index },
   onChange: value => broadcast('assistantReview', value, 'ui'),
   // Redo brought an undone preview back, so a request that says its preview was undone says
   // applied again. A later request that shows another outcome keeps it.

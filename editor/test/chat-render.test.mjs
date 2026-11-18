@@ -156,7 +156,7 @@ test('a history card is named for its move and offers Undo only as the server al
   const card = review => resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review })).tree
   const offered = card({ change, changes: [{ ...change, undone: false }] })
   assert.equal(textContent(nodes(offered).find(node => node.type === 'b')), 'Undid 1 edit')
-  assert.ok(nodes(offered).some(node => node.type === 'button' && textContent(node) === 'Undo this change'))
+  assert.match(nodes(offered).find(node => node.type === 'button' && textContent(node) === 'Undo this change').props.title, /^Redo the edits the assistant undid/)
   const reason = 'Use Redo in the toolbar to bring back the edits the assistant undid.'
   const pointed = card({ change: { ...change, undoable: false, reason }, changes: [{ ...change, undone: false }] })
   assert.equal(nodes(pointed).some(node => node.type === 'button' && textContent(node) === 'Undo this change'), false)
