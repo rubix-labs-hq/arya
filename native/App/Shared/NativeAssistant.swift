@@ -1930,7 +1930,7 @@ struct NativeChatGPTSettings: View {
             if [.failed, .cancelled, .expired].contains(status.phase), !status.message.isEmpty {
                 Text(status.message).font(.caption).fixedSize(horizontal: false, vertical: true)
             }
-            Button("Continue with ChatGPT") { start() }.buttonStyle(.borderedProminent).frame(minHeight: 44).disabled(blocked)
+            Button { start() } label: { NativeChatGPTProminentTitle(title: "Continue with ChatGPT") }.buttonStyle(.borderedProminent).frame(minHeight: 44).disabled(blocked)
             if !status.accounts.isEmpty {
                 Button("Use a different account") { start(newAccount: true) }.frame(minHeight: 44).disabled(blocked)
             }
@@ -1941,13 +1941,13 @@ struct NativeChatGPTSettings: View {
             Text("Signed in as \(status.email.isEmpty ? "your ChatGPT account" : status.email).\(status.planUsage ? "" : " Turn on plan usage to send assistant requests with ChatGPT.")")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if !status.planUsage {
-                Button("Turn on ChatGPT plan usage") { start(account: status.active, enablePlan: true) }
+                Button { start(account: status.active, enablePlan: true) } label: { NativeChatGPTProminentTitle(title: "Turn on ChatGPT plan usage") }
                     .buttonStyle(.borderedProminent).frame(minHeight: 44).disabled(blocked)
             } else if assistant.provider == "chatgpt" && assistant.routingMode == "manual" {
                 Text("ChatGPT is your assistant.").font(.caption)
                 modelPicker
             } else {
-                Button("Use ChatGPT for the assistant") { choose() }.buttonStyle(.borderedProminent).frame(minHeight: 44).disabled(blocked)
+                Button { choose() } label: { NativeChatGPTProminentTitle(title: "Use ChatGPT for the assistant") }.buttonStyle(.borderedProminent).frame(minHeight: 44).disabled(blocked)
             }
             Link("Manage usage", destination: ChatGPTAccountService.usageURL).frame(minHeight: 44)
             Button("Use a different account") { start(newAccount: true) }.frame(minHeight: 44).disabled(blocked)
@@ -2014,6 +2014,22 @@ struct NativeChatGPTSettings: View {
                 ? "Signed out of ChatGPT. Arya removed the sign-in from this device."
                 : "Signed out on this device, but OpenAI did not confirm the revocation. An unused sign-in expires within 30 days."
         }
+    }
+}
+
+/// On iPhone, iPad and Mac Catalyst a prominent button draws its title in a pale colour, which is
+/// hard to read on the gold fill. This gives the title the dark ink, and the muted colour while
+/// the button is disabled. The Mac keeps its own title colour.
+private struct NativeChatGPTProminentTitle: View {
+    @Environment(\.isEnabled) private var isEnabled
+    let title: String
+
+    var body: some View {
+        #if os(iOS)
+        Text(title).foregroundStyle(isEnabled ? NativeEditorStyle.accentInk : NativeEditorStyle.muted)
+        #else
+        Text(title)
+        #endif
     }
 }
 
