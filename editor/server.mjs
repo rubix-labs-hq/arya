@@ -1044,7 +1044,8 @@ const assistantService = createBrowserAssistant({
   root: ROOT, custom: customExecutable ? { executable: customExecutable, args: customArguments } : undefined,
   chatgpt: chatgptAccount,
   getIdentity: () => projectEpoch,
-  getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus) } : {}) }),
+  // exportFolder tells the prompt this is the browser editor, whose exports land in renders/ (see EXPORT_GUIDE).
+  getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus), exportFolder: 'renders' } : {}) }),
   renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null) }),
   dispatch: (call, assertCurrent, acceptIdentity, registerJob, run = {}) => {
     assertCurrent()
