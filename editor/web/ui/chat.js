@@ -73,6 +73,11 @@ function ReceiptDetails({ receipt }) {
   </div>`
 }
 
+/** A card is named for its kind of change: an applied preview, Undo or Redo the assistant ran, or edits. */
+function resultTitle(kind, label, edits) {
+  return kind === 'preview' ? 'Applied the preview' : kind === 'history' && label ? label : `Made ${plural(edits, 'edit')}`
+}
+
 /**
  * One card per run: what the run changed and what you can do about it. It folds in the one-step
  * undo of the latest assistant change when that change belongs to this run. With no receipt (after
@@ -82,9 +87,12 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
   const undoable = Boolean(change?.undoable)
   const undone = !undoable && receipts.length > 0 && receipts.every(receipt => receipt.undone)
   const edits = change ? change.edits : receipts.length
-  // An undone preview keeps its name: the receipts remember which kind of change they belonged to.
-  const preview = change ? change.kind === 'preview' : receipts.length > 0 && receipts.every(receipt => receipt.changeKind === 'preview')
-  const title = preview ? 'Applied the preview' : `Made ${plural(edits, 'edit')}`
+  // Older cards keep their name: each receipt carries the kind of change the server put it in.
+  const kinds = new Set(receipts.map(receipt => receipt.changeKind))
+  const kind = change ? change.kind : kinds.size === 1 ? receipts[0]?.changeKind : null
+  const title = resultTitle(kind, change ? change.label : receipts[0]?.changeLabel, edits)
+  // The assistant undid or redid edits, and Redo cannot simply reverse that: the toolbar can.
+  const pointer = kind === 'history' && change && !undoable && !undone ? change.reason : ''
   const caption = receipts.length ? receiptCaption(receipts, store.project) : ''
   const notes = [...new Set(receipts.flatMap(receipt => receipt.notes ?? []))]
   // Select works on the layers of every edit in the run, one button per timeline they are on.
@@ -107,6 +115,7 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
         return html`<button class="ghost tiny" disabled=${!selectable} onClick=${() => select(comp)}>Select changed layers${groups.length > 1 ? ` · ${name}` : ''}</button>`
       })}
     </div>` : null}
+    ${pointer ? html`<p class="assistant-note">${pointer}</p>` : null}
     ${notes.map(note => html`<p class="assistant-note">${note}</p>`)}
     ${receipts.length ? html`<details class="change-receipt"><summary>Details</summary>
       ${[...receipts].reverse().map(receipt => ReceiptDetails({ receipt }))}
@@ -358,14 +367,11 @@ export function ChatPanel() {
   const preview = !native && s.assistantPreview !== false
   const review = native ? null : s.assistantReview
   const [reviewBusy, setReviewBusy] = useState('')
+  // Whether a change is undone comes from the server, which hears every Undo and Redo.
   const decide = async (kind, route, body) => {
     if (reviewBusy) return
-    const undoneChange = kind === 'undo' ? store.assistantReview?.change : null, root = store.root
     setReviewBusy(kind)
-    try {
-      await api(route, body)
-      if (undoneChange?.id === body?.id && store.root === root) set({ receipts: store.receipts.map(receipt => receipt.version > undoneChange.beforeVersion && receipt.version <= undoneChange.afterVersion ? { ...receipt, undone: true, undoneBy: undoneChange.id, changeKind: undoneChange.kind } : receipt) })
-    }
+    try { await api(route, body) }
     catch (error) { toast(error.message, 'error') }
     finally { setReviewBusy('') }
   }
@@ -395,8 +401,9 @@ export function ChatPanel() {
     set({ assistantPreview: on })
     try { globalThis.localStorage?.setItem('arya.assistant.preview', on ? 'on' : 'off') } catch { /* The choice still applies to this session. */ }
   }
-  // A receipt undone by "Undo this change" counts as current again once Redo brings that change back.
-  const shown = receipt => receipt.undone && receipt.undoneBy != null && review?.change?.undoable && review.change.id === receipt.undoneBy ? { ...receipt, undone: false } : receipt
+  // A receipt is undone while the server says its change is, so Redo and later changes keep it right.
+  const changeState = receipt => receipt.changeId == null ? null : (review?.changes ?? []).find(item => item.id === receipt.changeId)
+  const shown = receipt => { const state = changeState(receipt); return state && Boolean(receipt.undone) !== state.undone ? { ...receipt, undone: state.undone } : receipt }
   const feed = [
     ...s.chat.map(m => ({ ...m, type: 'chat' })),
     ...s.activity.filter(a => ['claude', 'agent', 'assistant'].includes(a.who)).map(a => ({ type: 'act', text: a.text, at: a.at ?? 0 })),

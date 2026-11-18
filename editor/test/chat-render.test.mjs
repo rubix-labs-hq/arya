@@ -115,27 +115,53 @@ test('a result card names caption style and track settings changes and lists the
   assert.deepEqual(nodes(muted.tree).filter(node => node.props?.class === 'assistant-note'), [])
 })
 
-test('Redo brings a change back, so its result card is no longer marked undone', async () => {
+test('a result card is undone while the server says its change is, whatever change came later', async () => {
   const { changeReceipt } = await import('../web/ui/change-receipt.js')
   const at = Date.now() - 5000
   const before = { comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }] }
   const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
-  const receipt = { ...changeReceipt(before, after, { who: 'agent', version: 5, at: at + 1000 }), undone: true, undoneBy: 'ch1' }
+  const receipt = { ...changeReceipt(before, after, { who: 'agent', version: 5, at: at + 1000 }), changeId: 'ch1', changeKind: 'preview', changeLabel: 'Applied assistant preview' }
   const chat = [{ role: 'user', text: 'Make the title longer', at }]
-  const change = { id: 'ch1', kind: 'request', beforeVersion: 4, afterVersion: 5, edits: 1, undoable: true }
-  const undone = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: null } }))
+  const change = { id: 'ch1', kind: 'preview', beforeVersion: 4, afterVersion: 5, edits: 1, undoable: true }
+  const listed = undone => [{ id: 'ch1', kind: 'preview', beforeVersion: 4, afterVersion: 5, undone }]
+  const undone = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: null, changes: listed(true) } }))
   assert.equal(undone.props.receipts[0].undone, true)
   assert.equal(undone.tree.props['aria-label'], 'Undone edit result')
-  const redone = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change } }))
-  assert.equal(redone.props.receipts[0].undone, false)
+  assert.equal(textContent(nodes(undone.tree).find(node => node.type === 'b')), 'Applied the preview', 'an undone preview keeps its name')
+  const redone = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change, changes: listed(false) } }))
+  assert.equal(Boolean(redone.props.receipts[0].undone), false)
   assert.equal(redone.tree.props['aria-label'], 'Committed edit result')
   assert.ok(nodes(redone.tree).some(node => node.type === 'button' && textContent(node) === 'Undo this change'))
-  // An undone preview keeps its name.
-  const undonePreview = resultCard(panel({ state: 'done' }, true, { chat, receipts: [{ ...receipt, changeKind: 'preview' }], project: after, review: { change: null } }))
-  assert.equal(textContent(nodes(undonePreview.tree).find(node => node.type === 'b')), 'Applied the preview')
-  // Another change coming back leaves this one undone.
-  const other = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: { ...change, id: 'ch2' } } }))
-  assert.equal(other.props.receipts[0].undone, true)
+  // A later change takes the latest slot. The redone card stays applied and keeps its name.
+  const later = { id: 'ch2', kind: 'request', beforeVersion: 5, afterVersion: 6, edits: 1, undoable: true }
+  const longer = structuredClone(after); longer.tracks[0].clips[0].dur = 4
+  const next = { ...changeReceipt(after, longer, { who: 'agent', version: 6, at: at + 3000 }), changeId: 'ch2', changeKind: 'request' }
+  const kept = resultCard(panel({ state: 'done' }, true, { chat: [...chat, { role: 'user', text: 'Longer still', at: at + 2000 }], receipts: [receipt, next], project: longer, review: { change: later, changes: [...listed(false), { ...later, undone: false }] } }))
+  assert.equal(Boolean(kept.props.receipts[0].undone), false)
+  assert.equal(kept.tree.props['aria-label'], 'Committed edit result')
+  assert.equal(textContent(nodes(kept.tree).find(node => node.type === 'b')), 'Applied the preview')
+  // A receipt the server does not list is left as it is.
+  const unknown = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: null, changes: [] } }))
+  assert.equal(unknown.props.receipts[0], receipt)
+})
+
+test('a history card is named for its move and offers Undo only as the server allows', async () => {
+  const { changeReceipt } = await import('../web/ui/change-receipt.js')
+  const at = Date.now() - 5000
+  const before = { comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }] }
+  const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
+  const receipt = { ...changeReceipt(before, after, { who: 'agent', version: 5, at: at + 1000 }), changeId: 'h1', changeKind: 'history', changeLabel: 'Undid 1 edit' }
+  const chat = [{ role: 'user', text: 'Undo that', at }]
+  const change = { id: 'h1', kind: 'history', label: 'Undid 1 edit', beforeVersion: 4, afterVersion: 5, edits: 1, undoable: true, reason: '' }
+  const card = review => resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review })).tree
+  const offered = card({ change, changes: [{ ...change, undone: false }] })
+  assert.equal(textContent(nodes(offered).find(node => node.type === 'b')), 'Undid 1 edit')
+  assert.ok(nodes(offered).some(node => node.type === 'button' && textContent(node) === 'Undo this change'))
+  const reason = 'Use Redo in the toolbar to bring back the edits the assistant undid.'
+  const pointed = card({ change: { ...change, undoable: false, reason }, changes: [{ ...change, undone: false }] })
+  assert.equal(nodes(pointed).some(node => node.type === 'button' && textContent(node) === 'Undo this change'), false)
+  assert.deepEqual(nodes(pointed).filter(node => node.props?.class === 'assistant-note').map(textContent), [reason])
+  assert.equal(textContent(nodes(card({ change: null, changes: [] })).find(node => node.type === 'b')), 'Undid 1 edit', 'an older card keeps the name too')
 })
 
 test('a failed turn lists what was saved and offers Retry only for the same retryable request', () => {

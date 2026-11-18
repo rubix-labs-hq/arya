@@ -93,6 +93,23 @@ export function chatHistoryStatus(value) {
     savingAvailable: typeof value.savingAvailable === 'boolean' ? value.savingAvailable : null }
 }
 
+/**
+ * Names each receipt for the assistant change whose versions hold it, once and only within the
+ * server session that made it, so a card keeps its title after later changes.
+ */
+export function stampedReceipts(receipts, changes, session) {
+  if (!Array.isArray(changes) || !changes.length) return receipts
+  let stamped = false
+  const next = receipts.map(receipt => {
+    if (receipt.changeId != null || (receipt.session ?? null) !== (session ?? null)) return receipt
+    const change = changes.find(item => receipt.version > item.beforeVersion && receipt.version <= item.afterVersion)
+    if (!change) return receipt
+    stamped = true
+    return { ...receipt, changeId: change.id, changeKind: change.kind, changeLabel: change.label }
+  })
+  return stamped ? next : receipts
+}
+
 export function set(patch) {
   const next = typeof patch === 'function' ? patch(store) : patch
   const changedComp = Object.hasOwn(next, 'openComp') && next.openComp !== store.openComp
@@ -242,7 +259,8 @@ export function connect(onProject) {
       const made = changeReceipt(store.project, d.project, { version: d.version, who: d.who, at: d.at })
       // The plain sentences the server returns with an assistant edit travel with its receipt.
       const notes = Array.isArray(d.notes) ? d.notes.filter(note => typeof note === 'string' && note.trim()).slice(0, 10).map(note => note.slice(0, 700)) : []
-      const receipt = made && notes.length ? { ...made, notes } : made
+      // The server session tags the receipt, because versions start again with each one.
+      const receipt = made && { ...made, ...(notes.length ? { notes } : {}), session: store.session?.id ?? null }
       let receipts = store.receipts
       if (receipt) {
         receipts = [...receipts, { ...receipt, displayBytes: JSON.stringify(receipt).length }].slice(-30)
@@ -260,7 +278,7 @@ export function connect(onProject) {
     chat: c => set({ chat: c }),
     chatHistory: value => set({ chatHistory: chatHistoryStatus(value) }),
     claude: c => set({ claude: c }),
-    assistantReview: value => set({ assistantReview: value }),
+    assistantReview: value => set(s => ({ assistantReview: value, receipts: stampedReceipts(s.receipts, value?.changes, s.session?.id) })),
     // The assistant shows the user a moment or layers; engine-host seeks on seekRequest.
     uiShow: value => set({
       ...(value.comp !== undefined ? { openComp: value.comp } : {}),
