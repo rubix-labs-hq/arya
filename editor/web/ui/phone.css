@@ -76,6 +76,6 @@
 }
 
 /* A single swipeable tool row leaves more height for clips on the phone timeline. */
-.page.phone-edit .tl-toolbar { flex-wrap: nowrap; gap: 6px; padding-bottom: 5px; scrollbar-width: thin; }
+.page.phone-edit .tl-toolbar { flex-wrap: nowrap; gap: 6px; padding-bottom: 5px; padding-right: 48px; scrollbar-width: thin; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
 .page.phone-edit .tl-toolbar > button { min-width: 44px; min-height: 44px; }
 .page.phone-edit .tl-toolbar .grow { flex: none; width: 0; }

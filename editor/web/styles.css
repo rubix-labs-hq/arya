@@ -273,7 +273,7 @@ label.btn { background: var(--accent); color: var(--accent-ink); border-radius: 
 .menu-item.has-sub:hover .submenu { display: block; }
 .modal-back { position: fixed; inset: 0; background: #0009; display: grid; place-items: center; z-index: 900; }
 .modal { background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 16px; width: min(560px, 92vw); max-height: 80vh; display: flex; flex-direction: column; gap: 8px; }
-.modal.keys { width: min(760px, 94vw); }
+.modal.keys { width: min(880px, 94vw); max-height: min(92dvh, 860px); }
 .keys-grid { display: grid; grid-template-columns: max-content 1fr max-content 1fr; gap: 6px 12px; overflow: auto; align-items: center; }
 .file-list { overflow: auto; max-height: 50vh; border: 1px solid var(--line); border-radius: 6px; }
 .file-row { padding: 5px 9px; cursor: pointer; }
@@ -1036,8 +1036,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .settings-nav { min-width: 0; overflow: auto; }
 .settings-nav button { white-space: normal; }
 @media (max-width: 720px) {
-  .settings-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; max-height: 30dvh; }
-  .settings-nav button { min-height: 44px; }
+  .settings-nav { display: flex; flex-flow: row wrap; gap: 4px; max-height: none; overflow: visible; }
+  .settings-nav button { flex: 1 1 auto; min-height: 44px; padding-inline: 8px; white-space: nowrap; text-align: center; }
   .settings-footer { padding-bottom: max(10px, env(safe-area-inset-bottom)); flex-wrap: wrap; }
   .settings-footer > span:not(:empty) { display: block; flex-basis: 100%; }
 }
@@ -1046,7 +1046,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .keys h3 { margin: 0; font-size: 1.15em; text-transform: none; letter-spacing: normal; color: var(--text); }
 .keys > header button { min-width: 44px; min-height: 44px; }
 .keys-grid { list-style: none; margin: 0; padding: 4px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
-.keys-grid li { display: grid; grid-template-columns: 8em minmax(0, 1fr); align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.keys-grid li { display: grid; grid-template-columns: 7em minmax(0, 1fr); align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .keys-grid kbd { justify-self: start; max-width: 100%; white-space: normal; }
 .keys-grid span { overflow-wrap: anywhere; }
 @media (max-width: 600px) {
@@ -1071,6 +1071,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 
 .welcome { overflow: auto; }
 .welcome-card { padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.welcome-formats button.ghost { border-color: var(--line-2); }
 .welcome-card h1 { margin: 0; font-size: 1.65em; }
 .welcome-card .brand.big img { width: 90px; height: auto; }
 .welcome-card .welcome-recovery { align-self: start; white-space: normal; }
@@ -1078,7 +1079,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .welcome-formats button { white-space: normal; }
 
 .deliver-preset-picker { display: none; }
-@container delivery-workspace (max-width: 850px) {
+@media (max-width: 720px) {
   .deliver-preset-picker { display: grid; gap: 5px; }
   .deliver-preset-picker select { min-height: 44px; min-width: 0; width: 100%; }
   .deliver-settings .preset-list { display: none; }

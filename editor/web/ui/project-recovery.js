@@ -122,7 +122,11 @@ export function openProjectRecovery({ document = globalThis.document, ...options
         const row = element('label', undefined, 'project-recovery-copy'), radio = element('input'), description = element('span')
         radio.type = 'radio'; radio.name = 'project-recovery-copy'; radio.value = copy.id
         const name = typeof copy.name === 'string' ? copy.name : 'Untitled project'
-        description.append(element('b', name), element('small', `${copy.createdAt} · ${copy.host} · ${Math.ceil(copy.bytes / 1024)} KiB · SHA256 ${String(copy.sha256).slice(0, 12)}`))
+        const when = new Date(copy.createdAt)
+        const created = Number.isNaN(when.getTime()) ? copy.createdAt : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }).format(when)
+        const meta = element('small', `${created} · ${copy.host} · ${Math.ceil(copy.bytes / 1024)} KiB · SHA256 ${String(copy.sha256).slice(0, 12)}`)
+        meta.title = copy.createdAt
+        description.append(element('b', name), meta)
         radio.addEventListener('change', () => controller.choose(copy.id)); radios.push(radio); row.append(radio, description); copies.append(row)
       }
     }
