@@ -244,11 +244,12 @@ export function ChatPanel() {
       const options = store.caps?.host !== 'native' && store.assistantPreview !== false ? { review: true } : {}
       const sent = await api('/api/bridge/send', { ...request, sharing: permit.sharing, ...options })
       lastSent.current = { request, options, runId: sent?.runId ?? null }
+      // A sent script or screenplay leaves an empty Prompt, so the next message is not read as a script.
       if (captured.draft && assistantDrafts.get(captured.root) === captured.draft) {
-        assistantDrafts.set(captured.root, { ...captured.draft, text: '' })
+        assistantDrafts.set(captured.root, { ...captured.draft, text: '', inputKind: 'prompt' })
       }
       if (assistantDraftIsCurrent(captured, store)) {
-        setText('')
+        setText('', 'prompt')
         set({ refs: store.refs.filter(ref => !consumedRefs.has(ref) || consumedRefs.get(ref) !== JSON.stringify(ref)) })
       }
     } catch (error) {
