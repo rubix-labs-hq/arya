@@ -13,7 +13,8 @@ export const PREVIEW_OUTCOME = 'Preview mode was on. Proposed edits are applied 
 const QUIET_MS = 20000
 
 // One run as one quiet line: a label, a stage and the elapsed time. `detail` is the sentence the
-// line expands to. The words are the ones the Mac, iPad and iPhone apps use.
+// line expands to. The words are the ones the Mac, iPad and iPhone apps use, except that a stop
+// that changed nothing says so here before the native panel does.
 // `proposal` and `edits` say whether this request left a preview to apply or committed edits.
 // `unchanged` says the project did not move at all during it. Leave them out when that is not
 // known, and the full sentences are kept.
