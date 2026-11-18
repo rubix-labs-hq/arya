@@ -3,11 +3,24 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { execFileSync } from 'node:child_process'
 import transcriptEndpoints, { createTranscriptRoutes, runTranscriptProcess } from '../routes/transcript.mjs'
 import { applyOps, newProject } from '../core/project.js'
 
 const words = [{ t: 1, end: 2, text: 'A' }, { t: 2.1, end: 3, text: 'complete' }, { t: 3.1, end: 4, text: 'sentence.' }, { t: 4.6, end: 6, text: 'Another' }, { t: 6.1, end: 8, text: 'sentence.' }]
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
+
+// Moves a file's modified time forward by less than a microsecond. Node 22 (libuv 1.51) truncates
+// utimes to whole microseconds and Node 24 (libuv 1.52) keeps nanoseconds, so when utimes leaves
+// the time where it was, set it through POSIX touch, which accepts a nanosecond fraction.
+function nudgeModifiedTime(file, target) {
+  const before = fs.statSync(file, { bigint: true }).mtimeNs
+  fs.utimesSync(file, target, target)
+  if (fs.statSync(file, { bigint: true }).mtimeNs !== before) return
+  const next = before + 400n
+  const stamp = `${new Date(Number(next / 1000000000n) * 1000).toISOString().slice(0, 19)}.${String(next % 1000000000n).padStart(9, '0')}Z`
+  execFileSync('touch', ['-d', stamp, file])
+}
 
 function fixture(t, process) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reel transcript '))
@@ -105,7 +118,7 @@ test('recognition source guards stay exact even when a legacy record has microse
   f = fixture(t, async (_command, args) => {
     if (!args.includes('-of')) return fs.writeFileSync(args.at(-1), 'pcm-fixture')
     fs.writeFileSync(args[args.indexOf('-of') + 1] + '.json', JSON.stringify({ transcription: [{ offsets: { from: 100, to: 300 }, text: 'Late result' }] }))
-    fs.utimesSync(path.join(f.root, 'media/speech.wav'), anchor + .0000004, anchor + .0000004)
+    nudgeModifiedTime(path.join(f.root, 'media/speech.wav'), anchor + .0000004)
   })
   const source = path.join(f.root, 'media/speech.wav')
   fs.utimesSync(source, anchor, anchor)
