@@ -54,6 +54,12 @@ test('a turn folds its tool updates into one collapsed run line after the reply,
   assert.doesNotMatch(text(list), /Success|Tool completed|Hidden user activity/)
 })
 
+test('the context chip names the main timeline when the open composition is gone', () => {
+  const chip = state => text(nodes(fixture(state).draw()).find(node => node.props?.class === 'assistant-context-chips').props.children[0])
+  assert.equal(chip({ openComp: 'k9', project: { tracks: [], comps: {} } }), 'Main timeline')
+  assert.equal(chip({ openComp: 'k1', project: { tracks: [], comps: { k1: { name: 'Sample scene', tracks: [] } } } }), 'Sample scene')
+})
+
 test('the exact committed receipt is passed to the result card', () => {
   const receipt = { version: 7, total: 0, clips: [], projectChanges: ['Saved asset media/cue.wav'], at: 4 }
   const component = nodes(fixture({ receipts: [receipt] }).draw()).find(node => node.type?.name === 'ResultCard')

@@ -94,6 +94,16 @@ export function chatHistoryStatus(value) {
 }
 
 /**
+ * The breadcrumb parents that still hold in `project`: each composition and the one it was opened
+ * from must exist, and that one must still contain it. A dropped entry reads as opened from Main.
+ */
+export function compParentsIn(project, parents) {
+  const comps = project?.comps ?? {}
+  const contains = (parent, id) => (comps[parent]?.tracks ?? []).some(track => (track.clips ?? []).some(clip => clip.kind === 'comp' && clip.comp === id))
+  return Object.fromEntries(Object.entries(parents ?? {}).filter(([id, parent]) => Object.hasOwn(comps, id) && (parent == null || Object.hasOwn(comps, parent) && contains(parent, id))))
+}
+
+/**
  * Names each receipt for the assistant change whose versions hold it, once and only within the
  * server session that made it, so a card keeps its title after later changes.
  */
@@ -113,7 +123,11 @@ export function stampedReceipts(receipts, changes, session) {
 export function set(patch) {
   const next = typeof patch === 'function' ? patch(store) : patch
   const changedComp = Object.hasOwn(next, 'openComp') && next.openComp !== store.openComp
+  const changedProject = Object.hasOwn(next, 'project') && next.project !== store.project
   Object.assign(store, next, changedComp ? { selMarker: null } : {})
+  // Undo, Redo or another edit can remove the open composition. The editor then returns to Main.
+  if (changedProject && store.compParents) store.compParents = compParentsIn(store.project, store.compParents)
+  if (changedProject && store.openComp != null && !Object.hasOwn(store.project?.comps ?? {}, store.openComp)) Object.assign(store, { openComp: null, selection: [], selMarker: null })
   for (const l of listeners) l()
 }
 

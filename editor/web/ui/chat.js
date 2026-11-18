@@ -375,7 +375,9 @@ export function ChatPanel() {
   }, [checking, status.ready, status.refreshRequired, providerFailure, chatgptWaiting, signInState, welcome, showSuggestions])
   const lastRequest = [...s.chat].reverse().find(m => ['user', 'you'].includes(m.role) && m.text)?.text ?? ''
   const view = assistantPanel.focus(s.project, { comp: s.openComp, playhead })
-  const scopeName = s.openComp ? s.project?.comps?.[s.openComp]?.name ? `${s.project.comps[s.openComp].name} (${s.openComp})` : s.openComp : 'Main timeline'
+  // A composition that Undo or Redo removed reads as the main timeline, where the store returns.
+  const openTimeline = s.openComp && Object.hasOwn(s.project?.comps ?? {}, s.openComp) ? s.project.comps[s.openComp] : null
+  const scopeName = openTimeline ? openTimeline.name ? `${openTimeline.name} (${s.openComp})` : s.openComp : 'Main timeline'
   // Preview changes and one-step undo need the browser server; the native host keeps its own flow.
   const preview = !native && s.assistantPreview !== false
   const review = native ? null : s.assistantReview
@@ -554,7 +556,7 @@ export function ChatPanel() {
           <div class="assistant-field-context">
             <div class="assistant-composer-content" role="group" tabIndex="0" onMouseDown=${releasePointerFocus} aria-label=${working ? 'Next request context' : 'Editing context'}>
               <div class="assistant-context-chips">
-                <span class="chip small" title=${scopeName}>${s.openComp ? s.project?.comps?.[s.openComp]?.name ?? 'Current composition' : 'Main timeline'}</span>
+                <span class="chip small" title=${scopeName}>${openTimeline ? openTimeline.name ?? s.openComp : 'Main timeline'}</span>
                 <span class="chip small" title=${view.under.join(', ') || undefined}>${!view.time || view.time === 'unavailable' ? 'Playhead unavailable' : `Playhead ${view.time}`}</span>
               </div>
               ${native ? null : html`<label class="assistant-preview-toggle" title="Preview changes"><input type="checkbox" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview</span></label>`}
