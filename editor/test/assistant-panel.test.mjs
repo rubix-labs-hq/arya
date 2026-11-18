@@ -44,7 +44,7 @@ test('timeline suggestions follow the footage, format and captions', () => {
   }
 })
 
-test('one take cut in two is not offered a match grade, and captions anywhere count', () => {
+test('one take cut in two is not offered a match grade, and captions on the same picture count', () => {
   const p = newProject('Synthetic take', { width: 1920, height: 1080 })
   p.assets['media/take.mp4'] = { duration: 30, width: 1920, height: 1080, hasVideo: true, hasAudio: true }
   const cut = applyOps(p, [{ op: 'append', src: 'media/take.mp4', track: 'V1', dur: 20 }, { op: 'blade', at: 8 }]).project
@@ -52,15 +52,30 @@ test('one take cut in two is not offered a match grade, and captions anywhere co
   assert.equal(pieces.length, 2)
   const ids = list => list.map(item => item.id)
   assert.ok(!ids(assistantSuggestions(cut, {})).includes('match-all'))
-  assert.deepEqual(ids(assistantSuggestions(cut, { selection: pieces })).slice(0, 1), ['grade-shot'])
+  // Two pieces of one take get one grade, and the request names both.
+  assert.deepEqual(assistantSuggestions(cut, { selection: pieces })[0], { id: 'grade-shot', label: 'Grade these shots',
+    prompt: 'Give the 2 selected shots, all from one take, one clean, natural grade: balance exposure and white balance, then add gentle contrast. Leave other clips unchanged.' })
+  assert.equal(assistantSuggestions(cut, { selection: pieces.slice(0, 1) })[0].label, 'Grade this shot')
   assert.ok(ids(assistantSuggestions(cut, {})).includes('captions'))
-  // Captions that live in Main still count while a composition is open.
-  const captioned = applyOps(cut, [{ op: 'add_track', kind: 'caption' }]).project
-  const track = captioned.tracks.find(item => item.kind === 'caption')
-  track.clips = [{ id: 'cap1', kind: 'caption', start: 0, dur: 2, text: 'Sample words' }]
-  captioned.comps = { k1: { name: 'Short', width: 1080, height: 1920, fps: 30, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'k1c', kind: 'video', src: 'media/take.mp4', start: 0, dur: 5, in: 0 }] }] } }
+  const caption = id => ({ id: `C${id}`, kind: 'caption', clips: [{ id: `cap${id}`, kind: 'caption', start: 0, dur: 2, text: 'Sample words' }] })
+  const short = (id, extra = []) => ({ name: `Short ${id}`, width: 1080, height: 1920, fps: 30, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: `${id}c`, kind: 'video', src: 'media/take.mp4', start: 0, dur: 5, in: 0 }] }, ...extra] })
+  // Captions on unrelated shorts do not stop Main from offering its own.
+  const shorts = structuredClone(cut)
+  shorts.comps = { s1: short('s1', [caption(1)]), s2: short('s2', [caption(2)]) }
+  assert.ok(ids(assistantSuggestions(shorts, {})).includes('captions'))
+  assert.ok(!ids(assistantSuggestions(shorts, { comp: 's1' })).includes('captions'))
+  // Captions in Main count inside a composition that Main shows, and the other way round.
+  const captioned = structuredClone(cut)
+  captioned.tracks.push(caption('M'))
+  captioned.comps = { k1: short('k1'), k2: short('k2') }
+  captioned.tracks.find(track => track.id === 'V1').clips.push({ id: 'k1clip', kind: 'comp', comp: 'k1', start: 20, dur: 5, in: 0 })
   assert.ok(!ids(assistantSuggestions(captioned, {})).includes('captions'))
   assert.ok(!ids(assistantSuggestions(captioned, { comp: 'k1' })).includes('captions'))
+  assert.ok(ids(assistantSuggestions(captioned, { comp: 'k2' })).includes('captions'))
+  const inner = structuredClone(cut)
+  inner.comps = { k1: short('k1', [caption(1)]) }
+  inner.tracks.find(track => track.id === 'V1').clips.push({ id: 'k1clip', kind: 'comp', comp: 'k1', start: 20, dur: 5, in: 0 })
+  assert.ok(!ids(assistantSuggestions(inner, {})).includes('captions'))
 })
 
 test('focus names the timeline, playhead timecode and visible layers under it', () => {

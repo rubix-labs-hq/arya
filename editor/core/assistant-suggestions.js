@@ -22,9 +22,26 @@ function sources(clips) {
   return new Set(clips.map(clip => clip.kind === 'video' || clip.kind === 'image' ? `src:${clip.src}` : `clip:${clip.id}`)).size
 }
 
-// Captions anywhere in the project count, so a comp opened from Main does not ask for them again.
-function hasCaptions(project) {
-  return [project, ...Object.values(project?.comps ?? {})].some(scope => (scope?.tracks ?? []).some(track => track.kind === 'caption' && (track.clips ?? []).length))
+const captioned = scope => (scope?.tracks ?? []).some(track => track.kind === 'caption' && (track.clips ?? []).length)
+
+// The compositions a scope shows through its comp clips, at any depth. `null` is the main timeline.
+function nested(project, key, seen = new Set()) {
+  for (const { clip } of clipsOf(scopeOf(project, key))) {
+    if (clip.kind === 'comp' && Object.hasOwn(project.comps ?? {}, clip.comp) && !seen.has(clip.comp)) {
+      seen.add(clip.comp)
+      nested(project, clip.comp, seen)
+    }
+  }
+  return seen
+}
+
+// Captions count when they are on the same picture: in the open timeline, in a composition it
+// shows, or in a timeline that shows it. Captions on an unrelated composition do not count.
+function hasCaptions(project, comp) {
+  const open = comp && Object.hasOwn(project.comps ?? {}, comp) ? comp : null
+  const inner = nested(project, open)
+  const related = key => key === open || inner.has(key) || nested(project, key).has(open)
+  return [null, ...Object.keys(project.comps ?? {})].some(key => related(key) && captioned(scopeOf(project, key)))
 }
 
 function length(scope) {
@@ -50,7 +67,9 @@ export function assistantSuggestions(project, { selection = [], comp = null } = 
     const titles = chosen.filter(clip => clip.kind === 'title')
     const sound = chosen.filter(clip => hasSound(project, clip))
     if (sources(shots) >= 2) add('match', 'Grade these to match', `Grade the ${plural(shots.length, 'selected shot')} to match each other. Use the best-exposed shot as the reference and keep every unselected clip unchanged.`)
-    else if (shots.length) add('grade-shot', 'Grade this shot', 'Give the selected shot a clean, natural grade: balance exposure and white balance, then add gentle contrast. Leave other clips unchanged.')
+    else if (shots.length === 1) add('grade-shot', 'Grade this shot', 'Give the selected shot a clean, natural grade: balance exposure and white balance, then add gentle contrast. Leave other clips unchanged.')
+    // Pieces of one take get one look, so the request names every selected piece.
+    else if (shots.length) add('grade-shot', 'Grade these shots', `Give the ${plural(shots.length, 'selected shot')}, all from one take, one clean, natural grade: balance exposure and white balance, then add gentle contrast. Leave other clips unchanged.`)
     if (titles.length) add('animate-title', titles.length === 1 ? 'Animate this title' : 'Animate these titles', `Animate the ${plural(titles.length, 'selected title')} in and out with smooth, readable motion that fits the edit.`)
     if (sound.some(clip => clip.kind === 'video' || clip.kind === 'audio')) add('silences-selection', 'Cut the silences', `Remove the silent pauses inside the ${plural(sound.length, 'selected clip')}. Keep natural breaths and close the gaps.`)
     if (sound.length) add('clean-audio', 'Clean up the sound', `Make the dialogue in the ${plural(sound.length, 'selected clip')} clear and even: level it near -14 LUFS and reduce background noise.`)
@@ -71,7 +90,7 @@ export function assistantSuggestions(project, { selection = [], comp = null } = 
   if (longest >= 75 && talking.length) add('shorts', 'Make three 30-second shorts', 'Make three 30-second vertical shorts from the strongest moments in the transcript, each in its own composition with captions.')
   if (sources(shots.map(({ clip }) => clip)) >= 2) add('match-all', 'Grade these to match', `Grade the ${plural(shots.length, 'shot')} on the timeline to match each other, with one consistent look.`)
   if ((scope.width ?? project.width) > (scope.height ?? project.height) && shots.length) add('vertical', 'Make a 9:16 version', 'Make a 9:16 vertical version: a new composition at 1080x1920 with every shot reframed on its subject.')
-  if (talking.length && !hasCaptions(project)) add('captions', 'Add captions', 'Transcribe the dialogue and add readable captions timed to the words.')
+  if (talking.length && !hasCaptions(project, comp)) add('captions', 'Add captions', 'Transcribe the dialogue and add readable captions timed to the words.')
   add('review', 'Review the edit', 'Watch the edit at its cuts and tell me what you would improve. Do not change anything yet.')
   return out
 }
