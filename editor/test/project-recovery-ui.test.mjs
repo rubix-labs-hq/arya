@@ -218,12 +218,13 @@ test('actual normal top bar exposes browser recovery while native retains its ow
 })
 
 test('actual app bootstrap retains cold recovery status without dispatching restoration', async () => {
-  const f = shell('invalid'), routes = [], bootstrap = { project: null, version: 0, root: '/cold', recovery: { status: 'invalid', warning: 'Original file preserved' } }
+  const f = shell('invalid'), routes = [], bootstrap = { project: null, version: 0, root: '/cold', recovery: { status: 'invalid', warning: 'Original file preserved' }, history: { undo: 2, redo: 0 }, session: { id: 'session-b', startedAt: 5 } }
   Object.assign(f.context, { api: async route => { routes.push(route); return route === '/api/project' ? bootstrap : {} }, connect() {}, installKeys() {}, installDropImport() {}, render() {}, App() {}, player: {}, window: {} })
   const source = app.match(/export async function mountApp\([^]*?\n}\n/)[0].replace('export ', '')
   vm.runInContext(source, f.context); await f.context.mountApp({})
   assert.equal(f.store.project, null); assert.equal(f.store.version, 0); assert.equal(f.store.root, '/cold')
   assert.equal(f.store.recovery.status, 'invalid'); assert.equal(f.store.recovery.warning, 'Original file preserved')
+  assert.equal(JSON.stringify(f.store.history), '{"undo":2,"redo":0}'); assert.equal(f.store.session.id, 'session-b')
   assert.equal(routes.includes('/api/recovery/restore'), false)
 })
 

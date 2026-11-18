@@ -231,9 +231,10 @@ export function connect(onProject) {
     error: () => set({ connected: false }),
     project: d => {
       if (d.version < store.version) return
+      // An event without a depth (the hosted editor) clears a stale one, so Undo and Redo stay enabled.
       const history = historyDepth(d.history)
       if (d.who === 'you' && pending > 0) {
-        set({ version: d.version, ...(history ? { history } : {}) })
+        set({ version: d.version, history })
 
         return
       }
@@ -252,7 +253,7 @@ export function connect(onProject) {
         // Include changed layers in nested compositions.
         if (receipt) for (const clip of receipt.clips) if (clip.status !== 'deleted') highlight.set(clip.id, performance.now())
       }
-      set({ ...(host.kind === 'browser-local' && d.root && d.root !== store.root ? { root: d.root, source: null, selection: [], selMarker: null, selTrack: null, openComp: null, viewerMode: 'timeline', jobs: d.jobs ?? [] } : {}), project: d.project, version: d.version, highlight, receipts, ...(history ? { history } : {}) })
+      set({ ...(host.kind === 'browser-local' && d.root && d.root !== store.root ? { root: d.root, source: null, selection: [], selMarker: null, selTrack: null, openComp: null, viewerMode: 'timeline', jobs: d.jobs ?? [] } : {}), project: d.project, version: d.version, highlight, receipts, history })
       onProject?.(d)
     },
     activity: a => set(s => ({ activity: [...s.activity, a].slice(-60) })),

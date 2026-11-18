@@ -29,7 +29,7 @@ export class BrowserBackend {
   emit(name, value) { for (const handlers of this.listeners) handlers[name]?.(copy(value)) }
   queue(operation) { const result = this.serial.then(operation); this.serial = result.catch(() => {}); return result }
   root() { return this.record ? `browser:${this.record.id}` : 'browser:no-project' }
-  snapshot() { return { project: copy(this.record?.project ?? null), version: this.record?.version ?? 0, root: this.root(), chat: [], activity: [], jobs: [...this.jobs.values()].map(job => this.publicJob(job)), claude: { state: 'unavailable', reason: unsupported } } }
+  snapshot() { return { project: copy(this.record?.project ?? null), version: this.record?.version ?? 0, root: this.root(), chat: [], activity: [], jobs: [...this.jobs.values()].map(job => this.publicJob(job)), claude: { state: 'unavailable', reason: unsupported }, ...(this.record ? { history: { undo: this.record.past?.length ?? 0, redo: this.record.future?.length ?? 0 } } : {}) } }
   async refreshSnapshot(context) {
     this.assert(context)
     if (!this.record) return this.snapshot()
