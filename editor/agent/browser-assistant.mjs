@@ -14,6 +14,8 @@ import { readCodexCatalog } from './catalog-discovery.mjs'
 import { createProbeTiming } from './probe-timing.mjs'
 import { fileURLToPath } from 'node:url'
 import { SHARING_VERSION, normalizeSharingEnvelope, sharingScopeForRoute, sameSharingScope, canonicalCompanion, sharingDisclosure } from '../core/assistant-sharing.mjs'
+import { agentProjectView, HISTORY_NOTE, runHistory } from './agent-views.mjs'
+import { progressLabel, stepLabel, waitingAfter } from './step-labels.mjs'
 import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, unfinishedJobsOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
 
 const exec = promisify(execFile)
@@ -477,7 +479,10 @@ export function createBrowserAssistant(options) {
     // Edits that answer with the whole committed project can exceed the result budget after the
     // edit has landed; agents read the project with GET instead. Other routes keep their
     // project field, such as an interchange import preview the agent must inspect.
-    const reply = call.method === 'POST' && ['/api/ops', '/api/undo', '/api/redo', '/api/new', '/api/luts/apply'].includes(url.pathname) && result && typeof result === 'object' && !Array.isArray(result) ? Object.fromEntries(Object.entries(result).filter(([key]) => key !== 'project')) : result
+    // GET /api/project carries the editor's whole chat, activity and run state. An agent gets the
+    // project with the newest messages cut short, and pages the rest from /api/assistant/history.
+    const reply = call.method === 'GET' && url.pathname === '/api/project' ? agentProjectView(result)
+      : call.method === 'POST' && ['/api/ops', '/api/undo', '/api/redo', '/api/new', '/api/luts/apply'].includes(url.pathname) && result && typeof result === 'object' && !Array.isArray(result) ? Object.fromEntries(Object.entries(result).filter(([key]) => key !== 'project')) : result
     return bounded({ result: reply ?? {} }, 512 * 1024, 'The tool result exceeded 512 KiB. Use outline or bounded transcript pages.')
   }
   const drive = async (owner, run) => {
@@ -491,16 +496,21 @@ export function createBrowserAssistant(options) {
           cursor = event.seq
           assertRun(run)
           if (event.type === 'tool') {
-            publish({ state: 'working', phase: event.frame ? 'Inspecting a rendered frame' : 'Working with the project' })
+            // The phase names the step, and the wait after it names the step it follows, so a
+            // long silence says what the editor last did instead of a generic line.
+            run.stepped = true
+            const label = stepLabel(event)
+            publish({ state: 'working', phase: label.doing })
             let reply
             try { reply = await tool(event, run) }
             catch (error) { reply = { error: redact(error.message, [owner.token]).slice(0, 2000) } }
             assertRun(run)
             await request(owner, 'POST', `/v1/runs/${run.id}/tools/${event.callID}`, reply)
-            publish({ state: 'thinking', phase: 'Waiting for the agent’s next step' })
+            publish({ state: 'thinking', phase: waitingAfter(label, Boolean(reply.error)) })
           } else if (event.type === 'route') {
             run.routing = event.routing
-            publish({ routing: event.routing, phase: `Requested route: ${event.routing.modelName ?? event.routing.model ?? names[event.routing.provider]}` })
+            // The route arrives once the run is admitted. The agent has not answered yet, and the phase says so.
+            publish({ routing: event.routing, ...(run.stepped ? {} : { phase: `Requested ${event.routing.modelName ?? event.routing.model ?? names[event.routing.provider]}. Waiting for its first step` }) })
           } else if (event.type === 'text') {
             text += String(event.text ?? '')
             if (Buffer.byteLength(text) > 512 * 1024) throw failure('The assistant reply exceeded 512 KiB.')
@@ -517,6 +527,10 @@ export function createBrowserAssistant(options) {
             options.onReply?.(state.text, event.type === 'error' || unfinished)
             if (event.type === 'error' || unfinished) await cancelJobs(run)
             break
+          } else if (event.type === 'progress') {
+            // An adapter may report what its agent is doing between tool calls, such as thinking.
+            const label = progressLabel(redact(String(event.label ?? ''), [owner.token]))
+            if (label) publish({ phase: label })
           }
         }
         if (!run.terminal) await sleep(75)
@@ -560,12 +574,16 @@ export function createBrowserAssistant(options) {
       const binding = credentialBinding(owner, scope)
       if (!sameSharingScope(envelope.scope, scope) || !approvedScope({ scope, ...binding })) throw failure('Sharing permission is required for the current recipients. Review assistant sharing before sending.', 403)
       run.chatgptIdentity = binding.chatgptIdentity
+      // Earlier messages only: read before this request joins the conversation. The sharing
+      // review names conversation history as a category, and a run without it gets none.
+      let history = []
+      try { if (envelope.scope.classes?.includes('conversation_history')) history = runHistory(options.getHistory?.() ?? []) } catch { history = [] }
       options.onPrompt?.(body.text, refs)
       assertRun(run)
       const outline = bounded(options.getOutline({ selection, comp: body.comp ?? null, playhead: body.playhead ?? 0 }), 512 * 1024, 'The project outline exceeded 512 KiB.')
       assertRun(run)
       run.initialVersion = outline.version
-      const context = { inputKind, projectRoot: root, projectID: String(run.identity), projectEpoch: run.identity, version: outline.version, selection, selectedTransitions: selection.filter(id => id.startsWith('tr:')).map(id => ({ id, clip: id.slice(3) })), ...(body.comp ? { comp: body.comp } : {}), playhead: body.playhead ?? 0, refs, ...(run.review ? { review: true } : {}) }
+      const context = { inputKind, projectRoot: root, projectID: String(run.identity), projectEpoch: run.identity, version: outline.version, selection, selectedTransitions: selection.filter(id => id.startsWith('tr:')).map(id => ({ id, clip: id.slice(3) })), ...(body.comp ? { comp: body.comp } : {}), playhead: body.playhead ?? 0, refs, ...(run.review ? { review: true } : {}), ...(history.length ? { history, historyNote: HISTORY_NOTE } : {}) }
       const requestBody = { id: run.id, sharing: envelope, provider: settings.provider, ...(run.chatgptIdentity ? { chatgptIdentity: run.chatgptIdentity } : {}), ...(settings.mode === 'auto' || settings.effort || settings.catalogBound ? { routing: settings.mode === 'auto' ? { ...settings, enabledModels: envelope.scope.models } : settings } : {}), text: body.text, context, outline, ...(settings.model ? { model: settings.model } : {}), ...(settings.agent ? { agent: settings.agent } : {}) }
       run.submission = request(owner, 'POST', '/v1/runs', requestBody)
       await run.submission

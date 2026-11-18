@@ -15,6 +15,9 @@ import { fileURLToPath } from 'node:url'
 import { prepareLibraryOps, verifyLibraryInputs } from './core/library-resources.js'
 import { applyOps, compView, duration, migrate, newProject, outline, OPS_DOC } from './core/project.js'
 import { describeFocus } from './core/describe.js'
+import { editNotes } from './core/edit-notes.js'
+import { ANALYSIS_HELP, measuredNothing, parseLoudness, parseSilence } from './core/analysis-parse.js'
+import { BUNDLED_FONTS, SYSTEM_FONTS } from './core/fonts.js'
 import { thumbnailPlan } from './core/thumbnail-plan.js'
 import { guardedOutput } from './core/output-path.js'
 import { captureExportSources, prepareExportCohort, createExportDestination } from './core/export-cohort.mjs'
@@ -636,8 +639,22 @@ function analysisNumber(value, fallback, min, max, name) {
   return number
 }
 
+// An optional part of the file, in source seconds, for the analyses that measure sound.
+function analysisRange(options) {
+  const given = value => value !== undefined && value !== null
+  const start = given(options.in) ? analysisNumber(options.in, 0, 0, 1000000, 'in') : null
+  const length = given(options.dur) ? analysisNumber(options.dur, 0, 0.1, 3600, 'dur') : null
+  return {
+    start: start ?? 0, given: start !== null || length !== null,
+    // Before -i, so ffmpeg seeks instead of decoding from the start, and counts time from the range.
+    args: [...(start === null ? [] : ['-ss', String(start)]), ...(length === null ? [] : ['-t', String(length)])],
+    echo: { ...(start === null ? {} : { in: start }), ...(length === null ? {} : { dur: length }) },
+  }
+}
+
 async function analyze(rel, kind, options = {}) {
   const abs = resolveMedia(rel)
+  if (!['loudness', 'silence'].includes(kind) && [options.in, options.dur].some(value => value !== undefined && value !== null)) throw new Error('in and dur apply only to kind loudness and silence')
   if (kind === 'scenes') {
     const threshold = analysisNumber(options.threshold, 10, 0, 100, 'threshold')
     const { stderr } = await run('ffmpeg', ['-nostdin', '-i', abs, '-an', '-vf', `scale=320:-2,scdet=t=${threshold}`, '-f', 'null', '-'], { allowFail: true })
@@ -648,20 +665,11 @@ async function analyze(rel, kind, options = {}) {
   if (kind === 'silence') {
     const noise = analysisNumber(options.noise, -32, -90, 0, 'noise')
     const min = analysisNumber(options.min, 0.45, 0.01, 60, 'min')
-    const { stderr } = await run('ffmpeg', ['-nostdin', '-i', abs, '-vn', '-af', `silencedetect=n=${noise}dB:d=${min}`, '-f', 'null', '-'], { allowFail: true })
-    const ranges = []
-    let open = null
-    for (const line of stderr.split('\n')) {
-      const s = /silence_start:\s*([-\d.]+)/.exec(line)
-      const e = /silence_end:\s*([\d.]+)/.exec(line)
-      if (s) open = Math.max(0, Number(s[1]))
-      if (e && open !== null) {
-        ranges.push([open, Number(e[1])])
-        open = null
-      }
-    }
+    const range = analysisRange(options)
+    const { stderr } = await run('ffmpeg', ['-nostdin', ...range.args, '-i', abs, '-vn', '-af', `silencedetect=n=${noise}dB:d=${min}`, '-f', 'null', '-'], { allowFail: true })
+    if (range.given && measuredNothing(stderr)) throw new Error('No sound was measured: that part is past the end of the file, or the file has no sound.')
 
-    return { kind, ranges }
+    return { kind, ranges: parseSilence(stderr, range.start), ...range.echo }
   }
   if (kind === 'beats') {
     // Onset detection on a low-passed energy envelope: peaks of rising energy.
@@ -700,11 +708,11 @@ async function analyze(rel, kind, options = {}) {
     return { kind, times, bpm: med ? Math.round(60 / med) : undefined }
   }
   if (kind === 'loudness') {
-    const { stderr } = await run('ffmpeg', ['-nostdin', '-i', abs, '-vn', '-af', 'ebur128=framelog=quiet', '-f', 'null', '-'], { allowFail: true })
-    const i = /I:\s*([-\d.]+) LUFS/.exec(stderr.split('Summary:').pop() ?? '')
-    const lra = /LRA:\s*([-\d.]+) LU/.exec(stderr.split('Summary:').pop() ?? '')
+    const range = analysisRange(options)
+    const { stderr } = await run('ffmpeg', ['-nostdin', ...range.args, '-i', abs, '-vn', '-af', 'ebur128=peak=true:framelog=quiet', '-f', 'null', '-'], { allowFail: true })
+    if (range.given && measuredNothing(stderr)) throw new Error('No sound was measured: that part is past the end of the file, or the file has no sound.')
 
-    return { kind, lufs: i ? Number(i[1]) : undefined, lra: lra ? Number(lra[1]) : undefined }
+    return { kind, ...parseLoudness(stderr), ...range.echo }
   }
   if (kind === 'transcript') return transcribe(rel)
   throw new Error(`unknown analysis ${kind}`)
@@ -1082,6 +1090,8 @@ const assistantService = createBrowserAssistant({
     return result ? { state: result.state, applied: result.applied, applyError: result.applyError, assetRegistered: result.assetRegistered } : undefined
   },
   onState: next => { claude = next; assistantReview.observe(next, project); broadcast('claude', claude) },
+  // The saved conversation, for the short history a run starts with.
+  getHistory: () => chat,
   onPrompt: (text, refs) => { appendChat({ role: 'user', text, refs, at: Date.now() }); broadcast('chat', chat.slice(-100)) },
   onReply: (text, error) => { const snapshot = assistantService.snapshot(); appendChat({ role: 'claude', text, error, provider: snapshot.routing?.provider ?? snapshot.provider, at: Date.now() }); broadcast('chat', chat.slice(-100)) },
   diagnostic: message => log('assistant', message),
@@ -1124,8 +1134,11 @@ const routes = {
     assertLibraryCurrent()
     commit(result.project, body.who ?? 'you', body.summary ? [body.summary] : result.log.filter(l => !l.startsWith('imported')), { projectChanged: all.some(op => op.op === 'replace') })
     for (const [src, asset] of Object.entries(assets)) ensureProxy(src, asset).catch(e => log(e.message))
+    // Facts the log does not state, such as a title wider than the frame. They are part of this
+    // reply only: never in the project, the activity list or an undo summary.
+    const notes = editNotes(capturedProject, result.project, { ops, created: result.created })
 
-    return { version, log: result.log, created: result.created, project: body.returnProject === false ? undefined : project }
+    return { version, log: result.log, created: result.created, ...(notes.length ? { notes } : {}), project: body.returnProject === false ? undefined : project }
   },
 
   'POST /api/undo': () => {
@@ -1246,6 +1259,10 @@ const routes = {
       export: { renderer: 'chrome', presets, still: chrome },
       // Saliency, auto reframe and person masks need the Arya app's Vision analysis.
       analysis: { transcript: whisper, scenes: true, silence: true, beats: true, loudness: true, opticalFlow: true, tracking: Boolean(routes['POST /api/analysis/track']), stabilization: Boolean(routes['POST /api/analysis/stabilize']), saliency: false, autoReframe: false, personMask: false },
+      // How to measure sound with POST /api/analyze, and what the measurements do not cover.
+      analysisHelp: ANALYSIS_HELP,
+      // Families that can be named in title.font or a caption style. Only the bundled ones are certain.
+      fonts: { bundled: BUNDLED_FONTS, system: SYSTEM_FONTS, note: 'Bundled fonts ship with the editor and draw the same on every machine. System fonts are the names the title inspector offers and are not checked on this machine. Any other family draws only if this machine has it. Without it the text falls back to a system sans, with no error.' },
       color: colorCapabilities({ renderer: chrome }),
       processing: { audioClean: true, multicamSync: true, deshake: true },
       music: routes['GET /api/audio/compose/capabilities']?.() ?? { available: false },
@@ -1573,6 +1590,7 @@ const routeCtx = {
   getVersion: () => version,
   getProjectGeneration: () => projectEpoch,
   getAssistantReview: () => assistantReview,
+  getChat: () => chat,
   // Runs a preview's apply as its own owner, so its commits and jobs count as the assistant change.
   asAssistantApply: (id, work) => assistantCalls.run({ applyId: id, get version() { return version }, set version(_) {}, assertCurrent() {}, acceptIdentity() {}, registerJob() {} }, work),
   referenceAvailable: () => colorCapabilities({ renderer: fs.existsSync(CHROME) }).referenceMatch,

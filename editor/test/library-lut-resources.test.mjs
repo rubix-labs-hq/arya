@@ -12,6 +12,7 @@ import htm from 'htm'
 import { applyOps, newProject } from '../core/project.js'
 import { libraryLUTDependencies, libraryPlacesObject, describeLibraryItem, validateLibraryItem } from '../core/library.js'
 import { prepareLibraryOps, verifyLibraryInputs } from '../core/library-resources.js'
+import { editNotes } from '../core/edit-notes.js'
 import colorRoutes from '../routes/color.mjs'
 
 const editor = new URL('../', import.meta.url)
@@ -166,7 +167,7 @@ test('the actual server import declarations resolve both resource helpers', () =
 })
 const routeBody = server.slice(server.indexOf("  'POST /api/ops': async body => {") + "  'POST /api/ops': async body => {".length, server.indexOf("\n  'POST /api/undo':" )).replace(/\n  },\s*$/, '')
 function routeController(project, inspect) {
-  const factory = new Function('project', 'inspect', 'applyOps', 'prepareLibraryOps', 'verifyLibraryInputs', `
+  const factory = new Function('project', 'inspect', 'applyOps', 'prepareLibraryOps', 'verifyLibraryInputs', 'editNotes', `
     let version = 7;
     const past = [], future = [], commits = [];
     const routes = { 'POST /api/luts/inspect': ({path}) => inspect(path) };
@@ -181,7 +182,7 @@ function routeController(project, inspect) {
       redo: () => { past.push(project); project = future.pop(); version++ }
     };
   `)
-  return factory(project, inspect, applyOps, serverResourceHelpers.prepareLibraryOps, serverResourceHelpers.verifyLibraryInputs)
+  return factory(project, inspect, applyOps, serverResourceHelpers.prepareLibraryOps, serverResourceHelpers.verifyLibraryInputs, editNotes)
 }
 test('the actual server edit handler saves and applies LUT components without a Media probe', async t => {
   const f = files(t), c = routeController(scene(), f.inspect)

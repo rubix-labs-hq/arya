@@ -5,6 +5,7 @@ import { createProcessingAdmission } from '../core/processing-admission.mjs'
 import { recoveryProject } from '../core/project-recovery.mjs'
 import { recoveryDouble } from './support/recovery-double.mjs'
 import { prepareLibraryOps, verifyLibraryInputs } from '../core/library-resources.js'
+import { editNotes } from '../core/edit-notes.js'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -41,7 +42,7 @@ const routeBody = route => {
 function publication(initial, options) {
   const accessor = server.match(/getProjectGeneration: \(\) => projectEpoch,/)
   assert.ok(accessor, 'The actual route context exposes projectEpoch')
-  const make = new Function('applyOps', 'initial', 'options', 'processing', 'recoveryProject', 'recoveryDouble', 'prepareLibraryOps', 'verifyLibraryInputs', `
+  const make = new Function('applyOps', 'initial', 'options', 'processing', 'recoveryProject', 'recoveryDouble', 'prepareLibraryOps', 'verifyLibraryInputs', 'editNotes', `
     let project = initial, version = 7, projectEpoch = 2, lastText = JSON.stringify(initial), assistant = null;
     const ROOT = '/fixture', FILE = '/fixture/reel.project.json', past = [], future = [], publications = [], calls = [];
     const fs = { existsSync: () => true, readFileSync: () => lastText, statSync: () => ({ mode: 0o600 }) };
@@ -65,7 +66,7 @@ function publication(initial, options) {
       assistant() { assistant = { version, assertCurrent() {}, acceptIdentity() {} } },
       undo: routes['POST /api/undo'], redo: routes['POST /api/redo'] };
   `)
-  return make(applyOps, initial, options, createProcessingAdmission(), recoveryProject, recoveryDouble, prepareLibraryOps, verifyLibraryInputs)
+  return make(applyOps, initial, options, createProcessingAdmission(), recoveryProject, recoveryDouble, prepareLibraryOps, verifyLibraryInputs, editNotes)
 }
 
 async function routeModule(name, files, capturedBase = false) {

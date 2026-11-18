@@ -1,6 +1,12 @@
 import { applyOps, outline } from '../core/project.js'
 import { describeRequest } from '../core/describe.js'
+import { editNotes } from '../core/edit-notes.js'
+import { historyPage } from '../agent/agent-views.mjs'
 import { describeStep, PREVIEW_STEP_WAITS } from '../core/assistant-steps.js'
+
+// Every propose reply ends with this. reel_frame, /api/outline and /api/describe read the saved
+// project (server.mjs renderFrame and the two routes), which a preview never changes.
+export const PREVIEW_NOTE = 'Not applied. The user reviews this preview and applies or discards it. Steps render only after the user applies. reel_frame, GET /api/outline and GET /api/describe still show the saved project, not this preview, so no frame can show a previewed change. Judge the preview from the outline in this reply and from notes, when this reply has them.'
 
 const ID = /^[a-zA-Z0-9_-]{1,128}$/
 const PAGES = ['media', 'edit', 'motion', 'color', 'audio', 'deliver']
@@ -94,6 +100,13 @@ export default ctx => {
       return { shown: true, ...value }
     },
 
+    // The saved conversation in pages, or with `at` the rest of one long message. Read-only.
+    // GET /api/project gives an agent only the newest messages, cut short; this is the rest.
+    'GET /api/assistant/history': (_body, query) => {
+      ctx.assertCurrent?.()
+      return historyPage(ctx.getChat?.() ?? [], Object.fromEntries(query ?? []))
+    },
+
     // Checks the ops against the current project without saving them, and stores them as the
     // preview the user sees. Agents use this when Preview changes is on.
     'POST /api/assistant/propose': async body => {
@@ -116,9 +129,11 @@ export default ctx => {
       })
       const staged = review().stage(next)
       ctx.pushActivity?.('agent', `Preview ready: ${staged.summary || `${staged.ops.length} ops`}`.slice(0, 300))
+      // The same notes an edit returns, for every op the preview now holds.
+      const notes = editNotes(project, trial.project, { ops: next.ops, created: trial.created })
       return { previewed: true, applied: false, proposal: staged.id, baseVersion: staged.baseVersion, ops: staged.ops.length, steps: staged.steps.map(step => step.preview),
-        log: trial.log.filter(line => !line.startsWith('imported')), created: trial.created, outline: outline(trial.project),
-        note: 'Not applied. The user reviews this preview and applies or discards it. Steps render only after the user applies.' }
+        log: trial.log.filter(line => !line.startsWith('imported')), created: trial.created, ...(notes.length ? { notes } : {}), outline: outline(trial.project),
+        note: PREVIEW_NOTE }
     },
 
     'POST /api/assistant/proposal/apply': async body => {

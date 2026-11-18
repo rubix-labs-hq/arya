@@ -138,7 +138,17 @@ test('an actual stdio CLI builds native editable layers, selection context, fram
   const run = await service.send({ text: 'Build a three-second scene.', refs: [], ids: [], comp: null, playhead: 0 })
   assert.match(run.runId, /^[0-9a-f-]{36}$/)
   await waitFor(() => service.snapshot().state === 'done')
-  assert.ok(states.some(value => value.state === 'working' && value.phase === 'Inspecting a rendered frame'))
+  // Each tool step is named from its call, and the wait after it names the step it follows.
+  const phases = states.map(value => value.phase).filter((phase, index, all) => phase && phase !== all[index - 1])
+  assert.deepEqual(phases, [
+    'Connecting to your agent', 'Thinking about your request', 'Requested Claude Code. Waiting for its first step',
+    'Checking what this editor can do', 'Waiting for the agent’s next step after it checked what this editor can do',
+    'Reading the project outline', 'Waiting for the agent’s next step after it read the project outline',
+    'Applying 9 edits', 'Waiting for the agent’s next step after it applied 9 edits',
+    'Rendering a frame at 0s', 'Waiting for the agent’s next step after it rendered a frame at 0s',
+    'Rendering a frame at 1s', 'Waiting for the agent’s next step after it rendered a frame at 1s',
+  ])
+  assert.ok(states.some(value => value.state === 'working' && value.phase === 'Rendering a frame at 1s'))
   const started=states.find(value => value.runId === run.runId), finished=service.snapshot()
   assert.ok(Number.isFinite(started.startedAt));assert.equal(finished.startedAt,started.startedAt)
   assert.ok(finished.finishedAt >= finished.startedAt);assert.equal(finished.updatedAt,finished.finishedAt)

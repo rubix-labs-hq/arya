@@ -46,5 +46,6 @@ test('what the guide says about names and deletion is what the server does', () 
   assert.deepEqual([...WRITES].filter(route => /delete|remove|trash|unlink|clean-?up/i.test(route)), [])
   // "POST /api/analyze with kind loudness measures one media file"
   assert.match(server, /async function analyze\(rel, kind, options = \{\}\) \{\n  const abs = resolveMedia\(rel\)/)
-  assert.match(server, /if \(kind === 'loudness'\) \{\n[^\n]*'-i', abs, '-vn', '-af', 'ebur128=framelog=quiet'/)
+  // The one input is the media file, with an optional part of it (in and dur) and no timeline mix.
+  assert.match(server, /if \(kind === 'loudness'\) \{\n[^\n]*\n[^\n]*\['-nostdin', \.\.\.range\.args, '-i', abs, '-vn', '-af', 'ebur128=peak=true:framelog=quiet'/)
 })

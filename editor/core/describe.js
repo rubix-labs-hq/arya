@@ -129,7 +129,8 @@ function mixLines(p, scope) {
     if (track.kind === 'caption') {
       const style = track.style ?? {}
       parts.push(track.burnIn ? 'burned in' : 'not burned in')
-      const look = list([style.font, style.weight && `weight ${style.weight}`, typeof style.size === 'number' && `${num(style.size)} px`, style.color, style.highlight && `highlight ${style.highlight}`, style.plate && `plate ${style.plate}`, typeof style.y === 'number' && `at ${Math.round(style.y * 100)}% height`])
+      // Sizes are in 1080-high title units, not pixels. The renderer reads highlightColor; highlight is an older key that draws nothing.
+      const look = list([style.font, style.weight && `weight ${style.weight}`, typeof style.size === 'number' && `size ${num(style.size)}`, style.color, style.preset && `preset ${style.preset}`, style.highlightColor && `highlight ${style.highlightColor}`, style.plate && `plate ${style.plate}`, typeof style.y === 'number' && `at ${Math.round(style.y * 100)}% height`])
       if (look) parts.push(`style ${look}`)
     }
     if (parts.length) lines.push(`- ${trackName(track)} (${track.kind}): ${parts.join(', ')}`)
@@ -150,7 +151,7 @@ function mixLines(p, scope) {
 
 function titleLine(t) {
   if (!t) return ''
-  const style = list([t.font, t.weight && `weight ${t.weight}`, typeof t.size === 'number' && `${num(t.size)} px`, t.color, t.align && `${t.align} aligned`, t.plate && `plate ${t.plate}`, t.stroke && `stroke ${t.stroke.color ?? ''} ${num(t.stroke.width ?? 0)} px`.trim(), t.shadow && 'shadow', t.anim && t.anim !== 'none' && `animation ${t.anim}`])
+  const style = list([t.font, t.weight && `weight ${t.weight}`, typeof t.size === 'number' && `size ${num(t.size)}`, t.color, t.align && `${t.align} aligned`, t.plate && `plate ${t.plate}`, t.stroke && `stroke ${t.stroke.color ?? ''} ${num(t.stroke.width ?? 0)} px`.trim(), t.shadow && 'shadow', t.anim && t.anim !== 'none' && `animation ${t.anim}`])
   return `${quote(t.text)}${style ? `; ${style}` : ''}`
 }
 

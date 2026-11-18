@@ -38,7 +38,7 @@ test('the focus names grade values, effect parameters, keyframe times and title 
   assert.match(text, /Audio: volume -3 dB/)
   assert.match(text, /Media: 1080x1920, 30 fps, 60 s long, h264, has audio/)
   assert.match(text, /Linked with: c1a \(audio on A1\)/)
-  assert.match(text, /Title: "Meet Dana"; .*96 px.*animation rise/)
+  assert.match(text, /Title: "Meet Dana"; .*size 96,.*animation rise/)
 })
 
 test('the focus lists the layers under the playhead top first with source timecode', () => {
@@ -107,7 +107,7 @@ test('track faders, effect chains, caption styling and the master bus are descri
   const text = describeFocus(p, { selection: ['c1'] })
   assert.match(text, /Tracks and mix \(settings that differ from the defaults\):/)
   assert.match(text, /- A1 Audio 1 \(audio\): solo, volume -4 dB, pan -0\.25, effects \[0\] compressor \(threshold -20, ratio 3\); \[1\] EQ off \(highpass 80 Hz\)/)
-  assert.match(text, new RegExp(`- ${caption.id} Captions \\(caption\\): burned in, style Inter, 48 px, #ffffff, plate #000000aa, at 85% height`))
+  assert.match(text, new RegExp(`- ${caption.id} Captions \\(caption\\): burned in, style Inter, size 48, #ffffff, plate #000000aa, at 85% height`))
   assert.match(text, /- Master: volume -1\.5 dB, effects \[0\] gain \(gain 2\), limiter ceiling -1 dBTP, release 80 ms, loudness target -14 LUFS/)
   assert.match(text, /Audio: volume -3 dB, effects \[0\] deesser \(threshold -28\)/)
   assert.doesNotMatch(describeFocus(fixture(), {}), /Tracks and mix/, 'default faders add nothing')

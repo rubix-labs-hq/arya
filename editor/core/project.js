@@ -450,16 +450,39 @@ function deepMerge(target, set) {
   }
 }
 
+/** What a deepMerge of `set` into `target` changes, one entry per setting: "style.size 52 to 104". */
+function settingChanges(target, set, prefix = '') {
+  const shown = value => typeof value === 'string' ? (value.length > 24 ? `${value.slice(0, 21)}...` : value) : String(value)
+  const plain = value => value === null || ['string', 'number', 'boolean'].includes(typeof value)
+  const out = []
+  for (const [key, value] of Object.entries(set)) {
+    if (key === 'id') continue
+    const current = target?.[key], name = `${prefix}${key}`
+    if (value && typeof value === 'object' && !Array.isArray(value) && (current === undefined || current && typeof current === 'object' && !Array.isArray(current))) out.push(...settingChanges(current ?? {}, value, `${name}.`))
+    else if (value === null) out.push(current === undefined ? `${name} (unchanged)` : `${name} removed`)
+    else if (!plain(value) || current !== undefined && !plain(current)) out.push(name)
+    else if (current === value) out.push(`${name} (unchanged)`)
+    else out.push(current === undefined ? `${name} set to ${shown(value)}` : `${name} ${shown(current)} to ${shown(value)}`)
+  }
+  return out
+}
+
 function shiftKeys(c, delta) {
   if (c.words) c.words = c.words.map(w => ({ ...w, t: round(w.t + delta), end: round(w.end + delta) }))
   if (!c.anim) return
   for (const prop of Object.keys(c.anim)) c.anim[prop] = c.anim[prop].map(([t, v, e]) => (e === undefined ? [round(t + delta), v] : [round(t + delta), v, e]))
 }
 
-function boundCaptionWords(c) {
+// A word stays in a shortened caption when enough of it is left to read as spoken: a frame and a
+// half, or at least half of the word when the word is shorter than three frames. A cut that lands
+// a frame inside a word (frame snapping makes that common) no longer keeps the whole word, and a
+// split through a short word still keeps it on the side that holds most of it.
+function boundCaptionWords(c, fps = 30) {
   if (c.kind !== 'caption' || !Array.isArray(c.words)) return
   const ranges = captionWordRanges(c)
-  const keep = c.words.map((word, index) => ({ word, range: ranges[index] })).filter(({ word }) => word.end > 0 && word.t < c.dur)
+  // Times are stored to four decimals, so the comparison allows for that rounding.
+  const enough = word => Math.min(c.dur, word.end) - Math.max(0, word.t) >= Math.min(1.5 / fps, (word.end - word.t) / 2) - 2e-4
+  const keep = c.words.map((word, index) => ({ word, range: ranges[index] })).filter(({ word }) => word.end > 0 && word.t < c.dur && enough(word))
   const first = keep[0]?.range, last = keep.at(-1)?.range
   c.text = first && last ? String(c.text ?? '').slice(first.start, last.end) : keep.map(({ word }) => word.text).join(' ')
   c.words = keep.map(({ word }) => ({ ...word, t: round(Math.max(0, word.t)), end: round(Math.min(c.dur, word.end)) }))
@@ -502,8 +525,8 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
       delete tail.fadeIn
       delete tail.transitionIn
       c.dur = round(from - c.start)
-      boundCaptionWords(c)
-      boundCaptionWords(tail)
+      boundCaptionWords(c, p.fps)
+      boundCaptionWords(tail, p.fps)
       delete c.fadeOut
       out.push(c, tail)
       created?.push(tail.id)
@@ -512,7 +535,7 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
     if (c.start < from) {
       if (c.in !== undefined && backward(c)) c.in = round(c.in + (end - from) * (c.speed ?? 1))
       c.dur = round(from - c.start)
-      boundCaptionWords(c)
+      boundCaptionWords(c, p.fps)
       out.push(c)
       continue
     }
@@ -522,7 +545,7 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
       shiftKeys(c, -cut)
       c.start = to
       c.dur = round(end - to)
-      boundCaptionWords(c)
+      boundCaptionWords(c, p.fps)
       out.push(c)
     }
   }
@@ -566,7 +589,7 @@ function moveBounds(track, clip, moving) {
   return [prev - clip.start, next - clipEnd(clip)]
 }
 
-function moveEdge(clip, edge, d) {
+function moveEdge(clip, edge, d, fps) {
   // A reversed media clip reads its source from the end, so its right edge owns `in`.
   if (edge === 'right') {
     if (clip.in !== undefined && backward(clip)) clip.in = round(clip.in - d * (clip.speed ?? 1))
@@ -577,7 +600,7 @@ function moveEdge(clip, edge, d) {
     clip.start = round(clip.start + d)
     clip.dur = round(clip.dur - d)
   }
-  boundCaptionWords(clip)
+  boundCaptionWords(clip, fps)
 }
 
 /** The delta clamped to every [lo, hi]; no change when the bounds leave no room. */
@@ -808,7 +831,7 @@ export function applyOps(source, ops) {
           deepMerge(clip, op.set ?? {})
           correctCaptionWords(clip, op.set ?? {})
           clip.dur = Math.max(minDur, clip.dur)
-          if (Object.hasOwn(op.set ?? {}, 'dur')) boundCaptionWords(clip)
+          if (Object.hasOwn(op.set ?? {}, 'dur')) boundCaptionWords(clip, p.fps)
         }
         log.push(`updated ${ids.join(', ')}: ${Object.keys(op.set ?? {}).join(', ')}`)
         break
@@ -878,7 +901,7 @@ export function applyOps(source, ops) {
             if (op.ripple) shiftAfter(track, end, change, clip)
           }
           sortTrack(track)
-          boundCaptionWords(clip)
+          boundCaptionWords(clip, p.fps)
         }
         for (const part of parts) apply(part, round(edgeOf(part.clip) + delta))
         log.push(`trimmed ${op.id} ${op.edge} to ${round(op.to, 3)}s${op.ripple ? ' (ripple)' : ''}${op.unlinked ? ' (unlinked)' : ''}`)
@@ -900,7 +923,7 @@ export function applyOps(source, ops) {
         }
         const moving = new Set(edges.map(([x]) => x.clip))
         const d = clampDelta(snapToFrame(op.to, p.fps) - clipEnd(A.clip), edges.map(([x, edge]) => edgeBounds(p, x.track, x.clip, edge, moving, minDur)))
-        for (const [x, edge] of edges) moveEdge(x.clip, edge, d)
+        for (const [x, edge] of edges) moveEdge(x.clip, edge, d, p.fps)
         log.push(`rolled edit ${op.a}|${op.b} to ${round(clipEnd(A.clip), 3)}s${op.unlinked ? ' (unlinked)' : ''}`)
         break
       }
@@ -943,7 +966,7 @@ export function applyOps(source, ops) {
         ]
         const d = clampDelta(op.delta, bounds)
         for (const { clip } of sliders) clip.start = round(clip.start + d)
-        for (const [x, edge] of edges) moveEdge(x.clip, edge, d)
+        for (const [x, edge] of edges) moveEdge(x.clip, edge, d, p.fps)
         for (const t of p.tracks) sortTrack(t)
         log.push(`slid ${op.id} by ${round(d, 3)}s`)
         break
@@ -970,8 +993,8 @@ export function applyOps(source, ops) {
           delete tail.fadeIn
           delete tail.transitionIn
           clip.dur = round(head)
-          boundCaptionWords(clip)
-          boundCaptionWords(tail)
+          boundCaptionWords(clip, p.fps)
+          boundCaptionWords(tail, p.fps)
           delete clip.fadeOut
           if (clip.link) {
             if (!newLinks.has(clip.link)) newLinks.set(clip.link, `L${id}`)
@@ -1071,7 +1094,7 @@ export function applyOps(source, ops) {
             const next = track.clips.filter(c => c !== clip && c.start >= oldEnd - EDGE_EPS).reduce((m, c) => Math.min(m, c.start), Infinity)
             clip.dur = round(Math.max(minDur, Math.min(clip.dur, next - clip.start)))
           } else if (clip.dur > oldDur || op.ripple === true) shiftAfter(track, oldEnd, clip.dur - oldDur, clip)
-          boundCaptionWords(clip)
+          boundCaptionWords(clip, p.fps)
         })
         log.push(`retimed ${op.id} to ${op.speed}x`)
         break
@@ -1171,8 +1194,9 @@ export function applyOps(source, ops) {
       }
       case 'update_track': {
         const track = trackOf(p, op.id)
+        const changes = settingChanges(track, op.set ?? {})
         deepMerge(track, op.set ?? {})
-        log.push(`updated track ${op.id}: ${Object.keys(op.set ?? {}).join(', ')}`)
+        log.push(`updated track ${op.id}: ${changes.length > 8 ? `${changes.slice(0, 8).join(', ')} and ${changes.length - 8} more` : changes.join(', ')}`)
         break
       }
       case 'delete_track': {
@@ -1289,7 +1313,7 @@ export const OPS_DOC = [
   '- library_rename {item:libraryId,name,description?}  - library_remove {item:libraryId} removes only the saved item. Every library edit uses the normal atomic undo history.',
   '- library_register {item:{id?,name,description?,category,body}} registers declarative native data, never JavaScript. body.clip is a full native title or comp clip, or body.composition is a root ID; body.comps contains the composition dependency closure and body.assets must match imported project assets. Referenced LUT paths require body.resources entries with {type:lut,size,sourceHash}; hosts verify their actual CUBE files and hashes. JSON-only transfer cannot include these files. Custom transitions and effect overlays use a comp clip or root composition body. Effect overlays place independent editable layers; effect settings apply to a target clip. Target components use body.settings: effect {effects,nodes?,grade?,anim?,dur?}, motion {anim,dur,kind}, transition {transitionIn:{type,dur}}. Effect node animation requires a positive source dur. Prefer creating native objects with normal ops and library_save.',
   '- append|insert|overwrite|connect|add_clip {src, track?, start?, in?, out?|dur?, set?, audio?:false}  insert ripples later clips; overwrite clears the range; video with sound adds a linked audio clip',
-  '- add_title {text, track?, start?, dur?, title?:{font,weight,size,color,align,lineHeight,tracking,stroke:{color,width},shadow:{color,blur,x,y},plate,padding,radius,anim:none|fade|rise|drop|pop|slideLeft|slideRight|typewriter|blurIn|tracking}, set?}',
+  '- add_title {text, track?, start?, dur?, title?:{font,weight,size,color,align,lineHeight,tracking,stroke:{color,width},shadow:{color,blur,x,y},plate,padding,radius,anim:none|fade|rise|drop|pop|slideLeft|slideRight|typewriter|blurIn|tracking}, set?}  title.size is in 1080-high units, so the frame is width*1080/height units wide (607 on 1080x1920); a title breaks only at \\n unless title.box {width, height, wrap:true, autoHeight:true} is set, in the same units. A track shows one clip at a time: omit track and the title gets a free track.',
   '- add_color {color, start, dur, track?}   - adjustment {start, dur, track?} (grade/effects apply to everything below)',
   '- update {id|ids, set}  clip fields: x,y (canvas px of center), scale, scaleX, scaleY, rotation, opacity, blend (normal|add|screen|multiply|overlay|softLight|lighten|darken|difference|colorDodge), crop {l,r,t,b} (0..1), volume (dB), pan (-1..1), eq {low,mid,high} (dB), fadeIn, fadeOut, enabled, label, note, color, mute, role (dialogue|music|effects: the mixing role ducking uses; unset means picture sound is dialogue and audio-only files are music), tag (color label hex or null), fx (audio effect chain, below), title {text, font, weight, size, color, align, lineHeight, tracking, italic, gradient:[startColor,endColor], stroke, shadow, plate, padding, radius, anim},',
   '  Nested fields require nested objects: set:{title:{text:"New title"}}. Dotted update.set keys are rejected. Use keyframe/expression prop for animated property paths.',
@@ -1298,12 +1322,12 @@ export const OPS_DOC = [
   '- move {id, start, track?, overwrite?, unlinked?}  - trim {id, edge:left|right, to, ripple?, unlinked?}  - roll {a, b, to, unlinked?}  - slip {id, delta, unlinked?}  - slide {id, delta, unlinked?}',
   '  Linked video and audio trim, roll and slide together; unlinked:true edits one side only (for a J or L cut, roll the audio edit with unlinked). Edit a linked clip once: a separate call for its partner moves the pair twice. A trim without ripple stops at the neighbouring clip.',
   '- blade|split {at, id?, tracks?}  - delete|lift {id|ids} (leaves a gap)  - ripple_delete {id|ids}  - delete_range {from, to, tracks?, ripple?}  - duplicate {id, start?, track?, unlinked?} (copies linked audio too; without start it lands after the clip without covering another)  - paste {at, clips:[{track, clip, offset}]} places copies of clip objects at timeline seconds at',
-  '- speed {id, speed, reverse?, ripple?} (a slower clip pushes later clips; ripple:true also closes the gap a faster clip leaves; ripple:false stops at the next clip)  - freeze {id, at, dur?}  - detach_audio {id}  - link {ids}',
+  '- speed {id, speed, reverse?, ripple?} (a slower clip pushes later clips; ripple:true also closes the gap a faster clip leaves; ripple:false stops at the next clip; speed plays picture and sound faster or slower; to hit a target length, trim or cut unless the user asked for a speed change)  - freeze {id, at, dur?}  - detach_audio {id}  - link {ids}',
   '- transition {id, type: crossDissolve|dipBlack|dipWhite|wipeLeft|wipeRight|wipeUp|wipeDown|slideLeft|slideRight|pushLeft|pushRight|zoomIn|iris|blurDissolve|none, dur}  (into clip id, centered on its start)',
   '- effect {id, type: blur|sharpen|vignette|grain|pixelate|glow|mirror|invert|posterize|chromaticAberration|letterbox, params?} | {id, index, params?, enabled?} | {id, remove: index}',
   '- keyframe {id|ids, prop: x|y|scale|scaleX|scaleY|rotation|opacity|anchorX|anchorY|volume|pan|blur or a dotted path such as fx.0.params.threshold, shape.trim.end, mask.mk1.feather, at, value, ease?: linear|in|out|inOut|smooth|backOut|expoOut|expoIn|hold|[x1,y1,x2,y2], local?, remove?}  - clear_keyframes {id, prop?}',
   '- keyframe_ease {id, prop, index, ease?, t?, value?} changes one existing keyframe (index in time order; t is clip-local seconds)',
-  '- add_track {kind, name?}  - update_track {id, set:{name,muted,hidden,locked,solo,volume,pan,fx}}  - delete_track {id}; caption tracks also take set:{burnIn, style:{font,size,weight,color,highlight,plate,y}}',
+  '- add_track {kind, name?}  - update_track {id, set:{name,muted,hidden,locked,solo,volume,pan,fx}}  - delete_track {id}; caption tracks also take set:{burnIn, style:{preset (word: one word at a time; karaoke: the spoken word in highlightColor; both need word timings), font, size (1080-high units), weight, color, highlightColor (preset karaoke only), plate (colour or transparent), padding, radius, align, lineHeight, maxLines (lines of height reserved under a preset, not a limit), y (centre, 0 top to 1 bottom)}}. Captions wrap inside 90% of the frame width on their own. Other style keys draw nothing.',
   'Audio effects: clip, track and master chains are arrays of {type, enabled, params}. eq {bands:[{type: lowshelf|peaking|highshelf|lowpass|highpass|notch, freq, gain, q}]} (up to 6 bands), compressor {threshold, ratio, attack, release, knee, makeup}, gate {threshold, attack, hold, release, range}, deesser {threshold, ratio, range, lo, hi, attack, release}, limiter {ceiling, release, lookahead}, reverb {size, decay, predelay, mix}, delay {time, feedback, mix}, gain {gain}. Set a clip chain with update {id, set:{fx:[...]}}, a track chain with update_track {id, set:{fx:[...]}}, and the master with project {set:{master:{fx, volume, limiter:{enabled, ceiling, release}}}}.',
   '- marker {t, label, color?, note?, kind?: marker|chapter|todo, dur?}  - markers {markers:[{t,label,color?,note?,kind?,dur?}]}  - update_marker {id, set}  - delete_marker {id|ids}; markers belong to comp when specified, otherwise the main timeline',
   '- close_gaps {track}  - range {in, out} | {in:null}  - project {set:{name,width,height,fps,background}}',
@@ -1319,7 +1343,7 @@ export const OPS_DOC = [
   '- node_add {id, node:{type: corrector|parallel|layerMixer|key|lut|blur|sharpen|glow, grade?, qualifier?:{hue:[lo,hi], sat, lum, soft, invert}, window?:{type: circle|rect|linear|polygon, x, y, w, h, rotation, softness, invert}}, after?, parallel?}',
   '- node_update {id, node, set}  - node_delete {id, node}  - node_link {id, from, to, input}  - node_unlink {id, to, input}  - nodes_reset {id}',
   '- make_multicam {srcs, offsets?, labels?, track, start}  - multicam_cut {id, at, angle}',
-  '- add_caption {text, start, dur, track?}  - captions {items:[{t, end, text}], track?, replace?}  (caption tracks draw when burnIn is true)',
+  '- add_caption {text, start, dur, track?}  - captions {items:[{t, end, text, words?:[{t,end,text}]}], track?, replace?, style?, burnIn?}  words are timeline seconds; with words, a cut drops the cut words from the caption text, and without them the text never changes. Use captions for subtitles, not titles: a title keeps its text when a cut shortens it.  (caption tracks draw when burnIn is true)',
 ].join('\n')
 
 // ---------------------------------------------------------------- v3: compositions, motion, nodes, multicam, captions
