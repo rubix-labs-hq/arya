@@ -173,8 +173,9 @@ async function requestStrip(url, alive, { request = api, wait = ms => new Promis
   for (let attempt = 0; alive(); attempt++) {
     try { return await request(url) }
     catch (error) {
-      // An answer with any other status is final. No status at all means the request never arrived.
-      if (error?.status !== 429 && error?.status !== undefined || attempt >= STRIP_RETRY_MS.length) return null
+      // Only a busy server (429) or a request that never arrived (fetch's TypeError) is tried again.
+      // Any other error, with or without a status, is final.
+      if (!(error?.status === 429 || error instanceof TypeError) || attempt >= STRIP_RETRY_MS.length) return null
       await wait(STRIP_RETRY_MS[attempt])
     }
   }

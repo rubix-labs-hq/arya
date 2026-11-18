@@ -38,6 +38,14 @@ test('any other answer is final and is not asked for again', async () => {
   assert.equal(f.asked.length, 1)
 })
 
+test('an error without a status that is not a network failure is final', async () => {
+  // The Mac app and the hosted editor throw plain errors, such as a failed strip or a refused source.
+  const f = fixture([new Error('Choose a picture source.'), strip])
+  assert.equal(await requestStrip('/api/strip?src=a', () => true, f.options), null)
+  assert.deepEqual(f.waits, [])
+  assert.equal(f.asked.length, 1)
+})
+
 test('a card that unmounts stops the retries', async () => {
   let mounted = true
   const f = fixture([busy(), busy(), strip])
