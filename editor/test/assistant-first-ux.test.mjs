@@ -1061,9 +1061,9 @@ test('after Stop, a change with no run id is not counted for a run with no id', 
 
 test('the Send tooltip names the key that sends for the input kind', t => {
   const title = kind => { const f = panel(t); f.state.assistantDraft = { ...f.state.assistantDraft, inputKind: kind }; return primary(f.draw())[0].props.title }
-  assert.equal(title('prompt'), 'Send (Return)')
-  assert.equal(title('script'), 'Send (⌘Return)')
-  assert.equal(title('screenplay'), 'Send (⌘Return)')
+  assert.equal(title('prompt'), 'Send (Return). Preview first: edits wait for Apply')
+  assert.equal(title('script'), 'Send (⌘Return). Preview first: edits wait for Apply')
+  assert.equal(title('screenplay'), 'Send (⌘Return). Preview first: edits wait for Apply')
 })
 
 test('the layout fixes outside the panel stay in the stylesheets', () => {

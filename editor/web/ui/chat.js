@@ -357,6 +357,8 @@ export function ChatPanel() {
   const scopeName = s.openComp ? s.project?.comps?.[s.openComp]?.name ? `${s.project.comps[s.openComp].name} (${s.openComp})` : s.openComp : 'Main timeline'
   // Preview changes and one-step undo need the browser server; the native host keeps its own flow.
   const preview = !native && s.assistantPreview !== false
+  // The Preview setting is kept between requests, so the placeholder and Send say which mode the next request uses.
+  const mode = native ? '' : preview ? 'Preview first' : 'Applies directly'
   const review = native ? null : s.assistantReview
   const [reviewBusy, setReviewBusy] = useState('')
   const decide = async (kind, route, body) => {
@@ -536,13 +538,13 @@ export function ChatPanel() {
                 <span class="chip small" title=${scopeName}>${s.openComp ? s.project?.comps?.[s.openComp]?.name ?? 'Current composition' : 'Main timeline'}</span>
                 <span class="chip small" title=${view.under.join(', ') || undefined}>${!view.time || view.time === 'unavailable' ? 'Playhead unavailable' : `Playhead ${view.time}`}</span>
               </div>
-              ${native ? null : html`<label class="assistant-preview-toggle" title="Preview changes"><input type="checkbox" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview</span></label>`}
+              ${native ? null : html`<label class="assistant-preview-toggle" title=${preview ? 'Preview changes: edits wait for Apply' : 'Preview changes is off: edits apply directly'}><input type="checkbox" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview</span></label>`}
               ${selection.length ? html`<div class="assistant-selection-chips" role="group" aria-label="Current selection included when sending">${selection.map(item => html`<span class="chip small" key=${item.id}><b>${item.label}</b>${item.track || item.id !== item.label ? html`<small>${item.id}${item.track ? ` · ${item.track}` : ''}</small>` : null}</span>`)}</div>` : null}
               ${s.refs.length ? html`<div class="refs" role="group" aria-label="Attached references">${s.refs.map(r => html`<span class="chip"><${Icon} name="attach" size=${14} /> ${r.label}<button aria-label=${`Remove reference ${r.label}`} onClick=${() => set({ refs: s.refs.filter(x => x !== r) })}><${Icon} name="close" size=${14} /></button></span>`)}</div>` : null}
             </div>
           </div>
           <div class="composer">
-            <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${draft.inputKind !== 'prompt' ? 'Paste a script to build editable scenes' : s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'} value=${text}
+            <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${`${draft.inputKind !== 'prompt' ? 'Paste a script to build editable scenes' : s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'}${mode ? ` · ${mode}` : ''}`} value=${text}
               onInput=${e => setText(e.target.value)}
               onCompositionStart=${() => { composing.current = true }} onCompositionEnd=${() => { composing.current = false }}
               onKeyDown=${e => {
@@ -581,7 +583,7 @@ export function ChatPanel() {
             <div class="assistant-primary-action"><button
               class=${working ? 'assistant-stop' : 'send'}
               aria-label=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : 'Send message'}
-              title=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : draft.inputKind === 'prompt' ? 'Send (Return)' : 'Send (⌘Return)'}
+              title=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : `${draft.inputKind === 'prompt' ? 'Send (Return)' : 'Send (⌘Return)'}${mode ? `. ${preview ? 'Preview first: edits wait for Apply' : 'Applies edits directly'}` : ''}`}
               disabled=${working ? !pending && !activity.canStop : Boolean(sharingReview) || !canSend || text.length > inputLimit || !text.trim() && !s.refs.length}
               onClick=${working ? stop : () => { closeComposerMenus(); return send() }}><${Icon} name=${working ? 'stop' : 'send'} size=${18} />${working ? html`<span>${activity.state === 'cancelling' ? 'Stopping…' : 'Stop'}</span>` : null}</button></div>
           </div>

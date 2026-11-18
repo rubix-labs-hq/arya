@@ -157,8 +157,19 @@ test('Command-Return sends like Return, as in the Mac Assistant', async () => {
 })
 
 test('the prompt placeholder follows the selection', () => {
-  assert.equal(input(fixture().draw()).props.placeholder, 'Ask for an edit, or ask about the project')
-  assert.equal(input(fixture({ selection: ['c1'] }).draw()).props.placeholder, 'Ask about or change this selection')
+  assert.equal(input(fixture().draw()).props.placeholder, 'Ask for an edit, or ask about the project · Preview first')
+  assert.equal(input(fixture({ selection: ['c1'] }).draw()).props.placeholder, 'Ask about or change this selection · Preview first')
+})
+
+test('the placeholder, Send and the Preview toggle say whether edits wait for Apply', () => {
+  const off = fixture({ assistantPreview: false }).draw()
+  assert.equal(input(off).props.placeholder, 'Ask for an edit, or ask about the project · Applies directly')
+  assert.match(nodes(off).find(node => node.props?.['aria-label'] === 'Send message').props.title, /^Send \(Return\)\. Applies edits directly$/)
+  assert.equal(nodes(off).find(node => node.props?.class === 'assistant-preview-toggle').props.title, 'Preview changes is off: edits apply directly')
+  const on = fixture().draw()
+  assert.equal(nodes(on).find(node => node.props?.['aria-label'] === 'Send message').props.title, 'Send (Return). Preview first: edits wait for Apply')
+  // The Mac app has no Preview toggle, so its placeholder names no mode.
+  assert.equal(input(fixture({ caps: { host: 'native' } }).draw()).props.placeholder, 'Ask for an edit, or ask about the project')
 })
 
 test('in a script or screenplay, Return adds a line and Command-Return sends', async () => {
@@ -170,7 +181,7 @@ test('in a script or screenplay, Return adds a line and Command-Return sends', a
     assert.equal(plain.prevented, 0, `${inputKind}: Return keeps the newline`)
     assert.deepEqual(f.calls, [])
     assert.match(text(f.draw()), /⌘Return to send · Return for a new line/)
-    assert.equal(input(f.draw()).props.placeholder, 'Paste a script to build editable scenes', `${inputKind}: placeholder`)
+    assert.equal(input(f.draw()).props.placeholder, 'Paste a script to build editable scenes · Preview first', `${inputKind}: placeholder`)
     const command = event({ metaKey: true })
     input(f.draw()).props.onKeyDown(command)
     await tick()
@@ -312,7 +323,7 @@ test('Preview changes is on by default, travels with the request and can be turn
   const toggle = nodes(f.draw()).find(node => node.props?.class === 'assistant-preview-toggle')
   const box = nodes(toggle).find(node => node.type === 'input')
   assert.equal(box.props.checked, true); assert.equal(text(toggle), 'Preview')
-  assert.equal(toggle.props.title, 'Preview changes'); assert.equal(box.props['aria-label'], 'Preview changes')
+  assert.equal(toggle.props.title, 'Preview changes: edits wait for Apply'); assert.equal(box.props['aria-label'], 'Preview changes')
   box.props.onChange({ target: { checked: false } })
   assert.equal(f.state.assistantPreview, false)
   assert.equal(nodes(nodes(f.draw()).find(node => node.props?.class === 'assistant-preview-toggle')).find(node => node.type === 'input').props.checked, false)
