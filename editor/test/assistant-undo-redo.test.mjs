@@ -193,3 +193,60 @@ test('the review store brings an undone change back only for the same project ob
   project = after; version++; store.commitBy(undefined)
   assert.equal(store.snapshot().change.id, newer.id)
 })
+
+// "Undo this change" on the card of a request in which the assistant called Undo re-applied the
+// undone edit as a new forward edit, which emptied the redo history (round 2, B01).
+const markers = project => (project.markers ?? []).map(marker => marker.label)
+
+test('a request that only undid edits is a history change, and its card undoes it with Redo', async t => {
+  const server = await runningServer(t, [{ method: 'POST', path: '/api/undo' }])
+  await server.api('POST', '/api/ops', { ops: [{ op: 'marker', t: 1, label: 'First' }] })
+  await server.api('POST', '/api/ops', { ops: [{ op: 'marker', t: 2, label: 'Second' }] })
+  // One step already waits in the redo history, so a forward edit would show as redo 0.
+  assert.equal((await server.api('POST', '/api/undo', {})).body.moved, true)
+  const first = (await server.api('GET', '/api/project')).body
+  assert.deepEqual(markers(first.project), ['First']); assert.deepEqual(first.history, { undo: 1, redo: 1 })
+  await server.ask('Undo that last edit.')
+  const undone = (await server.api('GET', '/api/project')).body
+  assert.deepEqual(markers(undone.project), []); assert.deepEqual(undone.history, { undo: 0, redo: 2 })
+  const review = (await server.api('GET', '/api/assistant/review')).body
+  assert.equal(review.change.kind, 'history'); assert.equal(review.change.label, 'Undid 1 edit'); assert.equal(review.change.undoable, true)
+  assert.deepEqual(review.changes.map(item => [item.kind, item.undone]), [['history', false]])
+
+  const pressed = await server.api('POST', '/api/assistant/change/undo', { id: review.change.id })
+  assert.equal(pressed.status, 200, JSON.stringify(pressed))
+  const after = (await server.api('GET', '/api/project')).body
+  assert.deepEqual(after.project, first.project, 'the edit the assistant undid is back')
+  assert.deepEqual(after.history, { undo: 1, redo: 1 }, 'a Redo move, so the older redo step is kept')
+  const state = (await server.api('GET', '/api/assistant/review')).body
+  assert.equal(state.change, null); assert.equal(state.changes[0].undone, true)
+  // Toolbar Undo repeats the assistant's undo, so the change and its card are current again.
+  assert.equal((await server.api('POST', '/api/undo', {})).body.moved, true)
+  const back = (await server.api('GET', '/api/assistant/review')).body
+  assert.equal(back.change.id, review.change.id); assert.equal(back.change.undoable, true); assert.equal(back.changes[0].undone, false)
+})
+
+test('a request that undid two edits is undone by two Redo moves', async t => {
+  const server = await runningServer(t, [{ method: 'POST', path: '/api/undo' }, { method: 'POST', path: '/api/undo' }])
+  for (const label of ['One', 'Two', 'Three']) await server.api('POST', '/api/ops', { ops: [{ op: 'marker', t: 1, label }] })
+  const before = (await server.api('GET', '/api/project')).body
+  await server.ask('Undo the last two edits.')
+  const change = (await server.api('GET', '/api/assistant/review')).body.change
+  assert.equal(change.kind, 'history'); assert.equal(change.label, 'Undid 2 edits'); assert.equal(change.edits, 2)
+  assert.equal((await server.api('POST', '/api/assistant/change/undo', { id: change.id })).status, 200)
+  const after = (await server.api('GET', '/api/project')).body
+  assert.deepEqual(after.project, before.project); assert.deepEqual(after.history, { undo: 3, redo: 0 })
+})
+
+test('a request that redid an edit offers no card undo and points at the toolbar', async t => {
+  const server = await runningServer(t, [{ method: 'POST', path: '/api/redo' }])
+  await server.api('POST', '/api/ops', { ops: [{ op: 'marker', t: 1, label: 'Only' }] })
+  await server.api('POST', '/api/undo', {})
+  await server.ask('Redo it.')
+  const change = (await server.api('GET', '/api/assistant/review')).body.change
+  assert.equal(change.kind, 'history'); assert.equal(change.label, 'Redid 1 edit'); assert.equal(change.undoable, false)
+  assert.match(change.reason, /Undo and Redo in the toolbar/)
+  const pressed = await server.api('POST', '/api/assistant/change/undo', { id: change.id })
+  assert.equal(pressed.status, 409)
+  assert.deepEqual((await server.api('GET', '/api/project')).body.history, { undo: 1, redo: 0 }, 'nothing moved')
+})

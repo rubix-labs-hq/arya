@@ -16,23 +16,46 @@ export const PROPOSAL_EXCLUDED_OPS = new Set(['replace', 'import', 'library_save
 
 const invalid = message => Object.assign(new Error(message), { status: 400 })
 
-export function createAssistantReview({ getVersion, getEpoch, getProject, onChange = () => {}, onRestore = () => {}, now = Date.now } = {}) {
+const MAX_CHANGES = 30
+const plural = (count, one) => `${count} ${one}${count === 1 ? '' : 's'}`
+
+// A run whose own commits were all Undo or Redo moved through history. Its change is named for
+// that move, so a card never calls an undo an edit.
+function historyLabel({ undo, redo }) {
+  return redo === 0 ? `Undid ${plural(undo, 'edit')}` : undo === 0 ? `Redid ${plural(redo, 'edit')}` : 'Moved through the undo history'
+}
+
+/**
+ * `redoReaches(project, steps)` says whether `steps` Redo moves from the current project end on
+ * `project`. Without it a history change cannot be reversed from its card.
+ */
+export function createAssistantReview({ getVersion, getEpoch, getProject, redoReaches = () => false, onChange = () => {}, onRestore = () => {}, now = Date.now } = {}) {
   let run = null, change = null, proposal = null, applying = null
   // The change "Undo this change" removed. Redo can bring its project back, and the change with it.
   let undoneChange = null
+  // Every recent change in order, with whether it is undone now, so older cards keep their name and state.
+  const changes = []
+  let published = null
   const version = () => getVersion(), epoch = () => getEpoch()
+  const remember = next => { changes.push(next); if (changes.length > MAX_CHANGES) changes.shift() }
   const publicChange = () => {
     if (!change) return null
     // Undo and redo restore the same project objects, so identity survives a round trip.
     const current = getProject() === change.after && epoch() === change.epoch
+    // A run that undid edits is reversed by Redo, and only when Redo leads exactly back.
+    const history = change.kind === 'history'
+    const redoable = history && change.moves.redo === 0 && redoReaches(change.before, change.moves.undo)
     const reason = !change.safe ? 'You or another tool edited the project while the assistant change was being made. Use Undo step by step.'
-      : !current ? 'The project changed after this assistant change. Use Undo step by step.' : ''
-    return { id: change.id, kind: change.kind, runId: change.runId, label: change.label, beforeVersion: change.beforeVersion, afterVersion: change.afterVersion, edits: change.afterVersion - change.beforeVersion, at: change.at, undoable: change.safe && current, reason }
+      : !current ? 'The project changed after this assistant change. Use Undo step by step.'
+      : history && change.moves.redo === 0 && !redoable ? 'Use Redo in the toolbar to bring back the edits the assistant undid.'
+      : history && !redoable ? 'Use Undo and Redo in the toolbar to move through these steps.' : ''
+    return { id: change.id, kind: change.kind, runId: change.runId, label: change.label, beforeVersion: change.beforeVersion, afterVersion: change.afterVersion, edits: change.afterVersion - change.beforeVersion, at: change.at, undoable: change.safe && current && (!history || redoable), reason }
   }
   const publicProposal = () => proposal && { id: proposal.id, runId: proposal.runId, replaced: proposal.replaced ?? '', baseVersion: proposal.baseVersion, ops: proposal.ops, steps: proposal.steps.map(({ path, body, preview }) => ({ path, body, preview })), assets: proposal.assets ?? {}, summary: proposal.summaries.join('; '), at: proposal.at, stale: version() !== proposal.baseVersion || epoch() !== proposal.epoch }
   const publicApplying = () => applying && { id: applying.id, summary: applying.summary, total: applying.total, index: applying.index, title: applying.title, finished: applying.finished, error: applying.error ?? '' }
-  const snapshot = () => ({ change: publicChange(), proposal: publicProposal(), applying: publicApplying(), running: !!run && !run.finished, runId: run?.runId ?? null })
-  const changed = () => { try { onChange(snapshot()) } catch { /* A failed notification does not undo state. */ } }
+  const publicChanges = () => changes.map(item => ({ id: item.id, kind: item.kind, runId: item.runId, label: item.label, beforeVersion: item.beforeVersion, afterVersion: item.afterVersion, undone: item.undone === true }))
+  const snapshot = () => ({ change: publicChange(), changes: publicChanges(), proposal: publicProposal(), applying: publicApplying(), running: !!run && !run.finished, runId: run?.runId ?? null })
+  const changed = () => { published = publicChange(); try { onChange(snapshot()) } catch { /* A failed notification does not undo state. */ } }
 
   return {
     snapshot,
@@ -40,30 +63,41 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, onChan
     observe(state, project) {
       if (!state?.runId) return
       if (ACTIVE.has(state.state) && run?.runId !== state.runId) {
-        run = { runId: state.runId, before: project, beforeVersion: version(), epoch: epoch(), foreign: false, finished: false }
+        run = { runId: state.runId, before: project, beforeVersion: version(), epoch: epoch(), foreign: false, finished: false, moves: { undo: 0, redo: 0, edit: 0 } }
         if (applying?.finished) applying = null
         changed()
       } else if (TERMINAL.has(state.state) && run?.runId === state.runId && !run.finished) {
         run.finished = true
         const edits = version() - run.beforeVersion
         if (edits > 0) undoneChange = null
-        if (edits > 0) change = { id: randomUUID(), kind: 'request', runId: run.runId, label: 'Assistant request', before: run.before, after: project, beforeVersion: run.beforeVersion, afterVersion: version(), epoch: run.epoch, safe: !run.foreign && epoch() === run.epoch, at: now() }
+        const { moves } = run, history = moves.edit === 0 && moves.undo + moves.redo > 0
+        if (edits > 0) {
+          change = { id: randomUUID(), kind: history ? 'history' : 'request', runId: run.runId, label: history ? historyLabel(moves) : 'Assistant request', ...(history ? { moves: { undo: moves.undo, redo: moves.redo } } : {}),
+            before: run.before, after: project, beforeVersion: run.beforeVersion, afterVersion: version(), epoch: run.epoch, safe: !run.foreign && epoch() === run.epoch, at: now() }
+          remember(change)
+        }
         changed()
       }
     },
-    /** Every commit reports its owner: the request's run, a preview apply, or nobody (the user or a background job). */
-    commitBy(call) {
+    /**
+     * Every commit reports its owner: the request's run, a preview apply, or nobody (the user or a
+     * background job). `move` is 'undo' or 'redo' for a step through the undo history.
+     */
+    commitBy(call, move = null) {
       if (run && !run.finished && call?.runId !== run.runId) run.foreign = true
+      else if (run && !run.finished) run.moves[move === 'undo' || move === 'redo' ? move : 'edit']++
       if (applying && !applying.finished && call?.applyId !== applying.id) applying.foreign = true
-      if (!undoneChange) return
       // A replaced project can never hold the undone change's project again.
-      if (epoch() !== undoneChange.epoch) { undoneChange = null; return }
+      if (undoneChange && epoch() !== undoneChange.epoch) undoneChange = null
       // Redo restores the same project object, so the change is the latest one again.
-      if (!change && getProject() === undoneChange.after) {
-        change = undoneChange; undoneChange = null
+      if (undoneChange && !change && getProject() === undoneChange.after) {
+        change = undoneChange; undoneChange = null; change.undone = false
         changed()
         try { onRestore(change) } catch { /* A failed notification does not undo state. */ }
+        return
       }
+      // Whether the latest change can still be undone in one step follows every commit.
+      if (change && JSON.stringify(publicChange()) !== JSON.stringify(published)) changed()
     },
     active: () => !!run && !run.finished || !!applying && !applying.finished,
     applying: () => !!applying && !applying.finished,
@@ -145,6 +179,7 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, onChan
       if (version() > done.beforeVersion) {
         undoneChange = null
         change = { id: randomUUID(), kind: 'preview', runId: null, label: 'Applied assistant preview', before: done.before, after: project, beforeVersion: done.beforeVersion, afterVersion: version(), epoch: done.epoch, safe: !done.foreign && epoch() === done.epoch, at: now() }
+        remember(change)
       }
       if (error) done.error = String(error).slice(0, 600)
       else applying = null
@@ -158,7 +193,7 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, onChan
       return value.undoable ? { change } : { reason: value.reason }
     },
     undone(id) {
-      if (change?.id === id) { undoneChange = change; change = null; if (applying?.finished) applying = null; changed() }
+      if (change?.id === id) { undoneChange = change; change.undone = true; change = null; if (applying?.finished) applying = null; changed() }
     },
   }
 }
