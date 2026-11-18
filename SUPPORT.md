@@ -23,8 +23,8 @@ The local browser editor renders exports, preview frames and mix measurements in
 | "Arya could not start Google Chrome to render" | Install Google Chrome in Applications, then try again. |
 | "The render worker did not start" | Try again. Arya starts a new worker, and after each worker that fails to start it gives the next one longer, up to 80 seconds. |
 | "The render worker closed while…" | Export, render the frame or measure again. |
-| "The render worker sent nothing for…" or "The render worker was still preparing…" | Export or measure again. A new worker starts, and an export starts again from the first frame. The message names the last step the worker reported, such as loading LUTs or rendering the audio mix. Include it if you report the problem. |
-| "This frame waited 5 minutes behind other processing" | Wait for the running export to finish, then try again. |
+| "The render worker sent nothing for…" or "The render worker was still preparing…" | Export or measure again. A new worker starts, and an export starts again from the first frame. If the worker stopped before its first frames, the message names the last step it reported, such as loading LUTs or rendering the audio mix. Include it if you report the problem. |
+| "This frame waited 5 minutes behind other processing" or, for a frame the assistant asked for, "This frame waited 85 s behind other processing" | Wait for the running export to finish, then try again. |
 | "The render worker did not finish this frame in 30 s" or "The preview renderer restarted" | Try again. |
 | "Too many thumbnails are waiting" or "Thumbnails are waiting behind other processing" | Wait for the import or export to finish, then try again. |
 
