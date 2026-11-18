@@ -192,6 +192,8 @@ struct NativeAssistantPanel: View {
     @State private var inspectedReceipt: NativeChangeReceipt?
     @State private var inspectedReferences: NativeAssistantReferenceInspection?
     @State private var activityExpanded = false
+    /// Counts the times the run line grew a second line, so the history can keep it in view.
+    @State private var runLineGrowth = 0
     @State private var signingIn = false
     @State private var setupNotice: String?
 
@@ -337,6 +339,7 @@ struct NativeAssistantPanel: View {
             .onChange(of: assistant.chat.count) { _, _ in scrollToLatest(proxy) }
             .onChange(of: model.changeReceipts.count) { _, _ in scrollToLatest(proxy) }
             .onChange(of: assistant.proposal?.id) { _, _ in scrollToLatest(proxy) }
+            .onChange(of: runLineGrowth) { _, _ in scrollToLatest(proxy) }
         }
     }
 
@@ -595,15 +598,22 @@ struct NativeAssistantPanel: View {
                     if !assistant.route.isEmpty { routeSummary }
                 }.padding(.top, 4)
             } label: {
-                HStack(spacing: 6) {
-                    if working { ProgressView().controlSize(.small).frame(width: 14, height: 14) }
-                    else { Image(systemName: assistant.state == "done" ? "checkmark.circle" : assistant.state == "cancelled" ? "stop.circle" : "exclamationmark.circle")
-                        .foregroundStyle(assistant.state == "error" ? NativeEditorStyle.error : NativeEditorStyle.muted) }
-                    Text(label).fontWeight(.semibold)
-                    if !stage.isEmpty { Text(stage).foregroundStyle(NativeEditorStyle.muted).lineLimit(quiet || stopped ? 2 : 1).truncationMode(.tail) }
-                    Spacer(minLength: 4)
-                    Text(elapsed).monospacedDigit().foregroundStyle(NativeEditorStyle.muted)
+                // At accessibility text sizes the stalled and stopped sentences get their own line,
+                // so the state word is never broken and the sentence is never cut.
+                let below = dynamicTypeSize.isAccessibilitySize && (quiet || stopped) && !stage.isEmpty
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        if working { ProgressView().controlSize(.small).frame(width: 14, height: 14) }
+                        else { Image(systemName: assistant.state == "done" ? "checkmark.circle" : assistant.state == "cancelled" ? "stop.circle" : "exclamationmark.circle")
+                            .foregroundStyle(assistant.state == "error" ? NativeEditorStyle.error : NativeEditorStyle.muted) }
+                        Text(label).fontWeight(.semibold).lineLimit(1).fixedSize()
+                        if !stage.isEmpty && !below { Text(stage).foregroundStyle(NativeEditorStyle.muted).lineLimit(quiet || stopped ? 2 : 1).truncationMode(.tail) }
+                        Spacer(minLength: 4)
+                        Text(elapsed).monospacedDigit().foregroundStyle(NativeEditorStyle.muted).lineLimit(1).fixedSize()
+                    }
+                    if below { Text(stage).foregroundStyle(NativeEditorStyle.muted).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true) }
                 }.frame(minHeight: Self.touch ? 44 : 22)
+                .onChange(of: below) { _, grown in if grown { runLineGrowth += 1 } }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(label), \(quiet ? detail : stage), \(elapsed)")
             }
@@ -644,23 +654,10 @@ struct NativeAssistantPanel: View {
             }
             // Bordered on every platform: on iPhone and iPad a default button in a list card reads as plain text.
             // The height is inside each label, so the capsule itself is the 44-point target.
-            HStack(spacing: 8) {
-                if undoable != nil {
-                    Button { Task { await assistant.undoLastChange() } } label: { cardAction("Undo this change") }
-                        .help("Restore the project from before this assistant change. Undo restores it again.")
-                        .accessibilityIdentifier("editor.assistant.undoChange")
-                } else if !model.changeReceipts.isEmpty {
-                    Button { model.undo() } label: { cardAction("Undo latest edit") }
-                        .help("Undo the latest edit in the project, as Undo in the editor does.")
-                }
-                if changed.count == 1, let clip = changed.first {
-                    Button { model.selectReceiptClip(clip) } label: { cardAction("Select \(clip.name)") }
-                        .accessibilityLabel("Select \(clip.name) in \(clip.compositionName)")
-                } else if changed.count > 1 {
-                    Menu {
-                        ForEach(changed) { clip in Button("\(clip.name) · \(clip.compositionName)") { model.selectReceiptClip(clip) } }
-                    } label: { cardAction("Select changed layers") }.fixedSize()
-                }
+            // Side by side where both fit. A narrow pane stacks them, so no title is cut short.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { resultActions(canUndo: undoable != nil, changed: changed) }
+                VStack(alignment: .leading, spacing: 8) { resultActions(canUndo: undoable != nil, changed: changed) }
             }
             .buttonStyle(.bordered).controlSize(Self.touch ? .regular : .small)
             if !model.changeReceipts.isEmpty {
@@ -677,6 +674,25 @@ struct NativeAssistantPanel: View {
         .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 8))
         .overlay { RoundedRectangle(cornerRadius: 8).stroke(NativeEditorStyle.line) }
         .accessibilityElement(children: .contain).accessibilityLabel("Assistant changes")
+    }
+
+    @ViewBuilder private func resultActions(canUndo: Bool, changed: [NativeChangeReceipt.Clip]) -> some View {
+        if canUndo {
+            Button { Task { await assistant.undoLastChange() } } label: { cardAction("Undo this change") }
+                .help("Restore the project from before this assistant change. Undo restores it again.")
+                .accessibilityIdentifier("editor.assistant.undoChange")
+        } else if !model.changeReceipts.isEmpty {
+            Button { model.undo() } label: { cardAction("Undo latest edit") }
+                .help("Undo the latest edit in the project, as Undo in the editor does.")
+        }
+        if changed.count == 1, let clip = changed.first {
+            Button { model.selectReceiptClip(clip) } label: { cardAction("Select \(clip.name)") }
+                .accessibilityLabel("Select \(clip.name) in \(clip.compositionName)")
+        } else if changed.count > 1 {
+            Menu {
+                ForEach(changed) { clip in Button("\(clip.name) · \(clip.compositionName)") { model.selectReceiptClip(clip) } }
+            } label: { cardAction("Select changed layers") }.fixedSize()
+        }
     }
 
     private func cardAction(_ title: String) -> some View {
@@ -822,7 +838,8 @@ struct NativeAssistantPanel: View {
                     Spacer(minLength: 0)
                     primaryAction
                 }
-                modelControls(short: false)
+                // The largest text sizes cannot fit "· Default" even on a row of its own.
+                modelControls(short: dynamicTypeSize >= .accessibility3)
             }.frame(maxWidth: .infinity)
         } else {
             // In one row the model shares the width, so a narrow pane drops "· Default" from its
@@ -1072,7 +1089,8 @@ struct NativeAssistantPanel: View {
                 }.disabled(assistant.checking || assistant.endpoint.isEmpty)
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: assistant.routingMode == "auto" ? "arrow.triangle.branch" : "cpu")
+                    // A narrow touch row gives the width to the name, which already says Auto or the provider.
+                    if !(short && Self.touch) { Image(systemName: assistant.routingMode == "auto" ? "arrow.triangle.branch" : "cpu") }
                     Text(label).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.up.chevron.down").font(.caption)
