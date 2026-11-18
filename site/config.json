@@ -40,6 +40,11 @@
       "apps.apple.com"
     ]
   },
+  "macAppStoreRelease": {
+    "version": "1.1.1",
+    "build": "5",
+    "pro": false
+  },
   "publicSourceURL": "https://github.com/rubix-labs-hq/arya",
   "requestAccessURL": null,
   "contactURL": "https://github.com/rubix-labs-hq/arya/issues",
