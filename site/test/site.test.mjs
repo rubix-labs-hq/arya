@@ -140,9 +140,11 @@ test('layout rules keep the closing copy, the hero buttons, the page names and e
   // Edition cards share four rows and a block for the rest, so a disclosure moves only its own card.
   assert.ok(css.includes('.edition-grid{grid-template-rows:repeat(5,auto)}.edition{grid-row:span 5;grid-template-rows:subgrid}'));
   for(const [section] of download.matchAll(/<section class="edition"[\s\S]*?<\/section>/g)){
-    const more=section.indexOf('<div class="edition-more">');
-    assert.ok(more>section.indexOf('class="button'),'the block follows the button');
+    // A card with nothing after its button has no block.
+    const more=section.indexOf('<div class="edition-more">'),shared=more<0?section:section.slice(0,more);
+    assert.doesNotMatch(shared,/<details|id="requirements"|id="mac-app-store"/);
+    if(more<0)continue;
+    assert.ok(more>section.search(/class="button|id="(?:release|mobile)-action"/),'the block follows the button');
     assert.match(section,/<\/div>\s*<\/section>$/);
-    assert.doesNotMatch(section.slice(0,more),/<details|id="requirements"|id="mac-app-store"/);
   }
 });

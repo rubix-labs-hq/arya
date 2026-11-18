@@ -297,7 +297,8 @@ test('static pages offer gallery links and keep forms inert until handlers exist
 });
 
 test('with no Mac release and a live App Store release, pages say only the Mac download is missing', async () => {
-  const { result, pages } = await buildFixture(defaults);
+  const live = { ...defaults, mobileRelease: { ...shipped.mobileRelease, ready: true, version: '1.2.0', build: '7', appStoreURL: 'https://apps.apple.com/us/app/arya-video-editor/id6826357116', allowedHosts: ['apps.apple.com'] } };
+  const { result, pages } = await buildFixture(live);
   assert.equal(result.status, 0, result.stderr);
   assert.ok(pages.download.includes('Download on the App Store'), 'this fixture has a live App Store release');
   for (const [name, html] of Object.entries(pages)) {
@@ -305,7 +306,7 @@ test('with no Mac release and a live App Store release, pages say only the Mac d
     assert.ok(!html.includes('No public download yet.'), `${name} says Arya has no download`);
   }
   assert.ok(pages.home.includes('Private beta for Mac, by invitation. The public Mac download is not available yet.'));
-  assert.ok(pages.home.includes(`Not for Mac yet. The Mac app is in a private beta by invitation. It needs final interface checks, a signed package and Apple notarization before a public download. Beta requests open when the form on the download page is connected. Arya ${shipped.mobileRelease.version} is available on the App Store for iPhone and iPad.`));
+  assert.ok(pages.home.includes(`Not for Mac yet. The Mac app is in a private beta by invitation. It needs final interface checks, a signed package and Apple notarization before a public download. Beta requests open when the form on the download page is connected. Arya 1.2.0 is available on the App Store for iPhone and iPad.`));
   assert.ok(pages.project.includes('<li>Mac release in preparation</li><li>iPhone and iPad on the App Store</li>'));
   assert.ok(pages.project.includes('<a class="text-link" href="/download/">Release status<'));
   assert.ok(!pages.project.includes('Get Arya for Mac'));
@@ -313,7 +314,7 @@ test('with no Mac release and a live App Store release, pages say only the Mac d
   assert.ok(pages.install.includes('When a public installer ships, download the new DMG from the download page, verify its SHA-256 checksum'));
   assert.doesNotMatch(pages.install, /GitHub Releases|lists the current version/);
 
-  const none = await buildFixture({ ...defaults, mobileRelease: { ...defaults.mobileRelease, ready: false } });
+  const none = await buildFixture({ ...live, mobileRelease: { ...live.mobileRelease, ready: false } });
   assert.equal(none.result.status, 0, none.result.stderr);
   assert.ok(none.pages.home.includes('Not yet. Arya is in a private beta by invitation. The Mac app needs final interface checks'));
   assert.ok(none.pages.project.includes('<li>Mac release in preparation</li><li>iPhone and iPad coming later</li>'));
