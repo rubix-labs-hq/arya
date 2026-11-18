@@ -9,7 +9,7 @@ import { editNotes } from '../../core/edit-notes.js'
 import { changeReceipt } from './change-receipt.js'
 import { assistantSuggestions } from './assistant-suggestions.js'
 import { messageHTML } from './message-text.js'
-import { readableChange, settingsSummary } from './change-values.js'
+import { readableChange, settingsSummary, splitChanges } from './change-values.js'
 
 const html = htm.bind(h)
 const MAX_LAYERS = 6
@@ -41,7 +41,7 @@ function previewChanges(project, proposal) {
     // A linked video clip and its audio share a name, so each row also says which kind of track it is on.
     const names = new Map(), kinds = new Map()
     for (const p of [project, next]) for (const scope of [p, ...Object.values(p.comps ?? {})]) for (const track of scope.tracks ?? []) for (const clip of track.clips ?? []) { names.set(clip.id, clipName(next, clip)); kinds.set(clip.id, track.kind === 'audio' ? 'Audio' : 'Video') }
-    const layers = receipt.clips.map(layer => ({ ...layer, name: names.get(layer.id) ?? layer.name, track: kinds.get(layer.id) ?? '', changes: layer.changes.flatMap(expand) }))
+    const layers = receipt.clips.map(layer => ({ ...layer, name: names.get(layer.id) ?? layer.name, track: kinds.get(layer.id) ?? '', changes: splitChanges(layer.changes) }))
     // A clip added to or removed from a track also reorders it; the layer row already says so.
     const settings = receipt.scopes.filter(scope => scope.changes.some(change => change.property !== 'Object order')).map(scope => scope.changes.filter(change => change.property !== 'Object order').every(change => change.property === 'duration') ? { ...scope, name: 'Timeline length' } : scope)
     // The same notes the editor shows under a committed edit: overlaps, shortened text, fonts and the like.
@@ -54,14 +54,6 @@ function previewChanges(project, proposal) {
 
 const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
 
-/** A new object value becomes one row per property, so "grade" reads as its settings. */
-function expand(change) {
-  if (change.before !== 'Absent' || !change.after.startsWith('{')) return [change]
-  try {
-    const value = JSON.parse(change.after)
-    return Object.entries(value).map(([key, item]) => ({ property: `${change.property}.${key}`, before: 'Absent', after: JSON.stringify(item) }))
-  } catch { return [change] }
-}
 const STATUS = { added: 'New', deleted: 'Removed', changed: 'Changed' }
 const MAX_KEYS = 4
 
@@ -74,7 +66,7 @@ function Value({ text, swatch }) {
 
 /** Receipt changes as words: seconds with timecode, one line per keyframe, colours with a swatch. */
 function ChangeList({ changes = [], fps = 30, keyLimit = Infinity }) {
-  return html`<dl class="change-list">${changes.map(change => {
+  return html`<dl class="change-list">${splitChanges(changes).map(change => {
     const row = readableChange(change, { fps })
     const arrow = html`<span class="receipt-arrow" aria-label="changed to">→</span>`
     if (row.only) return html`<dt>${row.label}</dt><dd><span>${row.only}</span></dd>`
@@ -111,7 +103,7 @@ function PreviewCard({ proposal, project, version, running, newRequest, busy, on
     ${settings.length && !stale ? html`<p class="assistant-preview-note">Settings: ${settingsSummary(settings)}</p>` : null}
     ${notes.map(note => html`<p class="assistant-note">${note}</p>`)}
     ${receipt && !stale ? html`<details class="assistant-preview-details"><summary>Show all changes</summary>
-      ${[...receipt.scopes, ...receipt.clips].map(item => html`<div class="receipt-layer">
+      ${[...receipt.scopes, ...layers].map(item => html`<div class="receipt-layer">
         <b>${item.name}</b><span class="receipt-meta">${item.compositionName ?? ''} ${item.id ?? ''} · ${STATUS[item.status] ?? item.status}</span>
         ${ChangeList({ changes: item.changes, fps: fpsOf(project, item.comp) })}
       </div>`)}

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { h } from 'preact'
-import { readableChange, settingsSummary } from '../web/ui/change-values.js'
+import { readableChange, settingsSummary, splitChanges } from '../web/ui/change-values.js'
 import { changeReceipt } from '../web/ui/change-receipt.js'
 import { assistantPanel } from '../web/ui/assistant-panel.js'
 
@@ -56,6 +56,19 @@ test('colours get a swatch only for a strict hex value, and nothing reads as JSO
   assert.deepEqual(readableChange({ property: 'composition', before: json({ name: 'Sample' }), after: 'Absent' }).only, 'Removed')
 })
 
+test('a whole object that appears or goes is split into one row per property', () => {
+  const keys = json({ opacity: [[0, 0], [0.5, 1, 'out']], 'fx.0.params.mix': [[0, 0.2]] })
+  assert.deepEqual(splitChanges([{ property: 'anim', before: 'Absent', after: keys }]), [
+    { property: 'anim.opacity', before: 'Absent', after: json([[0, 0], [0.5, 1, 'out']]) },
+    { property: 'anim["fx.0.params.mix"]', before: 'Absent', after: json([[0, 0.2]]) },
+  ])
+  assert.deepEqual(splitChanges([{ property: 'grade', before: json({ sat: 1.1 }), after: 'Absent' }]), [{ property: 'grade.sat', before: '1.1', after: 'Absent' }])
+  for (const change of [{ property: 'layer', before: 'Absent', after: json({ id: 'x' }) }, { property: 'grade', before: 'Absent', after: '{"lift":[0,…' }, { property: 'crop', before: json({ l: 0 }), after: json({ l: 0.1 }) }]) {
+    assert.deepEqual(splitChanges([change]), [change])
+  }
+  assert.equal(readableChange({ property: 'opacity', before: 'Absent', after: '0.85' }).before, 'Not set')
+})
+
 test('the settings line counts tracks and folds a new composition with its own tracks into one item', () => {
   assert.equal(settingsSummary([
     { comp: 'intro', track: null, name: 'Sample intro', status: 'added', changes: [] },
@@ -89,6 +102,9 @@ test('the preview card and receipt details render readable rows, a swatch and ke
   assert.doesNotMatch(shown, /[{}[\]"]/)
   const swatches = nodes(list).filter(node => node.props?.class === 'change-swatch').map(node => node.props.style.background)
   assert.deepEqual(swatches, ['#ffffff', '#ff8800'])
+  // Show all changes names a layer as the timeline does, not by its id.
+  const details = nodes(card).find(node => node.props?.class === 'assistant-preview-details')
+  assert.deepEqual(nodes(details).filter(node => node.type === 'b').map(text), ['Main timeline', 'Sample'])
   // A committed receipt uses the same rows, at the frame rate of the layer's own composition.
   const before = structuredClone(project); before.comps.nested.tracks = [{ id: 'V1', kind: 'video', clips: [{ id: 'n1', kind: 'title', start: 0, dur: 1, title: { text: 'Inner' } }] }]
   const after = structuredClone(before); after.comps.nested.tracks[0].clips[0].start = 0.5

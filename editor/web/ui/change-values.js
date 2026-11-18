@@ -63,7 +63,7 @@ function keyRows(before, after) {
 }
 
 function side(parsed, property, fps) {
-  if (parsed.missing) return { text: 'None' }
+  if (parsed.missing) return { text: 'Not set' }
   if (parsed.cut) return { text: CUT }
   const value = parsed.value
   if (typeof value === 'number' && Number.isFinite(value) && TIMES.has(property)) return { text: `${seconds(value)} · ${timecode(value, fps)}` }
@@ -89,6 +89,24 @@ export function readableChange(change, { fps = 30 } = {}) {
   const rate = Number.isFinite(fps) && fps > 0 ? fps : 30
   const old = side(before, property, rate), next = side(after, property, rate)
   return { property, label: property, before: old.text, after: next.text, swatches: old.swatch || next.swatch ? [old.swatch ?? null, next.swatch ?? null] : null }
+}
+
+/**
+ * A value that appears or disappears as a whole object becomes one change per property, so a new
+ * grade reads as its settings and a new set of keyframes reads one property at a time.
+ */
+export function splitChanges(changes = []) {
+  return changes.flatMap(change => {
+    if (WHOLE[change.property]) return [change]
+    const before = parse(change.before), after = parse(change.after)
+    const whole = before.missing ? after : after.missing ? before : null
+    const value = whole?.value
+    if (!whole || value === null || typeof value !== 'object' || Array.isArray(value) || !Object.keys(value).length) return [change]
+    return Object.entries(value).map(([key, item]) => {
+      const property = /^[a-zA-Z_$][\w$]*$/.test(key) ? `${change.property}.${key}` : `${change.property}[${JSON.stringify(key)}]`
+      return before.missing ? { property, before: 'Absent', after: JSON.stringify(item) } : { property, before: JSON.stringify(item), after: 'Absent' }
+    })
+  })
 }
 
 const trackOf = scope => scope.track != null

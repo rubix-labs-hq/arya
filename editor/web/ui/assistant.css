@@ -110,6 +110,9 @@
 .change-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border: 1px solid var(--line-2); border-radius: 2px; vertical-align: -1px; }
 .change-list dd > .receipt-arrow { margin: 0 4px; }
 .change-keys { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.assistant-preview-list .change-keys li { padding: 0; border: 0; border-radius: 0; background: none; }
+/* A value and its timecode wrap as a unit, so "0.40 s · 00:00:00:12" never splits across lines. */
+.change-list dd > span { display: inline-block; max-width: 100%; }
 .change-key-time { color: var(--muted); }
 /* Reply text: links, short lists and small tables. A wide table scrolls inside itself. */
 .msg-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
