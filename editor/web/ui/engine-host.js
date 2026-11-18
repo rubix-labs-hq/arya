@@ -38,7 +38,6 @@ export function applyQuality() {
 let lastRoot = null
 let lastProject = null
 let lastQuality = null
-let lastUi = 0
 let lastView = null
 let lastSeek = null
 subscribe(() => {
@@ -69,9 +68,23 @@ subscribe(() => {
 })
 
 // Tell the server where the playhead and selection are, so Claude sees them.
-setInterval(() => {
-  const now = Date.now()
-  if (now - lastUi < 900) return
-  lastUi = now
-  api('/api/ui-state', { playhead: Math.round(player.t * 1000) / 1000, selection: store.selection, marker: store.selMarker, track: store.selTrack, page: store.page, openComp: store.openComp ?? null }).catch(() => {})
-}, 1000)
+// A state equal to the last one sent goes again only after 30 s, and nothing goes more often than
+// every 900 ms. A post that fails is forgotten, so the next tick sends it again.
+export function createUiStateReporter({ read, post, now = Date.now }) {
+  let lastAt = -Infinity, lastBody = ''
+  return () => {
+    const at = now()
+    if (at - lastAt < 900) return false
+    const body = JSON.stringify(read())
+    if (body === lastBody && at - lastAt < 30000) return false
+    lastAt = at
+    lastBody = body
+    Promise.resolve(post(JSON.parse(body))).catch(() => { if (lastBody === body) lastBody = '' })
+    return true
+  }
+}
+
+setInterval(createUiStateReporter({
+  read: () => ({ playhead: Math.round(player.t * 1000) / 1000, selection: store.selection, marker: store.selMarker, track: store.selTrack, page: store.page, openComp: store.openComp ?? null }),
+  post: body => api('/api/ui-state', body),
+}), 1000)
