@@ -17,10 +17,11 @@ function child() { const value = new EventEmitter(); value.stderr = new EventEmi
 
 // The real server routes run against a temporary project and port 0. Only process,
 // provider, persistence-helper and lifetime hooks are replaced; no media tool runs.
-async function fixture(t) {
+async function fixture(t, { sources = 0 } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reel-server-admission-'))
   const project = newProject('Fixture'); project.tracks[0].clips.push({ id: 'c1', kind: 'video', src: 'media/source.mp4', start: 0, dur: 10, in: 0 }); project.assets['media/source.mp4'] = { hasVideo: true, hasAudio: false, duration: 10, codec: 'h264', width: 1920, height: 1080, fps: 30 }
   fs.mkdirSync(path.join(root, 'media')); fs.writeFileSync(path.join(root, 'media', 'source.mp4'), 'source')
+  for (let index = 0; index < sources; index++) { project.assets[`media/import-${index}.mp4`] = { ...project.assets['media/source.mp4'] }; fs.writeFileSync(path.join(root, 'media', `import-${index}.mp4`), `import ${index}`) }
   const file = path.join(root, 'reel.project.json'); fs.writeFileSync(file, JSON.stringify(project))
   const children = [], workers = [], fixtureKey = '__reelAdmissionServerFixture'
   globalThis[fixtureKey] = { spawn(command, args) { const value = child(); value.argv = args; if (command === 'ffmpeg') children.push(value); else { assert.equal(command, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'); workers.push(value) } return value }, process(command, args, options) { return runProcessingProcess(command, args, { ...options, spawn: this.spawn }) }, root }
@@ -206,6 +207,35 @@ test('a second export of the same media reuses the audio the first one decoded',
   assert.equal(f.children.length, 1, 'the second export must not decode the same bytes again')
   assert.equal(fs.readdirSync(path.join(f.root, '.reel', 'cache', 'audio')).filter(name => name.endsWith('.wav')).length, 1, 'and it must not add a cache file')
   await f.api('/api/jobs/cancel', { id: second.id }); await f.api(`/api/job/${second.id}/drained`, {})
+})
+
+test('16 filmstrips asked for at once all arrive, an export still gets a slot, and a cached strip needs none', { timeout: 30000 }, async t => {
+  const f = await fixture(t, { sources: 16 })
+  const strip = index => f.api(`/api/strip?src=${encodeURIComponent(`media/import-${index}.mp4`)}&quality=high`)
+  const pending = Array.from({ length: 16 }, (_, index) => strip(index))
+  await until(() => f.children.length === 1)
+  // The import is still in progress: 1 strip runs, 3 wait in the processing queue, 12 wait in front of it.
+  const during = (await f.api('/api/state')).body.processing
+  assert.equal(during.active + during.queued, 4)
+  const exported = await f.api('/api/export', { preset: 'png-seq', name: 'during-import', range: { in: 0, out: 1 } })
+  assert.equal(exported.status, 200, 'an export started during the import is admitted')
+  await f.api('/api/jobs/cancel', { id: exported.body.id })
+  // Each ffmpeg run writes its filmstrip and exits.
+  let served = 0
+  const serve = setInterval(() => { for (; served < f.children.length; served++) { const child = f.children[served]; fs.writeFileSync(child.argv.at(-1), `strip ${served}`); child.emit('close', 0) } }, 5)
+  t.after(() => clearInterval(serve))
+  const answers = await Promise.all(pending)
+  assert.deepEqual(answers.map(answer => answer.status), Array(16).fill(200))
+  assert.equal(new Set(answers.map(answer => answer.body.url)).size, 16)
+  assert.equal(f.children.length, 16)
+  clearInterval(serve)
+  // An export now holds the queue (it waits for a worker page). A strip that is cached still answers.
+  const holding = (await f.api('/api/export', { preset: 'png-seq', name: 'holding', range: { in: 0, out: 1 } })).body
+  await until(() => f.workers.length === 1)
+  const cached = await strip(3)
+  assert.equal(cached.status, 200); assert.equal(cached.body.url, answers[3].body.url)
+  assert.equal(f.children.length, 16, 'and it starts no ffmpeg')
+  await f.api('/api/jobs/cancel', { id: holding.id })
 })
 
 test('stopping worker connections cannot advertise replacement readiness', () => {

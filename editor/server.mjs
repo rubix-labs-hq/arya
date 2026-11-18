@@ -22,6 +22,7 @@ import { DeliveryHistory, deliveryOpenArguments } from './core/delivery-history.
 import { writeProjectAtomic } from './core/project-persistence.mjs'
 import { storeMediaUpload } from './core/media-upload.mjs'
 import { colorCapabilities } from './routes/color.mjs'
+import { createDerivativeWaiters } from './core/derivative-waiters.mjs'
 import { createProcessingAdmission, captureProcessingIdentity, processingCancelled } from './core/processing-admission.mjs'
 import { runProcessingProcess } from './core/processing-process.mjs'
 import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, createProcessingWorkerHost, workerClosedMessage, createWorkerWatchdog, noteWorkerActivity, noteWorkerSetupStep, frameJobDeadline, queuedJobWait, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
@@ -187,6 +188,10 @@ function admit(work, options = {}) { return processing.run(work, { ...capturePro
 // Filmstrips, waveform peaks and preview audio are cached by source content and never written
 // into the project. An edit made while one renders must not discard it; capacity still applies.
 function admitSourceDerivative(work) { return processing.run(work) }
+// Filmstrips and waveform peaks wait for a slot instead of being refused: an import of 16 files asks
+// for 16 filmstrips at once and the processing queue holds 8. Work already inside a reservation runs there.
+const derivativeWaiters = createDerivativeWaiters({ admit: admitSourceDerivative })
+function waitForSourceDerivative(work) { return processing.current() ? admitSourceDerivative(work) : derivativeWaiters.run(work) }
 
 // Only composition may retain a completed asset after an ordinary edit. Its private
 // scope cannot place clips or change the generic processing/assistant write policy.
@@ -502,13 +507,27 @@ async function makeProxy(rel, asset) {
   })
 }
 
-async function filmstrip(rel, high = false) {
-  const asset = project?.assets[rel] ?? (await probe(rel))
+async function filmstripCache(asset, rel, high) {
   const abs = resolveMedia(asset.proxy && asset.proxy.endsWith('.mp4') && fs.existsSync(path.join(ROOT, asset.proxy)) ? asset.proxy : rel)
   const key = await cacheKey(abs, high ? 'strip4-high' : 'strip4')
   const dir = guardedOutput(ROOT, path.join(CACHE, key))
-  const meta = guardedOutput(ROOT, path.join(dir, 'strip.json'))
-  const jpeg = guardedOutput(ROOT, path.join(dir, 'strip.jpg'))
+  return { abs, key, dir, meta: guardedOutput(ROOT, path.join(dir, 'strip.json')), jpeg: guardedOutput(ROOT, path.join(dir, 'strip.jpg')) }
+}
+
+// A filmstrip that is already in the cache is answered without a processing slot. Null means it
+// has to be made (or the request is wrong, which the queued path reports).
+async function cachedFilmstrip(rel, high = false) {
+  const asset = project?.assets[rel]
+  if (!asset) return null
+  try {
+    const { meta } = await filmstripCache(asset, rel, high)
+    return fs.existsSync(meta) ? JSON.parse(fs.readFileSync(meta, 'utf8')) : null
+  } catch { return null }
+}
+
+async function filmstrip(rel, high = false) {
+  const asset = project?.assets[rel] ?? (await probe(rel))
+  const { abs, key, dir, meta, jpeg } = await filmstripCache(asset, rel, high)
   if (fs.existsSync(meta)) return JSON.parse(fs.readFileSync(meta, 'utf8'))
 
   return once(`strip:${key}`, async () => {
@@ -540,6 +559,14 @@ async function filmstrip(rel, high = false) {
     return publish(data)
     } finally { try { fs.unlinkSync(guardedOutput(ROOT, part)) } catch {} }
   })
+}
+
+// Waveform peaks that are already in the cache are answered without a processing slot.
+async function cachedPeaks(rel) {
+  try {
+    const file = path.join(CACHE, await cacheKey(resolveMedia(rel), 'peaks2'), 'peaks.json')
+    return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null
+  } catch { return null }
 }
 
 async function peaks(rel) {
@@ -1185,8 +1212,8 @@ const routes = {
     }
   },
 
-  'GET /api/strip': (_b, q) => admitSourceDerivative(() => filmstrip(q.get('src'), q.get('quality') === 'high')),
-  'GET /api/peaks': (_b, q) => admitSourceDerivative(() => peaks(q.get('src'))),
+  'GET /api/strip': async (_b, q) => (await cachedFilmstrip(q.get('src'), q.get('quality') === 'high')) ?? waitForSourceDerivative(() => filmstrip(q.get('src'), q.get('quality') === 'high')),
+  'GET /api/peaks': async (_b, q) => (await cachedPeaks(q.get('src'))) ?? waitForSourceDerivative(() => peaks(q.get('src'))),
 
   'POST /api/analyze': body => body.kind === 'transcript' ? transcriptService.transcribe(body) : body.kind === 'stabilization' && routes['POST /api/analysis/stabilize'] ? routes['POST /api/analysis/stabilize'](body) : admit(() => analyze(body.src, body.kind, body)),
 
