@@ -456,6 +456,10 @@
     "target": "editor/ui/menu.js"
   },
   {
+    "source": "web/ui/message-text.js",
+    "target": "editor/ui/message-text.js"
+  },
+  {
     "source": "web/ui/mixer.js",
     "target": "editor/ui/mixer.js"
   },

@@ -90,8 +90,10 @@ export function messageHTML(text, { root = '' } = {}) {
     if (kind) {
       flush(true)
       const pattern = kind === 'ul' ? BULLET : NUMBER, items = []
+      // A numbered list split by a blank or detail line keeps counting from the number it was given.
+      const first = kind === 'ol' ? Number(line.match(/\d+/)[0]) : 1
       while (i < lines.length && pattern.test(lines[i])) items.push(lines[i++].match(pattern)[1])
-      out.push(`<${kind}>${items.map(item => `<li>${inline(item, root)}</li>`).join('')}</${kind}>`)
+      out.push(`<${kind}${first > 1 ? ` start="${first}"` : ''}>${items.map(item => `<li>${inline(item, root)}</li>`).join('')}</${kind}>`)
       continue
     }
     plain.push(line)

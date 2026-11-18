@@ -46,6 +46,8 @@ test('a simple pipe table and lists render, with blank lines around them dropped
     + '<tbody><tr><td>One</td><td><b>1.5s</b></td></tr><tr><td>Two</td><td></td></tr></tbody></table></div>'
     + '<ul><li>first</li><li>second</li></ul><ol><li>alpha</li><li>beta</li></ol>Done')
   assert.doesNotMatch(messageHTML('| <i>x</i> |\n|---|\n| <u>y</u> |'), /<i>|<u>/)
+  assert.equal(messageHTML('1. alpha\n\n2. beta\nmore about beta\n3. gamma'),
+    '<ol><li>alpha</li></ol><ol start="2"><li>beta</li></ol>more about beta<ol start="3"><li>gamma</li></ol>')
 })
 
 test('half a streamed table or link stays text and never throws', () => {
@@ -64,4 +66,7 @@ test('the chat renders reply text through the safe renderer with the project fol
   assert.equal(assistantPanel.messageHTML, messageHTML)
   const chat = readFileSync(new URL('../web/ui/chat.js', import.meta.url), 'utf8')
   assert.match(chat, /assistantPanel\.messageHTML\(text, \{ root: store\.root \}\)/)
+  // The hosted editor ships each UI module from this list.
+  const files = JSON.parse(readFileSync(new URL('../browser-public-files.json', import.meta.url), 'utf8'))
+  assert.ok(files.some(row => row.source === 'web/ui/message-text.js' && row.target === 'editor/ui/message-text.js'))
 })
