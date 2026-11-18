@@ -57,7 +57,7 @@ function titleWidthNotes(before, after, made) {
   const notes = []
   for (const [id, entry] of after.clips) {
     const { clip } = entry
-    if (clip.kind !== 'title' || clip.enabled === false || clip.title?.box?.wrap) continue
+    if (clip.kind !== 'title' || clip.enabled === false) continue
     const old = before.clips.get(id)?.clip
     const sized = c => [c.title?.text, c.title?.size, c.title?.tracking, c.title?.box, c.scale, c.scaleX]
     if (!made.has(id) && old && same(sized(old), sized(clip))) continue
@@ -65,10 +65,18 @@ function titleWidthNotes(before, after, made) {
     const size = clip.title?.size ?? 96, scale = (typeof clip.scale === 'number' ? clip.scale : 1) * (typeof clip.scaleX === 'number' ? clip.scaleX : 1)
     if (!(size > 0) || !(scale > 0)) continue
     const frame = entry.width * 1080 / entry.height
+    const box = clip.title?.box
+    if (box?.wrap) {
+      // A wrapping title breaks its lines at the box, so only a box wider than the frame can run off it.
+      if (box.width * scale > frame) notes.push(`${id} title.box is ${Math.round(box.width * scale)} units wide${scale === 1 ? '' : ` at scale ${num(scale)}`}; the frame is ${Math.floor(frame)} units wide. Lines wrap at the box, so they can run past the frame. Set title.box.width to at most ${Math.floor(frame * 0.9 / scale)}.`)
+      continue
+    }
     const estimate = estimateTextUnits(clip.title?.text, size, clip.title?.tracking ?? 0) * scale
     if (estimate <= frame * 0.9) continue
     const fit = Math.floor(size * frame * 0.9 / estimate)
-    notes.push(`${id} title is about ${Math.round(estimate)} units wide (an estimate from its ${longestLine(clip.title?.text)} characters at size ${num(size)}${scale === 1 ? '' : ` at scale ${num(scale)}`}); the frame is ${Math.floor(frame)} units wide. It does not wrap. Lower title.size to about ${fit}, break the line with \\n, or set title.box {width:${Math.floor(frame * 0.9 / scale)}, height:${Math.round(size)}, wrap:true, autoHeight:true}.`)
+    // Past the frame the text is cut off. Between 90% and 100% it fits but leaves almost no margin.
+    const against = estimate > frame ? `the frame is ${Math.floor(frame)} units wide` : `that is wider than 90% of the frame (${Math.floor(frame * 0.9)} of ${Math.floor(frame)} units), so it may touch the edges`
+    notes.push(`${id} title is about ${Math.round(estimate)} units wide (an estimate from its ${longestLine(clip.title?.text)} characters at size ${num(size)}${scale === 1 ? '' : ` at scale ${num(scale)}`}); ${against}. It does not wrap. Lower title.size to about ${fit}, break the line with \\n, or set title.box {width:${Math.floor(frame * 0.9 / scale)}, height:${Math.round(size)}, wrap:true, autoHeight:true}.`)
   }
   if (notes.length <= LISTED) return notes
   return [...notes.slice(0, LISTED), `and ${notes.length - LISTED} more titles are estimated wider than 90% of the frame.`]

@@ -33,6 +33,36 @@ test('a title that fits, a wrapped title and a title broken into short lines get
   assert.equal(broken.notes.some(note => /units wide/.test(note)), false, broken.notes.join('\n'))
 })
 
+test('a wrapping box wider than the frame gets a note in every frame shape, and one that fits gets none', () => {
+  const long = 'HARVEST FAIR OPENS SATURDAY AT THE OLD MILL BY THE RIVER'
+  for (const [make, frame] of [[wide, 1920], [vertical, 607], [() => newProject('Square', { width: 1080, height: 1080 }), 1080]]) {
+    const { notes } = run(make(), [{ op: 'add_title', text: long, title: { size: 120, box: { width: 4000, height: 120, wrap: true, autoHeight: true } } }])
+    const box = notes.filter(note => /title\.box is/.test(note))
+    assert.equal(box.length, 1, notes.join('\n'))
+    assert.equal(box[0], `c1 title.box is 4000 units wide; the frame is ${frame} units wide. Lines wrap at the box, so they can run past the frame. Set title.box.width to at most ${Math.floor(frame * 0.9)}.`)
+    assert.equal(notes.some(note => /title is about/.test(note)), false, 'a wrapping title gets the box note, not the line estimate')
+  }
+  const scaled = run(wide(), [{ op: 'add_title', text: long, title: { box: { width: 1200, height: 120, wrap: true } }, set: { scale: 2 } }])
+  assert.match(scaled.notes.join('\n'), /c1 title\.box is 2400 units wide at scale 2; the frame is 1920 units wide\. .* Set title\.box\.width to at most 864\./)
+  const fits = run(wide(), [{ op: 'add_title', text: long, title: { box: { width: 1920, height: 120, wrap: true } } }])
+  assert.equal(fits.notes.some(note => /units wide/.test(note)), false, fits.notes.join('\n'))
+})
+
+test('a title between 90% and 100% of the frame is called close to the edges, not wider than the frame', () => {
+  // Find a size whose estimate lands between 90% and 100% of the 607-unit frame.
+  const text = 'VALE ORCHARD', size = [...Array(200).keys()].map(n => n + 20).find(n => { const e = estimateTextUnits(text, n); return e > 607 * 0.92 && e < 607 * 0.98 })
+  const { notes } = run(vertical(), [{ op: 'add_title', text, title: { size } }])
+  const width = notes.filter(note => /units wide/.test(note))
+  assert.equal(width.length, 1, notes.join('\n'))
+  const estimate = Math.round(estimateTextUnits(text, size))
+  assert.ok(estimate < 607)
+  assert.match(width[0], new RegExp(`^c1 title is about ${estimate} units wide \\(an estimate from its 12 characters at size ${size}\\); that is wider than 90% of the frame \\(546 of 607 units\\), so it may touch the edges\\. It does not wrap\\. Lower title\\.size to about \\d+,`))
+  assert.equal(/; the frame is 607 units wide/.test(width[0]), false, 'it does not say the frame is narrower than the title')
+  // Past the frame the wording stays as it was.
+  const past = run(vertical(), [{ op: 'add_title', text, title: { size: size * 2 } }])
+  assert.match(past.notes.join('\n'), /c1 title is about \d+ units wide \(an estimate from its 12 characters at size \d+\); the frame is 607 units wide\. It does not wrap\./)
+})
+
 test('the width estimate follows clip scale, the composition size and a later size change', () => {
   const scaled = run(vertical(), [{ op: 'add_title', text: 'HARVEST FAIR', title: { size: 60 }, set: { scale: 2 } }])
   assert.match(scaled.notes.join('\n'), /c1 title is about \d+ units wide .* at scale 2/)
