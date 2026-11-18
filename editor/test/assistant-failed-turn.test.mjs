@@ -93,7 +93,7 @@ test('a connection that keeps failing after two edits ends with what was saved, 
   assert.equal(final.text, 'The connection between Arya and the agent failed 3 times in a row (fetch failed, ' + final.text.match(/ECONNRESET|UND_ERR_SOCKET/)[0] + ').\n\nSaved before the failure, and still in the project:\n- Tightened the opening\n- applied 3 edits\n- Added the end card')
   assert.equal(final.outcome, '3 edits were saved before the request failed. They are still in the project.')
   assert.deepEqual(f.replies, [{ text: final.text, error: true }], 'the same text reaches the saved conversation')
-  assert.equal(f.bridge.seen.cancelled, 1, 'the run is stopped on the bridge')
+  await waitFor(() => f.bridge.seen.cancelled === 1)
   // What the investigation asked to be measured: the cause code, the request kind and the event-loop delay.
   const line = f.lines.find(value => value.startsWith('run failed:'))
   assert.match(line, /^run failed: tool-result request, cause (ECONNRESET|UND_ERR_SOCKET), 3 attempts, event-loop delay max \d+ ms over the last \d+ s$/)
