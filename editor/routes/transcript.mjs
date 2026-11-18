@@ -5,11 +5,15 @@ import { runProcessingProcess } from '../core/processing-process.mjs'
 import { buildShortsOps, captionItems, framingKeys, proposeShorts, subjectCenters, transcriptDeleteOps, validateWords } from '../core/shorts.js'
 import { guardedOutput } from '../core/output-path.js'
 import { findClip } from '../core/project.js'
+import { wavHasSignal } from '../core/wav-signal.mjs'
 
 const digest = value => createHash('sha256').update(value).digest('hex')
 const MAX_TRANSCRIPT_BYTES = 16 * 1024 * 1024
 const cancelled = () => { const error = new Error('cancelled'); error.name = 'AbortError'; return error }
 const check = signal => { if (signal?.aborted) throw cancelled() }
+// Saved with an empty transcript when the extracted audio never reaches -60 dBFS. whisper.cpp
+// answers digital silence with an invented word, so recognition is skipped for such a source.
+export const SILENT_SOURCE_WARNING = 'No audible audio in this clip. Its sound never reaches -60 dBFS, so speech recognition was not run.'
 
 function sourceStamp(stat) {
   let seconds = stat.mtimeNs / 1000000000n, nanoseconds = stat.mtimeNs % 1000000000n
@@ -116,17 +120,24 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
         guardedOutput(root, wav)
         await process('ffmpeg', ['-nostdin', '-n', '-loglevel', 'error', '-i', info.file, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav], { signal: controller.signal })
         check(controller.signal); guardedOutput(root, wav); guardedOutput(root, `${prefix}.json`)
-        job.message = 'Recognizing speech'; publish(job)
-        await process(binary, ['-m', modelFile, '-f', wav, '-l', locale.split('-')[0].toLowerCase(), '-oj', '-ml', '1', '-sow', '-of', prefix], { signal: controller.signal })
-        check(controller.signal); unchanged(info)
-        const recognized = guardedOutput(root, `${prefix}.json`)
-        if (fs.statSync(recognized).size > MAX_TRANSCRIPT_BYTES) throw new Error('The recognized transcript is larger than 16 MB')
-        const raw = JSON.parse(fs.readFileSync(recognized, 'utf8'))
-        const words = (raw.transcription ?? []).map(segment => ({ t: Number(segment.offsets?.from) / 1000, end: Number(segment.offsets?.to) / 1000, text: String(segment.text ?? '').trim() })).filter(word => word.text && word.end > word.t)
+        // false only when every sample was read and none reached the level. A WAV that cannot be
+        // read gives null and is recognized as before.
+        const silent = await wavHasSignal(wav, { signal: controller.signal }) === false
+        check(controller.signal)
+        let words = []
+        if (!silent) {
+          job.message = 'Recognizing speech'; publish(job)
+          await process(binary, ['-m', modelFile, '-f', wav, '-l', locale.split('-')[0].toLowerCase(), '-oj', '-ml', '1', '-sow', '-of', prefix], { signal: controller.signal })
+          check(controller.signal); unchanged(info)
+          const recognized = guardedOutput(root, `${prefix}.json`)
+          if (fs.statSync(recognized).size > MAX_TRANSCRIPT_BYTES) throw new Error('The recognized transcript is larger than 16 MB')
+          const raw = JSON.parse(fs.readFileSync(recognized, 'utf8'))
+          words = (raw.transcription ?? []).map(segment => ({ t: Number(segment.offsets?.from) / 1000, end: Number(segment.offsets?.to) / 1000, text: String(segment.text ?? '').trim() })).filter(word => word.text && word.end > word.t)
+        } else unchanged(info)
         check(controller.signal)
         if (job.state === 'failed') throw cancelled()
-        const result = save(info, words, previousRevision, { status: 'complete', onDevice: true, provider: 'whisper.cpp', warnings: [] }, true)
-        job.state = 'done'; job.progress = 1; job.finished = Date.now(); job.result = result; job.message = 'Transcript saved'; publish(job)
+        const result = save(info, words, previousRevision, { status: 'complete', onDevice: true, provider: 'whisper.cpp', warnings: silent ? [SILENT_SOURCE_WARNING] : [] }, true)
+        job.state = 'done'; job.progress = 1; job.finished = Date.now(); job.result = result; job.message = silent ? 'No audible audio found' : 'Transcript saved'; publish(job)
         return result
       } catch (error) {
         if (job.state !== 'done') { job.state = 'failed'; job.error = error.message; job.finished = Date.now(); publish(job) }
