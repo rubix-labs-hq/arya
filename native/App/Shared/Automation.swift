@@ -16,9 +16,11 @@ import AppKit
 ///                                once the project opens, to check the native preview card
 ///     --assistant-panel          open the Assistant panel
 ///     --assistant-apply          apply the staged preview, as the Apply button does
+///     --assistant-forget-change  with --assistant-apply: afterwards show "Undo latest edit" on the result card
 ///     --assistant-fixture <kind> seed a display-only conversation: conversation, working, setup,
-///                                setupConversation, empty, failed or stopped.
+///                                checking, setupConversation, empty, failed or stopped.
 ///                                Sending stays off while a fixture is shown.
+///     --assistant-long-draft     fill the draft past the character limit, to show the "Too long" chip
 ///     --page <name>              show this workflow page once the project opens
 ///     --select <id,id>           select these clips once the project opens
 ///     --present <sheet>          open settings, assistantSettings or pro for screenshots
@@ -68,10 +70,14 @@ enum Automation {
                 if CommandLine.arguments.contains("--assistant-panel") { session.nativeEditor.mobilePanel = .assistant }
                 #endif
                 await session.assistant.stageFixtureProposal(text)
-                if CommandLine.arguments.contains("--assistant-apply") { try? await Task.sleep(for: .seconds(2)); await session.assistant.applyProposal() }
+                if CommandLine.arguments.contains("--assistant-apply") {
+                    try? await Task.sleep(for: .seconds(2)); await session.assistant.applyProposal()
+                    if CommandLine.arguments.contains("--assistant-forget-change") { session.assistant.forgetFixtureChange() }
+                }
             }
         }
-        if value("--page") != nil || value("--select") != nil || value("--present") != nil || value("--window-size") != nil || value("--assistant-fixture") != nil {
+        if value("--page") != nil || value("--select") != nil || value("--present") != nil || value("--window-size") != nil || value("--assistant-fixture") != nil
+            || CommandLine.arguments.contains("--assistant-long-draft") {
             Task { @MainActor in
                 for _ in 0..<100 where session.backend == nil || session.nativeEditor.project == nil { try? await Task.sleep(for: .milliseconds(100)) }
                 #if os(macOS)
@@ -85,6 +91,10 @@ enum Automation {
                     session.nativeEditor.select(ids: Set(ids), primary: ids[0], feedback: false)
                 }
                 if let kind = value("--assistant-fixture") { await session.assistant.stageFixtureConversation(kind) }
+                if CommandLine.arguments.contains("--assistant-long-draft") {
+                    let sentence = "Tighten the opening and add a title over the first clip. "
+                    session.nativeEditor.assistantDraft = String(repeating: sentence, count: session.assistant.inputCharacterLimit / sentence.count + 1)
+                }
                 if let sheet = value("--present") {
                     try? await Task.sleep(for: .milliseconds(600))
                     NotificationCenter.default.post(name: presentNotification, object: sheet)

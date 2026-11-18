@@ -196,6 +196,8 @@ struct NativeAssistantPanel: View {
     @State private var runLineGrowth = 0
     @State private var signingIn = false
     @State private var setupNotice: String?
+    /// The wrapped placeholder with its padding, measured at the draft's width.
+    @State private var placeholderHeight = 0.0
 
     private var chipHeight: Double { max(Self.touch ? 44 : 26, scaledChipHeight) }
     private var headerHeight: Double { max(Double(NativeEditorStyle.minimumControlHeight), Self.touch ? actionHeight : 0) }
@@ -207,7 +209,9 @@ struct NativeAssistantPanel: View {
             let regions = NativeAssistantLayout.regions(height: geometry.size.height, header: inSheet ? 0 : headerHeight,
                 actions: NativeAssistantLayout.actionBudget(actionHeight: actionHeight, stacked: stacked),
                 context: chipHeight + 18,
-                preferredEditor: NativeAssistantLayout.preferredEditorHeight(text: model.assistantDraft, width: width - 40, lineHeight: editorLineHeight))
+                // An empty draft is at least as tall as its wrapped placeholder, so large text never cuts it.
+                preferredEditor: max(model.assistantDraft.isEmpty ? placeholderHeight : 0,
+                    NativeAssistantLayout.preferredEditorHeight(text: model.assistantDraft, width: width - 40, lineHeight: editorLineHeight)))
             VStack(alignment: .leading, spacing: 0) {
                 if regions.header > 0 {
                     assistantHeader.frame(height: regions.header).clipped()
@@ -344,13 +348,13 @@ struct NativeAssistantPanel: View {
     }
 
     /// A preview that is waiting keeps Apply and Discard in view, even with an earlier result
-    /// card below it. With no conversation yet, the setup card is the thing to read, so keep its
-    /// heading and primary action in view. In a short phone sheet, scrolling to the end would
-    /// hide them. With messages, the setup card is last, so the end shows it.
+    /// card below it. While the assistant is not set up, the setup card is the thing to read, so
+    /// keep its heading, reason and primary action in view. In a short phone sheet, scrolling to
+    /// the end would hide them, with or without earlier messages.
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
         if assistant.proposal != nil && !assistant.isWorking {
             proxy.scrollTo("preview", anchor: .bottom)
-        } else if !assistant.configured && assistant.chat.isEmpty {
+        } else if !assistant.configured {
             proxy.scrollTo("setup", anchor: .top)
         } else {
             proxy.scrollTo("end", anchor: .bottom)
@@ -401,7 +405,7 @@ struct NativeAssistantPanel: View {
                     .help("Put the failed request back in the draft. Clear the current draft first.")
             }
             changeCards
-            // After a conversation the reason Send is off sits last, where the scroll to the end lands.
+            // After a conversation the reason Send is off sits last, and the history scrolls to its top.
             if !assistant.configured && !assistant.chat.isEmpty { setupCard.id("setup") }
             Color.clear.frame(height: 1).id("end")
         }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -553,7 +557,8 @@ struct NativeAssistantPanel: View {
             if let setupNotice {
                 Text(setupNotice).font(.caption).foregroundStyle(NativeEditorStyle.error).fixedSize(horizontal: false, vertical: true)
             }
-            Text("Editing works without an account. Your draft is kept.")
+            // The draft is only mentioned when there is one, as in the browser editor.
+            Text(model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Editing works without an account." : "Editing works without an account. Your draft is kept.")
                 .font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
@@ -598,12 +603,15 @@ struct NativeAssistantPanel: View {
                     if !assistant.route.isEmpty { routeSummary }
                 }.padding(.top, 4)
             } label: {
-                // At accessibility text sizes the stalled and stopped sentences get their own line,
-                // so the state word is never broken and the sentence is never cut.
-                let below = dynamicTypeSize.isAccessibilitySize && (quiet || stopped) && !stage.isEmpty
+                // At accessibility text sizes the stage, the outcome and the stalled and stopped
+                // sentences get their own line, so the state word is never broken and the sentence
+                // is never cut.
+                let below = dynamicTypeSize.isAccessibilitySize && !stage.isEmpty
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        if working { ProgressView().controlSize(.small).frame(width: 14, height: 14) }
+                        // The spinner grows with the text, so at those sizes it takes the room it draws in.
+                        if working && dynamicTypeSize.isAccessibilitySize { ProgressView().controlSize(.small).fixedSize() }
+                        else if working { ProgressView().controlSize(.small).frame(width: 14, height: 14) }
                         else { Image(systemName: assistant.state == "done" ? "checkmark.circle" : assistant.state == "cancelled" ? "stop.circle" : "exclamationmark.circle")
                             .foregroundStyle(assistant.state == "error" ? NativeEditorStyle.error : NativeEditorStyle.muted) }
                         Text(label).fontWeight(.semibold).lineLimit(1).fixedSize()
@@ -797,13 +805,20 @@ struct NativeAssistantPanel: View {
         .font(.body).scrollContentBackground(.hidden)
         .frame(height: height)
         .padding(4)
+        // A hidden copy measures the placeholder where it wraps, whatever height the draft has now.
+        .background(alignment: .topLeading) {
+            Text(draftPlaceholder).font(.body).multilineTextAlignment(.leading).padding(9)
+                .fixedSize(horizontal: false, vertical: true).hidden().accessibilityHidden(true)
+                .onGeometryChange(for: Double.self) { $0.size.height } action: { placeholderHeight = $0 }
+        }
         .overlay(alignment: .topLeading) {
             if model.assistantDraft.isEmpty {
                 Text(draftPlaceholder)
-                .font(.body).foregroundStyle(NativeEditorStyle.muted).padding(9).allowsHitTesting(false)
+                .font(.body).foregroundStyle(NativeEditorStyle.muted).multilineTextAlignment(.leading)
+                .padding(9).allowsHitTesting(false)
             }
         }
-        // The placeholder stays inside the field when large text leaves it less than a line.
+        // The placeholder wraps. It stays inside the field when a short pane leaves it less room.
         .clipped()
         .accessibilityLabel("Assistant prompt or script")
         .accessibilityIdentifier("editor.assistant.draft")
@@ -828,15 +843,15 @@ struct NativeAssistantPanel: View {
     }
 
     /// Input, preview, model and the one primary control. Stacked, Send or Stop comes first.
-    /// At accessibility text sizes Preview shows only its icon so Send never wraps.
+    /// At accessibility text sizes Preview shows only its icon so Send never wraps. When the row
+    /// is still wider than the field, Send or Stop shows only its icon, so the row stays inside
+    /// the border.
     @ViewBuilder private func composerActions(width: Double, stacked: Bool) -> some View {
         if stacked {
             VStack(spacing: 8) {
-                HStack(spacing: 6) {
-                    inputMenu
-                    previewToggle(iconOnly: width < 260 || (dynamicTypeSize.isAccessibilitySize && width < 600))
-                    Spacer(minLength: 0)
-                    primaryAction
+                ViewThatFits(in: .horizontal) {
+                    stackedActionRow(width: width) { primaryAction }
+                    stackedActionRow(width: width) { primaryAction.labelStyle(NativeAssistantIconActionStyle()) }
                 }
                 // The largest text sizes cannot fit "· Default" even on a row of its own.
                 modelControls(short: dynamicTypeSize >= .accessibility3)
@@ -853,22 +868,34 @@ struct NativeAssistantPanel: View {
         }
     }
 
+    private func stackedActionRow<Primary: View>(width: Double, @ViewBuilder primary: () -> Primary) -> some View {
+        HStack(spacing: 6) {
+            inputMenu
+            previewToggle(iconOnly: width < 260 || (dynamicTypeSize.isAccessibilitySize && width < 600))
+            Spacer(minLength: 0)
+            primary()
+        }
+    }
+
     @ViewBuilder private var primaryAction: some View {
         if assistant.isWorking { cancelButton } else { sendButton }
     }
 
     private var sendButton: some View {
-        Button { sendDraft() } label: { NativeAssistantProminentLabel { Label("Send", systemImage: "arrow.up").lineLimit(1).fixedSize() } }
+        // The 44-point minimum is inside the label, so the gold capsule itself is the touch target.
+        Button { sendDraft() } label: { NativeAssistantProminentLabel { Label("Send", systemImage: "arrow.up").lineLimit(1).fixedSize().modifier(NativeAssistantPrimaryTarget()) } }
         .buttonStyle(.borderedProminent).controlSize(.regular)
         .disabled(!assistant.configured || assistant.isWorking || model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.assistantDraft.count > assistant.inputCharacterLimit)
         .help(assistant.configured ? "Send (Return). Scripts send with Command-Return." : "Set up the assistant to send. Your draft is kept.")
+        // Named here, because the icon-only row drops the title from the label.
+        .accessibilityLabel("Send")
         .accessibilityHint(draftLimitExplanation)
             .frame(minHeight: actionHeight)
     }
 
     @ViewBuilder private var cancelButton: some View {
         if assistant.isWorking {
-            Button { assistant.cancel() } label: { NativeAssistantProminentLabel { Label(assistant.state == "cancelling" ? "Stopping…" : "Stop", systemImage: "stop.fill").lineLimit(1).fixedSize() } }
+            Button { assistant.cancel() } label: { NativeAssistantProminentLabel { Label(assistant.state == "cancelling" ? "Stopping…" : "Stop", systemImage: "stop.fill").lineLimit(1).fixedSize().modifier(NativeAssistantPrimaryTarget()) } }
                 .buttonStyle(.borderedProminent).controlSize(.regular)
                 .disabled(assistant.state == "cancelling")
                 .accessibilityLabel(assistant.state == "cancelling" ? "Stopping request" : "Stop request")
@@ -1285,6 +1312,18 @@ private struct NativeAssistantIconActionStyle: LabelStyle {
     }
 }
 
+/// On touch builds the Send or Stop label fills a capsule of at least 44 by 44 points: the
+/// bordered style adds 12 points on each side and 7 above and below. The Mac keeps its row.
+private struct NativeAssistantPrimaryTarget: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content.frame(minWidth: 20, minHeight: 30).contentShape(Rectangle())
+        #else
+        content
+        #endif
+    }
+}
+
 /// A proposed change before it applies: the layers it changes, the processing it runs, Apply and Discard.
 private struct NativeAssistantPreviewCard: View {
     let proposal: NativeAssistantProposal
@@ -1342,10 +1381,10 @@ private struct NativeAssistantPreviewCard: View {
                 }.buttonStyle(.borderedProminent).disabled(stale || running)
                     .help(running ? "Wait for the assistant to finish" : "Apply these edits as one undoable change")
                     .accessibilityIdentifier("editor.assistant.applyPreview")
+                // Bordered on every platform. On iPhone, iPad and Mac Catalyst the default is plain text.
                 Button(action: discard) {
-                    Text("Discard").padding(.horizontal, NativeAssistantCardMetrics.touch ? 8 : 0)
-                        .frame(minHeight: NativeAssistantCardMetrics.touch ? 44 : nil).contentShape(Rectangle())
-                }
+                    Text("Discard").frame(minHeight: NativeAssistantCardMetrics.touch ? 30 : nil).contentShape(Rectangle())
+                }.buttonStyle(.bordered)
             }
         }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
         .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 8))

@@ -3533,8 +3533,9 @@ extension NativeAssistant {
         func row(_ role: String, _ text: String, _ refs: Any? = nil) -> JSON {
             JSON(any: ["role": role, "text": text, "provider": provider, "at": now, "refs": refs ?? NSNull()] as [String: Any])
         }
-        if kind == "setup" {
-            configured = false
+        // "checking" is the setup state while an account check runs: the header reads "Checking".
+        if kind == "setup" || kind == "checking" {
+            configured = false; checking = kind == "checking"
             reason = "Choose your signed-in subscription agent in Assistant settings."
             return
         }
@@ -3566,6 +3567,10 @@ extension NativeAssistant {
             outcome = "Changed 1 layer."
         }
     }
+
+    /// Debug builds: forgets the change "Undo this change" would restore, so the result card
+    /// shows "Undo latest edit" as it does for edits from an earlier run. The project is untouched.
+    func forgetFixtureChange() { lastChange = nil }
 
     /// Debug builds: stages a preview from a JSON body through the agent's own path, so the
     /// card can be checked without a model request.
