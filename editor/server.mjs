@@ -1032,7 +1032,22 @@ function failJob(job, error) {
   job.reject?.(new Error(job.error))
 }
 
+// A still frame. When the render worker goes away under it, the frame is tried once more: the
+// next job starts a new worker, so the caller does not see a failure that a retry cures.
 async function renderFrame(at, width = 1280, comp = null, { queueMs } = {}) {
+  const began = Date.now()
+  let lost
+  try { return await (lost = frameAttempt(at, width, comp, { queueMs })).done } catch (error) { if (!lost?.job.workerLost) throw error }
+  // The retry waits only for what is left of the first attempt's wait, so the answer is no later.
+  const left = queueMs === undefined ? undefined : queueMs - (Date.now() - began)
+  if (left !== undefined && left < 1000) throw new Error('The preview renderer restarted. Try again.')
+  log('the render worker went away under a frame; rendering it again on a new worker')
+  try { return await (lost = frameAttempt(at, width, comp, { queueMs: left })).done } catch (error) {
+    throw lost?.job.workerLost ? new Error('The preview renderer restarted. Try again.') : error
+  }
+}
+
+function frameAttempt(at, width, comp, { queueMs } = {}) {
   if (!project) throw new Error('no project')
   processing.assertCapacity()
   const guard = captureProcessing()
@@ -1049,7 +1064,7 @@ async function renderFrame(at, width = 1280, comp = null, { queueMs } = {}) {
   // 30 s to render once the worker has the frame. Before that it may wait 5 minutes, or 85 s for the assistant.
   job.frameDeadline = frameJobDeadline(message => failJob(job, message), { queueMs })
   try { queueWorkerJob(job, snapshot, guard) } catch (error) { job.frameDeadline.clear(); jobs.delete(job.id); throw error }
-  return done.finally(() => job.frameDeadline.clear())
+  return { job, done: done.finally(() => job.frameDeadline.clear()) }
 }
 
 // ---------------------------------------------------------------- routes

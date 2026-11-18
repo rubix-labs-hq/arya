@@ -236,6 +236,7 @@ test('a worker page that closes mid-job fails the job after 5 s and the next req
   assert.equal(f.lost.length, 1)
   assert.equal(running.error, 'The render worker closed while this export was running. Export again.')
   assert.equal(frame.error, 'The render worker closed while this frame was rendering. Try again.')
+  assert.equal(frame.workerLost, true, 'the frame route reads this to render the frame once more'); assert.equal(other.workerLost, undefined)
   assert.equal(running.processing.drained, true); assert.equal(other.state, 'running')
   assert.deepEqual(f.launched[0].kills, ['SIGTERM'])
   const next = f.ensure(); await f.clock.advance(300)

@@ -45,6 +45,8 @@ export function armProcessingWorkerCancellation(worker, { isCurrent, isDrained, 
 
 export function acknowledgeProcessingWorkerExit(jobs, ownedWorker, failJob, reason = () => 'The render worker exited') {
   for (const job of jobs) if (job.processing?.dispatched && !job.processing.drained && job.processing.worker === ownedWorker) {
+    // Set before the job fails, so whoever waits on it can tell a lost worker from a bad request.
+    job.workerLost = true
     failJob(job, reason(job))
     job.processing.acknowledge()
   }

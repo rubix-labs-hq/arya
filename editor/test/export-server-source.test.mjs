@@ -113,6 +113,46 @@ test('a frame job starts its 30 s render limit when the worker is given the fram
   job.processing.acknowledge(); await until(() => admission.snapshot().active === 0)
 })
 
+test('a frame whose worker goes away is rendered once more, and a second loss says the renderer restarted', async t => {
+  const { f, events, admission } = fixture(t)
+  const renders = () => events.filter(e => e.type === 'render')
+  // What the worker host does when the worker process exits under a dispatched job.
+  const lose = job => { job.workerLost = true; f.failJob(job, 'The render worker exited'); job.processing.acknowledge() }
+  const frame = f.renderFrame(0.5, 320)
+  await until(() => renders().length === 1)
+  const first = [...f.jobs.values()].at(-1)
+  lose(first)
+  await until(() => renders().length === 2)
+  const second = [...f.jobs.values()].at(-1)
+  assert.notEqual(second.id, first.id); assert.equal(second.kind, 'frame'); assert.equal(second.spec.at, first.spec.at); assert.equal(second.spec.width, first.spec.width)
+  second.state = 'done'; second.resolve({ file: 'frame.png', id: second.id }); second.processing.acknowledge()
+  assert.deepEqual(await frame, { file: 'frame.png', id: second.id }, 'the caller gets the frame and never sees the first failure')
+  await until(() => admission.snapshot().active === 0)
+
+  // The worker goes away twice: no third try, and the text says that asking again works.
+  const count = renders().length, twice = f.renderFrame(0.5, 320); twice.catch(() => {})
+  await until(() => renders().length === count + 1); lose([...f.jobs.values()].at(-1))
+  await until(() => renders().length === count + 2); lose([...f.jobs.values()].at(-1))
+  await assert.rejects(twice, { message: 'The preview renderer restarted. Try again.' })
+  await until(() => admission.snapshot().active === 0)
+  assert.equal(renders().length, count + 2)
+
+  // Any other failure is reported as it is, without a retry.
+  const other = f.renderFrame(0.5, 320); other.catch(() => {})
+  await until(() => renders().length === count + 3)
+  const plain = [...f.jobs.values()].at(-1); f.failJob(plain, 'The render worker did not finish this frame in 30 s. Try again.'); plain.processing.acknowledge()
+  await assert.rejects(other, /did not finish this frame in 30 s/)
+  await until(() => admission.snapshot().active === 0)
+  assert.equal(renders().length, count + 3)
+
+  // An assistant frame that has used its wait is not started again.
+  const late = f.renderFrame(0.5, 320, null, { queueMs: 900 }); late.catch(() => {})
+  await until(() => renders().length === count + 4); lose([...f.jobs.values()].at(-1))
+  await assert.rejects(late, { message: 'The preview renderer restarted. Try again.' })
+  await until(() => admission.snapshot().active === 0)
+  assert.equal(renders().length, count + 4)
+})
+
 test('the digests of an export\'s source copies are dropped when the job has left the queue', async t => {
   const { ROOT, f, events, admission, exportCopyDigests } = fixture(t)
   const job = await f.startExport({ name: 'digest-result' })
