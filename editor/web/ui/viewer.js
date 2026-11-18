@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
 import { clipEnd, compView, duration, timecode, valueAt } from '/core/project.js'
 import { canvas, comp, media, player } from './engine-host.js'
-import { addRef, edit, set, store, time, toast, useStore, useTime, viewProject } from './store.js'
+import { addRef, api, drawnProject, edit, previewing, set, showPreview, store, time, toast, useStore, useTime, viewProject } from './store.js'
+import { assistantActivity } from './assistant-activity.js'
 import { titleAnim } from '../engine/frame.js'
 import { resolvedShape } from '../engine/shapes.js'
 import { mediaUrl } from '../engine/media.js'
@@ -165,9 +166,35 @@ function TransformOverlay({ p, rect }) {
   `
 }
 
+// Shown over the viewer while it draws an assistant preview. Apply and Discard work here too,
+// because on a phone the preview card is in the assistant sheet, which covers the viewer.
+function PreviewBanner() {
+  const s = useStore()
+  const [busy, setBusy] = useState('')
+  const proposal = s.assistantReview?.proposal
+  if (!proposal) return null
+  const running = assistantActivity(s.claude, { connected: s.connected }).active
+  const steps = proposal.steps?.length ?? 0
+  const decide = async kind => {
+    if (busy) return
+    setBusy(kind)
+    try { await api(`/api/assistant/proposal/${kind}`, { id: proposal.id }) } catch (error) { toast(error.message, 'error') } finally { setBusy('') }
+  }
+  return html`<div class="viewer-preview-banner" role="status" aria-label="Showing the preview">
+    <p><b>Showing the preview</b> ${proposal.summary || 'Assistant preview'}. Not applied yet; editing is off.</p>
+    ${steps ? html`<p class="viewer-preview-steps">The viewer shows the edits only. ${steps === 1 ? '1 processing step runs' : `${steps} processing steps run`} after you apply, such as transcription or analysis, and ${steps === 1 ? 'is' : 'are'} not shown.</p>` : null}
+    <div class="assistant-preview-actions">
+      <button class="assistant-apply" disabled=${Boolean(running || busy)} title=${running ? 'Wait for the assistant to finish' : 'Apply these edits as one undo step'} onClick=${() => decide('apply')}>${busy === 'apply' ? 'Applying…' : 'Apply'}</button>
+      <button class="ghost" disabled=${Boolean(busy)} onClick=${() => decide('discard')}>Discard</button>
+      <button class="ghost" disabled=${Boolean(busy)} onClick=${() => showPreview(null)}>Back to project</button>
+    </div>
+  </div>`
+}
+
 export function Viewer({ compact }) {
   const s = useStore()
-  const p = viewProject()
+  const p = drawnProject()
+  const shown = previewing()
   const stage = useRef(null)
   const host = useRef(null)
   const rect = useFit(stage, p?.width ?? 1920, p?.height ?? 1080, s.viewerMode)
@@ -182,7 +209,7 @@ export function Viewer({ compact }) {
   const timelineName = p.compId ? s.project?.comps?.[p.compId]?.name ?? p.compId : 'Main timeline'
 
   const onStageDown = e => {
-    if (e.target.closest('.xform')) return
+    if (e.target.closest('.xform') || shown) return
     if (e.altKey) {
       const r = e.currentTarget.getBoundingClientRect()
       const px = Math.round(((e.clientX - r.left - rect.x) / rect.w) * p.width)
@@ -217,7 +244,8 @@ export function Viewer({ compact }) {
   }
 
   return html`
-    <div class=${`viewer ${compact ? 'compact' : ''}`}>
+    <div class=${`viewer ${compact ? 'compact' : ''} ${shown ? 'showing-preview' : ''}`}>
+      ${shown ? html`<${PreviewBanner} />` : null}
       <div class="viewer-info" aria-label="Active timeline information"><span class="viewer-info-name" title=${timelineName}>${timelineName}</span><span class="viewer-info-format">${p.width}×${p.height} · ${p.fps} fps timeline</span></div>
       <div class="viewer-bar">
         <div class="seg">
@@ -236,15 +264,15 @@ export function Viewer({ compact }) {
         <div class="canvas-host" ref=${host} style=${{ left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` }}></div>
         ${s.overlays.safe ? html`<div class="safe" style=${{ left: `${rect.x + rect.w * 0.05}px`, top: `${rect.y + rect.h * 0.05}px`, width: `${rect.w * 0.9}px`, height: `${rect.h * 0.9}px` }}><div class="safe-inner"></div></div>` : null}
         ${s.overlays.grid ? html`<div class="thirds" style=${{ left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` }}></div>` : null}
-        ${!s.playing && !registry.viewerOverlays.some(o => o.exclusive?.(store)) ? html`<${TransformOverlay} p=${p} rect=${rect} />` : null}
-        ${registry.viewerOverlays.filter(o => o.when?.(store) ?? true).map(o => hh(o.component, { key: o.id, p, rect, t: time.t }))}
+        ${!shown && !s.playing && !registry.viewerOverlays.some(o => o.exclusive?.(store)) ? html`<${TransformOverlay} p=${p} rect=${rect} />` : null}
+        ${shown ? null : registry.viewerOverlays.filter(o => o.when?.(store) ?? true).map(o => hh(o.component, { key: o.id, p, rect, t: time.t }))}
       </div>
-      <${Transport} p=${p} />
+      <${Transport} p=${p} locked=${shown} />
     </div>
   `
 }
 
-export function Transport({ p }) {
+export function Transport({ p, locked = false }) {
   const t = useTime()
   const s = store
   const [editing, setEditing] = useState(false)
@@ -298,9 +326,9 @@ export function Transport({ p }) {
         <button aria-label="Go to end" title="End (End)" onClick=${() => player.seek(duration(p))}><${Icon} name="skip-end" /></button>
       </div>
       <div class="buttons right">
-        <button aria-label="Mark in" title="Mark in (I)" onClick=${() => edit({ op: 'range', in: t, out: Math.max(t + 1 / p.fps, p.range?.out ?? duration(p)) })}>I</button>
-        <button aria-label="Mark out" title="Mark out (O)" onClick=${() => edit({ op: 'range', in: Math.min(p.range?.in ?? 0, t - 1 / p.fps), out: t })}>O</button>
-        <button aria-label="Clear range" title="Clear range (⌥X)" disabled=${!p.range} onClick=${() => edit({ op: 'range', in: null })}><${Icon} name="clear" /></button>
+        <button aria-label="Mark in" title="Mark in (I)" disabled=${locked} onClick=${() => edit({ op: 'range', in: t, out: Math.max(t + 1 / p.fps, p.range?.out ?? duration(p)) })}>I</button>
+        <button aria-label="Mark out" title="Mark out (O)" disabled=${locked} onClick=${() => edit({ op: 'range', in: Math.min(p.range?.in ?? 0, t - 1 / p.fps), out: t })}>O</button>
+        <button aria-label="Clear range" title="Clear range (⌥X)" disabled=${locked || !p.range} onClick=${() => edit({ op: 'range', in: null })}><${Icon} name="clear" /></button>
         <button class=${s.loop ? 'on' : ''} aria-label="Loop playback" aria-pressed=${!!s.loop} title="Loop playback (⌘L)" onClick=${() => set({ loop: !s.loop })}><${Icon} name="loop" /></button>
       </div>
     </div>

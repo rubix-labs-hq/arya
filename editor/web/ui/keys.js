@@ -3,7 +3,7 @@
 
 import { clipEnd, compView, duration, snapToFrame, sourceTime } from '/core/project.js'
 import { player } from './engine-host.js'
-import { api, edit, set, store, time, toast, viewProject } from './store.js'
+import { api, edit, refusePreviewEdit, set, store, time, toast, viewProject } from './store.js'
 import { copySelection } from './timeline.js'
 import { sourcePlacementPlan } from './source-media.js'
 
@@ -120,6 +120,7 @@ export function runEditorCommand(command) {
  */
 export function moveHistory(direction) {
   const nothing = direction === 'undo' ? 'Nothing to undo.' : 'Nothing to redo.'
+  if (refusePreviewEdit()) return Promise.resolve(null)
   if (store.history?.[direction] === 0) { toast(nothing); return Promise.resolve(null) }
   return Promise.resolve().then(() => api(`/api/${direction}`, {})).then(r => {
     const history = r?.history, counted = Number.isSafeInteger(history?.undo) && Number.isSafeInteger(history?.redo)
