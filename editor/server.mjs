@@ -34,7 +34,7 @@ import { createDerivativeWaiters } from './core/derivative-waiters.mjs'
 import { createProcessingAdmission, captureProcessingIdentity, processingCancelled } from './core/processing-admission.mjs'
 import { runProcessingProcess } from './core/processing-process.mjs'
 import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, createProcessingWorkerHost, workerClosedMessage, createWorkerWatchdog, noteWorkerActivity, noteWorkerSetupStep, frameJobDeadline, ASSISTANT_FRAME_QUEUE_MS, queuedJobWait, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
-import { validateExportSpec } from './core/processing-export.js'
+import { exportFileName, validateExportSpec } from './core/processing-export.js'
 import { ProjectRecovery, recoveryProject } from './core/project-recovery.mjs'
 import { runRecoveryJournal } from './core/project-recovery-bridge.mjs'
 import { createTranscriptRoutes } from './routes/transcript.mjs'
@@ -908,7 +908,7 @@ async function startExport(spec) {
   if (!selected) throw new Error('no such composition')
   const validated = validateExportSpec({ ...spec, range: spec.range ?? selected.range ?? { in: 0, out: duration(selected) } }, selected)
   delete validated.sourceCohort
-  const base = String(spec.name ?? selected.name).replace(/[^\w.-]+/g, '-') || 'reel'
+  const base = exportFileName(spec.name ?? selected.name)
   const outDir = guardedOutput(ROOT, path.join(ROOT, 'renders'))
   // A name that is already taken gets the next free number (clip-2.mp4, clip-3.mp4), as Final Cut
   // and Resolve do, instead of failing. An explicit `out` path is never renamed.

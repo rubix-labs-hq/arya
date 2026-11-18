@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
-import { createDeliverRequest } from '../web/ui/deliver-request.js'
+import { createDeliverRequest, deliverRangeMode } from '../web/ui/deliver-request.js'
+import { exportFileName } from '../core/processing-export.js'
 
 function fixture() {
   let scope = { root: '/synthetic/project', version: 4, project: { name: 'Original', width: 64, height: 64, fps: 1, tracks: [] }, comp: null }
@@ -71,7 +72,7 @@ function component({ hostKind = 'browser', caps = {} } = {}) {
   let index = 0, resolve, reject
   const response = new Promise((yes, no) => { resolve = yes; reject = no })
   const state = { root: '/synthetic/project', version: 4, project: { name: 'Timeline', width: 64, height: 64, fps: 1, tracks: [] }, openComp: null, jobs: [], caps }
-  const context = vm.createContext({ createDeliverRequest, host: { kind: hostKind }, useStore: () => state,
+  const context = vm.createContext({ createDeliverRequest, deliverRangeMode, exportFileName, host: { kind: hostKind }, useStore: () => state,
     useState(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = initial; return [hooks[slot], value => { hooks[slot] = typeof value === 'function' ? value(hooks[slot]) : value }] },
     useRef(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = { current: initial }; return hooks[slot] },
     useEffect(effect) { const slot = index++; if (!(slot in hooks)) { hooks[slot] = true; const cleanup = effect(); if (cleanup) cleanups.push(cleanup) } },
@@ -174,4 +175,27 @@ test('Render has a plain accessible label and hides its decorative arrow', () =>
   const f = component(), rendered = f.render()
   assert.equal(f.button(rendered).label, 'Render')
   assert.match(f.find(rendered, 'deliver-actions').strings.join(''), /<span aria-hidden="true">⇪<\/span>/)
+})
+
+test('an export name has no dash or dot left at either end, and the page shows the name the server writes', () => {
+  assert.equal(exportFileName('Opening!'), 'Opening')
+  assert.equal(exportFileName('  Sample cut, final?  '), 'Sample-cut-final')
+  assert.equal(exportFileName('...hidden'), 'hidden')
+  assert.equal(exportFileName('v1.2 draft.'), 'v1.2-draft')
+  assert.equal(exportFileName('?!'), 'reel')
+  assert.equal(exportFileName(undefined), 'reel')
+  const deliver = fs.readFileSync(new URL('../web/ui/deliver.js', import.meta.url), 'utf8')
+  const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
+  assert.match(deliver, /renders\/\$\{exportFileName\(name\)\}/)
+  assert.match(server, /const base = exportFileName\(spec\.name \?\? selected\.name\)/)
+})
+
+test('Deliver keeps an explicit range choice per timeline and otherwise follows In and Out', () => {
+  const range = { in: 1, out: 3 }, here = { root: '/synthetic/a', comp: null }
+  assert.equal(deliverRangeMode(null, { ...here, range: null }), 'all')
+  assert.equal(deliverRangeMode(null, { ...here, range }), 'range', 'In and Out set while Deliver is open are used')
+  assert.equal(deliverRangeMode({ ...here, mode: 'all' }, { ...here, range }), 'all', 'Entire timeline stays chosen after a preset click or a remount')
+  assert.equal(deliverRangeMode({ ...here, mode: 'range' }, { ...here, range: null }), 'all', 'a cleared range falls back to the whole timeline')
+  assert.equal(deliverRangeMode({ ...here, mode: 'all' }, { root: '/synthetic/a', comp: 'k1', range }), 'range', 'a choice for Main does not apply to a composition')
+  assert.equal(deliverRangeMode({ ...here, mode: 'all' }, { root: '/synthetic/b', comp: null, range }), 'range', 'nor to another project')
 })

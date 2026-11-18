@@ -1,3 +1,13 @@
+/**
+ * The range Render uses. An explicit choice is kept for its project and timeline across visits to
+ * Deliver. With none, a timeline that has In and Out renders that range; setting them while Deliver
+ * is open counts too. A kept In → Out choice falls back to the whole timeline once the range is cleared.
+ */
+export function deliverRangeMode(kept, { root, comp = null, range = null } = {}) {
+  const own = kept && kept.root === root && (kept.comp ?? null) === (comp ?? null) ? kept.mode : null
+  return range && own !== 'all' ? 'range' : 'all'
+}
+
 const sameScope = (a, b) => a.root === b.root && a.version === b.version && a.project === b.project && a.comp === b.comp
 
 export function createDeliverRequest({ getScope, start, changed, started }) {

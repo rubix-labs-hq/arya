@@ -1,3 +1,6 @@
+// The file name an export gets from its name: unsafe runs become one dash, with no dash or dot left at either end.
+// "Opening!" becomes "Opening", not "Opening-". The Deliver page shows the same name the server writes.
+export const exportFileName=value=>String(value??'').replace(/[^\w.-]+/g,'-').replace(/^[-.]+|[-.]+$/g,'')||'reel'
 export const EXPORT_LIMITS=Object.freeze({maximumEdge:8192,maximumPixels:33554432,maximumFPS:120,maximumSeconds:3600,maximumFrames:216000,maximumSourceTimes:2000000,maximumDecoderInstances:32})
 export function validateExportSpec(spec,project,{frame=false}={}){
   if(!project)throw Error('Open a project before rendering')

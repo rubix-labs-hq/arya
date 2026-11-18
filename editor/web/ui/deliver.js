@@ -4,13 +4,14 @@ import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
 import { duration, timecode } from '/core/project.js'
+import { exportFileName } from '/core/processing-export.js'
 import { api, set, store, toast, useStore, viewProject } from './store.js'
 import { Viewer } from './viewer.js'
 import { registry } from './registry.js'
 import { host } from '../host.js'
 import { DeliveryPreview } from './delivery-preview.js'
 import { createDeliveryPreview } from '../browser-local/delivery-preview.js'
-import { createDeliverRequest } from './deliver-request.js'
+import { createDeliverRequest, deliverRangeMode } from './deliver-request.js'
 
 const html = htm.bind(h)
 
@@ -110,10 +111,12 @@ export function DeliverPage() {
   const p = composition ? { ...viewProject(), name: composition.name, range: composition.range ?? null } : s.project
   const [choice, setChoice] = useState(PRESETS[0])
   const [name, setName] = useState(p.name)
-  const [rangeMode, setRangeMode] = useState(p.range ? 'range' : 'all')
   const [width, setWidth] = useState(null)
   const [fps, setFps] = useState(null)
   const [dismissed, setDismissed] = useState({ root: s.root, ids: [] })
+  // The range choice lives in the store, so leaving Deliver or picking a preset keeps it.
+  const rangeMode = deliverRangeMode(s.deliverRange, { root: s.root, comp: s.openComp, range: p.range })
+  const setRangeMode = mode => set({ deliverRange: { root: s.root, comp: s.openComp ?? null, mode } })
   const sizes = deliverSizes(p, choice)
   const { width: outW, height: outH } = sizes.find(size => size.width === width) ?? defaultSize(p, choice, sizes)
   const range = rangeMode === 'range' && p.range ? p.range : { in: 0, out: duration(p) }
@@ -194,8 +197,8 @@ export function DeliverPage() {
           <button class=${rangeMode === 'range' ? 'on' : ''} disabled=${!p.range} onClick=${() => setRangeMode('range')}>In → Out</button>
         </div></div>
         <div class="kv"><span>Length</span><b>${timecode(range.out - range.in, p.fps)}</b></div>
-        <div class="kv"><span>Output</span><b>renders/${name.replace(/[^\w.-]+/g, '-')}.${choice.preset.startsWith('prores') ? 'mov' : choice.preset === 'gif' ? 'gif' : choice.preset === 'audio-wav' ? 'wav' : choice.preset === 'audio-m4a' ? 'm4a' : choice.preset === 'png-seq' ? 'png…' : 'mp4'}</b></div>
-        <div class="row gap deliver-actions"><button class="primary" disabled=${requestPending} aria-busy=${requestPending} onClick=${render}><span aria-hidden="true">⇪</span> ${renderRequest.phase === 'stale-pending' ? 'Waiting for previous request…' : renderRequest.phase === 'pending' ? 'Preparing render…' : renderRequest.phase === 'failed' ? 'Retry render' : 'Render'}</button><button class="ghost" disabled=${host.kind === 'browser-local'} title=${host.kind === 'browser-local' ? 'Still-frame saving is not yet available in the hosted beta.' : undefined} onClick=${still}>Save still frame</button></div>
+        <div class="kv"><span>Output</span><b>renders/${exportFileName(name)}.${choice.preset.startsWith('prores') ? 'mov' : choice.preset === 'gif' ? 'gif' : choice.preset === 'audio-wav' ? 'wav' : choice.preset === 'audio-m4a' ? 'm4a' : choice.preset === 'png-seq' ? 'png…' : 'mp4'}</b></div>
+        <div class="row gap deliver-actions"><button class="primary" disabled=${requestPending} aria-busy=${requestPending} onClick=${render}><span aria-hidden="true">⇪</span> ${renderRequest.phase === 'stale-pending' ? 'Waiting for previous request…' : renderRequest.phase === 'pending' ? 'Preparing render…' : renderRequest.phase === 'failed' ? 'Retry render' : 'Render'}</button><span class="muted small deliver-range-note">${rangeMode === 'range' ? 'In → Out' : 'Entire timeline'} · ${timecode(range.in, p.fps)} to ${timecode(range.out, p.fps)}</span><button class="ghost" disabled=${host.kind === 'browser-local'} title=${host.kind === 'browser-local' ? 'Still-frame saving is not yet available in the hosted beta.' : undefined} onClick=${still}>Save still frame</button></div>
         ${renderRequest.phase === 'failed' ? html`<div class="hint" role="alert">Render could not start: ${renderRequest.error} Retry when you’re ready.</div>` : null}
         <div class="hint">${host.kind === 'browser-local' ? 'Your browser renders the GPU compositor and audio mix, then saves the completed file on this device. Use Download in Saved exports. Keep this tab open during rendering. The hosted beta supports exports up to five minutes. Available presets depend on the browser codecs.' : native ? 'Renders use the viewer compositor and audio mixer. WebCodecs encodes the file and Arya saves it in your project. For ProRes, GIF or PNG sequences, turn off View > Web Editor and render from the Deliver page.' : 'Renders use the same compositor as the viewer, in a background browser, encoded by ffmpeg.'}</div>
         ${registry.deliver.length ? html`<h3>Interchange</h3><div class="row gap wrap">${registry.deliver.map(a => html`<button class="ghost" onClick=${() => a.run(p)}>${a.label}</button>`)}</div>` : null}
