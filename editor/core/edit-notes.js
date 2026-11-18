@@ -244,12 +244,12 @@ function fontNotes(before, after, made, ops) {
     `${quote(name)} is not a built-in font. It shows only if this computer has it; otherwise the text uses a system font, which can be wider.`))
 }
 
-/** Title and caption clips this batch made or retimed. */
+/** Title and caption clips this batch made or lengthened or shortened. A ripple that only moves a clip leaves its time on screen as it was. */
 function retimedText(before, after, made) {
   return [...after.clips].filter(([id, { clip }]) => {
     if (!['title', 'caption'].includes(clip.kind) || clip.enabled === false || !(clip.dur > 0)) return false
     const old = before.clips.get(id)?.clip
-    return made.has(id) || !old || old.start !== clip.start || old.dur !== clip.dur
+    return made.has(id) || !old || old.dur !== clip.dur
   })
 }
 
@@ -278,6 +278,9 @@ function briefTextNotes(before, after, made) {
   ]
 }
 
+/** A clip's base scale or its largest scale key. */
+const largestScale = clip => Math.max(...[typeof clip.scale === 'number' ? clip.scale : 1, ...(Array.isArray(clip.anim?.scale) ? clip.anim.scale.map(key => key?.[1]) : [])].filter(Number.isFinite))
+
 /** Video this batch scaled past the scale that fills its frame. Scale 1 fits the whole picture inside the frame. */
 function fillScaleNotes(before, after, made, project) {
   const parts = [], people = []
@@ -291,9 +294,10 @@ function fillScaleNotes(before, after, made, project) {
     const fill = Math.max(entry.width / asset.width, entry.height / asset.height) / Math.min(entry.width / asset.width, entry.height / asset.height)
     // Only where the media's shape differs from the frame: a punch-in on matching media is a choice, not a reframe.
     if (!(fill > 1.01)) continue
-    const scales = [typeof clip.scale === 'number' ? clip.scale : 1, ...(Array.isArray(clip.anim?.scale) ? clip.anim.scale.map(key => key?.[1]) : [])].filter(Number.isFinite)
-    const most = Math.max(...scales)
+    const most = largestScale(clip)
     if (!(most > fill * 1.1)) continue
+    // A blade or cut makes new pieces of a clip; one already this zoomed in this timeline was noted when it was zoomed.
+    if (made.has(id) && [...before.clips.values()].some(other => other.comp === entry.comp && other.clip.kind === 'video' && other.clip.src === clip.src && largestScale(other.clip) >= most - 1e-6)) continue
     const over = Math.round((most / fill - 1) * 100)
     parts.push(`${id} reaches scale ${num(most)}, ${over}% past ${num(fill)}, the scale at which its ${asset.width}x${asset.height} media fills the ${entry.width}x${entry.height} frame`)
     people.push(`${named(after, clip)} is zoomed ${over}% past the size that fills the frame`)

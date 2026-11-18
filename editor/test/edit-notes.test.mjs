@@ -330,6 +330,11 @@ test('text left for two frames or less is called a flash, and a title shorter th
   assert.ok(brief.notes.includes('Titles shorter than their reading time (about 0.6s plus 0.1s per word): c1 "Open late tonight" is on screen 0.5s and needs about 0.9s. Lengthen them or use fewer words.'), brief.notes.join('\n'))
   const person = editNotes(wide(), brief.project, { ops: [], created: ['c1'], audience: 'person' })
   assert.ok(person.includes('Some titles are too brief to read: "Open late tonight" shows for 0.5s. Show them longer or shorten the text.'), person.join('\n'))
+  // A ripple cut earlier on the timeline moves a brief title without changing its time on screen.
+  const later = run(wide(), [{ op: 'add_title', text: 'Open late tonight', title: { size: 40 }, track: 'V2', start: 10, dur: 0.5 }, { op: 'add_color', color: '#203040', track: 'V1', start: 0, dur: 12 }]).project
+  const rippled = run(later, [{ op: 'delete_range', from: 2, to: 3, ripple: true }])
+  assert.equal(rippled.project.tracks.find(track => track.id === 'V2').clips[0].start, 9, 'the cut moved the title')
+  assert.equal(rippled.notes.some(note => /reading time/.test(note)), false, rippled.notes.join('\n'))
   const readable = run(wide(), [{ op: 'add_title', text: 'Open late tonight', title: { size: 40 }, start: 1, dur: 1 }])
   assert.equal(readable.notes.some(note => /reading time|flash/.test(note)), false, readable.notes.join('\n'))
   // A title the batch did not touch is not reported again.
@@ -352,6 +357,10 @@ test('video zoomed more than 10% past the scale that fills a frame of another sh
   const { media, id } = placed(vertical(), { scale: 3.2 })
   const keyed = run(media, [{ op: 'keyframe', id, prop: 'scale', at: 0, value: 3.2 }, { op: 'keyframe', id, prop: 'scale', at: 2, value: 3.8 }])
   assert.match(keyed.notes.join('\n'), new RegExp(`${id} reaches scale 3\\.8, 20% past 3\\.16`))
+  // Blading a zoomed clip makes a new piece at the same zoom, which was already noted.
+  const bladed = run(tight.project, [{ op: 'blade', at: 3 }])
+  assert.equal(bladed.project.tracks.find(track => track.id === 'V1').clips.length, 2, 'the blade made a second piece')
+  assert.equal(bladed.notes.some(note => /fill scale/.test(note)), false, bladed.notes.join('\n'))
   // A punch-in on media of the frame's own shape, and a cover fit, are choices, not reframes.
   assert.equal(placed(wide(), { scale: 1.5 }).notes.some(note => /fill scale/.test(note)), false)
   assert.equal(placed(vertical(), { scale: 4, fit: 'cover' }).notes.some(note => /fill scale/.test(note)), false)
