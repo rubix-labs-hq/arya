@@ -744,12 +744,13 @@ struct NativeAssistantPanel: View {
     }
 
     /// Input, preview, model and the one primary control. Stacked, Send or Stop comes first.
+    /// At accessibility text sizes Preview shows only its icon so Send never wraps.
     @ViewBuilder private func composerActions(width: Double, stacked: Bool) -> some View {
         if stacked {
             VStack(spacing: 8) {
                 HStack(spacing: 6) {
                     inputMenu
-                    previewToggle(iconOnly: width < 260)
+                    previewToggle(iconOnly: width < 260 || (dynamicTypeSize.isAccessibilitySize && width < 600))
                     Spacer(minLength: 0)
                     primaryAction
                 }
@@ -770,7 +771,7 @@ struct NativeAssistantPanel: View {
     }
 
     private var sendButton: some View {
-        Button { sendDraft() } label: { Label("Send", systemImage: "arrow.up").frame(minWidth: 56) }
+        Button { sendDraft() } label: { Label("Send", systemImage: "arrow.up").lineLimit(1).fixedSize().frame(minWidth: 56) }
         .buttonStyle(.borderedProminent).controlSize(.regular)
         .disabled(!assistant.configured || assistant.isWorking || model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.assistantDraft.count > assistant.inputCharacterLimit)
         .help(assistant.configured ? "Send (Return). Scripts send with Command-Return." : "Set up the assistant to send. Your draft is kept.")
@@ -780,7 +781,7 @@ struct NativeAssistantPanel: View {
 
     @ViewBuilder private var cancelButton: some View {
         if assistant.isWorking {
-            Button { assistant.cancel() } label: { Label(assistant.state == "cancelling" ? "Stopping…" : "Stop", systemImage: "stop.fill").frame(minWidth: 56) }
+            Button { assistant.cancel() } label: { Label(assistant.state == "cancelling" ? "Stopping…" : "Stop", systemImage: "stop.fill").lineLimit(1).fixedSize().frame(minWidth: 56) }
                 .buttonStyle(.borderedProminent).controlSize(.regular)
                 .disabled(assistant.state == "cancelling")
                 .accessibilityLabel(assistant.state == "cancelling" ? "Stopping request" : "Stop request")
