@@ -527,6 +527,27 @@ test('a preview taller than the list shows from its title, and a short one from 
   }
 })
 
+test('a tall preview shows from its title once, then lets the reader stay at its buttons while the run goes on', t => {
+  const review = changes => ({ proposal: null, applying: null, change: null, running: false, runId: null, ...changes })
+  const f = panel(t, { chat: [{ role: 'user', text: 'First', at: 1 }], assistantReview: review({ proposal: { id: 'p1', runId: 'r1' } }) })
+  const card = { offsetHeight: 400, getBoundingClientRect: () => ({ top: 520 - element.scrollTop }) }
+  const element = { scrollTop: 50, scrollHeight: 900, clientHeight: 300, querySelector: selector => selector === '.assistant-preview' ? card : null, getBoundingClientRect: () => ({ top: 0 }) }
+  const redraw = () => { const tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/); return tree }
+  let tree = redraw()
+  assert.equal(element.scrollTop, 520, 'the new preview shows from its title')
+  // The browser reports that scroll, and then the reader scrolls down to Apply at the end.
+  byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
+  element.scrollTop = 600; byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
+  f.state.claude = { state: 'working', text: 'Still checking the cut' }; tree = redraw()
+  assert.equal(element.scrollTop, 900, 'a streamed word keeps the reader at the end, not back at the title')
+  f.state.activity = [{ who: 'agent', text: 'Reading the timeline', at: 7 }]; tree = redraw()
+  assert.equal(element.scrollTop, 900, 'and so does a tool update')
+  // A different preview shows from its title again.
+  element.scrollTop = 50
+  f.state.assistantReview = review({ proposal: { id: 'p2', runId: 'r1' } }); redraw()
+  assert.equal(element.scrollTop, 520, 'the next preview shows from its title')
+})
+
 test('the list follows the person\'s own message, a new proposal, an apply, an undo bar and the end of a run', t => {
   const review = changes => ({ proposal: null, applying: null, change: null, running: false, runId: null, ...changes })
   const f = panel(t, { chat: [{ role: 'user', text: 'First', at: 1 }], assistantReview: review() })

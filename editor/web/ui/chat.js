@@ -182,7 +182,7 @@ export function ChatPanel() {
   }, [activity.active])
   const native = s.caps.host === 'native'
   const list = useRef(null)
-  const composing = useRef(false), composer = useRef(null), follow = useRef(true)
+  const composing = useRef(false), composer = useRef(null), follow = useRef(true), alignedPreview = useRef(null)
   // A press outside an open composer menu closes it, as does sending or focus leaving it.
   const closeComposerMenus = keep => composer.current?.closest?.('.assistant-composer-card')?.querySelectorAll('.assistant-input-tools details[open]').forEach(menu => { if (menu !== keep) menu.open = false })
   useEffect(() => {
@@ -208,10 +208,17 @@ export function ChatPanel() {
   // The person's own message, a new preview, an apply, an undo bar or the end of a run brings the list to its end.
   const lastOwnAt = [...s.chat].reverse().find(m => ['user', 'you'].includes(m.role))?.at
   useEffect(() => { follow.current = true }, [lastOwnAt, s.assistantReview?.proposal?.id, s.assistantReview?.applying?.id, s.assistantReview?.change?.id, activity.terminal])
-  // The end of the list. A preview taller than the list shows from its title, not from its buttons.
+  // The end of the list. A preview taller than the list shows from its title once, not from its buttons.
+  // The list then stops following, as the scroll it makes would report, so later updates leave the
+  // reader there. A reader who scrolls down to the buttons is followed at the end again.
   const scrollToEnd = el => {
-    const card = s.assistantReview?.proposal ? el.querySelector?.('.assistant-preview') : null
-    el.scrollTop = card && card.offsetHeight > el.clientHeight ? el.scrollTop + card.getBoundingClientRect().top - el.getBoundingClientRect().top : el.scrollHeight
+    const proposal = s.assistantReview?.proposal
+    const card = proposal && alignedPreview.current !== proposal.id ? el.querySelector?.('.assistant-preview') : null
+    if (card && card.offsetHeight > el.clientHeight) {
+      el.scrollTop += card.getBoundingClientRect().top - el.getBoundingClientRect().top
+      alignedPreview.current = proposal.id
+      follow.current = false
+    } else el.scrollTop = el.scrollHeight
   }
   useEffect(() => {
     const hasUpdates = s.chat.length || s.activity.length || s.receipts.length || activity.active || activity.terminal || s.assistantReview
