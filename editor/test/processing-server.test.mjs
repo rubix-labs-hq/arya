@@ -51,7 +51,7 @@ async function fixture(t) {
     await until(() => workers.length > 0)
     const events = []; const request = http.get({ hostname: '127.0.0.1', port, path: '/api/events?role=worker', headers: { host: '127.0.0.1:0' } }); const [response] = await once(request, 'response'); let text = ''; response.on('data', bytes => { text += bytes; let end; while ((end = text.indexOf('\n\n')) >= 0) { const event = text.slice(0, end); text = text.slice(end + 2); const match = /event: (\S+)\ndata: ([\s\S]*)/.exec(event); if (match) events.push({ type: match[1], data: JSON.parse(match[2]) }) } }); t.after(() => request.destroy()); await turn(); return { request, events }
   }
-  return { root, file, project, children, api, worker }
+  return { root, file, project, children, workers, api, worker, port }
 }
 
 test('server refuses invalid allocations, bounds queue, replays admitted snapshot and holds Stop until drained plus encoder close', async t => {
@@ -120,6 +120,48 @@ test('the job routes record worker progress for the stall watchdog', async t => 
   assert.equal((await read()).lastWorkerActivity, rendering.lastWorkerActivity, 'heartbeats stop counting once frames flow')
   await f.api('/api/jobs/cancel', { id: job.id }); await f.api(`/api/job/${job.id}/drained`, {})
   for (const child of f.children) child.emit('close', null)
+})
+
+test('a worker page that closes mid-export fails the job within seconds and the next export gets a new worker', { timeout: 30000 }, async t => {
+  const f = await fixture(t)
+  const job = (await f.api('/api/export', { preset: 'png-seq', name: 'closed', range: { in: 0, out: 1 } })).body
+  const connection = await f.worker()
+  await until(() => connection.events.some(event => event.type === 'render'))
+  assert.equal((await f.api(`/api/job/${job.id}/start`, {})).status, 200)
+  assert.equal((await f.api('/api/state')).body.worker, true)
+  // The page dies: its event stream closes and nothing reconnects.
+  connection.request.destroy()
+  const read = async id => (await f.api('/api/jobs')).body.jobs.find(j => j.id === id)
+  await new Promise(resolve => setTimeout(resolve, 3000))
+  assert.equal((await read(job.id)).state, 'running', 'the page gets 5 s to reconnect')
+  const deadline = Date.now() + 8000
+  while ((await read(job.id)).state !== 'failed') { assert.ok(Date.now() < deadline, 'the job must fail soon after the grace period'); await new Promise(resolve => setTimeout(resolve, 100)) }
+  assert.equal((await read(job.id)).error, 'The render worker closed while this export was running. Export again.')
+  assert.deepEqual(f.workers[0].kills.slice(0, 1), ['SIGTERM'], 'the browser without a page is stopped')
+  for (const child of f.children) child.emit('close', null)
+  // The next export does not wait behind the dead worker: a new browser is started for it.
+  const next = (await f.api('/api/export', { preset: 'png-seq', name: 'after', range: { in: 0, out: 1 } })).body
+  await until(() => f.workers.length === 2)
+  const replacement = await f.worker()
+  await until(() => replacement.events.some(event => event.type === 'render' && event.data.job.id === next.id))
+  assert.match(f.workers[1].argv.at(-1), /\?worker=1&id=[0-9a-f-]{36}$/)
+  assert.notEqual(f.workers[1].argv.at(-1), f.workers[0].argv.at(-1), 'each browser gets its own token')
+  await f.api('/api/jobs/cancel', { id: next.id }); await f.api(`/api/job/${next.id}/drained`, {})
+})
+
+test('a page that presents a replaced worker\'s token is refused', { timeout: 15000 }, async t => {
+  const f = await fixture(t)
+  const job = (await f.api('/api/export', { preset: 'png-seq', name: 'token', range: { in: 0, out: 1 } })).body
+  await until(() => f.workers.length === 1)
+  const token = new URL(f.workers[0].argv.at(-1)).searchParams.get('id')
+  const stale = await f.api('/api/events?role=worker&worker=00000000-0000-4000-8000-000000000000')
+  assert.equal(stale.status, 204, 'an EventSource stops reconnecting on 204')
+  assert.equal((await f.api('/api/state')).body.worker, false)
+  const request = http.get({ hostname: '127.0.0.1', port: f.port, path: `/api/events?role=worker&worker=${token}`, headers: { host: '127.0.0.1:0' } })
+  const [response] = await once(request, 'response'); t.after(() => request.destroy())
+  assert.equal(response.statusCode, 200)
+  await until(() => true); assert.equal((await f.api('/api/state')).body.worker, true)
+  await f.api('/api/jobs/cancel', { id: job.id }); await f.api(`/api/job/${job.id}/drained`, {})
 })
 
 test('stopping worker connections cannot advertise replacement readiness', () => {

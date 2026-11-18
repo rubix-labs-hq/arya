@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { processingCancelled } from './processing-admission.mjs'
 
 // An abort stops publication immediately. Only cleanup acknowledgement or worker exit
@@ -42,12 +43,17 @@ export function armProcessingWorkerCancellation(worker, { isCurrent, isDrained, 
   return () => { clearTimer(grace); clearTimer(hardKill) }
 }
 
-export function acknowledgeProcessingWorkerExit(jobs, ownedWorker, failJob) {
+export function acknowledgeProcessingWorkerExit(jobs, ownedWorker, failJob, reason = () => 'The render worker exited') {
   for (const job of jobs) if (job.processing?.dispatched && !job.processing.drained && job.processing.worker === ownedWorker) {
-    failJob(job, 'The render worker exited')
+    failJob(job, reason(job))
     job.processing.acknowledge()
   }
 }
+
+/** What a job is told when its worker page closed and did not come back. */
+export const workerClosedMessage = job => job.kind === 'frame'
+  ? 'The render worker closed while this frame was rendering. Try again.'
+  : 'The render worker closed while this export was running. Export again.'
 
 export function processingWorkerConnected(worker, clients) {
   return Boolean(worker && !worker.processingStopping && [...clients].some(client => client.role === 'worker' && client.worker === worker))
@@ -57,6 +63,148 @@ export function retireProcessingWorkerClients(clients, worker) {
   for (const client of clients) if (client.role === 'worker' && client.worker === worker) {
     clients.delete(client)
     try { client.res.end() } catch {}
+  }
+}
+
+// ---------------------------------------------------------------- the worker process
+//
+// The render worker is a headless Chrome that Arya starts when a frame or export needs it. A
+// process handle alone proves nothing: Chrome can be alive with no page (the page crashed, or
+// never loaded), and a stopped process ignores SIGTERM. So a handle serves jobs only while one of
+// its pages holds the event stream, and a handle that cannot serve is stopped for good (SIGTERM,
+// then SIGKILL) and replaced by the next request instead of failing every request after it.
+
+export const WORKER_START_MS = 20000
+const WORKER_START_MAX_MS = 80000
+export const WORKER_KILL_GRACE_MS = 1500
+export const WORKER_CLOSE_GRACE_MS = 5000
+const WORKER_EXIT_WAIT_MS = 2000
+
+const exited = worker => worker.exitCode != null || worker.signalCode != null || worker.processingGone === true
+
+/**
+ * How long a new worker process may take to connect before it is replaced: 20 s, doubled after
+ * each start in a row that never connected (a slow machine gets more time), at most 80 s.
+ */
+export function workerStartLimit(failedStarts = 0) {
+  return Math.min(WORKER_START_MAX_MS, WORKER_START_MS * 2 ** Math.max(0, failedStarts))
+}
+
+/** Stops a worker process for good: SIGTERM now, SIGKILL after 1.5 s unless it has exited. */
+export function retireProcessingWorker(worker, { setTimer = setTimeout } = {}) {
+  if (!worker || worker.processingRetired) return
+  worker.processingRetired = true
+  worker.processingStopping = true
+  if (exited(worker)) return
+  try { worker.kill('SIGTERM') } catch {}
+  const timer = setTimer(() => { if (!exited(worker)) try { worker.kill('SIGKILL') } catch {} }, WORKER_KILL_GRACE_MS)
+  timer?.unref?.()
+}
+
+/**
+ * Owns the one worker process. `launch(token)` starts it and returns the child; the page it opens
+ * presents `token` when it connects, so a late page from a replaced process is refused.
+ * `onExit(worker)` runs when a process has gone; `onLost(worker)` runs when its page closed and
+ * did not reconnect within 5 s, just before the process is stopped.
+ */
+export function createProcessingWorkerHost({ launch, clients, onExit = () => {}, onLost = () => {}, onChange = () => {}, log = () => {},
+  now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, token = () => randomUUID() }) {
+  let current = null, failedStarts = 0
+  const sleep = ms => new Promise(resolve => { setTimer(resolve, ms) })
+  const set = value => { current = value; onChange(value) }
+  const attached = worker => [...clients].some(client => client.role === 'worker' && client.worker === worker)
+  const retire = (worker, reason) => {
+    if (!worker || worker.processingRetired) return
+    if (reason) log(`stopping the render worker: ${reason}`)
+    retireProcessingWorker(worker, { setTimer })
+  }
+  function gone(worker) {
+    if (worker.processingGone) return
+    worker.processingGone = true
+    clearTimer(worker.processingCloseTimer)
+    retireProcessingWorkerClients(clients, worker)
+    if (current === worker) set(null)
+    onExit(worker)
+    for (const resolve of worker.processingExitWaiters.splice(0)) resolve()
+  }
+  const waitGone = (worker, ms) => worker.processingGone ? Promise.resolve() : Promise.race([new Promise(resolve => worker.processingExitWaiters.push(resolve)), sleep(ms)])
+  function start() {
+    const presented = token(), worker = launch(presented)
+    worker.processingToken = presented
+    worker.processingStartedAt = now()
+    worker.processingStartLimit = workerStartLimit(failedStarts)
+    worker.processingExitWaiters = []
+    worker.on('exit', () => gone(worker))
+    // 'error' without a pid means the browser could not be started at all (for example, no Chrome).
+    worker.on('error', error => {
+      log(`render worker process error: ${error?.code ?? error?.message ?? error}`)
+      if (worker.pid !== undefined) return
+      worker.processingStartError = `Arya could not start Google Chrome to render (${error?.code ?? 'unknown error'}). Install Google Chrome in Applications, then try again.`
+      gone(worker)
+    })
+    set(worker)
+    return worker
+  }
+  return {
+    get current() { return current },
+    connected: () => processingWorkerConnected(current, clients),
+    retire,
+    /** False for a page whose process has been replaced or is stopping. Pages without a token are accepted. */
+    accepts: presented => !presented || Boolean(current && !current.processingStopping && current.processingToken === presented),
+    /** Binds a connecting worker page to the current process. */
+    attach(client) {
+      client.worker = current
+      if (!current) return
+      clearTimer(current.processingCloseTimer)
+      if (current.processingConnectedAt === undefined) {
+        current.processingConnectedAt = now()
+        failedStarts = 0
+        log(`render worker connected ${current.processingConnectedAt - current.processingStartedAt} ms after it started`)
+      }
+    },
+    /** Call after a client has been removed. A worker whose last page stays away for 5 s is stopped. */
+    detached(client) {
+      const worker = client.worker
+      if (client.role !== 'worker' || !worker || worker.processingStopping || exited(worker) || attached(worker)) return
+      clearTimer(worker.processingCloseTimer)
+      worker.processingCloseTimer = setTimer(() => {
+        if (worker.processingStopping || exited(worker) || attached(worker)) return
+        onLost(worker)
+        retire(worker, 'its page closed and did not reconnect')
+      }, WORKER_CLOSE_GRACE_MS)
+      worker.processingCloseTimer?.unref?.()
+    },
+    /**
+     * Resolves once a worker page is connected. Starts a process when there is none, and replaces
+     * one that is stopping or that has not connected within its start limit. One call starts at
+     * most one process and waits 20 s for it.
+     */
+    async ensure(signal) {
+      let until = now() + WORKER_START_MS, started = null
+      while (!processingWorkerConnected(current, clients)) {
+        if (signal?.aborted) throw processingCancelled()
+        const worker = current
+        if (worker && (worker.processingStopping || now() - worker.processingStartedAt >= worker.processingStartLimit)) {
+          if (!worker.processingStopping) {
+            failedStarts++
+            log(`the render worker did not connect within ${Math.round(worker.processingStartLimit / 1000)} s`)
+          }
+          retire(worker, worker.processingRetired ? '' : 'it cannot serve this request')
+          // The old process must be gone before a new one opens the same browser profile.
+          await waitGone(worker, WORKER_KILL_GRACE_MS + WORKER_EXIT_WAIT_MS)
+          if (current === worker) { retireProcessingWorkerClients(clients, worker); set(null) }
+          continue
+        }
+        if (!current) {
+          if (started) throw new Error(started.processingStartError ?? 'The render worker did not start. Try again: Arya starts a new one.')
+          log('starting the render worker')
+          started = start()
+          until = now() + WORKER_START_MS
+        }
+        if (now() > until) throw new Error('The render worker did not start in 20 s. Try again.')
+        await sleep(150)
+      }
+    },
   }
 }
 
@@ -140,18 +288,21 @@ export function stalledWorkerJobs(jobs, now) {
 }
 
 /**
- * Fails a stalled job so later exports stop waiting behind it. Failing cancels the reservation,
- * which stops the worker after its grace period; the reservation drains when that worker exits,
- * or at once when it has already gone.
+ * Fails a stalled job so later exports stop waiting behind it, and stops the worker that owned
+ * it. A page that answers the cancel is stopped too: it already hung once, and in one session the
+ * next export went to the same page and hung the same way. The reservation drains when that
+ * worker exits, or at once when it has already gone.
  */
-export function failStalledWorkerJob(job, failJob, now = workerClock()) {
+export function failStalledWorkerJob(job, failJob, now = workerClock(), { retireWorker = () => {} } = {}) {
   const stall = workerStall(job, now) ?? { phase: 'frames', limit: workerStallLimit(job) }
   const seconds = Math.round(stall.limit / 1000)
-  failJob(job, stall.phase === 'setup-cap'
-    ? `The render worker was still preparing this export after ${seconds} s, so it stopped. Export again; a new render worker starts.`
-    : `The render worker sent nothing for ${seconds} s, so this export stopped. Export again; a new render worker starts.`)
   const owner = job.processing?.worker
+  const next = 'Export again. Arya starts a new render worker and the export starts from the first frame.'
+  failJob(job, stall.phase === 'setup-cap'
+    ? `The render worker was still preparing this export after ${seconds} s, so it stopped. ${next}`
+    : `The render worker sent nothing for ${seconds} s, so this export stopped. ${next}`)
   if (!owner || owner.exitCode != null || owner.signalCode != null) job.processing?.acknowledge()
+  if (owner) retireWorker(owner)
 }
 
 /**
@@ -161,7 +312,7 @@ export function failStalledWorkerJob(job, failJob, now = workerClock()) {
  * real hang still fails within one limit plus the stall time) and the next batch gap counts the
  * worker's time without the server's. Stamps never move past now.
  */
-export function createWorkerWatchdog({ jobs, failJob, clock = workerClock, interval = WORKER_CHECK_MS }) {
+export function createWorkerWatchdog({ jobs, failJob, retireWorker, clock = workerClock, interval = WORKER_CHECK_MS }) {
   let last = clock()
   return function check() {
     const now = clock()
@@ -174,6 +325,6 @@ export function createWorkerWatchdog({ jobs, failJob, clock = workerClock, inter
       }
     }
     last = now
-    for (const job of stalledWorkerJobs(jobs(), now)) failStalledWorkerJob(job, failJob, now)
+    for (const job of stalledWorkerJobs(jobs(), now)) failStalledWorkerJob(job, failJob, now, { retireWorker })
   }
 }

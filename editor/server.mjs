@@ -24,7 +24,7 @@ import { storeMediaUpload } from './core/media-upload.mjs'
 import { colorCapabilities } from './routes/color.mjs'
 import { createProcessingAdmission, captureProcessingIdentity, processingCancelled } from './core/processing-admission.mjs'
 import { runProcessingProcess } from './core/processing-process.mjs'
-import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, processingWorkerConnected, retireProcessingWorkerClients, createWorkerWatchdog, noteWorkerActivity, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
+import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, createProcessingWorkerHost, workerClosedMessage, createWorkerWatchdog, noteWorkerActivity, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
 import { validateExportSpec } from './core/processing-export.js'
 import { ProjectRecovery, recoveryProject } from './core/project-recovery.mjs'
 import { runRecoveryJournal } from './core/project-recovery-bridge.mjs'
@@ -685,38 +685,33 @@ async function transcribe(rel) {
 
 // ---------------------------------------------------------------- render worker (headless Chrome)
 
+// The host starts the worker Chrome, replaces one that cannot serve (never connected, page closed,
+// stalled or stopping) and refuses pages from a process it has replaced. See processing-worker.mjs.
+const workerHost = createProcessingWorkerHost({
+  launch: token => spawn(CHROME, [
+    '--headless=new', '--use-angle=metal', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required',
+    '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--mute-audio', '--no-first-run',
+    `--user-data-dir=${path.join(DOT, 'chrome')}`, '--window-size=1280,800', `http://127.0.0.1:${PORT}/?worker=1&id=${token}`,
+  ], { stdio: 'ignore' }),
+  clients, log,
+  onChange: value => { worker = value },
+  onExit: ownedWorker => acknowledgeProcessingWorkerExit(jobs.values(), ownedWorker, failJob),
+  onLost: ownedWorker => acknowledgeProcessingWorkerExit(jobs.values(), ownedWorker, failJob, workerClosedMessage),
+})
+
 function workerConnected() {
-  return processingWorkerConnected(worker, clients)
+  return workerHost.connected()
 }
 
-async function ensureWorker(signal) {
-  const until = Date.now() + 20000
-  while (!workerConnected()) {
-    if (signal?.aborted) throw processingCancelled()
-    if (!worker) {
-      log('starting the render worker')
-      worker = spawn(CHROME, [
-        '--headless=new', '--use-angle=metal', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required',
-        '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--mute-audio', '--no-first-run',
-        `--user-data-dir=${path.join(DOT, 'chrome')}`, '--window-size=1280,800', `http://127.0.0.1:${PORT}/?worker=1`,
-      ], { stdio: 'ignore' })
-      const ownedWorker = worker
-      ownedWorker.on('exit', () => {
-        retireProcessingWorkerClients(clients, ownedWorker)
-        if (worker === ownedWorker) worker = null
-        acknowledgeProcessingWorkerExit(jobs.values(), ownedWorker, failJob)
-      })
-    }
-    if (Date.now() > until) throw new Error('the render worker did not start')
-    await new Promise(r => setTimeout(r, 150))
-  }
+function ensureWorker(signal) {
+  return workerHost.ensure(signal)
 }
 
 function touchWorker() {
   clearTimeout(workerIdleTimer)
   workerIdleTimer = setTimeout(() => {
     if (processing.snapshot().active || [...jobs.values()].some(j => j.state === 'running' || j.state === 'queued')) return touchWorker()
-    if (worker) { worker.processingStopping = true; worker.kill() }
+    workerHost.retire(worker, 'idle for 5 minutes')
   }, 5 * 60 * 1000)
 }
 
@@ -1368,7 +1363,7 @@ async function handleJobUpload(req, res, url) {
 }
 
 // A hung render worker would otherwise hold the export queue forever (limits in processing-worker.mjs).
-setInterval(createWorkerWatchdog({ jobs: () => jobs.values(), failJob }), WORKER_CHECK_MS).unref()
+setInterval(createWorkerWatchdog({ jobs: () => jobs.values(), failJob, retireWorker: ownedWorker => workerHost.retire(ownedWorker, 'its job stalled') }), WORKER_CHECK_MS).unref()
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
@@ -1394,9 +1389,13 @@ const server = http.createServer(async (req, res) => {
   }
   try {
     if (url.pathname === '/api/events') {
+      const role = url.searchParams.get('role') ?? 'ui'
+      // A page of a worker Arya has replaced must not serve the new worker's jobs. 204 tells its
+      // EventSource to stop reconnecting.
+      if (role === 'worker' && !workerHost.accepts(url.searchParams.get('worker'))) { res.writeHead(204, { 'cache-control': 'no-store' }); return res.end() }
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
-      const client = { res, role: url.searchParams.get('role') ?? 'ui' }
-      if (client.role === 'worker') client.worker = worker
+      const client = { res, role }
+      if (client.role === 'worker') workerHost.attach(client)
       clients.add(client)
       res.write(`event: hello\ndata: ${JSON.stringify({ version, role: client.role })}\n\n`)
       if (client.role === 'ui') {
@@ -1410,6 +1409,8 @@ const server = http.createServer(async (req, res) => {
       req.on('close', () => {
         clearInterval(ping)
         clients.delete(client)
+        // A worker whose page stays away for 5 s has lost it: its jobs fail and it is replaced.
+        workerHost.detached(client)
       })
       if (client.role === 'worker' && workerConnected() && client.worker === worker) {
         for (const job of jobs.values()) if (job.processing?.dispatched && !job.processing.drained && job.state === 'queued') res.write(`event: render\ndata: ${JSON.stringify(job.processing.payload)}\n\n`)

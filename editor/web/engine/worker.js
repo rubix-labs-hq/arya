@@ -303,7 +303,10 @@ export function startWorker() {
     if (scope) void drained(scope)
   })
 
-  const es = new EventSource('/api/events?role=worker')
+  // The server starts this page with ?worker=1&id=TOKEN and accepts only its current worker's token,
+  // so a page left over from a replaced browser cannot take the new worker's jobs.
+  const workerID = new URLSearchParams(globalThis.location?.search ?? '').get('id')
+  const es = new EventSource(`/api/events?role=worker${workerID ? `&worker=${encodeURIComponent(workerID)}` : ''}`)
   es.addEventListener('render', e => {
     const data = JSON.parse(e.data)
     enqueue(data)
