@@ -126,3 +126,21 @@ test('inherited object names such as constructor are not compositions', async ()
   assert.throws(() => routes['POST /api/ui/show']({ comp: 'constructor' }), /No composition constructor/)
   assert.throws(() => routes['GET /api/describe'](null, new URLSearchParams('comp=toString')), /no composition toString/)
 })
+
+test('a title line gives the shadow values and names the units, and a position is given against the frame', () => {
+  const p = newProject('units', { width: 1080, height: 1920, fps: 30 })
+  const made = applyOps(p, [
+    { op: 'add_title', track: 'V2', start: 0, dur: 2, title: { text: 'RENT', size: 120, stroke: { color: '#101010', width: 3 }, shadow: { color: '#000000B3', blur: 20, x: 0, y: 6 } } },
+    { op: 'add_title', track: 'V2', start: 2, dur: 2, title: { text: 'HOMES', size: 120, shadow: {} } },
+    { op: 'add_title', track: 'V2', start: 4, dur: 2, title: { text: 'PLAIN', size: 96 } },
+  ]).project
+  const titles = made.tracks.find(track => track.id === 'V2').clips, ids = titles.map(clip => clip.id)
+  titles[0].y = 400; titles[1].x = 300; delete titles[2].title.shadow
+  const text = describeRequest(made, { ids })
+  // Two shadows that differ can be told apart.
+  assert.match(text, /Title: "RENT"; .*size 120,.*stroke #101010 3, shadow #000000B3 blur 20 x 0 y 6, animation rise \(size, stroke and shadow are in units of 1\/1080 of the frame height\)/)
+  assert.match(text, /Title: "HOMES"; .*shadow #000000aa blur 12 x 0 y 4,/, 'an empty shadow is drawn with the renderer defaults, so they are named')
+  assert.doesNotMatch(text.split('\n').find(line => line.includes('"PLAIN"')), /shadow #/)
+  assert.match(text, /Transform: y 400 of 1920/); assert.match(text, /Transform: x 300 of 1080/)
+  assert.doesNotMatch(text.split('\n').filter(line => /Title:|Transform:/.test(line)).join('\n'), / px/)
+})

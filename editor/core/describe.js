@@ -76,8 +76,9 @@ function keyframeLine(p, c, prop, keys, fps) {
 
 function transformLine(p, c, view) {
   const parts = []
-  if (typeof c.x === 'number' && round(c.x, 2) !== round(view.width / 2, 2)) parts.push(`x ${num(c.x)} px`)
-  if (typeof c.y === 'number' && round(c.y, 2) !== round(view.height / 2, 2)) parts.push(`y ${num(c.y)} px`)
+  // x and y are in the open timeline's own frame, whatever size a frame is rendered at.
+  if (typeof c.x === 'number' && round(c.x, 2) !== round(view.width / 2, 2)) parts.push(`x ${num(c.x)} of ${num(view.width)}`)
+  if (typeof c.y === 'number' && round(c.y, 2) !== round(view.height / 2, 2)) parts.push(`y ${num(c.y)} of ${num(view.height)}`)
   if (typeof c.scale === 'number' && c.scale !== 1) parts.push(`scale ${num(c.scale * 100)}%`)
   if (typeof c.scaleX === 'number' && c.scaleX !== 1) parts.push(`stretch x ${num(c.scaleX * 100)}%`)
   if (typeof c.scaleY === 'number' && c.scaleY !== 1) parts.push(`stretch y ${num(c.scaleY * 100)}%`)
@@ -149,10 +150,20 @@ function mixLines(p, scope) {
   return lines
 }
 
+// The values the renderer draws a title shadow with (web/engine/media.js drawTitle). It draws
+// one only when title.shadow is an object.
+function shadowText(shadow) {
+  if (!shadow) return ''
+  if (typeof shadow !== 'object') return 'shadow not drawn (title.shadow must be an object with color, blur, x and y)'
+  return `shadow ${shadow.color ?? '#000000aa'} blur ${num(shadow.blur ?? 12)} x ${num(shadow.x ?? 0)} y ${num(shadow.y ?? 4)}`
+}
+
 function titleLine(t) {
   if (!t) return ''
-  const style = list([t.font, t.weight && `weight ${t.weight}`, typeof t.size === 'number' && `size ${num(t.size)}`, t.color, t.align && `${t.align} aligned`, t.plate && `plate ${t.plate}`, t.stroke && `stroke ${t.stroke.color ?? ''} ${num(t.stroke.width ?? 0)} px`.trim(), t.shadow && 'shadow', t.anim && t.anim !== 'none' && `animation ${t.anim}`])
-  return `${quote(t.text)}${style ? `; ${style}` : ''}`
+  const style = list([t.font, t.weight && `weight ${t.weight}`, typeof t.size === 'number' && `size ${num(t.size)}`, t.color, t.align && `${t.align} aligned`, t.plate && `plate ${t.plate}`, t.stroke && `stroke ${t.stroke.color ?? ''} ${num(t.stroke.width ?? 0)}`.trim(), shadowText(t.shadow), t.anim && t.anim !== 'none' && `animation ${t.anim}`])
+  // The renderer multiplies size, stroke and shadow by frame height / 1080 (web/engine/frame.js).
+  const units = typeof t.size === 'number' || t.stroke || t.shadow ? ' (size, stroke and shadow are in units of 1/1080 of the frame height)' : ''
+  return `${quote(t.text)}${style ? `; ${style}${units}` : ''}`
 }
 
 function shapeLine(s) {
