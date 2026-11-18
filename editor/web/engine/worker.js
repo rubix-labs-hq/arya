@@ -157,10 +157,16 @@ export function startWorker() {
     return result
   }
 
-  const post = (scope, url, body, type = 'application/octet-stream') => scope.wait(() => fetch(url, { method: 'POST', body, headers: { 'content-type': type }, signal: scope.controller.signal })).then(r => {
-    if (!r.ok) throw new Error(`${url} → ${r.status}`)
-
-    return r
+  // Every server answer is no-store, and Chrome keeps a request with its upload body until that
+  // answer has been read. Unread answers held about two copies of each 25 MB frame batch, and the
+  // page died after 8.4 GB of uploads (frame 1014 of a 1080x1920 export). Read every answer.
+  const post = (scope, url, body, type = 'application/octet-stream') => scope.wait(async () => {
+    const r = await fetch(url, { method: 'POST', body, headers: { 'content-type': type }, signal: scope.controller.signal })
+    if (!r.ok) {
+      try { await r.arrayBuffer?.() } catch {}
+      throw new Error(`${url} → ${r.status}`)
+    }
+    await r.arrayBuffer()
   })
 
   function retire(scope) {
@@ -204,8 +210,13 @@ export function startWorker() {
     const controller = new AbortController()
     let timer
     const timeout = new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('Worker notification timed out')) }, 2000) })
-    try { return await Promise.race([fetch(url, { method: 'POST', body, signal: controller.signal }), timeout]) }
-    catch { return null }
+    try {
+      return await Promise.race([(async () => {
+        const r = await fetch(url, { method: 'POST', body, signal: controller.signal })
+        await r.arrayBuffer?.()
+        return r
+      })(), timeout])
+    } catch { return null }
     finally { clearTimeout(timer) }
   }
 
