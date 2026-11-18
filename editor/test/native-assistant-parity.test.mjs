@@ -100,6 +100,8 @@ test('a stopped native request that changed nothing says so', () => {
   const record = between(app, '    func recordRunChange(', '\n    }\n')
   assert.ok(record.indexOf('lastRunEdited = nil') < record.indexOf('guard let baseline'), 'an unknown run is not reported as unchanged')
   assert.match(record, /lastRunEdited = version > baseline\.version/)
+  // Undo then Redo in one request leaves the project as it was, so there is no change to undo.
+  assert.match(record, /guard version > baseline\.version, let after = await backend\.currentProject\(\), after != baseline\.project else \{ return \}/)
   assert.match(panel, /let stoppedNote = assistant\.lastRunEdited == false \? "Nothing was changed\." : "Review or undo any committed edits\."/)
   assert.match(panel, /stopped \? stoppedNote : ""/)
   assert.match(panel, /assistant\.state == "cancelled" \? "Stopped\. \\\(stoppedNote\)"/)

@@ -3435,7 +3435,8 @@ extension NativeAssistant {
         runBaseline = nil
         let version = await backend.currentVersion()
         lastRunEdited = version > baseline.version
-        guard version > baseline.version, let after = await backend.currentProject() else { return }
+        // A request whose Undo and Redo presses cancel out leaves nothing to undo.
+        guard version > baseline.version, let after = await backend.currentProject(), after != baseline.project else { return }
         let owners = await backend.commitOwners(after: baseline.version)
         // A request that only pressed Undo or Redo is a history move, and undoing it moves back the same way.
         let moves = await backend.historyMoves(after: baseline.version) ?? []

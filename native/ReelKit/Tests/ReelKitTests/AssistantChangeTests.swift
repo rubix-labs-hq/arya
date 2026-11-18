@@ -135,6 +135,33 @@ final class AssistantChangeTests: XCTestCase {
         XCTAssertEqual(redone, third, "both Redo steps survive")
     }
 
+    /// A request that pressed Undo and then Redo ends where it began. "Undo this change" then has
+    /// nothing to restore, so it must not commit an identical project as a new edit.
+    func testRestoringAnUndoThenRedoRequestChangesNothing() async throws {
+        func current() async throws -> String { let project = await backend.currentProject(); return try XCTUnwrap(project) }
+        let first = try await current()
+        _ = try await call("POST", "/api/ops", JSON.object([("ops", .array([.object([("op", "update"), ("id", "c1"), ("set", .object([("opacity", 0.5)]))])])), ("who", "agent")]).text)
+        let second = try await current()
+        let base = await backend.currentVersion()
+        _ = try await backend.handleAssistant(method: "POST", path: "/api/undo", body: #"{"who":"agent"}"#)
+        _ = try await backend.handleAssistant(method: "POST", path: "/api/redo", body: #"{"who":"agent"}"#)
+        let moves = await backend.historyMoves(after: base)
+        XCTAssertEqual(moves, ["undo", "redo"])
+        let after = try await current()
+        XCTAssertEqual(after, second)
+        let before = await backend.currentVersion()
+        let restored = try await backend.restoreAssistantChange(second, expected: after, line: "Undo assistant change", historyMove: true)
+        XCTAssertEqual(restored, before, "nothing is committed")
+        let version = await backend.currentVersion()
+        XCTAssertEqual(version, before)
+        _ = try await call("POST", "/api/undo", "{}")
+        let undone = try await current()
+        XCTAssertEqual(undone, first, "Undo history is as it was")
+        _ = try await call("POST", "/api/redo", "{}")
+        let redone = try await current()
+        XCTAssertEqual(redone, second, "and so is Redo")
+    }
+
     func testHistoryChangeTitlesCountTheNetMove() {
         XCTAssertEqual(ReelBackend.historyChangeTitle(moves: ["undo"]), "Undid 1 edit")
         XCTAssertEqual(ReelBackend.historyChangeTitle(moves: ["undo", "undo", "undo", "redo"]), "Undid 2 edits")

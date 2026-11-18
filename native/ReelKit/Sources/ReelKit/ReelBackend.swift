@@ -260,6 +260,8 @@ public actor ReelBackend {
     /// back. Otherwise the restore is one new undoable edit.
     public func restoreAssistantChange(_ snapshot: String, expected: String, line: String, historyMove: Bool = false) throws -> Int {
         guard let current = project, current == expected else { throw APIError("The project changed after this assistant change. Use Undo step by step.") }
+        // Undo and Redo presses that cancel out leave the project as it was: nothing to restore.
+        if snapshot == current { return version }
         if let index = future.lastIndex(of: snapshot) {
             try commit(snapshot, who: "you", lines: [line], history: false, move: "redo")
             // Every project redone on the way goes back to Undo history, as that many presses of Redo would.
