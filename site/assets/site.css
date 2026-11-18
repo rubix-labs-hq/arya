@@ -54,7 +54,7 @@ main:focus-visible,section[tabindex="-1"]:focus-visible{outline:0}
 
 /* Home hero: product, launch actions and real editor captures */
 .hero{padding:clamp(24px,3vw,44px) 0 clamp(44px,5.5vw,80px)}
-.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,40%);gap:24px clamp(24px,4vw,64px);align-items:end}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(480px,40%);gap:24px clamp(24px,4vw,64px);align-items:end}
 .hero h1{font-size:clamp(38px,4.9vw,70px);letter-spacing:-.04em;line-height:1.02}
 .hero h1 em{display:block;margin-top:.28em;font-size:.75em;letter-spacing:-.015em}
 .hero .lead{margin:0 0 22px;color:var(--soft)}
@@ -142,7 +142,7 @@ main:focus-visible,section[tabindex="-1"]:focus-visible{outline:0}
 .plate-mac-media-panel .plate-frame{border-radius:10px 10px 0 0}
 .plate-mac-media-panel figcaption{margin:0}
 .plate-iphone-deliver{width:302px;max-width:100%}
-/* The launch film: one wide player under the hero. It plays only when the visitor starts it */
+/* The launch film: one wide player after the assistant section. It plays only when the visitor starts it */
 .launch-film{padding:clamp(48px,6vw,96px) 0;border-top:1px solid var(--line)}
 .launch-film-figure{margin:0}
 .launch-film video{display:block;width:100%;height:auto;aspect-ratio:16/9;border-radius:6px;background:#151615;box-shadow:0 0 0 1px #ffffff1f}
@@ -338,8 +338,10 @@ td{color:var(--soft)}
 .edition p,.download-help p{margin:0;color:var(--paper-text)}
 .edition .edition-meta{font-size:14px;color:var(--paper-muted)}
 #release-action:empty,#mobile-action:empty{display:none}
-/* Side by side, the three editions share their rows, so the buttons sit on one line */
-@media(min-width:961px){.edition-grid{grid-template-rows:repeat(6,auto)}.edition{grid-row:span 6;grid-template-rows:subgrid}}
+/* What follows the button belongs to its own card: an opened disclosure moves nothing in the other cards */
+.edition-more{display:grid;justify-items:start;align-content:start;align-self:start;gap:10px;width:100%}
+/* Side by side, the three editions share their first rows, so the buttons sit on one line */
+@media(min-width:961px){.edition-grid{grid-template-rows:repeat(5,auto)}.edition{grid-row:span 5;grid-template-rows:subgrid}}
 .download-details{align-self:start;width:100%;font-size:15px;color:var(--paper-text)}
 .download-details summary{min-height:44px;padding:9px 0;font-weight:650;cursor:pointer}
 .download-details p{margin:0 0 10px}
@@ -399,6 +401,13 @@ td{color:var(--soft)}
   .page-rail a{flex:1 1 0;justify-content:center;min-width:44px;border-bottom:0}
   .hero-grid{grid-template-columns:minmax(0,1fr);gap:18px}
   .hero .lead{max-width:34em}
+}
+
+/* The closing copy keeps a readable column: the three buttons sit under it until there is room beside it */
+@media(max-width:1279px){
+  .closing{grid-template-columns:minmax(0,1fr)}
+  .closing-actions{justify-content:flex-start}
+  .closing-meta{max-width:60em}
 }
 
 /* Navigation collapses before the links crowd the header */
@@ -504,4 +513,8 @@ td{color:var(--soft)}
 @media(max-width:380px){
   .header-inner .brand img{width:76px;height:auto}
   .header-inner .header-download,.menu-button{padding-inline:10px}
+}
+/* The six page names keep a gap between them on the narrowest phones */
+@media(max-width:359px){
+  .page-rail a{font-size:13px}
 }

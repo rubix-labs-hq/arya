@@ -51,13 +51,15 @@ const macStoreLine = scope.macStore && !macStoreSame ? `<p class="edition-meta" 
 const storeDetails = pro
   ? `<details class="download-details"><summary>Export formats and purchase options</summary><p>${proCopy.free} ${proCopy.adds}</p><p>${[scope.universal, proCopy.plans].filter(Boolean).join(' ')}</p><p>Open <strong>Arya Pro</strong> in Settings for purchase options or choose <strong>Restore Purchases</strong>.</p><p>${proCopy.early}</p></details>`
   : '';
+// Each edition card has four shared rows (name, version, summary, button). Everything after the
+// button goes in .edition-more, so opening a disclosure in one card moves nothing in the others.
 const mobileSection = `<section class="edition" aria-labelledby="mobile">
 <h2 id="mobile">App Store</h2>
 <p class="edition-meta">${mobilePlatforms}${mobileReady ? ` · Version ${esc(mobileVersion)}` : ''}</p>
 <p>${mobileReady ? (pro ? `${scope.store} ${proCopy.direct}` : 'Free to edit and export. Optional tips support development.') : (mobileVersion ? `Version ${esc(mobileVersion)}${mobileBuild} is waiting for App Review. It will be free to download once approved.` : 'Public downloads are coming later.')}</p>
 <div id="mobile-action">${mobileReady ? button(esc(mobileURL), 'Download on the App Store', 'secondary') : ''}</div>
-${storeDetails}
-${macStoreLine}
+${storeDetails || macStoreLine ? `<div class="edition-more">${storeDetails}
+${macStoreLine}</div>` : ''}
 </section>`;
 const mobileRoadmapStatus = mobileReady
   ? `Arya ${esc(mobileVersion)} is available on the App Store as a free download.${pro ? ` ${scope.store}` : ''}`
@@ -115,13 +117,13 @@ const download = `<section class="page-hero download-hero"><div class="wrap">
 <p class="edition-meta" id="release-state" role="status">${releaseStatus}</p>
 <p id="release-description">${releaseDescription}</p>
 <div id="release-action">${releaseReady ? button(esc(releaseURL), 'Download Arya for Mac') : ''}</div>
-<p class="edition-meta" id="requirements">${esc(config.release.minimumOS)} or later · ${esc(config.release.architectures)}</p>
+<div class="edition-more"><p class="edition-meta" id="requirements">${esc(config.release.minimumOS)} or later · ${esc(config.release.architectures)}</p>
 <details class="download-details" id="release-details"${releaseReady ? '' : ' hidden'}>
 <summary>Download details and checksum</summary>
 <p>Signed and notarized DMG<span id="release-size">${config.release.size ? ` · ${esc(config.release.size)}` : ''}</span>.</p>
 <p>SHA-256 <code class="hash" id="release-checksum">${releaseReady ? esc(config.release.sha256) : ''}</code></p>
 ${releaseReady && publicSource ? `<p><a href="${esc(publicSource)}/releases/tag/v${esc(config.release.version)}" rel="noopener noreferrer">Release notes for v${esc(config.release.version)}</a></p>` : ''}
-</details>
+</details></div>
 </section>
 ${mobileSection}
 ${browserEditor ? `<section class="edition" aria-labelledby="browser">
@@ -129,10 +131,10 @@ ${browserEditor ? `<section class="edition" aria-labelledby="browser">
 <p class="edition-meta">Chrome and Edge · No install</p>
 <p>Free editing and export. Supports H.264, HEVC, WAV and AAC exports up to five minutes. No assistant, Figma import or transcription.</p>
 ${button(browserEditor, 'Open browser editor', 'secondary')}
-<details class="download-details"><summary>Browser storage and limits</summary>
+<div class="edition-more"><details class="download-details"><summary>Browser storage and limits</summary>
 <p>Projects stay in this browser profile. Export a <code>.arya</code> backup before clearing site data or switching browsers.</p>
 <p>The hosted editor does not include the AI assistant, Figma import, transcription, captions, audio cleanup, or FCPXML and OTIO interchange.</p>
-</details></section>` : ''}
+</details></div></section>` : ''}
 </div>
 ${releaseReady ? '' : accessBlock}
 <div class="download-help" id="installation"><div><h2>Install and get started</h2><p>Verify the Mac download, set up a project or connect an assistant.</p></div>${button('/install/', 'Read the installation guide', 'secondary')}</div>
