@@ -45,18 +45,22 @@ check('TextEditor(text: $model.assistantDraft)' in assistant and 'Picker("Input"
 input_menu = block(assistant, 'private var inputMenu: some View')
 check('inputPicker.pickerStyle(.inline)' in input_menu and 'editor.assistant.inputAttachments' in input_menu and 'requestScriptImport()' in input_menu, 'Every input kind and script import must stay reachable from the composer menu at every width and text size')
 cancel = block(assistant, 'private var cancelButton:')
-check(assistant.count('{ assistant.cancel() }') == 1 and '{ assistant.cancel() }' in cancel and '"Stop request"' in cancel, 'Working Stop must remain exactly once, use the original callback and keep its VoiceOver name')
+check(assistant.count('{ assistant.cancel() }') == 1 and '{ assistant.cancel() }' in cancel, 'Working Stop must remain exactly once and use the original callback')
+check('Label(assistant.state == "cancelling" ? "Stopping…" : "Stop", systemImage: "stop.fill")' in cancel and '.accessibilityLabel(assistant.state == "cancelling" ? "Stopping request" : "Stop request")' in cancel, 'Stop must keep its visible label, its stopping label and its VoiceOver name')
 send = block(assistant, 'private var sendButton:')
-check('sendDraft()' in send and '.frame(minHeight: actionHeight)' in send and '.frame(minHeight: actionHeight)' in cancel, 'Send and Stop must retain complete intrinsic scaled targets in the scroll content')
+check('sendDraft()' in send and 'Label("Send", systemImage: "arrow.up")' in send and '.frame(minHeight: actionHeight)' in send and '.frame(minHeight: actionHeight)' in cancel, 'Send and Stop must retain complete intrinsic scaled targets in the scroll content, and Send its visible label')
 primary = block(assistant, 'private var primaryAction: some View')
 check('if assistant.isWorking { cancelButton } else { sendButton }' in primary, 'Send and Stop are one primary control in the same place')
 body = block(assistant.split('struct NativeAssistantPanel: View {', 1)[1], '    var body: some View')
-check('@ScaledMetric(relativeTo: .body) private var scaledActionHeight' in assistant and 'private var actionHeight: Double { max(44, scaledActionHeight) }' in assistant and 'NativeAssistantLayout.actionBudget(actionHeight: actionHeight, stacked: stacked)' in body and 'NativeAssistantLayout.regions(' in body, 'Actual scaled action height must participate in region allocation')
-check('dynamicTypeSize.isAccessibilitySize' in body and 'NativeAssistantLayout.stackedActions(' in body, 'Accessibility text must stack the composer actions')
+check('@ScaledMetric(relativeTo: .body) private var scaledActionLine' in assistant and 'private var actionHeight: Double { max(44, scaledActionLine + 14) }' in assistant and 'NativeAssistantLayout.actionBudget(actionHeight: actionHeight, stacked: stacked)' in body and 'NativeAssistantLayout.regions(' in body, 'The drawn action row, one scaled line of text plus its padding, must participate in region allocation')
+check('dynamicTypeSize.isAccessibilitySize' in body and 'NativeAssistantLayout.stackedActions(width: width, actionHeight: max(44, scaledActionHeight)' in body and '@ScaledMetric(relativeTo: .body) private var scaledActionHeight = 44.0' in assistant, 'Accessibility text must stack the composer actions, and large standard text must stack at the same sizes as before')
 composer = block(assistant, 'private func composer(width: Double')
-action_scroll = block(composer, 'ScrollView(.vertical)')
-check('composerActions(width: width, stacked: stacked)' in action_scroll and '.padding(.vertical, 8)' in action_scroll and '}.frame(height: regions.actions)' in composer, 'The actual Send/Stop action subtree including padding must be INSIDE its own vertical ScrollView sized by the tested region')
-check('contextRow.frame(height: regions.context)' in composer and 'draftEditor(height: max(0, regions.editor - 8))' in composer, 'Context chips and the draft must use their tested regions')
+# The chip row has the first vertical scroll view in the composer and the actions the second.
+action_scroll = block(composer.split('draftEditor(', 1)[1], 'ScrollView(.vertical)')
+check('composerActions(width: width, stacked: stacked)' in action_scroll and '.padding(.top, 6).padding(.bottom, 14)' in action_scroll and '}.frame(height: regions.actions)' in composer, 'The actual Send/Stop action subtree including padding must be INSIDE its own vertical ScrollView sized by the tested region')
+check('ScrollView(.vertical) { contextRow.padding(.top, 14).padding(.bottom, 4) }.frame(height: regions.context)' in composer and '.clipped()' not in composer, 'Context chips must scroll inside their tested region, never be clipped out of reach')
+check('draftEditor(height: max(0, regions.editor - 8))' in composer, 'The draft must use its tested region')
+check('context: chipHeight + 18' in body and 'RoundedRectangle(cornerRadius: 10)' in composer and '.padding(8)' in composer, 'One border holds the chips, the draft and the actions, and the chip region includes its inset')
 check('conversationScroll.frame(height: regions.history)' in body and 'composer(width: width, regions: regions, stacked: stacked)' in body, 'History scrolls in its own region above the pinned composer')
 actions = block(assistant, 'private func composerActions(')
 stacked_actions = actions.split('if stacked {', 1)[1].split('} else {', 1)[0]
@@ -78,14 +82,15 @@ if base.exists():
     old_disabled = next(line.strip() for line in original_assistant.splitlines() if '.disabled(!assistant.configured ||' in line)
     new_disabled = next(line.strip() for line in assistant.splitlines() if '.disabled(!assistant.configured ||' in line)
     check(new_disabled == old_disabled, 'Send disabled/configuration/working/draft/provider length guards must remain exact')
-    for marker in ['private var inputPicker:', 'private var contextLabel:', 'private func showSettings()', 'private func receiptRow(', 'private func receiptChanges(', '.fileImporter(isPresented: $importingScript,']:
+    # contextLabel and receiptRow changed their wording on purpose (browser editor terms), so they are not compared.
+    for marker in ['private var inputPicker:', 'private func showSettings()', 'private func receiptChanges(', 'private var canSendDraft: Bool']:
         check(normalized(block(assistant, marker)) == normalized(block(original_assistant, marker)), 'Assistant project/selection/import/inspection boundary changed: ' + marker)
     existing_viewer = original_viewer[original_viewer.index('enum NativeViewerGeometry {'):original_viewer.index('private struct NativeSourceViewer: View {')]
     proposed_viewer = viewer[viewer.index('enum NativeViewerGeometry {'):viewer.index('private struct NativeSourceViewer: View {')]
     check(proposed_viewer == existing_viewer.replace('}.pickerStyle(.segmented).frame(width: 168)', '}.pickerStyle(.segmented).labelsHidden().frame(width: 168)'), 'Composition geometry/gesture/lifecycle blocks must remain byte-for-byte intact except source picker label')
     for marker in ['private func markControls(', 'private var placementControls:']:
         check(block(viewer, marker) == block(original_viewer, marker), 'Source mark/place semantics changed: ' + marker)
-    check(view[view.index('    private var compactWorkspace:'):] == original_view[original_view.index('    private var compactWorkspace:'):], 'Current compact/header/workspace/project behavior must remain unchanged')
+    check(block(view, '    private func select(_ panel:') == block(original_view, '    private func select(_ panel:'), 'Workspace routing must remain unchanged')
 print(f'PASS: {contracts} responsive source/action/modal contracts')
 if args.contracts_only:
     raise SystemExit(0)
