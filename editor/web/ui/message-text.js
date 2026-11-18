@@ -7,9 +7,23 @@ const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&
 const escape = value => String(value).replace(/[&<>"']/g, character => ESCAPES[character])
 const MARK = '\u0000'
 
-// Absolute paths in the places a Mac keeps files, and a home-relative path.
-const LOCAL_PATH = /(^|[\s(\[{"'“‘=:*_|>])((?:~|\/(?:Users|Volumes|private|tmp|var|home|opt|Library|Applications|System))\/[^\s<>"'`)\]}”’]*)/g
+// Absolute paths in the places a Mac keeps files, and a home-relative path. Any character but a
+// word or path character may come before one, so "folder,/Users/..." is caught while the /tmp in
+// "docs/tmp/a.txt" or a web address is left alone.
+const LOCAL_PATH = /(?<![\w/.~\\])((?:~|\/(?:Users|Volumes|private|tmp|var|home|opt|Library|Applications|System))\/[^\s<>"'`)\]}”’]*)/g
 const TRAILING = /[.,;:!?]+$/
+const URL = /https:\/\/[^\s<>"'`\]}*\u0000]+/gi
+
+// A bare address keeps a closing bracket only when it opened one, as in /wiki/Name_(film).
+function trimURL(url) {
+  let link = url
+  for (;;) {
+    const tail = link.match(TRAILING)?.[0]
+    if (tail) link = link.slice(0, -tail.length)
+    else if (link.endsWith(')') && link.split('(').length < link.split(')').length) link = link.slice(0, -1)
+    else return link
+  }
+}
 
 function fileName(path) {
   const parts = path.replace(/\/+$/, '').split('/')
@@ -29,30 +43,31 @@ export function shortenPaths(text, root = '') {
     const literal = folder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     value = value.replace(new RegExp(`${literal}(?:\\/|(?=[\\s.,;:!?)\\]"'\`]|$))`, 'g'), match => match.endsWith('/') ? '' : 'the project folder')
   }
-  return value.replace(LOCAL_PATH, (match, before, path) => {
+  return value.replace(LOCAL_PATH, path => {
     const tail = path.match(TRAILING)?.[0] ?? ''
     const bare = tail ? path.slice(0, -tail.length) : path
-    return `${before}${fileName(bare)}${tail}`
+    return `${fileName(bare)}${tail}`
   })
 }
 
 function inline(text, root) {
   const held = []
   const hold = html => `${MARK}${held.push(html) - 1}${MARK}`
+  const restore = html => html.replace(new RegExp(`${MARK}(\\d+)${MARK}`, 'g'), (_, index) => held[Number(index)] ?? '')
+  const bold = html => html.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
   let value = String(text)
   // Code spans and links are set aside first, so bold and path rules never rewrite inside them.
   value = value.replace(/`([^`\n]+)`/g, (_, code) => hold(`<code>${escape(shortenPaths(code, root))}</code>`))
-  value = value.replace(/\[([^\]\n]{1,300})\]\(([^()\s]{1,2000})\)/g, (_, label, target) => {
-    const text = escape(shortenPaths(label, root))
+  // A label may hold a code span, which is put back inside the link. A target never holds one.
+  value = value.replace(/\[([^\]\n]{1,300})\]\(([^()\s\u0000]{1,2000})\)/g, (_, label, target) => {
+    const text = restore(bold(escape(shortenPaths(label, root))))
     return hold(/^https:\/\/[^\s]+$/i.test(target) ? `<a href="${escape(target)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text)
   })
-  value = value.replace(/https:\/\/[^\s<>"'`)\]}]+/gi, url => {
-    const tail = url.match(TRAILING)?.[0] ?? ''
-    const link = tail ? url.slice(0, -tail.length) : url
-    return `${hold(`<a href="${escape(link)}" target="_blank" rel="noopener noreferrer">${escape(link)}</a>`)}${tail}`
+  value = value.replace(URL, url => {
+    const link = trimURL(url)
+    return `${hold(`<a href="${escape(link)}" target="_blank" rel="noopener noreferrer">${escape(link)}</a>`)}${url.slice(link.length)}`
   })
-  value = escape(shortenPaths(value, root)).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
-  return value.replace(new RegExp(`${MARK}(\\d+)${MARK}`, 'g'), (_, index) => held[Number(index)] ?? '')
+  return restore(bold(escape(shortenPaths(value, root))))
 }
 
 const cells = line => {

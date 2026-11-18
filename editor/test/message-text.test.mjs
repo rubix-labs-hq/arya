@@ -62,6 +62,33 @@ test('half a streamed table or link stays text and never throws', () => {
   assert.ok(performance.now() - started < 1000)
 })
 
+const link = href => `<a href="${href}" target="_blank" rel="noopener noreferrer">`
+
+test('a link label may be a code span or bold, and no internal marker ever reaches the page', () => {
+  assert.equal(messageHTML('See [`notes.md`](https://example.com/notes) and [`out.mp4`](/Users/sample/proj/renders/out.mp4)', { root: '/Users/sample/proj' }),
+    `See ${link('https://example.com/notes')}<code>notes.md</code></a> and <code>out.mp4</code>`)
+  assert.equal(messageHTML('[**Read** this](https://example.com)'), `${link('https://example.com')}<b>Read</b> this</a>`)
+  const cases = ['[`a`](https://example.com/`b`)', 'https://example.com/`c`', '**https://example.com/a**', '[`x` and `y`](https://example.com)',
+    'Intro [`a link`](https://example.com/x) and `code` **bold https://example.com/y**']
+  for (const text of cases) for (let end = 0; end <= text.length; end++) {
+    const html = messageHTML(text.slice(0, end))
+    assert.doesNotMatch(html, /\u0000/, text.slice(0, end))
+    assert.doesNotMatch(html, /href="[^"]*[<*`]/, text.slice(0, end))
+  }
+})
+
+test('a bare address leaves out bold marks and an unopened bracket, and keeps one it opened', () => {
+  assert.equal(messageHTML('**https://example.com/a**'), `<b>${link('https://example.com/a')}https://example.com/a</a></b>`)
+  assert.equal(messageHTML('https://example.com/path_(x)'), `${link('https://example.com/path_(x)')}https://example.com/path_(x)</a>`)
+  assert.equal(messageHTML('(see https://example.com/a).'), `(see ${link('https://example.com/a')}https://example.com/a</a>).`)
+})
+
+test('a local path after a comma, semicolon or dash is shortened, while web addresses and relative paths stay', () => {
+  assert.equal(shortenPaths('Saved to folder,/Users/sample/secret/a.mov'), 'Saved to folder,a.mov')
+  assert.equal(shortenPaths('one;/tmp/sample/b.wav and two-~/Movies/c.mov'), 'one;b.wav and two-c.mov')
+  for (const text of ['http://example.com/Users/a/b', 'docs/tmp/a.txt', 'see ./Users/x/y.txt']) assert.equal(shortenPaths(text), text)
+})
+
 test('the chat renders reply text through the safe renderer with the project folder', () => {
   assert.equal(assistantPanel.messageHTML, messageHTML)
   const chat = readFileSync(new URL('../web/ui/chat.js', import.meta.url), 'utf8')
