@@ -17,6 +17,7 @@ const ROUTES = {
   'GET /api/caps': step('Checking what this editor can do', 'checked what this editor can do'),
   'GET /api/files': step('Listing project files', 'listed project files'),
   'GET /api/transcript': step('Reading the transcript', 'read the transcript'),
+  'POST /api/transcript/import': step('Saving a supplied transcript', 'saved a supplied transcript'),
   'GET /api/assistant/history': step('Reading earlier messages', 'read earlier messages'),
   'GET /api/jobs/wait': JOB_WAIT, 'GET /api/analysis/jobs/wait': JOB_WAIT, 'GET /api/video/jobs/wait': JOB_WAIT,
   'POST /api/export': step('Starting an export', 'started an export'),

@@ -6,14 +6,20 @@ import { buildShortsOps, captionItems, framingKeys, proposeShorts, subjectCenter
 import { guardedOutput } from '../core/output-path.js'
 import { findClip } from '../core/project.js'
 import { wavHasSignal } from '../core/wav-signal.mjs'
+import { MAX_TIMED_TRANSCRIPT_BYTES, parseTimedTranscript } from '../core/transcript-edit.js'
 
 const digest = value => createHash('sha256').update(value).digest('hex')
 const MAX_TRANSCRIPT_BYTES = 16 * 1024 * 1024
 const cancelled = () => { const error = new Error('cancelled'); error.name = 'AbortError'; return error }
 const check = signal => { if (signal?.aborted) throw cancelled() }
+const refused = (message, status = 409) => Object.assign(new Error(message), { status })
 // Saved with an empty transcript when the extracted audio never reaches -60 dBFS. whisper.cpp
 // answers digital silence with an invented word, so recognition is skipped for such a source.
 export const SILENT_SOURCE_WARNING = 'No audible audio in this clip. Its sound never reaches -60 dBFS, so speech recognition was not run.'
+// What to run when local transcription is unavailable. server.mjs sends these to the assistant.
+export const WHISPER_INSTALL_COMMAND = 'brew install whisper-cpp'
+export const WHISPER_MODEL_COMMAND = 'mkdir -p ~/.reel/models && curl -L -o ~/.reel/models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin'
+const IMPORT_FORMATS = ['srt', 'vtt', 'json']
 
 function sourceStamp(stat) {
   let seconds = stat.mtimeNs / 1000000000n, nanoseconds = stat.mtimeNs % 1000000000n
@@ -93,7 +99,9 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
   const model = () => (modelPaths ?? [processEnvModel(), path.join(globalThis.process.env.HOME ?? '', '.reel/models/ggml-base.bin'), path.join(globalThis.process.env.HOME ?? '', '.reel/models/ggml-base.en.bin'), '/opt/homebrew/share/whisper-cpp/ggml-base.bin', '/opt/homebrew/share/whisper-cpp/ggml-base.en.bin']).filter(Boolean).find(file => fs.existsSync(file) && fs.statSync(file).isFile())
   const capability = async () => {
     const binary = await findWhisper(), file = model()
-    return { available: Boolean(binary && file), durable: true, jobs: true, provider: 'whisper.cpp', onDevice: true, locales: file?.endsWith('.en.bin') ? ['en-US', 'en-GB'] : [], reason: !binary ? 'Install whisper.cpp to transcribe locally.' : !file ? 'Download a whisper.cpp model to ~/.reel/models/ggml-base.bin.' : undefined }
+    // install lists only what is missing. Both are looked up again on every call, so no restart is needed.
+    const install = [...(binary ? [] : [WHISPER_INSTALL_COMMAND]), ...(file ? [] : [WHISPER_MODEL_COMMAND])]
+    return { available: Boolean(binary && file), durable: true, jobs: true, provider: 'whisper.cpp', onDevice: true, locales: file?.endsWith('.en.bin') ? ['en-US', 'en-GB'] : [], reason: !binary ? 'Install whisper.cpp to transcribe locally.' : !file ? 'Download a whisper.cpp model to ~/.reel/models/ggml-base.en.bin.' : undefined, ...(install.length ? { install } : {}) }
   }
   const transcribe = async body => {
     const guard = captureProcessing?.() ?? {}
@@ -104,7 +112,7 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
     const startedMeanwhile = running.get(info.jobKey)
     if (startedMeanwhile) return body.wait === false ? publicJob(startedMeanwhile.job) : startedMeanwhile.promise
     if (!binary) throw new Error('Transcription needs whisper.cpp. Install whisper-cpp and a model first.')
-    if (!modelFile) throw new Error('Download a whisper.cpp model to ~/.reel/models/ggml-base.bin first.')
+    if (!modelFile) throw new Error('Download a whisper.cpp model to ~/.reel/models/ggml-base.en.bin first.')
     if (modelFile.endsWith('.en.bin') && !locale.toLowerCase().startsWith('en')) throw new Error('The installed English model only recognizes English. Install a multilingual whisper.cpp model for this language.')
     guard.assertCurrent?.(); assertCapacity?.()
     const job = newJob('transcript', { src: info.src, locale }), controller = new AbortController()
@@ -218,6 +226,26 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
       return { ...record, words: record.words.slice(offset, end), offset, totalWords, nextOffset: end < totalWords ? end : null }
     },
     save: body => save(source(body.src, cleanLocale(body.locale)), body.words, body.revision),
+    // The Transcript panel's import in one call: parseTimedTranscript, then the same save. The
+    // answer leaves the words out, because a long transcript is larger than a tool result may be.
+    importTimed: body => {
+      const call = assertPublication?.()
+      const format = String(body?.format ?? '').toLowerCase()
+      if (!IMPORT_FORMATS.includes(format)) throw refused('format must be srt, vtt or json.', 400)
+      if (typeof body.text !== 'string' || !body.text.trim()) throw refused('text must hold the whole SRT, WebVTT or timed JSON transcript as one string.', 400)
+      if (Buffer.byteLength(body.text) > MAX_TIMED_TRANSCRIPT_BYTES) throw refused('Choose a timed transcript smaller than 16 MB', 400)
+      if (body.revision !== undefined && (!Number.isSafeInteger(body.revision) || body.revision < 0)) throw refused('revision must be the revision GET /api/transcript returned.', 400)
+      const info = source(body.src, cleanLocale(body.locale)), previous = read(info)
+      const exists = !['missing', 'stale'].includes(previous.status)
+      // A saved transcript has no undo and no preview. A first import overwrites nothing.
+      if (exists && call?.review) throw refused('Preview changes is on, and replacing a saved transcript has no preview or undo. Tell the user what you would import, or ask them to turn off Preview changes.')
+      if (exists && body.revision === undefined) throw refused(`This source already has a saved transcript (revision ${previous.revision}, ${previous.words.length} words). Importing replaces all of it and cannot be undone. To replace it, send revision ${previous.revision}.`)
+      const parsed = parseTimedTranscript(body.text, `import.${format}`, info.duration)
+      // A stale record's words are already hidden, so the import starts a new hand-supplied transcript.
+      const stale = previous.status === 'stale'
+      const saved = save(info, parsed.words, body.revision, stale ? { provider: 'manual', onDevice: true, warnings: [] } : {}, stale)
+      return { saved: true, src: saved.src, locale: saved.locale, revision: saved.revision, status: saved.status, provider: saved.provider, replaced: exists, format: parsed.format, wordCount: saved.words.length, from: parsed.from, to: parsed.to, warnings: parsed.warnings }
+    },
     edit: body => {
       const result = transcriptDeleteOps(getProject(), body)
       if (body.apply) { checkVersion(body); return { ...result, ...apply(result.ops, 'Lifted the transcript passage from the selected clip') } }
@@ -266,6 +294,7 @@ function publicJob(job) {
 export default ctx => ({ routes: {
   'GET /api/transcript': ctx.transcripts.get,
   'POST /api/transcript': ctx.transcripts.save,
+  'POST /api/transcript/import': ctx.transcripts.importTimed,
   'POST /api/transcript/edit': ctx.transcripts.edit,
   'POST /api/shorts/propose': ctx.transcripts.propose,
   'POST /api/shorts/build': ctx.transcripts.build,
