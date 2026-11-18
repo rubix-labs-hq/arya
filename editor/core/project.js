@@ -499,8 +499,12 @@ function correctCaptionWords(c, set) {
  * Clears [from, to) on a track: trims, splits or removes what is there.
  * `split` is shared by every clearRange of one op: `reserved` holds ids of clips the op is
  * about to add, and `links` gives the tails of one split link group their own shared link.
+ *
+ * A part of a clip that would be kept but is shorter than half a frame is not kept: no frame can
+ * show it and the timeline cannot draw it.
  */
 function clearRange(p, track, from, to, created, split = { reserved: [], links: new Map() }) {
+  const tiny = halfFrame(p)
   const out = []
   for (const c of track.clips) {
     const end = clipEnd(c)
@@ -508,7 +512,9 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
       out.push(c)
       continue
     }
-    if (c.start < from && end > to) {
+    const head = c.start < from ? from - c.start : 0, rest = end > to ? end - to : 0
+    const keepHead = head >= tiny && head > 0, keepTail = rest >= tiny && rest > 0
+    if (keepHead && keepTail) {
       const tail = structuredClone(c)
       tail.id = nextId(p, 'c', [...split.reserved, ...out.map(x => x.id)])
       split.reserved.push(tail.id)
@@ -532,14 +538,15 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
       created?.push(tail.id)
       continue
     }
-    if (c.start < from) {
+    if (keepHead) {
       if (c.in !== undefined && backward(c)) c.in = round(c.in + (end - from) * (c.speed ?? 1))
       c.dur = round(from - c.start)
       boundCaptionWords(c, p.fps)
       out.push(c)
       continue
     }
-    if (end > to) {
+    if (keepTail) {
+      // The clip keeps its id, as it does when it starts exactly on the range.
       const cut = to - c.start
       if (c.in !== undefined && !backward(c)) c.in = round((c.in ?? 0) + cut * (c.speed ?? 1))
       shiftKeys(c, -cut)
@@ -555,6 +562,27 @@ function clearRange(p, track, from, to, created, split = { reserved: [], links: 
 
 function shiftAfter(track, from, delta, except) {
   for (const c of track.clips) if (c !== except && c.start >= from - 1e-6) c.start = round(Math.max(0, c.start + delta))
+}
+
+const halfFrame = p => p.fps > 0 ? 0.5 / p.fps : 0
+
+/**
+ * A range edge that falls less than half a frame inside a clip is moved onto that clip's edge.
+ * Clip times are rounded to 0.0001 s and range edges to the frame, so a range that starts on a
+ * clip's first frame can begin 0.00007 s after the clip starts. Cutting there would leave a part
+ * no frame shows, and closing the range would leave a hole of that length beside it.
+ */
+function rangeOnClipEdges(p, track, from, to) {
+  const tiny = halfFrame(p)
+  let start = from, end = to
+  for (const c of track.clips) {
+    const last = clipEnd(c)
+    if (c.start < from && last > from && from - c.start < tiny) start = c.start
+    if (last > to && c.start < to && last - to < tiny) end = last
+  }
+  // A range of no length stays one, on the clip edge beside it.
+  if (!(to > from)) return start < from ? [start, start] : [end, end]
+  return [start, end]
 }
 
 // Edge edits (trim, roll, slide) move clip edges by a delta d in timeline seconds. Bounds keep
@@ -1034,8 +1062,9 @@ export function applyOps(source, ops) {
         const split = { reserved: [], links: new Map() }
         for (const track of p.tracks) {
           if (track.locked || (op.tracks && !op.tracks.includes(track.id))) continue
-          clearRange(p, track, from, to, created, split)
-          if (op.ripple !== false) shiftAfter(track, to, -(to - from))
+          const [start, end] = rangeOnClipEdges(p, track, from, to)
+          clearRange(p, track, start, end, created, split)
+          if (op.ripple !== false) shiftAfter(track, end, -(end - start))
         }
         log.push(`removed ${round(from, 3)}–${round(to, 3)}s${op.ripple !== false ? ' (ripple)' : ''}`)
         break
