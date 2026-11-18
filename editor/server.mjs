@@ -1061,6 +1061,14 @@ const assistantService = createBrowserAssistant({
   },
   cancelJob: job => routes[`POST ${job.path}`]?.({ id: job.id }),
   jobState: job => job.path === '/api/jobs/cancel' ? jobs.get(job.id)?.state : routes[job.path === '/api/video/jobs/cancel' ? 'GET /api/video/jobs' : 'GET /api/analysis/jobs']?.().jobs.find(value => value.id === job.id)?.state,
+  // What a failed or cancelled job of an assistant request was and why it stopped, for the sentence
+  // the request ends with. Only the kind, the export file name and the error the job list already shows.
+  jobFailure: job => {
+    const result = job.path === '/api/jobs/cancel' ? jobs.get(job.id) : routes[job.path === '/api/video/jobs/cancel' ? 'GET /api/video/jobs' : 'GET /api/analysis/jobs']?.().jobs.find(value => value.id === job.id)
+    if (!result || !['failed', 'cancelled'].includes(result.state)) return undefined
+    const name = job.path === '/api/jobs/cancel' && result.kind === 'export' ? String(result.spec?.out ?? '').split(/[\\/]/).pop() : ''
+    return { kind: result.kind, ...(name ? { name } : {}), error: result.error }
+  },
   jobOutcome: job => {
     const result = job.path === '/api/jobs/cancel' ? jobs.get(job.id) : routes[job.path === '/api/video/jobs/cancel' ? 'GET /api/video/jobs' : 'GET /api/analysis/jobs']?.().jobs.find(value => value.id === job.id)
     return result ? { state: result.state, applied: result.applied, applyError: result.applyError, assetRegistered: result.assetRegistered } : undefined

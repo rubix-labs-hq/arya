@@ -280,7 +280,7 @@ async function terminalFixture(kind) {
   const cancelJobs = run => actualCancel(run, callbacks)
   const bindings = { assertRun: context.assertRun, request: async () => ({ events: [{ seq: 1, type: 'done', text: 'Agent claims completion.' }] }),
     tool: denied, state, publish: next => { Object.assign(state, next); states.push({ ...state }) }, options: { ...callbacks, getOutline: () => ({ version: fixture.facts().currentVersion }), onReply: (...reply) => replies.push(reply) },
-    recordCompletedJobOutcome: outcomes.recordCompletedJobOutcome, unresolvedToolOutcome: outcomes.unresolvedToolOutcome,
+    recordCompletedJobOutcome: outcomes.recordCompletedJobOutcome, unresolvedToolOutcome: outcomes.unresolvedToolOutcome, unfinishedJobsOutcome: outcomes.unfinishedJobsOutcome,
     redact: value => value, failure, sleep: denied, cancelJobs, cancelRemote: async () => true, closed: false, active: context.run }
   const drive = evaluate(driveSource, bindings, 'return drive')
   await drive({ token: 'fixture-only' }, context.run)

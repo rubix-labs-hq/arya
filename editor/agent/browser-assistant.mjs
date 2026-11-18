@@ -12,7 +12,7 @@ import { validateRoutingPreferences, selectRoute } from '../core/assistant-routi
 import { createAssistantCatalog } from './assistant-catalog.mjs'
 import { fileURLToPath } from 'node:url'
 import { SHARING_VERSION, normalizeSharingEnvelope, sharingScopeForRoute, sameSharingScope, canonicalCompanion, sharingDisclosure } from '../core/assistant-sharing.mjs'
-import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
+import { createToolOutcomes, recordToolOutcome, recordCompletedJobOutcome, unfinishedJobsOutcome, unresolvedToolOutcome } from './tool-outcomes.mjs'
 
 const exec = promisify(execFile)
 const names = { chatgpt: 'ChatGPT', 'claude-code': 'Claude Code', codex: 'Codex', antigravity: 'Google Antigravity', 'gemini-cli': 'Gemini CLI · retired', custom: 'Custom agent' }
@@ -508,7 +508,7 @@ export function createBrowserAssistant(options) {
             for (const job of run.jobs.values()) recordCompletedJobOutcome(run.outcomes, options.jobOutcome?.(job))
             const failedJobs = [...run.jobs.values()].filter(job => ['failed', 'cancelled'].includes(options.jobState?.(job)))
             const currentVersion = options.getOutline().version
-            const outcome = unresolvedToolOutcome(run.outcomes) ?? (failedJobs.length ? `${failedJobs.length} processing job${failedJobs.length === 1 ? '' : 's'} did not finish. Review any committed edits.` : run.review ? 'Preview mode was on. Proposed edits are applied only when you choose Apply.' : currentVersion !== run.initialVersion ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were applied during this request.')
+            const outcome = unresolvedToolOutcome(run.outcomes) ?? (failedJobs.length ? unfinishedJobsOutcome(failedJobs.map(job => ({ ...options.jobFailure?.(job), state: options.jobState?.(job) }))) : run.review ? 'Preview mode was on. Proposed edits are applied only when you choose Apply.' : currentVersion !== run.initialVersion ? 'The project changed during this request. Review edits in the timeline.' : 'No project edits were applied during this request.')
             publish({ state: event.type === 'done' && !unfinished ? 'done' : 'error', text: redact(final, [owner.token]).slice(0, 512 * 1024), outcome, errorCode: event.type === 'error' && /^chatgpt_[a-z_]{1,48}$/.test(event.code ?? '') ? event.code : null })
             options.onReply?.(state.text, event.type === 'error' || unfinished)
             if (event.type === 'error' || unfinished) await cancelJobs(run)
