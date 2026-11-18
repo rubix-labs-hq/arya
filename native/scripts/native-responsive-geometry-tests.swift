@@ -72,94 +72,81 @@ check(short.timelineHeight < 140 && short.viewerHeight > 140, "An unusually shor
 let restore = NativeWorkspaceLayout.desktop(width: 1920, height: 780, divider: 6, media: 420, inspector: 560, assistant: 520, timeline: 260,
     mediaVisible: true, inspectorVisible: true, assistantVisible: true, timelineVisible: true, mediaPage: false)
 check(close(restore.assistantWidth, 520), "A wider window must restore the preferred assistant width after temporary clamping")
-for control in [40.0, 44.0] {
+// Assistant: header, history, context chips, draft and actions always fill exactly the pane.
+func assistantTotal(_ r: NativeAssistantLayout.Regions) -> Double { r.header + r.history + r.context + r.editor + r.actions + 2 * r.separator }
+for header in [0.0, 40, 44] {
     for height in [0.0, 40, 120, 200, 300, 450, 780] {
-        let regions = NativeAssistantLayout.regions(height: height, controlHeight: control)
-        check(close(regions.header + regions.chat + regions.composer + regions.footer + 2 * regions.separator, height), "Assistant history/composer/footer/separators must fit their actual pane height")
-        check([regions.header, regions.chat, regions.composer, regions.footer, regions.separator].allSatisfy { $0 >= 0 }, "Assistant must never request negative regions")
-        check(regions.editor >= 80 && regions.editor <= 150, "Editor retains a usable scrollable writing surface independently of composer viewport")
-        if height >= 200 { check(regions.footer >= control + 12, "Normal Send and working Cancel must retain their complete pinned footer at keyboard-short height") }
-        if height >= 120 { check(regions.composer > 0 && regions.chat > 0 && regions.footer > 0, "All independently scrolling areas remain reachable") }
-    }
-}
-check(!NativeAssistantLayout.segmentedInput(width: 320, accessibilityText: false), "Default 320-point assistant must use the compact input menu")
-check(!NativeAssistantLayout.segmentedInput(width: 290, accessibilityText: false), "Minimum assistant width must use the compact input menu")
-check(NativeAssistantLayout.segmentedInput(width: 520, accessibilityText: false), "Wide assistant may retain segmented input")
-check(!NativeAssistantLayout.segmentedInput(width: 520, accessibilityText: true), "Accessibility text must use the compact input menu even in a wide pane")
-for actionHeight in [44.0, 66, 110, 150] {
-    for width in [290.0, 320, 520] {
-        for accessibility in [false, true] {
-            for working in [false, true] {
-                let stacked = NativeAssistantLayout.stackedFooter(width: width, actionHeight: actionHeight, accessibilityText: accessibility)
-                let budget = NativeAssistantLayout.footerBudget(actionHeight: actionHeight, stacked: stacked, working: working)
-                check(!accessibility || stacked, "Accessibility action labels must never compete horizontally with the timecode")
-                check(budget >= actionHeight + 16, "Footer budget must expand with scaled action height and padding")
-                let requiredActions = stacked ? actionHeight * 2 + 8 : actionHeight
-                check(close(budget, requiredActions + 16), "The model menu and Send or Stop must fit their scaled row heights, spacing and scroll-content padding")
-                for height in [200.0, 450, 780] {
-                    let regions = NativeAssistantLayout.regions(height: height, controlHeight: 44, requestedFooter: budget)
-                    check(close(regions.header + regions.chat + regions.composer + regions.footer + 2 * regions.separator, height), "Expanded action budget must still conserve the pane height")
-                    check(regions.chat > 0 && regions.composer > 0 && regions.footer > 0, "Keyboard-short accessibility panes must retain independently reachable scroll viewports")
-                    check(regions.composer >= 60, "A 200-point keyboard pane must retain at least a usable writing/control viewport")
-                    check(regions.chat >= 32, "Scaled footer must retain readable history/context scroll access")
-                    check(regions.footer <= budget, "Action viewport should not consume more space than its requested action surfaces")
-                    if height == 780 { check(close(regions.footer, budget), "A tall pane must reserve the complete expanded action budget") }
-                    if height == 200 && budget > 100 { check(regions.footer < budget, "Large keyboard-height actions must scroll rather than shrink their text") }
-                }
-            }
+        for editor in [0.0, 56, 300] {
+            let r = NativeAssistantLayout.regions(height: height, header: header, actions: 60, context: 38, preferredEditor: editor)
+            check(close(assistantTotal(r), height), "Assistant regions must add up to their actual pane height")
+            check([r.header, r.history, r.context, r.editor, r.actions, r.separator].allSatisfy { $0 >= 0 && $0.isFinite }, "Assistant must never request negative or nonfinite regions")
+            if height >= 200 { check(close(r.actions, 60), "Normal Send and working Stop keep their complete pinned row at keyboard-short height") }
+            if height >= 120 { check(r.history > 0 && r.editor > 0 && r.actions > 0, "History, draft and actions all stay reachable") }
+            if height >= 200 { check(r.history >= 28 && r.editor >= 42, "A 200-point pane keeps a readable history line and a one-line draft") }
+            if height >= 300 { check(r.history >= 62 && r.editor >= 44, "A 300-point pane keeps several history lines and the full minimum draft") }
+            if height == 780 { check(r.editor >= 44 && close(r.context, 38), "A tall pane gives the draft and context chips their full size") }
         }
     }
 }
-// Real production footer split: actions scroll independently, activity only uses spare space.
-for actionHeight in [44.0, 66, 110, 150] {
-    for height in [0.0, 20, 42.4, 61.6, 104, 128, 450] {
-        for hasRun in [false, true] {
-            let parts = NativeAssistantLayout.footerRegions(height: height, actionHeight: actionHeight, hasRun: hasRun)
-            check([parts.activity, parts.actions, parts.gap].allSatisfy { $0.isFinite && $0 >= 0 }, "Footer viewport dimensions must be finite and nonnegative")
-            check(parts.actions <= height && parts.actions <= actionHeight + 16, "Action viewport must fit the footer while its content retains the full scaled action")
-            if hasRun {
-                check(close(parts.activity + parts.actions + parts.gap, height), "Visible activity, spacing and action viewports must conserve the footer height")
-            } else {
-                check(close(parts.activity, 0) && close(parts.gap, 0), "No prior run must not reserve invisible activity or spacing")
-            }
-            if height >= actionHeight + 16 {
-                check(close(parts.actions, actionHeight + 16), "When actions fit, reserve their complete intrinsic surface including padding")
-            } else {
-                check(close(parts.actions, height), "A short footer must allocate its entire bounded scrolling action viewport")
-                check(actionHeight + 16 - parts.actions > 0, "The real action surface has positive scroll travel rather than shrinking its target")
-            }
-        }
-    }
+// The first-use smoke test needs a 44-point draft at its window sizes; the draft carries 8 points of padding.
+for height in [620.0, 700, 780] {
+    let preferred = NativeAssistantLayout.preferredEditorHeight(text: "", width: 280, lineHeight: 17)
+    let r = NativeAssistantLayout.regions(height: height, header: 40, actions: 60, context: 38, preferredEditor: preferred)
+    check(r.editor - 8 >= 44, "Desktop draft keeps a 44-point text area for the smoke test")
 }
-// The composer passes the complete stacked row budget into the unchanged viewport splitter.
+check(NativeAssistantLayout.stackedActions(width: 290, actionHeight: 44, accessibilityText: false), "The 290-point minimum pane stacks its actions")
+check(NativeAssistantLayout.stackedActions(width: 299, actionHeight: 44, accessibilityText: false), "A pane just under 300 points stacks its actions")
+check(!NativeAssistantLayout.stackedActions(width: 300, actionHeight: 44, accessibilityText: false), "A 300-point pane keeps one action row")
+check(!NativeAssistantLayout.stackedActions(width: 320, actionHeight: 44, accessibilityText: false), "The default 320-point pane keeps one action row")
+check(!NativeAssistantLayout.stackedActions(width: 520, actionHeight: 44, accessibilityText: false), "A wide pane keeps one action row")
+for width in [290.0, 320, 520] {
+    check(NativeAssistantLayout.stackedActions(width: width, actionHeight: 44, accessibilityText: true), "Accessibility text always stacks Send or Stop above the model menu")
+}
+check(NativeAssistantLayout.stackedActions(width: 320, actionHeight: 110, accessibilityText: false), "Large standard text must stack even before accessibility categories")
+check(NativeAssistantLayout.stackedActions(width: .nan, actionHeight: 44, accessibilityText: false), "An unknown width stacks rather than overflowing")
 for actionHeight in [44.0, 66, 110, 150] {
     for stacked in [false, true] {
-        let actionBudget = NativeAssistantLayout.footerBudget(actionHeight: actionHeight, stacked: stacked, working: true)
+        let budget = NativeAssistantLayout.actionBudget(actionHeight: actionHeight, stacked: stacked)
+        check(close(budget, (stacked ? actionHeight * 2 + 8 : actionHeight) + 20), "The model menu and Send or Stop fit their scaled rows, spacing, scroll padding and the field border's inset")
         for height in [160.0, 200, 220, 450, 780] {
-            for hasRun in [false, true] {
-                let regions = NativeAssistantLayout.regions(height: height, controlHeight: 44, requestedFooter: actionBudget + (hasRun ? 68 : 0))
-                let parts = NativeAssistantLayout.footerRegions(height: regions.footer, actionHeight: actionBudget - 16, hasRun: hasRun)
-                check(close(parts.activity + parts.actions + parts.gap, regions.footer), "Actual composer footer caller conserves its status and full action budget")
-                check(parts.actions > 0, "Stop and Send retain a bounded scroll viewport")
-                let visiblePrimary = max(0, min(parts.actions, 8 + actionHeight) - 8)
-                check(visiblePrimary >= 28, "The first primary-action row remains visible before scrolling in a short pane")
-                if height == 780 { check(close(parts.actions, actionBudget), "Tall panes reserve both complete scaled control rows when stacked") }
+            for header in [0.0, 44] {
+                let r = NativeAssistantLayout.regions(height: height, header: header, actions: budget, context: actionHeight + 18, preferredEditor: 300)
+                check(close(assistantTotal(r), height), "Expanded action budget must still conserve the pane height")
+                check(r.actions <= budget, "Action viewport never takes more than its requested rows")
+                check(r.history > 0 && r.editor > 0 && r.actions > 0, "Keyboard-short accessibility panes keep every scroll viewport reachable")
+                let visiblePrimary = max(0, min(r.actions, 8 + actionHeight) - 8)
+                check(visiblePrimary >= 28, "The first primary-action row stays visible before scrolling in a short pane")
+                if height == 780 { check(close(r.actions, budget), "Tall panes reserve every complete scaled action row") }
+                if height == 200 && budget > 100 { check(r.actions < budget, "Large keyboard-height actions scroll rather than shrinking their text") }
+                // Floors the policy keeps, so a later edit cannot shrink a short or large-text pane unnoticed.
+                if height >= 200 { check(r.history >= 25 && r.editor >= 38, "A 200-point pane keeps a readable history line and a one-line draft at every text size") }
+                if height >= 450 { check(r.history >= 36 && r.editor >= 54, "A 450-point pane keeps history and draft floors at every text size") }
+                if height == 780 { check(r.history >= 95 && r.editor >= 142 && close(r.context, actionHeight + 18), "A tall pane shows every chip whole at every text size") }
             }
         }
     }
 }
-let keyboardBudget = NativeAssistantLayout.footerBudget(actionHeight: 110, stacked: true, working: true) + 68
-let keyboardRegions = NativeAssistantLayout.regions(height: 200, controlHeight: 44, requestedFooter: keyboardBudget)
-let keyboardFooter = NativeAssistantLayout.footerRegions(height: keyboardRegions.footer, actionHeight: 110, hasRun: true)
-check(close(keyboardFooter.actions, 61.6) && close(keyboardFooter.activity, 0), "200pt accessibility keyboard pane retains a 61.6pt action viewport without activity pushing its actions out")
-check(close(110 + 16 - keyboardFooter.actions, 64.4), "The 110pt button plus padding remains reachable with 64.4pt actual scrolling travel")
+// 200-point accessibility keyboard pane with 110-point stacked actions.
+let keyboard = NativeAssistantLayout.regions(height: 200, header: 44, actions: NativeAssistantLayout.actionBudget(actionHeight: 110, stacked: true), context: 122, preferredEditor: 300)
+check(keyboard.actions >= 61 && keyboard.history > 0 && keyboard.editor > 0, "200pt accessibility keyboard pane keeps a usable action viewport, history and draft")
+check(close(keyboard.actions, 69.3) && close(keyboard.history, 25.41) && close(keyboard.editor, 38.115) && close(keyboard.context, 21.175), "The 200pt accessibility keyboard pane keeps its exact split")
+// The context chips: their whole row where history and the draft keep 180 points, a scrolling quarter where they do not.
+let largestText = NativeAssistantLayout.regions(height: 700, header: 0, actions: NativeAssistantLayout.actionBudget(actionHeight: 79, stacked: true), context: 105, preferredEditor: 160)
+check(close(largestText.context, 105) && close(largestText.editor, 160) && largestText.history >= 240, "The largest text in a full-height sheet shows the chips, a two-line draft and history whole")
+let largestKeyboard = NativeAssistantLayout.regions(height: 370, header: 0, actions: NativeAssistantLayout.actionBudget(actionHeight: 79, stacked: true), context: 105, preferredEditor: 160)
+check(close(largestKeyboard.context, (370 - 2 - 186) * 0.25) && largestKeyboard.editor >= 80 && largestKeyboard.history >= 54, "With the keyboard up at the largest text, the chips scroll in a quarter and the draft keeps a line")
+let standardPhone = NativeAssistantLayout.regions(height: 388, header: 0, actions: NativeAssistantLayout.actionBudget(actionHeight: 44, stacked: false), context: 62, preferredEditor: 68)
+check(close(standardPhone.context, 62) && close(standardPhone.editor, 68) && close(standardPhone.actions, 64) && close(standardPhone.history, 192), "A phone's medium sheet at standard text gives every part its full size")
 for invalid in [Double.nan, Double.infinity, -1] {
-    let parts = NativeAssistantLayout.footerRegions(height: invalid, actionHeight: invalid, hasRun: true)
-    check(close(parts.activity, 0) && close(parts.actions, 0) && close(parts.gap, 0), "Invalid footer measurements must not produce overflowing or nonfinite viewports")
+    let r = NativeAssistantLayout.regions(height: invalid, header: invalid, actions: invalid, context: invalid, preferredEditor: invalid)
+    check([r.header, r.history, r.context, r.editor, r.actions, r.separator].allSatisfy { $0 == 0 }, "Invalid measurements produce empty, finite regions")
+    check(NativeAssistantLayout.actionBudget(actionHeight: invalid, stacked: true).isFinite, "Invalid action heights give a finite budget")
+    check(NativeAssistantLayout.preferredEditorHeight(text: "a", width: invalid, lineHeight: invalid).isFinite, "Invalid draft measurements give a finite height")
 }
-
-check(NativeAssistantLayout.stackedFooter(width: 320, actionHeight: 110, accessibilityText: false), "Large standard text must stack even before accessibility categories")
-check(NativeAssistantLayout.footerBudget(actionHeight: 110, stacked: true, working: true) > NativeAssistantLayout.footerBudget(actionHeight: 44, stacked: false, working: true), "Actual larger working actions must increase the requested footer height")
+let shortDraft = NativeAssistantLayout.preferredEditorHeight(text: "Trim it", width: 280, lineHeight: 17)
+let longDraft = NativeAssistantLayout.preferredEditorHeight(text: String(repeating: "word ", count: 400), width: 280, lineHeight: 17)
+check(longDraft > shortDraft && close(longDraft, 17 * 7 + 24), "The draft grows with its text up to about seven lines, then scrolls")
+check(close(NativeAssistantLayout.preferredEditorHeight(text: "a\nb\nc\nd", width: 280, lineHeight: 17), 4 * 17 + 24), "Each line break adds a line")
 for height in [0.0, 120, 208, 400, 780] {
     for marked in [false, true] {
         let source = NativeSourceViewerLayout.regions(height: height, hasRange: marked)

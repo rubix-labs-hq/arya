@@ -166,10 +166,10 @@ expect(mixedAssetReceipt.scopes.contains { $0.changes.contains { $0.property == 
 var placedAsset = assetSaved
 placedAsset["tracks"] = [["id": "A3", "name": "Music", "kind": "audio", "clips": [["id": "c17", "kind": "audio", "src": assetPath, "start": 12, "dur": 12]]]]
 let placementReceipt = receipt(assetSaved, placedAsset)!
-expect(placementReceipt.summary == "1 object changed" && !placementReceipt.hasAssetChanges, "Placement-only retry must not claim new asset registration.")
+expect(placementReceipt.summary == "1 layer changed" && !placementReceipt.hasAssetChanges, "Placement-only retry must not claim new asset registration.")
 expect(NativeChangeReceipt.selection(for: placementReceipt.clips[0], in: placedAsset)?.start == 12, "The existing selection action must preserve the actual placement time.")
 let combinedReceipt = receipt(assetBefore, placedAsset)!
-expect(combinedReceipt.summary == "1 object changed · Media assets changed", "A combined receipt must distinguish registration and the editable object.")
+expect(combinedReceipt.summary == "1 layer changed · Media assets changed", "A combined receipt must distinguish registration and the editable object.")
 let deletedAsset = receipt(assetSaved, assetBefore)!
 expect(deletedAsset.scopes[0].status == "deleted" && deletedAsset.hasAssetChanges, "Removal must retain its deleted Media status.")
 expect(deletedAsset.scopes[0].changes.contains { $0.property == assetPointer + "/generated/provenance" && $0.after == "Absent" }, "Removed metadata must preserve the absent value.")

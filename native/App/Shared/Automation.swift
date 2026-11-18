@@ -1,5 +1,8 @@
 #if DEBUG
 import Foundation
+#if os(macOS)
+import AppKit
+#endif
 
 /// Debug builds only: launch arguments for end-to-end tests of the app.
 ///
@@ -13,12 +16,24 @@ import Foundation
 ///                                once the project opens, to check the native preview card
 ///     --assistant-panel          open the Assistant panel
 ///     --assistant-apply          apply the staged preview, as the Apply button does
+///     --assistant-forget-change  with --assistant-apply: afterwards show "Undo latest edit" on the result card
+///     --assistant-fixture <kind> seed a display-only conversation: conversation, working, setup,
+///                                checking, setupConversation, empty, failed or stopped.
+///                                Sending stays off while a fixture is shown.
+///     --assistant-long-draft     fill the draft past the character limit, to show the "Too long" chip
+///     --page <name>              show this workflow page once the project opens
+///     --select <id,id>           select these clips once the project opens
+///     --present <sheet>          open settings, assistantSettings or pro for screenshots
+///     --window-size <w>x<h>      Mac: resize the editor window once the project opens
+///     --no-activate              Mac: launch without taking focus from the person at the Mac
 ///
 /// The script runs through callAsyncJavaScript, the same way the app's own menu actions
 /// reach the editor; it has no other access. Release builds contain none of this.
 @MainActor
 enum Automation {
     static var echoConsole = false
+    /// Posted with a sheet name (settings, assistantSettings, pro) for screenshots.
+    static let presentNotification = Notification.Name("AryaAutomationPresent")
 
     static func value(_ flag: String) -> String? {
         let args = CommandLine.arguments
@@ -55,7 +70,35 @@ enum Automation {
                 if CommandLine.arguments.contains("--assistant-panel") { session.nativeEditor.mobilePanel = .assistant }
                 #endif
                 await session.assistant.stageFixtureProposal(text)
-                if CommandLine.arguments.contains("--assistant-apply") { try? await Task.sleep(for: .seconds(2)); await session.assistant.applyProposal() }
+                if CommandLine.arguments.contains("--assistant-apply") {
+                    try? await Task.sleep(for: .seconds(2)); await session.assistant.applyProposal()
+                    if CommandLine.arguments.contains("--assistant-forget-change") { session.assistant.forgetFixtureChange() }
+                }
+            }
+        }
+        if value("--page") != nil || value("--select") != nil || value("--present") != nil || value("--window-size") != nil || value("--assistant-fixture") != nil
+            || CommandLine.arguments.contains("--assistant-long-draft") {
+            Task { @MainActor in
+                for _ in 0..<100 where session.backend == nil || session.nativeEditor.project == nil { try? await Task.sleep(for: .milliseconds(100)) }
+                #if os(macOS)
+                if let size = value("--window-size")?.split(separator: "x").compactMap({ Double($0) }), size.count == 2,
+                   let window = NSApp.windows.first(where: { $0.canBecomeMain && $0.isVisible }) {
+                    window.setContentSize(NSSize(width: size[0], height: size[1]))
+                }
+                #endif
+                if let page = value("--page") { session.showPage(page) }
+                if let ids = value("--select")?.split(separator: ",").map(String.init), !ids.isEmpty {
+                    session.nativeEditor.select(ids: Set(ids), primary: ids[0], feedback: false)
+                }
+                if let kind = value("--assistant-fixture") { await session.assistant.stageFixtureConversation(kind) }
+                if CommandLine.arguments.contains("--assistant-long-draft") {
+                    let sentence = "Tighten the opening and add a title over the first clip. "
+                    session.nativeEditor.assistantDraft = String(repeating: sentence, count: session.assistant.inputCharacterLimit / sentence.count + 1)
+                }
+                if let sheet = value("--present") {
+                    try? await Task.sleep(for: .milliseconds(600))
+                    NotificationCenter.default.post(name: presentNotification, object: sheet)
+                }
             }
         }
         guard let scriptPath = value("--automation") else { return }

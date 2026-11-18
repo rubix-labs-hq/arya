@@ -14,8 +14,8 @@ struct NativeSelectionAIAction: View {
             }
             context = selection
         } label: {
-            if compact { Image(systemName: "text.bubble") }
-            else { Label(title, systemImage: "text.bubble") }
+            if compact { Image(systemName: "sparkles") }
+            else { Label(title, systemImage: "sparkles") }
         }
         .accessibilityLabel(title).help(title)
         .disabled(model.selected == nil && model.composition == nil)

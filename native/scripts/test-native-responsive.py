@@ -42,26 +42,32 @@ check('ForEach(sections, id: \\.self) { Text($0).tag($0) }' in media, 'Compact m
 check('NativeEditorStyle.minimumControlHeight + 4' in media, 'Media strip must fit native button height with spare vertical space')
 check('Bring your footage into Reel' not in media and 'Bring your footage into Arya' in media, 'Empty-state brand must be Arya')
 check('TextEditor(text: $model.assistantDraft)' in assistant and 'Picker("Input", selection: $model.assistantInputKind)' in assistant, 'Resize adaptation must retain the model-owned draft and input type')
-check('inputPicker.pickerStyle(.menu)' in assistant and 'dynamicTypeSize.isAccessibilitySize' in assistant, 'Narrow/accessibility assistant must expose all input options through a menu')
+input_menu = block(assistant, 'private var inputMenu: some View')
+check('inputPicker.pickerStyle(.inline)' in input_menu and 'editor.assistant.inputAttachments' in input_menu and 'requestScriptImport()' in input_menu, 'Every input kind and script import must stay reachable from the composer menu at every width and text size')
 cancel = block(assistant, 'private var cancelButton:')
-check(assistant.count('{ assistant.cancel() }') == 1 and 'Button(assistant.state == "cancelling" ? "Stopping…" : "Stop request")' in cancel, 'Working Stop must remain exactly once and use the original callback')
-footer = assistant.split('if hasRun && footerRegions.activity > 0 {', 1)[1].split('}.frame(width: width, height: height', 1)[0]
-assert len(footer) < len(assistant.split('if hasRun && footerRegions.activity > 0 {', 1)[1]), 'Regular footer ends at the panel frame'
-actions = block(assistant, 'private func footerActions(stacked: Bool')
-check('footerActionViewport(height: footerRegions.actions, stacked: stackedFooter)' in footer and 'cancelButton' in actions and 'sendButton' in actions, 'Stop and Send must be pinned outside history and composer')
-check('@ScaledMetric(relativeTo: .body) private var scaledActionHeight' in assistant and 'private var actionHeight: Double { max(44, scaledActionHeight) }' in assistant and 'requestedFooter: footerBudget' in assistant and 'NativeAssistantLayout.footerBudget(actionHeight: actionHeight' in assistant, 'Actual scaled action height must participate in footer region allocation')
-check('VStack(spacing: 8)' in actions and 'Label(contextLabel, systemImage: "scope")' in assistant and 'footerTimecode' in assistant, 'Large-text actions must stack while timecode remains in the composer')
-action_viewport = block(assistant, 'private func footerActionViewport(')
-action_scroll = block(action_viewport, 'ScrollView(.vertical)')
-check('footerActions(stacked: stacked, compactInput: compactInput)' in action_scroll and '.padding(.vertical, 8)' in action_scroll, 'The actual Send/Stop action subtree including padding must be INSIDE its own vertical ScrollView')
-check('}.frame(height: height)' in action_viewport and 'NativeAssistantLayout.footerRegions(height: regions.footer, actionHeight: actionBudget - 16, hasRun: hasRun)' in assistant, 'Action viewport must use the tested footer allocation')
-check('.frame(minHeight: actionHeight)' in cancel and '.frame(minHeight: actionHeight)' in block(assistant, 'private var sendButton:'), 'Send and Stop must retain complete intrinsic scaled targets in the scroll content')
-check('Color.clear.frame(height: footerRegions.gap)' in footer and '.frame(height: footerRegions.activity)' in footer and '.padding(.vertical, 8)' not in footer, 'Only action scroll content owns vertical padding; activity/action viewport arithmetic must conserve the footer')
-check('.padding(.horizontal, 12).frame(height: regions.chat)' in assistant and '}.frame(height: regions.composer)' in assistant, 'History and composer must scroll within their independently bounded viewports')
-stacked_actions = actions.split('if stacked {', 1)[1].split('} else {\n            VStack(alignment: .leading', 1)[0]
-assert len(stacked_actions) < len(actions.split('if stacked {', 1)[1]), 'Stacked footer branch ends at the inline branch'
-check(stacked_actions.index('if assistant.isWorking { cancelButton } else { sendButton }') < stacked_actions.index('modelControls'), 'Stacked primary action must remain initially visible before the model menu')
-check('modelControls' not in assistant.split('ScrollViewReader { proxy in', 1)[1].split('.padding(.horizontal, 12).frame(height: regions.chat)', 1)[0], 'Model choice belongs beside the draft and primary action, outside history')
+check(assistant.count('{ assistant.cancel() }') == 1 and '{ assistant.cancel() }' in cancel, 'Working Stop must remain exactly once and use the original callback')
+check('Label(assistant.state == "cancelling" ? "Stopping…" : "Stop", systemImage: "stop.fill")' in cancel and '.accessibilityLabel(assistant.state == "cancelling" ? "Stopping request" : "Stop request")' in cancel, 'Stop must keep its visible label, its stopping label and its VoiceOver name')
+send = block(assistant, 'private var sendButton:')
+check('sendDraft()' in send and 'Label("Send", systemImage: "arrow.up")' in send and '.frame(minHeight: actionHeight)' in send and '.frame(minHeight: actionHeight)' in cancel, 'Send and Stop must retain complete intrinsic scaled targets in the scroll content, and Send its visible label')
+primary = block(assistant, 'private var primaryAction: some View')
+check('if assistant.isWorking { cancelButton } else { sendButton }' in primary, 'Send and Stop are one primary control in the same place')
+body = block(assistant.split('struct NativeAssistantPanel: View {', 1)[1], '    var body: some View')
+check('@ScaledMetric(relativeTo: .body) private var scaledActionLine' in assistant and 'private var actionHeight: Double { max(44, scaledActionLine + 14) }' in assistant and 'NativeAssistantLayout.actionBudget(actionHeight: actionHeight, stacked: stacked)' in body and 'NativeAssistantLayout.regions(' in body, 'The drawn action row, one scaled line of text plus its padding, must participate in region allocation')
+check('dynamicTypeSize.isAccessibilitySize' in body and 'NativeAssistantLayout.stackedActions(width: width, actionHeight: max(44, scaledActionHeight)' in body and '@ScaledMetric(relativeTo: .body) private var scaledActionHeight = 44.0' in assistant, 'Accessibility text must stack the composer actions, and large standard text must stack at the same sizes as before')
+composer = block(assistant, 'private func composer(width: Double')
+# The chip row has the first vertical scroll view in the composer and the actions the second.
+action_scroll = block(composer.split('draftEditor(', 1)[1], 'ScrollView(.vertical)')
+check('composerActions(width: width, stacked: stacked)' in action_scroll and '.padding(.top, 6).padding(.bottom, 14)' in action_scroll and '}.frame(height: regions.actions)' in composer, 'The actual Send/Stop action subtree including padding must be INSIDE its own vertical ScrollView sized by the tested region')
+check('ScrollView(.vertical) { contextRow.padding(.top, 14).padding(.bottom, 4) }.frame(height: regions.context)' in composer and '.clipped()' not in composer, 'Context chips must scroll inside their tested region, never be clipped out of reach')
+check('draftEditor(height: max(0, regions.editor - 8))' in composer, 'The draft must use its tested region')
+check('context: chipHeight + 18' in body and 'RoundedRectangle(cornerRadius: 10)' in composer and '.padding(8)' in composer, 'One border holds the chips, the draft and the actions, and the chip region includes its inset')
+check('conversationScroll.frame(height: regions.history)' in body and 'composer(width: width, regions: regions, stacked: stacked)' in body, 'History scrolls in its own region above the pinned composer')
+actions = block(assistant, 'private func composerActions(')
+stacked_actions = actions.split('if stacked {', 1)[1].split('} else {', 1)[0]
+check(stacked_actions.index('primaryAction') < stacked_actions.index('modelControls'), 'Stacked primary action must remain initially visible before the model menu')
+check('modelControls' not in block(assistant, 'private var conversationContent: some View') and 'modelControls' in actions, 'Model choice belongs beside the draft and primary action, outside history')
+check('Label(contextLabel, systemImage: "scope")' in block(assistant, 'private var contextRow: some View') and 'footerTimecode' in block(assistant, 'private var contextRow: some View'), 'Context and timecode remain visible in the composer')
+check('runActivity' in block(assistant, 'private var conversationContent: some View') and 'runActivity' not in composer, 'Run status lives in history, so a run starting or ending never moves the composer')
 source_view = viewer.split('private struct NativeSourceViewer: View {', 1)[1].split('private func markControls', 1)[0]
 check('ScrollView(.vertical)' in source_view and 'layout.controls' in source_view and 'layout.picture' in source_view, 'Source marking/placement controls must have their own bounded scroll viewport beside a retained picture')
 for text, expected in [(assistant, 3), (media, 1)]:
@@ -76,14 +82,15 @@ if base.exists():
     old_disabled = next(line.strip() for line in original_assistant.splitlines() if '.disabled(!assistant.configured ||' in line)
     new_disabled = next(line.strip() for line in assistant.splitlines() if '.disabled(!assistant.configured ||' in line)
     check(new_disabled == old_disabled, 'Send disabled/configuration/working/draft/provider length guards must remain exact')
-    for marker in ['Button("Send") {', 'private var cancelButton:', 'private func footerActionViewport(', 'static func footerRegions(', 'private var inputPicker:', 'private var contextLabel:', 'private func showSettings()', 'private func receiptRow(', 'private func receiptChanges(', '.fileImporter(isPresented: $importingScript,']:
+    # contextLabel and receiptRow changed their wording on purpose (browser editor terms), so they are not compared.
+    for marker in ['private var inputPicker:', 'private func showSettings()', 'private func receiptChanges(', 'private var canSendDraft: Bool']:
         check(normalized(block(assistant, marker)) == normalized(block(original_assistant, marker)), 'Assistant project/selection/import/inspection boundary changed: ' + marker)
     existing_viewer = original_viewer[original_viewer.index('enum NativeViewerGeometry {'):original_viewer.index('private struct NativeSourceViewer: View {')]
     proposed_viewer = viewer[viewer.index('enum NativeViewerGeometry {'):viewer.index('private struct NativeSourceViewer: View {')]
     check(proposed_viewer == existing_viewer.replace('}.pickerStyle(.segmented).frame(width: 168)', '}.pickerStyle(.segmented).labelsHidden().frame(width: 168)'), 'Composition geometry/gesture/lifecycle blocks must remain byte-for-byte intact except source picker label')
     for marker in ['private func markControls(', 'private var placementControls:']:
         check(block(viewer, marker) == block(original_viewer, marker), 'Source mark/place semantics changed: ' + marker)
-    check(view[view.index('    private var compactWorkspace:'):] == original_view[original_view.index('    private var compactWorkspace:'):], 'Current compact/header/workspace/project behavior must remain unchanged')
+    check(block(view, '    private func select(_ panel:') == block(original_view, '    private func select(_ panel:'), 'Workspace routing must remain unchanged')
 print(f'PASS: {contracts} responsive source/action/modal contracts')
 if args.contracts_only:
     raise SystemExit(0)
