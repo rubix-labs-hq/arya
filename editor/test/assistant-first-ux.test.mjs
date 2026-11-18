@@ -650,3 +650,45 @@ test('touch targets inside the conversation are 44px tall without growing their 
   assert.match(assistantCSS, /\.chat \.composer textarea::placeholder \{ color: var\(--muted\); opacity: 1; \}/, 'the placeholder meets contrast')
   assert.match(media(assistantCSS, '(max-width: 900px)'), /\.main > \.chat\.panel \{ position: fixed; width: min\(var\(--chat-width, 360px\), max\(38vw, 320px\)\); \}/, 'the floating panel never drops under 320px')
 })
+
+// ---- Round 3. One test for each problem the three reviews of the last round reported.
+
+test('the status poll waits for its answer, so a server slower than the interval is still heard', async () => {
+  const strip = source => source.replace(/^import .*$/gm, '')
+  const state = { project: null, page: 'media', assistantStatus: { provider: 'codex', configured: false, loading: true, checkedAt: null } }
+  const requests = [], timers = []
+  const { refreshAssistantStatus } = new Function('api', 'set', `${strip(read('ui/assistant-status.js')).replace(/^export /gm, '')}\nreturn { refreshAssistantStatus }`)(() => new Promise((resolve, reject) => requests.push({ resolve, reject })), patch => Object.assign(state, patch))
+  const mount = () => {
+    const effects = []
+    new Function('h', 'htm', 'useEffect', 'useStore', 'useLayout', 'layoutStyle', 'Divider', 'ChatPanel', 'Settings', 'AssistantSharingReview', 'refreshAssistantStatus', 'setInterval', 'clearInterval', `const host = { kind: "http" };\n${strip(app).replace('export async function mountApp', 'async function mountApp')}\nreturn App()`)(
+      h, htm, (run, deps) => effects.push({ run, deps }), () => state, () => ({}), () => ({}), () => null, () => null, () => null, () => null, refreshAssistantStatus, (run, ms) => timers.push({ run, ms }), id => { timers[id - 1].cleared = true })
+    return effects.find(effect => /refreshAssistantStatus\(\)/.test(String(effect.run)))
+  }
+  const first = mount(), stop = first.run()
+  assert.deepEqual(first.deps, [true]); assert.equal(timers[0].ms, 1000, 'the first check is asked again every second')
+  assert.equal(requests.length, 1, 'it asks at once')
+  for (let i = 0; i < 3; i++) timers[0].run()
+  assert.equal(requests.length, 1, 'no second request starts while the first is unanswered')
+  requests[0].resolve(ready); await tick()
+  assert.equal(state.assistantStatus, ready, 'the slow answer is kept, not dropped for a newer request')
+  timers[0].run(); assert.equal(requests.length, 2, 'the next tick asks again')
+  requests[1].reject(new Error('offline')); await tick()
+  assert.equal(state.assistantStatusError, 'offline')
+  timers[0].run(); assert.equal(requests.length, 3, 'a failed request frees the poll as well')
+  stop(); assert.equal(timers[0].cleared, true)
+  Object.assign(state, { assistantStatus: ready, assistantStatusError: '' })
+  const later = mount(); later.run()
+  assert.deepEqual(later.deps, [false]); assert.equal(timers[1].ms, 4000)
+})
+
+test('the entry only opens the conversation, so it does not claim an expanded state', async () => {
+  let focused = 0
+  const context = shell({ document: { querySelector: () => ({ focus: () => focused++ }) }, patch: { assistantStatus: ready } })
+  assert.equal('aria-expanded' in entryOf(context).props, false); assert.equal(entryOf(context).props['aria-controls'], undefined)
+  entryOf(context).props.onClick()
+  assert.equal(context.store.chatOpen, true); assert.equal(entryOf(context).props['aria-controls'], 'editor-assistant')
+  entryOf(context).props.onClick()
+  assert.equal(context.store.chatOpen, true, 'a second press returns to the field. Close is in the panel')
+  assert.equal('aria-expanded' in entryOf(context).props, false)
+  assert.equal(focused, 2)
+})

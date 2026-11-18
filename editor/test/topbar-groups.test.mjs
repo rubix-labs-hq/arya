@@ -93,17 +93,18 @@ test('Ask Arya opens and focuses the composer and keeps sharing review in contro
   let focusCount = 0
   const context = shell(project, 'http', () => focusCount++)
   const entry = () => nodes(context.TopBar()).find(node => node.props?.id === 'ask-arya')
-  assert.equal(entry().props['aria-expanded'], false)
+  // The entry opens and never closes, so it carries no aria-expanded.
+  assert.equal(Boolean(context.store.chatOpen), false); assert.equal('aria-expanded' in entry().props, false)
   entry().props.onClick()
-  assert.equal(entry().props['aria-expanded'], true)
+  assert.equal(context.store.chatOpen, true); assert.equal('aria-expanded' in entry().props, false)
   assert.equal(entry().props['aria-controls'], 'editor-assistant')
   assert.equal(focusCount, 1)
   context.store.assistantSharingReviewOpen = true
   assert.equal(entry().props.disabled, true)
   entry().props.onClick()
-  assert.equal(entry().props['aria-expanded'], true)
+  assert.equal(context.store.chatOpen, true)
   context.store.assistantSharingReviewOpen = false
   entry().props.onClick()
-  assert.equal(entry().props['aria-expanded'], true)
+  assert.equal(context.store.chatOpen, true)
   assert.equal(focusCount, 2, 'an already open conversation returns focus to its composer')
 })

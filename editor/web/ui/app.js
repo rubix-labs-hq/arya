@@ -74,6 +74,7 @@ function TopBar() {
   // Until the first status answer arrives the entry says so. "Not set up" is only for a status that says it.
   const checking = assistant.checking && !s.assistantStatusError
   const assistantLabel = hosted ? 'Unavailable in beta' : !s.connected ? 'Reconnecting' : working ? 'Working' : assistant.ready ? 'Ready' : checking ? 'Checking' : assistant.refreshRequired ? 'Needs refresh' : 'Not set up'
+  // The entry opens the conversation and focuses the field. It never closes it, so it carries no aria-expanded; Close is in the panel.
   const openAssistant = () => {
     if (store.assistantSharingReviewOpen) return
     const focus = () => globalThis.document?.querySelector('#editor-assistant :is(textarea, .assistant-setup a.primary)')?.focus()
@@ -107,7 +108,7 @@ function TopBar() {
       <button type="button" class="ghost compact-actions-done" onClick=${closeActions}>Close actions</button>
       </div></div>
       <span class="topbar-sep before-assistant" aria-hidden="true"></span>
-      <button type="button" id="ask-arya" class=${`assistant-entry ${s.chatOpen ? 'on' : ''}`} data-state=${!hosted && s.connected && working ? 'working' : !hosted && s.connected && assistant.ready ? 'ready' : 'idle'} aria-expanded=${Boolean(s.chatOpen)} aria-controls=${s.chatOpen ? 'editor-assistant' : undefined} disabled=${s.assistantSharingReviewOpen === true} onClick=${openAssistant}>
+      <button type="button" id="ask-arya" class=${`assistant-entry ${s.chatOpen ? 'on' : ''}`} data-state=${!hosted && s.connected && working ? 'working' : !hosted && s.connected && assistant.ready ? 'ready' : 'idle'} aria-controls=${s.chatOpen ? 'editor-assistant' : undefined} disabled=${s.assistantSharingReviewOpen === true} onClick=${openAssistant}>
         <${Icon} name="assistant" /><span class="assistant-entry-label">Ask Arya</span><span class="assistant-entry-hint" aria-hidden="true">to edit or explain</span><span class="assistant-entry-state"><i aria-hidden="true"></i>${assistantLabel}${s.refs.length ? ` · ${s.refs.length} attached` : ''}</span><kbd aria-hidden="true">/</kbd>
       </button>
       ${/* Shown only when the editor loses its server, so a dot beside Assistant never reads as AI status. */ s.connected ? null : html`<span class="conn" role="status" aria-label="Disconnected from the Arya server" title="Disconnected from the Arya server"></span>`}
@@ -273,7 +274,13 @@ function App() {
   // Ask again sooner while the first account check is still running, so "Checking" ends when the check does.
   const checkingAssistant = !s.assistantStatusError && s.assistantStatus?.loading === true && s.assistantStatus.checkedAt === null
   useEffect(() => {
-    const poll = () => refreshAssistantStatus().catch(() => {})
+    // One poll at a time. A newer request makes refreshAssistantStatus drop the older answer, so overlapping polls would never hear a slow server.
+    let waiting = false
+    const poll = () => {
+      if (waiting) return
+      waiting = true
+      refreshAssistantStatus().catch(() => {}).finally(() => { waiting = false })
+    }
     poll()
     const interval = setInterval(poll, checkingAssistant ? 1000 : 4000)
     return () => clearInterval(interval)
