@@ -1,3 +1,5 @@
+import { exportFileName } from '../../core/processing-export.js'
+
 /**
  * The range Render uses. An explicit choice is kept for its project and timeline across visits to
  * Deliver. With none, a timeline that has In and Out renders that range; setting them while Deliver
@@ -6,6 +8,16 @@
 export function deliverRangeMode(kept, { root, comp = null, range = null } = {}) {
   const own = kept && kept.root === root && (kept.comp ?? null) === (comp ?? null) ? kept.mode : null
   return range && own !== 'all' ? 'range' : 'all'
+}
+
+/**
+ * The file name Deliver promises, as the host will write it. The editor server trims dashes and dots
+ * at either end (exportFileName). The Mac app's Web Editor does not trim yet, so it gets the untrimmed
+ * name that ReelBackend startExport writes.
+ */
+export function deliverOutputName(name, hostKind) {
+  if (hostKind !== 'native') return exportFileName(name)
+  return String(name ?? '').replace(/[^\w.-]+/g, '-') || 'reel'
 }
 
 const sameScope = (a, b) => a.root === b.root && a.version === b.version && a.project === b.project && a.comp === b.comp

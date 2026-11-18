@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
-import { createDeliverRequest, deliverRangeMode } from '../web/ui/deliver-request.js'
+import { createDeliverRequest, deliverOutputName, deliverRangeMode } from '../web/ui/deliver-request.js'
 import { exportFileName } from '../core/processing-export.js'
 
 function fixture() {
@@ -72,7 +72,7 @@ function component({ hostKind = 'browser', caps = {} } = {}) {
   let index = 0, resolve, reject
   const response = new Promise((yes, no) => { resolve = yes; reject = no })
   const state = { root: '/synthetic/project', version: 4, project: { name: 'Timeline', width: 64, height: 64, fps: 1, tracks: [] }, openComp: null, jobs: [], caps }
-  const context = vm.createContext({ createDeliverRequest, deliverRangeMode, exportFileName, host: { kind: hostKind }, useStore: () => state,
+  const context = vm.createContext({ createDeliverRequest, deliverOutputName, deliverRangeMode, host: { kind: hostKind }, useStore: () => state,
     useState(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = initial; return [hooks[slot], value => { hooks[slot] = typeof value === 'function' ? value(hooks[slot]) : value }] },
     useRef(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = { current: initial }; return hooks[slot] },
     useEffect(effect) { const slot = index++; if (!(slot in hooks)) { hooks[slot] = true; const cleanup = effect(); if (cleanup) cleanups.push(cleanup) } },
@@ -186,8 +186,16 @@ test('an export name has no dash or dot left at either end, and the page shows t
   assert.equal(exportFileName(undefined), 'reel')
   const deliver = fs.readFileSync(new URL('../web/ui/deliver.js', import.meta.url), 'utf8')
   const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
-  assert.match(deliver, /renders\/\$\{exportFileName\(name\)\}/)
+  assert.match(deliver, /renders\/\$\{deliverOutputName\(name, host\.kind\)\}/)
   assert.match(server, /const base = exportFileName\(spec\.name \?\? selected\.name\)/)
+  // The editor server trims; the Mac app's Web Editor still writes the untrimmed name, so Deliver shows that.
+  for (const name of ['Opening!', '  Sample cut, final?  ', '...hidden', '?!', undefined]) assert.equal(deliverOutputName(name, 'http'), exportFileName(name))
+  assert.equal(deliverOutputName('Opening!', 'native'), 'Opening-')
+  assert.equal(deliverOutputName('  Sample cut, final?  ', 'native'), '-Sample-cut-final-')
+  assert.equal(deliverOutputName('', 'native'), 'reel')
+  const swift = fs.readFileSync(new URL('../../native/ReelKit/Sources/ReelKit/ReelBackend.swift', import.meta.url), 'utf8')
+  assert.match(swift, /let base = raw\.replacingOccurrences\(of: "\[\^\\\\w\.-\]\+", with: "-", options: \.regularExpression\)\.isEmpty \? "reel"/,
+    'when the Mac app trims too, show exportFileName on every host')
 })
 
 test('Deliver keeps an explicit range choice per timeline and otherwise follows In and Out', () => {
