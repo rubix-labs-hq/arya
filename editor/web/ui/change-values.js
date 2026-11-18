@@ -23,20 +23,20 @@ function parse(text) {
   }
 }
 
-function plain(value, depth = 0) {
+function plain(value, depth = 0, exact = false) {
   if (value === null) return 'None'
   if (typeof value === 'boolean') return value ? 'On' : 'Off'
-  if (typeof value === 'number') return Number.isFinite(value) ? number(value) : String(value)
+  if (typeof value === 'number') return Number.isFinite(value) && !exact ? number(value) : String(value)
   if (typeof value === 'string') return value === '' ? 'Empty' : value
   if (Array.isArray(value)) {
-    if (!value.length) return 'None'
+    if (!value.length) return 'Empty list'
     if (value.every(item => item === null || typeof item !== 'object')) return value.map(item => plain(item)).join(', ')
     if (value.every(item => typeof item?.type === 'string')) return value.map(item => item.type).join(', ')
     return plural(value.length, 'item')
   }
   if (depth > 1) return '…'
   const entries = Object.entries(value)
-  if (!entries.length) return 'None'
+  if (!entries.length) return 'No settings'
   const shown = entries.slice(0, MAX_FIELDS).map(([key, item]) => {
     const text = plain(item, depth + 1)
     return item !== null && typeof item === 'object' && !Array.isArray(item) ? `${key} (${text})` : `${key} ${text}`
@@ -62,13 +62,14 @@ function keyRows(before, after) {
   return rows
 }
 
-function side(parsed, property, fps) {
+// `exact` shows every digit, for when rounding would make a real change read the same on both sides.
+function side(parsed, property, fps, exact = false) {
   if (parsed.missing) return { text: 'Not set' }
   if (parsed.cut) return { text: CUT }
   const value = parsed.value
-  if (typeof value === 'number' && Number.isFinite(value) && TIMES.has(property)) return { text: `${seconds(value)} · ${timecode(value, fps)}` }
+  if (typeof value === 'number' && Number.isFinite(value) && TIMES.has(property)) return { text: `${exact ? `${value} s` : seconds(value)} · ${timecode(value, fps)}` }
   if (typeof value === 'string' && HEX.test(value)) return { text: value, swatch: value }
-  return { text: plain(value) }
+  return { text: plain(value, 0, exact) }
 }
 
 /**
@@ -87,7 +88,8 @@ export function readableChange(change, { fps = 30 } = {}) {
     return { property, label: property, keys: keyRows(before.value, after.value) }
   }
   const rate = Number.isFinite(fps) && fps > 0 ? fps : 30
-  const old = side(before, property, rate), next = side(after, property, rate)
+  let old = side(before, property, rate), next = side(after, property, rate)
+  if (old.text === next.text) { old = side(before, property, rate, true); next = side(after, property, rate, true) }
   return { property, label: property, before: old.text, after: next.text, swatches: old.swatch || next.swatch ? [old.swatch ?? null, next.swatch ?? null] : null }
 }
 

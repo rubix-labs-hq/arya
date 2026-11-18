@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { h } from 'preact'
+import { readFileSync } from 'node:fs'
 import { readableChange, settingsSummary, splitChanges } from '../web/ui/change-values.js'
 import { changeReceipt } from '../web/ui/change-receipt.js'
 import { assistantPanel } from '../web/ui/assistant-panel.js'
@@ -20,6 +21,15 @@ test('times read as seconds to two places with a timecode at the timeline frame 
   // Only these exact names are times: a trim on a shape is a fraction, not seconds.
   assert.equal(readableChange({ property: 'shape.trim.start', before: '0', after: '0.333333' }).after, '0.333')
   assert.equal(readableChange({ property: 'opacity', before: '1', after: '0.70000001' }).after, '0.7')
+  // When rounding would make both sides read the same, every digit shows.
+  const close = readableChange({ property: 'start', before: '9.43333', after: '9.433333' })
+  assert.deepEqual([close.before, close.after], ['9.43333 s · 00:00:09:13', '9.433333 s · 00:00:09:13'])
+  const small = readableChange({ property: 'opacity', before: '0.50001', after: '0.50002' })
+  assert.deepEqual([small.before, small.after], ['0.50001', '0.50002'])
+  for (const [a, b] of [['null', '{}'], ['[]', 'null'], ['""', '[]']]) {
+    const row = readableChange({ property: 'x', before: a, after: b })
+    assert.notEqual(row.before, row.after, `${a} and ${b}`)
+  }
 })
 
 test('keyframes become one line each, paired by time, with the ease named', () => {
@@ -67,6 +77,9 @@ test('a whole object that appears or goes is split into one row per property', (
     assert.deepEqual(splitChanges([change]), [change])
   }
   assert.equal(readableChange({ property: 'opacity', before: 'Absent', after: '0.85' }).before, 'Not set')
+  // The hosted editor ships each UI module from this list.
+  const files = JSON.parse(readFileSync(new URL('../browser-public-files.json', import.meta.url), 'utf8'))
+  assert.ok(files.some(row => row.source === 'web/ui/change-values.js' && row.target === 'editor/ui/change-values.js'))
 })
 
 test('the settings line counts tracks and folds a new composition with its own tracks into one item', () => {
