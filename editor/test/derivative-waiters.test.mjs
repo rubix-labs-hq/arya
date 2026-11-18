@@ -92,3 +92,28 @@ test('the server sends import proxies and pre-warmed filmstrips through the wait
   assert.match(server, /if \(asset\.hasVideo && !asset\.proxy\) waitForSourceDerivative\(\(\) => filmstrip\(src\)\)\.catch\(\(\) => \{\}\)/)
   assert.equal(server.match(/processing\.submit\(\(\) => makeProxy/g), null, 'no proxy goes straight to the queue')
 })
+
+test('a filmstrip or waveform already in the cache is answered without waiting for a processing slot', async t => {
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path')
+  const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'arya-cached-strip-'))
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const pick = (from, to) => { const start = server.indexOf(from), end = server.indexOf(to, start); assert.ok(start >= 0 && end > start, from); return server.slice(start, end) }
+  const cachedStrip = pick('async function cachedFilmstrip(', '\nasync function filmstrip('), cachedWave = pick('async function cachedPeaks(', '\nasync function peaks(')
+  const routes = `${pick("  'GET /api/strip':", "\n  'POST /api/analyze'")}`
+  const waited = [], meta = path.join(dir, 'strip.json'), wave = path.join(dir, 'peaks.json')
+  const values = { fs, path, project: { assets: { 'media/a.mp4': { hasVideo: true, hasAudio: true } } }, waited,
+    filmstripCache: async () => ({ meta }), peaksCache: async () => ({ file: wave, out: wave, meta: wave }),
+    filmstrip: async () => ({ made: 'strip' }), peaks: async () => ({ made: 'peaks' }),
+    // The queue is busy: a request that asks for a slot never gets one in this test.
+    waitForSourceDerivative: work => { waited.push(work); return new Promise(() => {}) } }
+  const made = new Function(...Object.keys(values), `${cachedStrip}\n${cachedWave}\nreturn { ${routes} }`)(...Object.values(values))
+  const query = new URLSearchParams({ src: 'media/a.mp4' })
+  const settled = promise => Promise.race([promise.then(value => ({ value })), new Promise(resolve => setTimeout(() => resolve({ waiting: true }), 50))])
+  assert.deepEqual(await settled(made['GET /api/strip']({}, query)), { waiting: true }, 'a strip that has to be made waits for a slot')
+  assert.equal(waited.length, 1)
+  fs.writeFileSync(meta, JSON.stringify({ frames: 12, cached: true }))
+  assert.deepEqual(await settled(made['GET /api/strip']({}, query)), { value: { frames: 12, cached: true } })
+  assert.equal(waited.length, 1, 'the cached strip asked for no slot')
+  assert.deepEqual(await settled(made['GET /api/strip']({}, new URLSearchParams({ src: 'media/unknown.mp4' }))), { waiting: true }, 'an unknown source goes to the queued path, which reports it')
+})

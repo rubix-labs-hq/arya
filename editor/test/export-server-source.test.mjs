@@ -18,7 +18,7 @@ const turn = () => new Promise(resolve => setImmediate(resolve))
 // Time-bounded, not turn-bounded: file work takes more event-loop turns on a loaded machine.
 async function until(predicate) { const deadline = Date.now() + 10000; while (!predicate()) { if (Date.now() > deadline) throw new Error('Source fixture did not settle'); await turn() } }
 
-function fixture(t) {
+function fixture(t, overrides = {}) {
   const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'arya-export-server-source-'))
   t.after(() => fs.rmSync(ROOT, { recursive: true, force: true }))
   const DOT = path.join(ROOT, '.reel'); fs.mkdirSync(DOT)
@@ -27,13 +27,13 @@ function fixture(t) {
   const events = [], encoders = [], admission = createProcessingAdmission()
   const values = { ROOT, DOT, fs, path, createProcessingAdmission, reserveProcessingWorker, validateExportSpec, captureExportSources, prepareExportCohort, createExportDestination, guardedOutput, initialProject: project, processing: admission,
     armProcessingWorkerCancellation: () => () => {}, ensureWorker: async () => {}, touchWorker: () => {}, assistantCalls: { getStore: () => null },
-    queuedJobWait, frameJobDeadline, workerConnected: () => true, exportCopyDigests: new Map(), log: () => {},
+    queuedJobWait, frameJobDeadline, workerConnected: () => true, exportCopyDigests: new Map(), log: () => {}, ...overrides,
     duration: () => 1, compView: (p, name) => p.comps?.[name], pushActivity: () => {}, deliveries: new DeliveryHistory(ROOT),
     broadcast: (type, data) => events.push({ type, data }), spawn: (_cmd, args) => {
       const ff = new EventEmitter(); ff.stderr = new EventEmitter(); ff.stdin = new EventEmitter(); ff.stdin.end = () => {}; ff.kills = []; ff.kill = signal => ff.kills.push(signal); ff.argv = args; encoders.push(ff); return ff
     } }
-  const f = new Function(...Object.keys(values), `let project = initialProject, version = 1; const jobs = new Map(), worker = {}; function captureProcessing() { const initial = project, revision = version; return { assertCurrent() { if (project !== initial || version !== revision) throw new Error('The project changed') } } }\n${exportSource}\nreturn { startExport, startEncoder, finishExport, failJob, jobPublic, jobs, changeProject() { project = {...project}; version++ } }`)(...Object.values(values))
-  return { ROOT, project, f, events, encoders, admission }
+  const f = new Function(...Object.keys(values), `let project = initialProject, version = 1; const jobs = new Map(), worker = {}; function captureProcessing() { const initial = project, revision = version; return { assertCurrent() { if (project !== initial || version !== revision) throw new Error('The project changed') } } }\n${exportSource}\nreturn { startExport, startEncoder, finishExport, failJob, jobPublic, renderFrame, jobs, changeProject() { project = {...project}; version++ } }`)(...Object.values(values))
+  return { ROOT, project, f, events, encoders, admission, exportCopyDigests: values.exportCopyDigests }
 }
 
 test('actual server export methods dispatch backend snapshot copies and publish a new destination', async t => {
@@ -97,6 +97,32 @@ for (const target of ['original', 'copy']) test(`actual finishExport refuses a c
   assert.deepEqual(job.partialOutputs, [])
   job.processing.acknowledge()
   await until(() => admission.snapshot().active === 0)
+})
+
+test('a frame job starts its 30 s render limit when the worker is given the frame, not before', async t => {
+  const calls = []
+  const { f, events, admission } = fixture(t, { frameJobDeadline: (fail, options) => { const real = frameJobDeadline(fail, options); return { dispatched() { calls.push('dispatched'); real.dispatched() }, clear() { calls.push('clear'); real.clear() } } } })
+  const frame = f.renderFrame(0.5, 320); frame.catch(() => {})
+  assert.deepEqual(calls, [], 'the limit is not running while the sources are copied')
+  await until(() => events.some(e => e.type === 'render'))
+  assert.deepEqual(calls, ['dispatched'])
+  const job = [...f.jobs.values()][0]
+  assert.equal(job.kind, 'frame'); assert.equal(job.waiting, undefined)
+  f.failJob(job, 'stopped by the test'); await assert.rejects(frame, /stopped by the test/)
+  assert.deepEqual(calls, ['dispatched', 'clear'])
+  job.processing.acknowledge(); await until(() => admission.snapshot().active === 0)
+})
+
+test('the digests of an export\'s source copies are dropped when the job has left the queue', async t => {
+  const { ROOT, f, events, admission, exportCopyDigests } = fixture(t)
+  const job = await f.startExport({ name: 'digest-result' })
+  await until(() => events.some(e => e.type === 'render'))
+  const copy = path.join(ROOT, events.find(e => e.type === 'render').data.project.tracks[0].clips[0].src)
+  assert.deepEqual([...exportCopyDigests.keys()], [copy]); assert.match(exportCopyDigests.get(copy), /^[a-f0-9]{64}$/)
+  f.failJob(job, 'stopped by the test')
+  job.processing.acknowledge(); await until(() => admission.snapshot().active === 0)
+  await until(() => job.exportCopies === undefined)
+  assert.equal(exportCopyDigests.size, 0, 'nothing is left for a finished job')
 })
 
 test('actual interchange route writes a new file and refuses repeated basename/source references', async t => {
