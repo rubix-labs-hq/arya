@@ -164,6 +164,20 @@ test('a history card is named for its move and offers Undo only as the server al
   assert.equal(textContent(nodes(card({ change: null, changes: [] })).find(node => node.type === 'b')), 'Undid 1 edit', 'an older card keeps the name too')
 })
 
+test('a stopped request that changed nothing says so and offers Retry and Edit and retry', () => {
+  const at = Date.now() - 5000
+  const chat = [{ role: 'user', text: 'Tighten the opening', at }]
+  const stopped = { state: 'cancelled', runId: 'r1', startedAt: at, finishedAt: at + 3000 }
+  const tree = panel(stopped, true, { chat, review: { change: null, changes: [] }, lastSent: { request: { text: 'Tighten the opening' }, options: {}, runId: 'r1' } })
+  const run = nodes(tree).find(node => node.props?.class === 'assistant-run cancelled')
+  assert.equal(textContent(nodes(run).find(node => node.props?.class === 'assistant-run-stage')), 'Nothing was changed.')
+  const actions = nodes(tree).find(node => node.props?.class === 'assistant-failure-actions')
+  assert.deepEqual(nodes(actions).filter(node => node.type === 'button').map(textContent), ['Edit and retry', 'Retry'])
+  // Another request's run gets Edit and retry only.
+  const other = panel(stopped, true, { chat, review: { change: null, changes: [] }, lastSent: { request: {}, options: {}, runId: 'r0' } })
+  assert.deepEqual(nodes(nodes(other).find(node => node.props?.class === 'assistant-failure-actions')).filter(node => node.type === 'button').map(textContent), ['Edit and retry'])
+})
+
 test('a failed turn lists what was saved and offers Retry only for the same retryable request', () => {
   const at = Date.now() - 5000
   const chat = [{ role: 'user', text: 'Add a title card', at }]

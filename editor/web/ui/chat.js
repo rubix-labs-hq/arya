@@ -189,9 +189,13 @@ export function ChatPanel() {
   // The browser server reports the pending preview and the latest assistant change. The native host keeps its own flow.
   const runReview = s.caps.host === 'native' ? null : s.assistantReview
   const sameRun = id => id != null && id === s.claude?.runId
+  // The server records a change for a run whenever the project moved during it. With none and no
+  // commit of its own, a stopped run changed nothing.
+  const runCommitted = Array.isArray(s.claude?.committed) && s.claude.committed.length > 0
   const activity = assistantActivity(s.claude, { connected: s.connected, pending, stopping, now, ...(runReview ? {
     proposal: Boolean(runReview.proposal) && (runReview.proposal.runId == null || s.claude?.runId == null || sameRun(runReview.proposal.runId)),
-    edits: runReview.change?.kind === 'request' && sameRun(runReview.change.runId) && runReview.change.edits > 0,
+    edits: ['request', 'history'].includes(runReview.change?.kind) && sameRun(runReview.change.runId) && runReview.change.edits > 0,
+    unchanged: s.claude?.runId != null && !runCommitted && !sameRun(runReview.change?.runId) && !(runReview.changes ?? []).some(item => sameRun(item.runId)),
   } : {}) })
   useEffect(() => {
     if (!activity.active) return
@@ -392,20 +396,22 @@ export function ChatPanel() {
     children: [activity.connectionNotice ? html`<p>${activity.connectionNotice}</p>` : null,
       (!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><${RoutingReceipt} value=${s.claude.routing} /></div>` : null] })
   const failureBlock = lastReply => {
-    if (working || activity.state !== 'error') return null
+    // A stopped request can be sent again as well.
+    const stopped = activity.state === 'cancelled'
+    if (working || activity.state !== 'error' && !stopped) return null
     const saved = committed.length > 0 && !committed.every(item => lastReply?.text?.includes(item.summary))
     return html`<div class="assistant-failure">
               ${chatgptCode === 'chatgpt_usage_limit' ? html`<div class="assistant-plan-error"><b>Usage limit reached</b><p>ChatGPT account: ${chatgpt?.email || 'your signed-in account'}. Check your usage, then try again later.</p><a class="button primary" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></div>` : null}
               ${['chatgpt_sign_in_required', 'chatgpt_not_authorized', 'chatgpt_plan_disabled', 'chatgpt_account_changed', 'chatgpt_not_eligible'].includes(chatgptCode) ? html`<div class="assistant-plan-error"><button class="ghost tiny" onClick=${() => set({ settingsOpen: true })}>Review ChatGPT sign-in</button></div>` : null}
-              ${saved ? html`<div class="assistant-saved"><b>Saved before the failure</b><ul>${committed.map(item => html`<li key=${item.version}>${item.summary}</li>`)}</ul></div>` : null}
+              ${saved ? html`<div class="assistant-saved"><b>${stopped ? 'Saved before you stopped it' : 'Saved before the failure'}</b><ul>${committed.map(item => html`<li key=${item.version}>${item.summary}</li>`)}</ul></div>` : null}
               ${lastRequest || canRetry ? html`<div class="assistant-failure-actions">
-                ${lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title="Put the failed request back in the text box to edit or send again. Clear the current draft first." onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
+                ${lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title=${`Put the ${stopped ? 'stopped' : 'failed'} request back in the text box to edit or send again. Clear the current draft first.`} onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
                 ${canRetry ? html`<button class="ghost tiny assistant-resend" disabled=${pending || !s.connected} title="Send the same request again" onClick=${retry}>Retry</button>` : null}
               </div>` : null}
             </div>`
   }
-  // A plain Retry only when the request failed on the network and is the one this panel sent.
-  const canRetry = s.claude?.retryable === true && lastSent.current != null && lastSent.current.runId != null && lastSent.current.runId === s.claude?.runId
+  // A plain Retry only for the request this panel sent, when it failed on the network or you stopped it.
+  const canRetry = (s.claude?.retryable === true || activity.state === 'cancelled') && lastSent.current != null && lastSent.current.runId != null && lastSent.current.runId === s.claude?.runId
   const setPreview = on => {
     set({ assistantPreview: on })
     try { globalThis.localStorage?.setItem('arya.assistant.preview', on ? 'on' : 'off') } catch { /* The choice still applies to this session. */ }

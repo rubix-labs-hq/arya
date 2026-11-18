@@ -475,13 +475,17 @@ test('after Stop, committed edits are mentioned only when this request made some
   const sentence = 'Stopped. Review or undo any committed edits.', stage = 'Review or undo any committed edits.'
   const review = change => ({ proposal: null, applying: null, change, running: false, runId: null })
   const row = state => { const run = byClass(panel(t, state).draw(), 'assistant-run'); assert.ok(cls(run, 'cancelled')); return text(run) }
-  assert.equal(row({ claude: stopped, assistantReview: review(null) }), '■ Stopped 12s', 'nothing was committed, so nothing is promised')
+  assert.equal(row({ claude: stopped, assistantReview: review(null) }), '■ Stopped Nothing was changed. 12s', 'the project did not move, and the line says so')
   assert.equal(row({ claude: stopped, assistantReview: review({ id: 'c1', kind: 'request', runId: 'r1', edits: 2 }) }), `■ Stopped ${stage} 12s`)
-  assert.equal(row({ claude: stopped, assistantReview: review({ id: 'c0', kind: 'request', runId: 'r0', edits: 2 }) }), '■ Stopped 12s', 'an earlier request made those edits')
+  assert.equal(row({ claude: stopped, assistantReview: review({ id: 'c1', kind: 'history', runId: 'r1', edits: 1 }) }), `■ Stopped ${stage} 12s`, 'an Undo the request ran is a change too')
+  assert.equal(row({ claude: stopped, assistantReview: review({ id: 'c0', kind: 'request', runId: 'r0', edits: 2 }) }), '■ Stopped Nothing was changed. 12s', 'an earlier request made those edits')
+  assert.equal(row({ claude: { ...stopped, committed: [{ version: 3, summary: 'Trimmed a clip' }] }, assistantReview: review(null) }), '■ Stopped 12s', 'a commit of its own, since undone, is not called nothing')
+  assert.equal(row({ claude: stopped, assistantReview: { ...review(null), changes: [{ id: 'c1', kind: 'request', runId: 'r1', undone: true }] } }), '■ Stopped 12s', 'nor is a change of this run that a later one replaced')
   assert.equal(row({ claude: stopped, assistantReview: review({ id: 'c1', kind: 'request', runId: 'r1', edits: 0 }) }), '■ Stopped 12s')
   assert.equal(row({ claude: stopped }), `■ Stopped ${stage} 12s`, 'with no review state the sentence is kept')
   assert.equal(row({ claude: stopped, caps: { host: 'native' }, assistantReview: review(null) }), `■ Stopped ${stage} 12s`)
   assert.equal(assistantActivity(stopped, { edits: false }).detail, '')
+  assert.equal(assistantActivity(stopped, { edits: false, unchanged: true }).detail, 'Stopped. Nothing was changed.')
   assert.equal(assistantActivity(stopped).detail, sentence)
 })
 
