@@ -133,6 +133,7 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
   };
 
   // A browser editor figure. It is always labelled as such and never sits under a device name.
+  // The assistant figure says Local browser editor, because the hosted editor has no assistant.
   const figure = (id, label = 'Browser editor') => {
     const item = figures[id];
     if (!item) throw new Error(`Missing chapter figure ${id}`);
@@ -275,7 +276,7 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
 <div class="chapter-copy"><p class="where">${mobileURL ? assistantCopy.scopeMobile : assistantCopy.scope}</p><h2 id="ai-heading">${assistantCopy.heading}</h2><p>${assistantCopy.lead}</p>
 <ul class="points">${assistantPoints.map(([lead, text]) => `<li><strong>${lead}</strong> ${text}</li>`).join('')}</ul>
 ${link(...assistantCopy.link)}</div>
-${figure('assistant')}
+${figure('assistant', 'Local browser editor')}
 </div>
 </section>
 ${launchFilm}<section class="pages" id="suite" tabindex="-1" aria-labelledby="suite-heading">

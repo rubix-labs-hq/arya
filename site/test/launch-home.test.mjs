@@ -182,7 +182,8 @@ test('the six pages keep the app’s tab order and native screens stay apart fro
     if (!label) continue;
     const isNative = /native-(?:mac|ipad|iphone)-|after-the-tide/.test(figure);
     assert.equal(/ on (?:Mac|iPad|iPhone)$/.test(label), isNative, `${label} labels the wrong kind of screen`);
-    if (!isNative) assert.equal(label, 'Browser editor');
+    // The assistant panel is from the local browser editor. The hosted one has no assistant.
+    if (!isNative) assert.equal(label, /figure-assistant/.test(figure) ? 'Local browser editor' : 'Browser editor');
   }
   assert.ok(text(live.home).includes('Screens labelled Mac, iPad or iPhone are from the native apps. Screens labelled Browser editor are from the browser editor.'));
   // The assistant is in the Mac, iPad and iPhone apps and the local browser editor. CLI assistants
