@@ -10,8 +10,8 @@ import { assistantActivity } from './assistant-activity.js'
 import { assistantState } from './assistant-state.js'
 import { player } from './engine-host.js'
 import { Inspector } from './inspector.js'
-import { installKeys, SHORTCUTS } from './keys.js'
-import { api, chatHistoryStatus, connect, set, store, toast, useStore } from './store.js'
+import { installKeys, moveHistory, SHORTCUTS } from './keys.js'
+import { api, chatHistoryStatus, connect, historyDepth, set, store, toast, useStore } from './store.js'
 import { Timeline } from './timeline.js'
 import { Toolbar } from './timeline-toolbar.js'
 import { Viewer } from './viewer.js'
@@ -73,7 +73,8 @@ function TopBar() {
   const working = assistantActivity(s.claude, { pending: s.assistantSharingReviewOpen === true }).active
   // Until the first status answer arrives the entry says so. "Not set up" is only for a status that says it.
   const checking = assistant.checking && !s.assistantStatusError
-  const assistantLabel = hosted ? 'Unavailable in beta' : !s.connected ? 'Reconnecting' : working ? 'Working' : assistant.ready ? 'Ready' : checking ? 'Checking' : assistant.refreshRequired ? 'Needs refresh' : 'Not set up'
+  // The same word the panel header shows, in the order the Mac, iPad and iPhone apps use.
+  const assistantLabel = assistantActivity.statusWord({ hosted, connected: s.connected, run: s.claude, pending: s.assistantSharingReviewOpen === true, ready: assistant.ready, checking, proposal: s.caps?.host !== 'native' && Boolean(s.assistantReview?.proposal) })
   // The entry opens the conversation and focuses the field. It never closes it, so it carries no aria-expanded; Close is in the panel.
   const openAssistant = () => {
     if (store.assistantSharingReviewOpen) return
@@ -84,7 +85,8 @@ function TopBar() {
       queueMicrotask(focus)
     }
   }
-  const running = s.jobs.filter(j => j.state === 'running' || j.state === 'queued' || host.kind === 'browser-local' && ['cancelling', 'committing'].includes(j.state))
+  // Only exports are deliveries. A still frame or a loudness measurement is a job too, and is not shown here.
+  const running = s.jobs.filter(j => j.kind === 'export' && (j.state === 'running' || j.state === 'queued' || host.kind === 'browser-local' && ['cancelling', 'committing'].includes(j.state)))
 
   return html`
     <div class="topbar">
@@ -97,8 +99,8 @@ function TopBar() {
       <div id="editor-action-list" class=${`topbar-action-list ${actionsOpen ? 'open' : ''}`} role="group" aria-label="Editor actions">
       ${running.length ? html`<button type="button" class="job-pill" aria-label=${`Open delivery progress, ${Math.round((running[0].progress ?? 0) * 100)}%`} onClick=${() => set({ page: 'deliver' })}><${Icon} name="export" size=${14} /> ${Math.round((running[0].progress ?? 0) * 100)}%</button>` : null}
       ${p ? html`<div class="topbar-history" role="group" aria-label="History">
-        <button class="ghost topbar-undo" aria-label="Undo" title="Undo latest edit (⌘Z)" onClick=${() => api('/api/undo', {}).then(r => set({ project: r.project, version: r.version }))}><${Icon} name="undo" /><span class="action-label">Undo</span></button>
-        <button class="ghost topbar-undo" aria-label="Redo" title="Redo (⇧⌘Z)" onClick=${() => api('/api/redo', {}).then(r => set({ project: r.project, version: r.version }))}><${Icon} name="redo" /><span class="action-label">Redo</span></button>
+        <button class="ghost topbar-undo" aria-label="Undo" title=${s.history?.undo === 0 ? 'Nothing to undo' : 'Undo latest edit (⌘Z)'} disabled=${s.history?.undo === 0} onClick=${() => moveHistory('undo')}><${Icon} name="undo" /><span class="action-label">Undo</span></button>
+        <button class="ghost topbar-undo" aria-label="Redo" title=${s.history?.redo === 0 ? 'Nothing to redo' : 'Redo (⇧⌘Z)'} disabled=${s.history?.redo === 0} onClick=${() => moveHistory('redo')}><${Icon} name="redo" /><span class="action-label">Redo</span></button>
       </div>
       <span class="topbar-sep" aria-hidden="true"></span>
       <div class="topbar-utility"><${LayoutMenu} /></div>` : null}
@@ -311,7 +313,7 @@ function App() {
 
 export async function mountApp(el) {
   const res = await api('/api/project')
-  set({ project: res.project, version: res.version, root: res.root, recovery: res.recovery ?? null, chat: res.chat ?? [], chatHistory: chatHistoryStatus(res.chatHistory), claude: res.claude ?? { state: 'idle' }, activity: res.activity ?? [], jobs: res.jobs ?? [] })
+  set({ project: res.project, version: res.version, history: historyDepth(res.history), session: res.session ?? null, root: res.root, recovery: res.recovery ?? null, chat: res.chat ?? [], chatHistory: chatHistoryStatus(res.chatHistory), claude: res.claude ?? { state: 'idle' }, activity: res.activity ?? [], jobs: res.jobs ?? [] })
   api('/api/caps').then(caps => set({ caps })).catch(() => {})
   connect(() => { if (host.kind === 'http') refreshOpenProjectRecovery() })
   installKeys()

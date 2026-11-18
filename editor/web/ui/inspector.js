@@ -5,6 +5,8 @@ import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
 import { BLEND_MODES, clipEnd, EASES, EFFECTS, findClip, sortedKeys, timecode, TITLE_ANIMS, TRANSITIONS, valueAt, ease as easeFn } from '/core/project.js'
+// One font list for the title inspector, GET /api/caps and the note an edit returns for an unknown family.
+import { SYSTEM_FONTS as FONTS } from '/core/fonts.js'
 import { openMenu } from './menu.js'
 import { player } from './engine-host.js'
 import { addRef, edit, set, store, time, toast, useStore, useTime, viewProject } from './store.js'
@@ -14,8 +16,6 @@ import { ShapeAppearance } from './shape-appearance.js'
 import { Icon } from './icons.js'
 
 const html = htm.bind(h)
-
-const FONTS = ['Avenir Next', 'Helvetica Neue', 'SF Pro Display', 'Futura', 'Gill Sans', 'Optima', 'Didot', 'Georgia', 'Baskerville', 'Times New Roman', 'Menlo', 'Courier New', 'Impact', 'Arial Black', 'Copperplate', 'Marker Felt', 'Chalkboard', 'American Typewriter', 'Rockwell', 'Bodoni 72']
 
 /** A number you can type or drag horizontally on the label to scrub. */
 export function Num({ label, value, step = 1, min, max, unit = '', digits = 2, onChange, onCommit, keyframe, refId }) {

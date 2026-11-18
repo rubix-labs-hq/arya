@@ -36,29 +36,29 @@ function fixture(overrides = {}, draft = 'Refine this title') {
 const input = tree => nodes(tree).find(node => node.type === 'textarea')
 const event = values => { const result = { key: 'Enter', stopped: 0, prevented: 0, stopPropagation() { this.stopped++ }, preventDefault() { this.prevented++ }, ...values }; return result }
 
-test('consecutive tool updates are collapsed by default and preserve conversation order', () => {
-  const f = fixture({ chat: [{ role: 'claude', text: 'The result', at: 4 }], activity: [
+test('a turn folds its tool updates into one collapsed run line after the reply, in time order', () => {
+  const f = fixture({ chat: [{ role: 'user', text: 'Check the frame', at: 0 }, { role: 'claude', text: 'The result', at: 4 }], activity: [
     { who: 'agent', text: 'Inspecting the current frame', at: 3 },
     { who: 'you', text: 'Hidden user activity', at: 1 },
     { who: 'assistant', text: 'Tool reported an error', at: 2 },
     { who: 'agent', text: 'Read saved output', at: 5 },
   ] })
   const list = nodes(f.draw()).find(node => node.props?.class === 'chat-list')
-  const cards = nodes(list).filter(node => node.props?.class === 'assistant-tool-card')
-  assert.equal(cards.length, 2)
-  assert.ok(cards.every(node => node.type === 'details' && !node.props.open))
-  assert.match(text(cards[0]), /2 tool updates Tool reported an error Inspecting the current frame/)
-  assert.match(text(cards[1]), /1 tool update Read saved output/)
-  const order = flatten(list.props.children)
-  assert.ok(order.indexOf(cards[0]) < order.findIndex(node => node?.props?.class === 'msg claude'))
-  assert.ok(order.indexOf(cards[1]) > order.findIndex(node => node?.props?.class === 'msg claude'))
+  const lines = nodes(list).filter(node => node.props?.class?.startsWith('assistant-run '))
+  assert.equal(lines.length, 1)
+  assert.equal(lines[0].type, 'details'); assert.equal(Boolean(lines[0].props.open), false)
+  assert.match(text(lines[0]), /Done 3 tool updates/)
+  assert.deepEqual(nodes(lines[0]).filter(node => node.type === 'li').map(text), ['Tool reported an error', 'Inspecting the current frame', 'Read saved output'])
+  const turn = nodes(list).find(node => node.props?.class === 'assistant-turn'), order = flatten(turn.props.children)
+  assert.ok(order.indexOf(lines[0]) > order.findIndex(node => node?.props?.class === 'msg claude'))
   assert.doesNotMatch(text(list), /Success|Tool completed|Hidden user activity/)
 })
 
-test('the exact committed receipt is passed to the compact result component', () => {
+test('the exact committed receipt is passed to the result card', () => {
   const receipt = { version: 7, total: 0, clips: [], projectChanges: ['Saved asset media/cue.wav'], at: 4 }
-  const component = nodes(fixture({ receipts: [receipt] }).draw()).find(node => node.type?.name === 'ChangeReceipt')
-  assert.equal(component.props.receipt, receipt)
+  const component = nodes(fixture({ receipts: [receipt] }).draw()).find(node => node.type?.name === 'ResultCard')
+  assert.equal(component.props.receipts.length, 1)
+  assert.equal(component.props.receipts[0], receipt)
 })
 
 test('selection chips visibly distinguish duplicate labels, tracks and exact transition IDs in the current composition', () => {
@@ -156,6 +156,11 @@ test('Command-Return sends like Return, as in the Mac Assistant', async () => {
   assert.ok(f.calls.some(call => call.route === '/api/bridge/send'))
 })
 
+test('the prompt placeholder follows the selection', () => {
+  assert.equal(input(fixture().draw()).props.placeholder, 'Ask for an edit, or ask about the project')
+  assert.equal(input(fixture({ selection: ['c1'] }).draw()).props.placeholder, 'Ask about or change this selection')
+})
+
 test('in a script or screenplay, Return adds a line and Command-Return sends', async () => {
   for (const inputKind of ['script', 'screenplay']) {
     const f = fixture({ assistantDraft: { root: '/fixture', text: 'INT. ROOM - DAY', inputKind } })
@@ -165,6 +170,7 @@ test('in a script or screenplay, Return adds a line and Command-Return sends', a
     assert.equal(plain.prevented, 0, `${inputKind}: Return keeps the newline`)
     assert.deepEqual(f.calls, [])
     assert.match(text(f.draw()), /⌘Return to send · Return for a new line/)
+    assert.equal(input(f.draw()).props.placeholder, 'Paste a script to build editable scenes', `${inputKind}: placeholder`)
     const command = event({ metaKey: true })
     input(f.draw()).props.onKeyDown(command)
     await tick()
@@ -197,7 +203,7 @@ test('plain Enter keeps exact sharing, selection, references, composition and pl
 })
 
 test('live terminal labels and inline model controls retain their current contracts', async () => {
-  for (const [state, label] of [['working', 'Using tools'], ['cancelling', 'Stopping'], ['done', 'Response finished'], ['error', 'Failed'], ['cancelled', 'Stopped']]) {
+  for (const [state, label] of [['working', 'Working'], ['cancelling', 'Stopping…'], ['done', 'Done'], ['error', 'Failed'], ['cancelled', 'Stopped']]) {
     const f = fixture({ claude: { state } }), tree = f.draw()
     assert.ok(nodes(tree).some(node => node.props?.role === 'status' && text(node) === label), state)
     const controls = nodes(tree).find(node => node.type === f.Controls)
@@ -233,7 +239,7 @@ for (const referenceCount of [0, 12]) test(`context leads the composer with its 
   const model = nodes(options).find(node => node.props?.class === 'assistant-model-menu')
   assert.equal(model.type, 'details')
   assert.equal(Boolean(model.props.open), false)
-  assert.equal(text(nodes(model).find(node => node.type === 'summary')), 'Model')
+  assert.equal(text(nodes(model).find(node => node.type === 'summary')), 'Codex · exact')
   assert.ok(nodes(model).some(node => node.type === f.Controls))
   assert.equal(nodes(content).some(node => node.props?.['aria-label'] === 'Assistant input kind'), false)
   const kind = nodes(options).find(node => node.props?.['aria-label'] === 'Assistant input kind')
@@ -269,11 +275,10 @@ test('setup reason is shown once while the header gives a short connection state
   assert.deepEqual(f.calls, [])
 })
 
-test('expired availability has a short refresh header and retains the real setup reason', () => {
+test('expired availability shows the Not set up status word and retains the real setup reason', () => {
   const f = fixture({ assistantStatus: { provider: 'codex', configured: false, mode: 'auto', autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } } })
   const tree = f.draw(), head = nodes(tree).find(node => node.props?.class === 'chat-head')
-  assert.match(text(head), /Needs refresh/)
-  assert.doesNotMatch(text(head), /Not set up/)
+  assert.match(text(head), /Not set up/)
   assert.match(text(nodes(tree).find(node => node.props?.class === 'assistant-setup')), /expired/)
 })
 
@@ -306,7 +311,8 @@ test('Preview changes is on by default, travels with the request and can be turn
   const f = fixture()
   const toggle = nodes(f.draw()).find(node => node.props?.class === 'assistant-preview-toggle')
   const box = nodes(toggle).find(node => node.type === 'input')
-  assert.equal(box.props.checked, true); assert.match(text(toggle), /Preview changes/)
+  assert.equal(box.props.checked, true); assert.equal(text(toggle), 'Preview')
+  assert.equal(toggle.props.title, 'Preview changes'); assert.equal(box.props['aria-label'], 'Preview changes')
   box.props.onChange({ target: { checked: false } })
   assert.equal(f.state.assistantPreview, false)
   assert.equal(nodes(nodes(f.draw()).find(node => node.props?.class === 'assistant-preview-toggle')).find(node => node.type === 'input').props.checked, false)
@@ -321,7 +327,7 @@ test('the native host keeps its own flow: no preview toggle, preview card or pre
   const f = fixture({ caps: { host: 'native' }, assistantReview: { proposal, change: { id: 'x', undoable: true, edits: 1 } } })
   const tree = f.draw()
   assert.equal(nodes(tree).some(node => node.props?.class === 'assistant-preview-toggle'), false)
-  assert.equal(nodes(tree).some(node => node.type === assistantPanel.PreviewCard || node.type === assistantPanel.ChangeBar), false)
+  assert.equal(nodes(tree).some(node => node.type === assistantPanel.PreviewCard || node.type?.name === 'ResultCard'), false)
   input(tree).props.onKeyDown(event())
   await tick()
   assert.equal(Object.hasOwn(f.calls.find(call => call.route === '/api/bridge/send').body, 'review'), false)
@@ -331,14 +337,15 @@ test('a pending preview and the latest change render above the composer and call
   const proposal = { id: 'p1', baseVersion: 1, ops: [{ op: 'add_color', color: '#000' }], summary: 'Black', stale: false }
   const f = fixture({ version: 1, assistantReview: { proposal, change: { id: 'change1', undoable: true, edits: 2, kind: 'request' } } })
   const tree = f.draw()
-  const card = nodes(tree).find(node => node.type === assistantPanel.PreviewCard), bar = nodes(tree).find(node => node.type === assistantPanel.ChangeBar)
+  const card = nodes(tree).find(node => node.type === assistantPanel.PreviewCard), bar = nodes(tree).find(node => node.type?.name === 'ResultCard')
   assert.equal(card.props.proposal, proposal); assert.equal(card.props.version, 1); assert.equal(card.props.running, false)
+  assert.equal(bar.props.change.id, 'change1')
   await card.props.onApply(); await card.props.onDiscard(); await bar.props.onUndo()
   assert.deepEqual(f.calls.map(call => [call.route, call.body]), [
     ['/api/assistant/proposal/apply', { id: 'p1' }], ['/api/assistant/proposal/discard', { id: 'p1' }], ['/api/assistant/change/undo', { id: 'change1' }]])
   const working = fixture({ claude: { state: 'working', runId: 'r', startedAt: Date.now() }, assistantReview: { proposal, change: { id: 'c', undoable: true, edits: 1 } } }).draw()
   assert.equal(nodes(working).find(node => node.type === assistantPanel.PreviewCard).props.running, true)
-  assert.equal(nodes(working).some(node => node.type === assistantPanel.ChangeBar), false, 'no undo offer while a request is still editing')
+  assert.equal(nodes(working).some(node => node.type?.name === 'ResultCard'), false, 'no undo offer while a request is still editing')
 })
 
 test('a failed request offers Edit and retry, which restores its text without sending', () => {
@@ -348,5 +355,5 @@ test('a failed request offers Edit and retry, which restores its text without se
   retry.props.onClick()
   assert.deepEqual(f.drafts, ['Grade these to match']); assert.deepEqual(f.calls, [])
   assert.equal(nodes(fixture({ claude: { state: 'done' }, chat: [{ role: 'user', text: 'Fine' }] }, '').draw()).some(node => text(node) === 'Edit and retry'), false)
-  assert.equal(nodes(fixture({ claude: { state: 'error' }, chat: [{ role: 'user', text: 'Keep' }] }, 'A newer draft').draw()).find(node => text(node) === 'Edit and retry').props.disabled, true)
+  assert.equal(nodes(fixture({ claude: { state: 'error' }, chat: [{ role: 'user', text: 'Keep' }] }, 'A newer draft').draw()).find(node => node.type === 'button' && text(node) === 'Edit and retry').props.disabled, true)
 })

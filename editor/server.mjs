@@ -319,7 +319,7 @@ function commit(next, who, lines, options = {}) {
   processing.current()?.accept()
   try {
     if (!publication.directorySynced) log('Project saved, but the directory flush failed:', publication.warningCode)
-    broadcast('project', { project, version, who, history: { undo: past.length, redo: future.length } })
+    broadcast('project', { project, version, who, history: { undo: past.length, redo: future.length }, ...(options.notes?.length ? { notes: options.notes } : {}) })
     for (const line of lines.slice(-8)) pushActivity(who, line)
   } catch { /* Notification failure does not reverse a published edit. */ }
   return { directorySynced: publication.directorySynced, ...(publication.warningCode ? { warningCode: publication.warningCode } : {}) }
@@ -1254,11 +1254,18 @@ const routes = {
     const result = applyOps(project, prepared.ops)
     verifyLibraryInputs(prepared.inputs, inspectLibraryLUT)
     assertLibraryCurrent()
-    commit(result.project, body.who ?? 'you', body.summary ? [body.summary] : result.log.filter(l => !l.startsWith('imported')), { projectChanged: all.some(op => op.op === 'replace') })
-    for (const [src, asset] of Object.entries(assets)) ensureProxy(src, asset).catch(e => log(e.message))
     // Facts the log does not state, such as a title wider than the frame. They are part of this
-    // reply only: never in the project, the activity list or an undo summary.
-    const notes = editNotes(capturedProject, result.project, { ops, created: result.created })
+    // reply and of the project event the editor shows under the change: never in the project, the
+    // activity list or an undo summary.
+    // A note that cannot be worked out never blocks the edit.
+    // The reply carries the agent's notes; the project event carries the sentences the person reads.
+    let notes = [], personNotes = []
+    try {
+      notes = editNotes(capturedProject, result.project, { ops, created: result.created })
+      personNotes = editNotes(capturedProject, result.project, { ops, created: result.created, audience: 'person' })
+    } catch (error) { log('Edit notes failed:', error.message) }
+    commit(result.project, body.who ?? 'you', body.summary ? [body.summary] : result.log.filter(l => !l.startsWith('imported')), { projectChanged: all.some(op => op.op === 'replace'), notes: personNotes })
+    for (const [src, asset] of Object.entries(assets)) ensureProxy(src, asset).catch(e => log(e.message))
 
     return { version, log: result.log, created: result.created, ...(notes.length ? { notes } : {}), project: body.returnProject === false ? undefined : project }
   },

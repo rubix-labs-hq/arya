@@ -87,7 +87,7 @@ test('the entry dot and label agree in every assistant state, and the state stay
   const context = shell()
   const stale = { provider: 'codex', configured: false, mode: 'auto', autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } }
   const expectState = (patch, label, dot, disabled = false) => {
-    Object.assign(context.store, { claude: { state: 'idle' }, connected: true, assistantSharingReviewOpen: false, assistantStatus: undefined, ...patch })
+    Object.assign(context.store, { claude: { state: 'idle' }, connected: true, assistantSharingReviewOpen: false, assistantStatus: undefined, assistantReview: undefined, ...patch })
     const entry = entryOf(context)
     assert.equal(text(byClass(entry, 'assistant-entry-state')), label, JSON.stringify(patch))
     assert.equal(entry.props['data-state'], dot, `${label} dot`)
@@ -100,11 +100,14 @@ test('the entry dot and label agree in every assistant state, and the state stay
   expectState({}, 'Checking', 'idle')
   expectState({ assistantStatus: { provider: 'codex', configured: false } }, 'Not set up', 'idle')
   expectState({ assistantStatus: ready }, 'Ready', 'ready')
-  for (const state of ['sending', 'queued', 'thinking', 'running', 'working', 'cancelling']) expectState({ assistantStatus: ready, claude: { state } }, 'Working', 'working')
-  for (const state of ['done', 'error', 'cancelled']) expectState({ assistantStatus: ready, claude: { state } }, 'Ready', 'ready')
+  for (const state of ['sending', 'queued', 'thinking', 'running', 'working']) expectState({ assistantStatus: ready, claude: { state } }, 'Working', 'working')
+  expectState({ assistantStatus: ready, claude: { state: 'cancelling' } }, 'Stopping', 'working')
+  for (const state of ['done', 'cancelled']) expectState({ assistantStatus: ready, claude: { state } }, 'Ready', 'ready')
+  expectState({ assistantStatus: ready, claude: { state: 'error' } }, 'Failed', 'ready')
+  expectState({ assistantStatus: ready, assistantReview: { proposal: { id: 'p1' } } }, 'Preview ready', 'ready')
   expectState({ assistantStatus: ready, assistantSharingReviewOpen: true }, 'Working', 'working', true)
   expectState({ assistantStatus: ready, claude: { state: 'working' }, connected: false }, 'Reconnecting', 'idle')
-  expectState({ assistantStatus: stale }, 'Needs refresh', 'idle')
+  expectState({ assistantStatus: stale }, 'Not set up', 'idle')
   expectState({ claude: { state: 'working' } }, 'Working', 'working')
   const hosted = entryOf(shell({ kind: 'browser-local', patch: { assistantStatus: ready, claude: { state: 'working' } } }))
   assert.equal(text(byClass(hosted, 'assistant-entry-state')), 'Unavailable in beta')
@@ -185,20 +188,20 @@ test('a suggestion fills the draft and moves focus to the composer without sendi
 
 test('one primary control swaps between Send and Stop and is the only one of either', async t => {
   const one = tree => { const buttons = primary(tree); assert.equal(buttons.length, 1); return buttons[0] }
-  // The control is an icon, so its name is the aria-label and its tooltip repeats what it does.
-  const describe = button => { assert.ok(button.props.title, 'the icon has a tooltip'); assert.equal(text(button), '', 'no visible word changes the width'); return [button.props.class, nodes(button).find(node => node.type === Icon)?.props.name, button.props['aria-label'], Boolean(button.props.disabled)] }
-  assert.deepEqual(describe(one(panel(t).draw())), ['send', 'send', 'Send message', false])
-  assert.deepEqual(describe(one(panel(t, {}, { draft: '   ' }).draw())), ['send', 'send', 'Send message', true], 'nothing to send')
-  assert.deepEqual(describe(one(panel(t, { refs: [{ kind: 'clip', id: 'c1', label: 'Frame' }] }, { draft: '' }).draw())), ['send', 'send', 'Send message', false], 'a reference alone can be sent')
-  assert.deepEqual(describe(one(panel(t, {}, { draft: 'x'.repeat(128000) }).draw())), ['send', 'send', 'Send message', false], 'at the character limit')
-  assert.deepEqual(describe(one(panel(t, {}, { draft: 'x'.repeat(128001) }).draw())), ['send', 'send', 'Send message', true], 'over the character limit')
-  assert.deepEqual(describe(one(panel(t, { assistantStatus: { provider: 'codex', configured: false } }).draw())), ['send', 'send', 'Send message', true], 'not set up')
-  assert.deepEqual(describe(one(panel(t, { connected: false }).draw())), ['send', 'send', 'Send message', true], 'disconnected')
-  for (const state of ['queued', 'thinking', 'running', 'working']) assert.deepEqual(describe(one(panel(t, { claude: { state } }).draw())), ['assistant-stop', 'stop', 'Stop request', false], state)
-  assert.deepEqual(describe(one(panel(t, { claude: { state: 'cancelling' } }).draw())), ['assistant-stop', 'stop', 'Stopping…', true])
-  for (const state of ['done', 'error', 'cancelled']) assert.deepEqual(describe(one(panel(t, { claude: { state } }).draw())), ['send', 'send', 'Send message', false], state)
+  // Send is an icon, so its name is the aria-label and its tooltip repeats what it does. Stop also says Stop.
+  const describe = button => { assert.ok(button.props.title, 'the icon has a tooltip'); return [button.props.class, nodes(button).find(node => node.type === Icon)?.props.name, button.props['aria-label'], Boolean(button.props.disabled), text(button)] }
+  assert.deepEqual(describe(one(panel(t).draw())), ['send', 'send', 'Send message', false, ''])
+  assert.deepEqual(describe(one(panel(t, {}, { draft: '   ' }).draw())), ['send', 'send', 'Send message', true, ''], 'nothing to send')
+  assert.deepEqual(describe(one(panel(t, { refs: [{ kind: 'clip', id: 'c1', label: 'Frame' }] }, { draft: '' }).draw())), ['send', 'send', 'Send message', false, ''], 'a reference alone can be sent')
+  assert.deepEqual(describe(one(panel(t, {}, { draft: 'x'.repeat(128000) }).draw())), ['send', 'send', 'Send message', false, ''], 'at the character limit')
+  assert.deepEqual(describe(one(panel(t, {}, { draft: 'x'.repeat(128001) }).draw())), ['send', 'send', 'Send message', true, ''], 'over the character limit')
+  assert.deepEqual(describe(one(panel(t, { assistantStatus: { provider: 'codex', configured: false } }).draw())), ['send', 'send', 'Send message', true, ''], 'not set up')
+  assert.deepEqual(describe(one(panel(t, { connected: false }).draw())), ['send', 'send', 'Send message', true, ''], 'disconnected')
+  for (const state of ['queued', 'thinking', 'running', 'working']) assert.deepEqual(describe(one(panel(t, { claude: { state } }).draw())), ['assistant-stop', 'stop', 'Stop request', false, 'Stop'], state)
+  assert.deepEqual(describe(one(panel(t, { claude: { state: 'cancelling' } }).draw())), ['assistant-stop', 'stop', 'Stopping request', true, 'Stopping…'])
+  for (const state of ['done', 'error', 'cancelled']) assert.deepEqual(describe(one(panel(t, { claude: { state } }).draw())), ['send', 'send', 'Send message', false, ''], state)
   for (const tree of [panel(t).draw(), panel(t, { claude: { state: 'working' } }).draw()]) {
-    assert.equal(nodes(tree).filter(node => node.type === 'button' && ['Send message', 'Stop request', 'Stopping…'].includes(node.props['aria-label'])).length, 1)
+    assert.equal(nodes(tree).filter(node => node.type === 'button' && ['Send message', 'Stop request', 'Stopping request'].includes(node.props['aria-label'])).length, 1)
     const field = byClass(tree, 'assistant-field')
     assert.ok(nodes(byClass(field, 'assistant-field-bar')).includes(primary(tree)[0]), 'the control sits in the bar inside the field')
     for (const part of ['assistant-composer-content', 'assistant-preview-toggle', 'assistant-input-tools']) assert.ok(byClass(field, part), `${part} is inside the one bordered field`)
@@ -224,7 +227,7 @@ test('during a run every composer control stays in place, input options lock and
     assert.equal(nodes(model).find(node => node.type === f.Controls).props.active, true, `${state}: model controls report the run`)
     assert.equal(field.props.disabled, undefined, `${state}: the next request can be drafted`)
     assert.equal(field.props.value, 'Tighten the opening')
-    assert.equal(model.type, 'details'); assert.equal(text(nodes(model).find(node => node.type === 'summary')), 'Model')
+    assert.equal(model.type, 'details'); assert.equal(text(nodes(model).find(node => node.type === 'summary')), 'Codex · exact')
     for (const control of [kind, file]) assert.equal(nodes(tools).some(node => node.type === 'details' && nodes(node).includes(control)), false, 'input kind and import are not behind a disclosure')
     assert.equal(byClass(tree, 'assistant-composer-content').props['aria-label'], 'Next request context')
     assert.equal(byLabel(tree, 'Assistant settings').props.disabled, false)
@@ -259,21 +262,20 @@ test('during a sharing review the composer locks, keeps the draft and cannot sen
   assert.deepEqual(f.calls.map(call => call.route), ['/api/assistant/sharing'], 'declining sends nothing')
 })
 
-test('tool updates collapse between messages and edits, and the streaming reply and status follow them', t => {
+test('inside a run the reply comes first, then one run line with the tool updates, then one result card', t => {
   const receipt = { version: 7, total: 0, clips: [], projectChanges: ['Saved asset media/cue.wav'], at: 4 }
   const f = panel(t, { claude: { state: 'working', startedAt: Date.now() - 2000, text: 'Partial **reply**' },
     chat: [{ role: 'user', text: 'Add the cue', at: 1 }], receipts: [receipt],
     activity: [{ who: 'agent', text: 'Listing media', at: 2 }, { who: 'agent', text: 'Saving cue', at: 3 }, { who: 'agent', text: 'Checking levels', at: 5 }, { who: 'you', text: 'Hidden', at: 6 }] })
-  const list = byClass(f.draw(), 'chat-list'), order = flatten(list.props.children).filter(node => node && typeof node === 'object')
-  const kinds = order.map(node => cls(node, 'assistant-tool-card') ? `tools:${text(nodes(node).find(child => child.type === 'summary'))}` : node.type?.name === 'ChangeReceipt' ? 'edit' : cls(node, 'assistant-stream') ? 'stream' : cls(node, 'assistant-run') ? 'status' : cls(node, 'msg') ? `msg:${node.props.class}` : null).filter(Boolean)
-  assert.deepEqual(kinds, ['msg:msg user', 'tools:2 tool updates', 'edit', 'tools:1 tool update', 'stream', 'status'])
-  for (const card of order.filter(node => cls(node, 'assistant-tool-card'))) {
-    assert.equal(card.type, 'details'); assert.equal(card.props.open, undefined, 'collapsed until the user opens it')
-    assert.equal(nodes(card).filter(node => node.type === 'li').length, Number(text(nodes(card).find(node => node.type === 'summary')).split(' ')[0]))
-  }
+  const list = byClass(f.draw(), 'chat-list'), turn = byClass(list, 'assistant-turn'), order = flatten(turn.props.children).filter(node => node && typeof node === 'object')
+  const kinds = order.map(node => node.type?.name === 'ResultCard' ? 'result' : cls(node, 'assistant-stream') ? 'stream' : cls(node, 'assistant-run') ? 'run' : cls(node, 'msg') ? `msg:${node.props.class}` : null).filter(Boolean)
+  assert.deepEqual(kinds, ['msg:msg user', 'stream', 'run', 'result'])
+  const line = order.find(node => cls(node, 'assistant-run'))
+  assert.equal(line.type, 'details'); assert.equal(Boolean(line.props.open), false, 'collapsed until the user opens it')
+  assert.deepEqual(nodes(line).filter(node => node.type === 'li').map(text), ['Listing media', 'Saving cue', 'Checking levels'])
   assert.doesNotMatch(text(list), /Hidden/)
   const stream = order.find(node => cls(node, 'assistant-stream'))
-  assert.match(text(stream), /Response in progress/)
+  assert.match(text(stream), /Writing…/)
   assert.match(nodes(stream).find(node => node.props?.dangerouslySetInnerHTML).props.dangerouslySetInnerHTML.__html, /Partial <(b|strong)>reply<\/\1>/)
   const status = order.find(node => cls(node, 'assistant-run'))
   assert.ok(cls(status, 'active')); assert.equal(nodes(status).find(node => node.props?.role === 'status').type, 'b')
@@ -282,28 +284,35 @@ test('tool updates collapse between messages and edits, and the streaming reply 
   assert.equal(byClass(finished.draw(), 'assistant-stream'), undefined, 'a finished run shows no streaming block')
 })
 
-test('a committed edit is a compact card: headline, collapsed details and its action outside them', () => {
-  const receiptSource = read('ui/chat.js').slice(read('ui/chat.js').indexOf('function ChangeReceipt'), read('ui/chat.js').indexOf('function AssistantHistoryNotice'))
+test('a committed edit is one result card: title, caption, actions and a collapsed Details', () => {
+  const chat = read('ui/chat.js'), cardSource = chat.slice(chat.indexOf('const plural'), chat.indexOf('function AssistantHistoryNotice'))
   const before = { name: 'Cut', width: 1920, height: 1080, fps: 30, assets: {}, comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', title: { text: 'Old' }, start: 0, dur: 2 }] }] }
   const after = structuredClone(before); after.tracks[0].clips[0].title.text = 'New'
   const updates = [], seeks = []
-  const ChangeReceipt = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', `${receiptSource}\nreturn ChangeReceipt`)(htm.bind(h), () => ({ comp: null, ids: ['c1'], start: 0 }), { project: after }, value => updates.push(value), () => {}, { seek: value => seeks.push(value) })
+  const ResultCard = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', `${cardSource}\nreturn ResultCard`)(htm.bind(h), () => ({ comp: null, ids: ['c1'], start: 0 }), { project: after }, value => updates.push(value), () => {}, { seek: value => seeks.push(value) })
   const receipt = changeReceipt(before, after, { version: 9, who: 'agent' })
-  const card = ChangeReceipt({ receipt })
+  let undos = 0
+  const card = ResultCard({ receipts: [receipt], change: { id: 'c9', kind: 'request', edits: 1, undoable: true }, onUndo: () => undos++ })
   assert.equal(card.type, 'section'); assert.ok(cls(card, 'assistant-result-card'))
   assert.equal(card.props['aria-label'], 'Committed edit result')
-  assert.match(text(byClass(card, 'receipt-heading')), /Edit 9$/)
+  assert.equal(text(byClass(card, 'receipt-heading')), 'Made 1 edit')
+  assert.equal(text(byClass(card, 'assistant-result-caption')), '1 layer changed')
   const details = byClass(card, 'change-receipt')
   assert.equal(details.type, 'details'); assert.equal(details.props.open, undefined)
-  assert.equal(text(nodes(details).find(node => node.type === 'summary')), 'View changes')
+  assert.equal(text(nodes(details).find(node => node.type === 'summary')), 'Details')
+  const actions = byClass(card, 'receipt-actions')
+  assert.deepEqual(nodes(actions).filter(node => node.type === 'button').map(text), ['Undo this change', 'Select changed layers'])
+  assert.ok(byClass(actions, 'assistant-change'), 'the undo keeps the selector the harness uses')
   const action = nodes(card).find(node => node.type === 'button' && text(node) === 'Select changed layers')
-  assert.ok(action, 'the action is on the card')
   assert.equal(nodes(details).includes(action), false, 'and stays reachable while the details are collapsed')
   action.props.onClick()
   assert.deepEqual(updates, [{ openComp: null, selection: ['c1'], page: 'edit', viewerMode: 'timeline' }]); assert.deepEqual(seeks, [0])
-  const undone = ChangeReceipt({ receipt: { ...receipt, undone: true } })
+  nodes(card).find(node => node.type === 'button' && text(node) === 'Undo this change').props.onClick(); assert.equal(undos, 1)
+  assert.equal(text(byClass(ResultCard({ receipts: [receipt], change: { kind: 'preview', edits: 3, undoable: true } }), 'receipt-heading')), 'Applied the preview')
+  const undone = ResultCard({ receipts: [{ ...receipt, undone: true }] })
   assert.equal(undone.props['aria-label'], 'Undone edit result')
-  assert.match(text(byClass(undone, 'receipt-heading')), /Undone · Edit 9$/)
+  assert.equal(text(byClass(undone, 'receipt-heading')), 'Made 1 edit Undone')
+  assert.equal(nodes(undone).some(node => node.type === 'button' && text(node) === 'Undo this change'), false)
 })
 
 test('setup is one card with one primary action, and the draft stays in the composer', t => {
@@ -403,7 +412,7 @@ test('until the first status check answers, the entry and panel say Checking and
     const f = panel(t, patch), tree = f.draw(), note = byClass(tree, 'assistant-checking')
     assert.equal(Boolean(note), checking, name)
     assert.equal(nodes(tree).some(node => cls(node, 'assistant-setup')), !checking, `${name}: setup card`)
-    assert.match(text(byClass(tree, 'chat-head')), checking ? /^Assistant Checking Settings$/ : /^Assistant Not set up Settings$/, name)
+    assert.match(text(byClass(tree, 'chat-head')), checking ? /^Assistant Checking$/ : /^Assistant Not set up$/, name)
     if (checking) { assert.equal(text(note), '◌ Checking your assistant…'); assert.equal(note.props.role, 'status') }
     const field = nodes(tree).find(node => node.type === 'textarea')
     assert.equal(field.props.value, 'Tighten the opening', `${name}: the draft is kept`)
@@ -432,62 +441,71 @@ test('until the first status check answers, the entry and panel say Checking and
   assert.match(app, /setInterval\(poll, checkingAssistant \? 1000 : 4000\)[^]*?\}, \[checkingAssistant\]\)/, 'the status is asked again sooner while the first check runs')
 })
 
+test('the header dot uses the entry colours: green when ready, amber while working, red after a failure', t => {
+  const dot = state => byClass(panel(t, state).draw(), 'claude-dot').props.class
+  assert.equal(dot({}), 'claude-dot ok')
+  assert.equal(dot({ claude: { state: 'working', startedAt: 1000 } }), 'claude-dot busy')
+  assert.equal(dot({ claude: { state: 'error', startedAt: 1000, finishedAt: 2000 } }), 'claude-dot failed')
+  assert.equal(dot({ connected: false }), 'claude-dot off', 'Reconnecting is not shown as ready')
+  const base = fs.readFileSync(new URL('../web/styles.css', import.meta.url), 'utf8')
+  assert.match(base, /\n\.claude-dot\.ok \{ background: var\(--good\); \}\n\.claude-dot\.busy \{ background: var\(--accent\); \}\n\.claude-dot\.failed \{ background: var\(--danger\); \}/)
+  assert.match(base, /\n\.job \.row > button \{ flex: none; \}/, 'Cancel and Dismiss keep their width beside a wrapped status')
+})
+
 test('the preview sentence shows only while this request has a proposal to apply', t => {
   const server = fs.readFileSync(new URL('../agent/browser-assistant.mjs', import.meta.url), 'utf8')
   assert.equal(server.match(/pending: '([^']+)'/)?.[1], PREVIEW_OUTCOME, 'the panel and the server agree on the sentence')
   assert.equal(server.split(`'${PREVIEW_OUTCOME}'`).length - 1, 2, 'the server publishes the same text for a preview run')
   const done = { state: 'done', runId: 'r1', outcome: PREVIEW_OUTCOME, startedAt: 1000, finishedAt: 9000 }
   const review = changes => ({ proposal: null, applying: null, change: null, running: false, runId: null, ...changes })
-  const note = state => { const run = byClass(panel(t, state).draw(), 'assistant-run'); return { silent: cls(run, 'silent'), lines: nodes(run).filter(node => node.type === 'p').map(text) } }
-  assert.deepEqual(note({ claude: done, assistantReview: review() }), { silent: true, lines: [] }, 'a reply with nothing proposed says nothing about Apply')
-  assert.deepEqual(note({ claude: done, assistantReview: review({ proposal: { id: 'p1', runId: 'r1' } }) }), { silent: false, lines: [PREVIEW_OUTCOME] })
-  assert.deepEqual(note({ claude: done, assistantReview: review({ proposal: { id: 'p0', runId: 'r0' } }) }), { silent: true, lines: [] }, 'an older proposal is not this request')
-  assert.deepEqual(note({ claude: done }), { silent: false, lines: [PREVIEW_OUTCOME] }, 'with no review state the sentence is kept')
-  assert.deepEqual(note({ claude: done, caps: { host: 'native' }, assistantReview: review() }), { silent: false, lines: [PREVIEW_OUTCOME] }, 'the Mac host reports its own flow')
+  const note = state => text(byClass(byClass(panel(t, state).draw(), 'assistant-run'), 'assistant-run-stage'))
+  assert.equal(note({ claude: done, assistantReview: review() }), '', 'a reply with nothing proposed says nothing about Apply')
+  assert.equal(note({ claude: done, assistantReview: review({ proposal: { id: 'p1', runId: 'r1' } }) }), PREVIEW_OUTCOME)
+  assert.equal(note({ claude: done, assistantReview: review({ proposal: { id: 'p0', runId: 'r0' } }) }), '', 'an older proposal is not this request')
+  assert.equal(note({ claude: done }), PREVIEW_OUTCOME, 'with no review state the sentence is kept')
+  assert.equal(note({ claude: done, caps: { host: 'native' }, assistantReview: review() }), PREVIEW_OUTCOME, 'the Mac host reports its own flow')
   const other = 'The project changed during this request. Review edits in the timeline.'
-  assert.deepEqual(note({ claude: { ...done, outcome: other }, assistantReview: review() }), { silent: false, lines: [other] }, 'other outcomes always show')
+  assert.equal(note({ claude: { ...done, outcome: other }, assistantReview: review() }), other, 'other outcomes always show')
   assert.equal(assistantActivity(done, { proposal: false }).detail, '')
   assert.equal(assistantActivity(done).detail, PREVIEW_OUTCOME)
 })
 
 test('after Stop, committed edits are mentioned only when this request made some', t => {
   const stopped = { state: 'cancelled', runId: 'r1', startedAt: 1000, finishedAt: 13000 }
-  const sentence = 'Request stopped. Committed edits remain available to review and undo.'
+  const sentence = 'Stopped. Review or undo any committed edits.', stage = 'Review or undo any committed edits.'
   const review = change => ({ proposal: null, applying: null, change, running: false, runId: null })
   const row = state => { const run = byClass(panel(t, state).draw(), 'assistant-run'); assert.ok(cls(run, 'cancelled')); return text(run) }
   assert.equal(row({ claude: stopped, assistantReview: review(null) }), '■ Stopped 12s', 'nothing was committed, so nothing is promised')
-  assert.equal(row({ claude: stopped, assistantReview: review({ id: 'c1', kind: 'request', runId: 'r1', edits: 2 }) }), `■ Stopped 12s ${sentence}`)
+  assert.equal(row({ claude: stopped, assistantReview: review({ id: 'c1', kind: 'request', runId: 'r1', edits: 2 }) }), `■ Stopped ${stage} 12s`)
   assert.equal(row({ claude: stopped, assistantReview: review({ id: 'c0', kind: 'request', runId: 'r0', edits: 2 }) }), '■ Stopped 12s', 'an earlier request made those edits')
   assert.equal(row({ claude: stopped, assistantReview: review({ id: 'c1', kind: 'request', runId: 'r1', edits: 0 }) }), '■ Stopped 12s')
-  assert.equal(row({ claude: stopped }), `■ Stopped 12s ${sentence}`, 'with no review state the sentence is kept')
-  assert.equal(row({ claude: stopped, caps: { host: 'native' }, assistantReview: review(null) }), `■ Stopped 12s ${sentence}`)
+  assert.equal(row({ claude: stopped }), `■ Stopped ${stage} 12s`, 'with no review state the sentence is kept')
+  assert.equal(row({ claude: stopped, caps: { host: 'native' }, assistantReview: review(null) }), `■ Stopped ${stage} 12s`)
   assert.equal(assistantActivity(stopped, { edits: false }).detail, '')
   assert.equal(assistantActivity(stopped).detail, sentence)
 })
 
-test('a finished run adds no card: the reply stands alone and the status is announced, not drawn', t => {
+test('a finished run is one quiet Done line under the reply, and a failure adds its own card', t => {
   const reply = { role: 'assistant', text: 'The opening is two seconds shorter.', at: 2 }
   const review = { proposal: null, applying: null, change: null, running: false, runId: null }
   const tree = panel(t, { claude: { state: 'done', runId: 'r1', outcome: PREVIEW_OUTCOME }, chat: [{ role: 'user', text: 'Tighten it', at: 1 }, reply], assistantReview: review }).draw()
   const run = byClass(tree, 'assistant-run')
-  assert.ok(cls(run, 'done') && cls(run, 'silent'))
-  assert.equal(text(nodes(run).find(node => node.props?.role === 'status')), 'Response finished', 'assistive technology still hears that the reply ended')
+  assert.ok(cls(run, 'done'))
+  assert.equal(text(nodes(run).find(node => node.props?.role === 'status')), 'Done', 'the line says the reply ended')
   assert.equal(nodes(run).some(node => ['p', 'button'].includes(node.type)), false)
-  assert.equal(text(byClass(tree, 'chat-head')), 'Assistant Response finished Settings', 'the header is the one place that shows it')
-  const hidden = assistantCSS.match(/\.chat-list :is\(([^{]*)\) \{\s*position: absolute; width: 1px; height: 1px;[^}]*clip-path: inset\(50%\);[^}]*\}/)?.[1] ?? ''
-  for (const part of ['.sr-only', '.assistant-stream > small', '.assistant-run.done .assistant-run-heading', '.assistant-run.silent']) assert.ok(hidden.split(', ').includes(part), `visually hidden: ${part}`)
-  assert.match(assistantCSS, /\.chat-list \.assistant-run \{[^}]*border: 0; background: none; \}/, 'run status is an unframed row')
-  assert.match(assistantCSS, /\.chat-list \.assistant-run\.error \{[^}]*border: 1px solid/, 'only a failure keeps a frame')
+  assert.equal(text(byClass(tree, 'chat-head')), 'Assistant Ready', 'the header shows the status word')
+  assert.match(assistantCSS, /\.chat-list \.sr-only \{\s*position: absolute; width: 1px; height: 1px;[^}]*clip-path: inset\(50%\);[^}]*\}/)
+  assert.match(assistantCSS, /\.chat-list \.assistant-run \{[^}]*border: 0; background: none;/, 'the run line is an unframed row')
+  assert.match(assistantCSS, /\.chat-list \.assistant-failure \{[^}]*border: 1px solid/, 'only a failure keeps a frame')
   assert.doesNotMatch(assistantCSS, /\.assistant-run(?:\.\w+)*(?: [^{,]*)?\{[^}]*display:\s*none/, 'the status node stays in the accessibility tree')
-  const failed = panel(t, { claude: { state: 'error', runId: 'r1' }, chat: [{ role: 'user', text: 'Tighten it', at: 1 }] }, { draft: '' }).draw(), failure = byClass(failed, 'assistant-run')
-  assert.ok(cls(failure, 'error') && !cls(failure, 'silent'))
-  assert.equal(text(nodes(failure).find(node => node.type === 'button')), 'Edit and retry')
+  const failed = panel(t, { claude: { state: 'error', runId: 'r1' }, chat: [{ role: 'user', text: 'Tighten it', at: 1 }] }, { draft: '' }).draw()
+  assert.ok(cls(byClass(failed, 'assistant-run'), 'error'))
+  assert.equal(text(nodes(byClass(failed, 'assistant-failure')).find(node => node.type === 'button')), 'Edit and retry')
   // The reply and the request are message bodies; only the request is a bubble.
   const messages = nodes(tree).filter(node => cls(node, 'msg'))
   assert.deepEqual(messages.map(node => [node.props.class, text(nodes(node).find(child => cls(child, 'sr-only'))), Boolean(byClass(node, 'msg-body'))]), [['msg user', 'You', true], ['msg claude', 'Assistant', true]])
   assert.match(assistantCSS, /\.chat-list \.msg\.claude \{[^}]*border: 0; background: transparent;/)
   assert.match(assistantCSS, /\.chat-list \.msg\.user \.msg-body \{[^}]*background: var\(--panel-2\);/)
-  assert.match(assistantCSS, /\.chat-list \.assistant-tool-card \{[^}]*border: 0; background: none;/, 'tool activity is one quiet line')
 })
 
 test('hidden speaker labels are clipped inside the list and cannot stretch the panel', () => {
@@ -496,15 +514,28 @@ test('hidden speaker labels are clipped inside the list and cannot stretch the p
   assert.match(baseCSS, /\.chat-list \{ flex: 1 1 0; min-height: 0; overflow: auto;/, 'and it is the scroll container that holds them')
 })
 
+test('a preview taller than the list shows from its title, and a short one from the end', t => {
+  const review = changes => ({ proposal: null, applying: null, change: null, running: false, runId: null, ...changes })
+  for (const [height, expected] of [[400, 520], [200, 900]]) {
+    const f = panel(t, { chat: [{ role: 'user', text: 'First', at: 1 }], assistantReview: review() })
+    // The card starts 520px down the list's content, so its top moves up as the list scrolls.
+    const card = { offsetHeight: height, getBoundingClientRect: () => ({ top: 520 - element.scrollTop }) }
+    const element = { scrollTop: 50, scrollHeight: 900, clientHeight: 300, querySelector: selector => selector === '.assistant-preview' ? card : null, getBoundingClientRect: () => ({ top: 0 }) }
+    f.state.assistantReview = review({ proposal: { id: 'p1', runId: 'r1' } })
+    const tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
+    assert.equal(element.scrollTop, expected, `a ${height}px preview in a 300px list`)
+  }
+})
+
 test('the list follows the person\'s own message, a new proposal, an apply, an undo bar and the end of a run', t => {
   const review = changes => ({ proposal: null, applying: null, change: null, running: false, runId: null, ...changes })
   const f = panel(t, { chat: [{ role: 'user', text: 'First', at: 1 }], assistantReview: review() })
   const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
   const step = (name, change, follows) => {
-    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     // The person scrolls up to read.
     element.scrollTop = 100; byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
-    change(); tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    change(); tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     assert.equal(element.scrollTop, follows ? 900 : 100, name)
   }
   step('their own message', () => { f.state.chat = [...f.state.chat, { role: 'user', text: 'Second', at: 5 }] }, true)
@@ -609,7 +640,7 @@ test('the phone sheet minimizes to a one-line bar that keeps the draft, and ever
   assert.ok(cls(tree, 'collapsed'))
   assert.equal(nodes(tree).find(node => node.type === 'textarea').props.value, 'Tighten the opening', 'the composer stays mounted with its draft')
   assert.ok(byClass(tree, 'chat-list'), 'the conversation stays mounted, so it keeps its scroll position')
-  assert.equal(text(byClass(tree, 'chat-title')), 'Assistant Codex Draft kept', 'the bar is one line: name, state and the draft note')
+  assert.equal(text(byClass(tree, 'chat-title')), 'Assistant Ready Draft kept', 'the bar is one line: name, state and the draft note')
   assert.equal(byClass(panel(t, { chatCollapsed: true }, { draft: '' }).draw(), 'chat-draft-note'), undefined)
   const expand = byLabel(tree, 'Expand assistant')
   assert.equal(expand.props['aria-expanded'], false)
@@ -649,10 +680,11 @@ test('the phone sheet minimizes to a one-line bar that keeps the draft, and ever
 
 test('touch targets inside the conversation are 44px tall without growing their rows', () => {
   const touch = media(assistantCSS, '(pointer: coarse), (max-width: 720px)')
-  assert.match(touch, /\.chat :is\(\.assistant-tool-card summary, \.change-receipt > summary, \.receipt-json > summary, \.assistant-preview-details > summary\) \{ padding-block: 15px; \}/)
-  assert.match(touch, /\.chat \.assistant-primary-action button \{ width: 44px; min-width: 44px; height: 44px; \}/, 'Send and Stop are the same size, so nothing moves when a run starts or ends')
+  assert.match(touch, /\.chat :is\(\.change-receipt > summary, \.receipt-json > summary, \.assistant-preview-details > summary\) \{ padding-block: 15px; \}/)
+  assert.match(touch, /\.chat \.chat-list summary\.assistant-run-heading \{ min-height: 44px;/)
+  assert.match(touch, /\.chat \.assistant-primary-action button \{ width: 44px; min-width: 44px; height: 44px; \}/, 'Send and Stop are the same height')
   assert.match(assistantCSS, /\.chat \.assistant-primary-action button \{[^}]*width: 32px; min-width: 32px; height: 32px; min-height: 32px;/)
-  assert.match(touch, /\.chat-list \.msg\.user \.assistant-edit-request \{ min-height: 44px;/)
+  assert.match(touch, /\.chat-list \.msg\.user \.assistant-edit-request \{ min-height: 44px; margin-block: -8px -10px; \}/, 'Edit request does not reach the run line below')
   assert.match(assistantCSS, /\.chat \.composer textarea::placeholder \{ color: var\(--muted\); opacity: 1; \}/, 'the placeholder meets contrast')
   assert.match(media(assistantCSS, '(max-width: 900px)'), /\.main > \.chat\.panel \{ position: fixed; width: min\(var\(--chat-width, 360px\), max\(38vw, 320px\)\); \}/, 'the floating panel never drops under 320px')
 })
@@ -709,10 +741,10 @@ test('a setup card, a sign-in wait, the first check or the ChatGPT welcome that 
   const arrive = (before, after) => {
     const f = panel(t, { chat, assistantStatus: before }, { draft: '' })
     const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
-    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     // The person scrolls up to read.
     element.scrollTop = 100; byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
-    f.state.assistantStatus = after; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    f.state.assistantStatus = after; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     return { top: element.scrollTop, last: flatten(byClass(tree, 'chat-list').props.children).filter(node => node && typeof node === 'object' && !cls(node, 'assistant-suggestions')).at(-1) }
   }
   for (const [name, after, shown] of [
@@ -735,9 +767,9 @@ test('a setup card, a sign-in wait, the first check or the ChatGPT welcome that 
 test('the list keeps its end in view when the pinned history warning takes a line from it', t => {
   const f = panel(t, { chat: [{ role: 'user', text: 'First', at: 1 }] })
   const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
-  let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+  let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
   element.scrollHeight = 946
-  f.state.chatHistory = { warning: 'Chat history could not be saved.' }; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+  f.state.chatHistory = { warning: 'Chat history could not be saved.' }; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
   assert.equal(element.scrollTop, 946)
 })
 
@@ -745,7 +777,7 @@ test('the suggestion row that arrives when the first check ends stays in view fo
   const clips = [{ id: 'c1', kind: 'video', src: 'a.mp4', start: 0, dur: 4 }]
   const f = panel(t, { selection: ['c1'], chat: [{ role: 'user', text: 'Earlier', at: 1 }, { role: 'assistant', text: 'Done.', at: 2 }], project: { width: 1920, height: 1080, assets: { 'a.mp4': { hasAudio: true } }, tracks: [{ id: 'V1', kind: 'video', clips }], comps: {} }, assistantStatus: { provider: 'codex', configured: false, loading: true, checkedAt: null } }, { draft: '' })
   const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
-  const redraw = () => { const tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /); return tree }
+  const redraw = () => { const tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/); return tree }
   assert.ok(byClass(redraw(), 'assistant-checking')); assert.equal(element.scrollTop, 900)
   // The row is taller than the line it replaces.
   element.scrollHeight = 927; f.state.assistantStatus = ready
@@ -768,7 +800,8 @@ test('the setup card names the signed-in ChatGPT account', t => {
   assert.equal(says({ ...unset, chatgpt: signedIn() }), 'Signed in to ChatGPT as sam@example.com.')
   assert.equal(says({ ...unset, chatgpt: signedIn({ planUsage: false }) }), 'Signed in to ChatGPT as sam@example.com. Plan usage is off for this sign-in.')
   assert.equal(says({ ...unset, chatgpt: signedIn({ email: '' }) }), 'Signed in to ChatGPT as your account.')
-  assert.equal(says({ ...unset, chatgpt: account() }), 'Use your ChatGPT plan for eligible requests. You can keep editing without an account.')
+  assert.equal(says({ ...unset, chatgpt: account() }), 'Use your ChatGPT plan for eligible requests.')
+  assert.equal(text(byClass(byClass(panel(t, { assistantStatus: { ...unset, chatgpt: account() } }, { draft: '' }).draw(), 'assistant-setup'), 'assistant-setup-note')), 'Editing works without an account.')
 })
 
 test('a sign-in that is waiting keeps Refresh when the selected provider needs one', async t => {
@@ -802,8 +835,8 @@ test('the entry only opens the conversation, so it does not claim an expanded st
 
 test('a lost connection says a request may still be running only while one is', t => {
   const run = patch => text(byClass(panel(t, { connected: false, ...patch }).draw(), 'assistant-run'))
-  assert.equal(run({}), '↻ Reconnecting Live status is unavailable.')
-  assert.match(run({ claude: { state: 'working', startedAt: 1000 } }), /^↻ Reconnecting .*Live status is unavailable\. The request may still be running\.$/)
+  assert.equal(run({}), '↻ Reconnecting Live status is unavailable')
+  assert.match(run({ claude: { state: 'working', startedAt: 1000 } }), /^↻ Reconnecting Live status is unavailable .*Live status is unavailable\. The request may still be running\.$/)
 })
 
 test('the media type filter has an accessible name', () => {
@@ -849,7 +882,10 @@ test('phone, larger-text and short-window layouts keep Send, the header controls
   assert.match(detent, /\.chat\.collapsed \.chat-title \{ flex-wrap: nowrap; align-self: stretch; overflow: hidden; white-space: nowrap; cursor: pointer; \}/)
   assert.match(detent, /\.chat\.collapsed \.chat-title > :not\(\.claude-dot\) \{ flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; \}/)
   assert.match(assistantCSS, /\n\.chat-title > b \{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/, 'the title gives way to Settings')
-  assert.match(assistantCSS, /\n\.chat \.assistant-input-tools > :is\(\.assistant-model-menu, \.assistant-input-help\) \{ flex: none; margin: 0; \}/, 'the Model label is never squeezed under the next control')
+  assert.match(assistantCSS, /\n\.chat \.assistant-input-tools > :is\(\.assistant-input-kind, \.assistant-script-import, \.assistant-input-help\) \{ flex: none; margin: 0; \}/, 'Prompt, Import text and the tips button keep their width')
+  assert.match(assistantCSS, /\n\.chat \.assistant-input-tools > \.assistant-model-menu \{ flex: 0 1 auto; min-width: 0; margin: 0; \}/, 'the provider and model give way first')
+  assert.match(assistantCSS, /\n\.chat \.assistant-model-menu > summary > span \{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \}/, 'a long model name ends in an ellipsis inside its own control')
+  assert.match(assistantCSS, /\n\.chat-list \.assistant-run\[open\] \.assistant-run-stage \{ white-space: normal; overflow: visible; \}/, 'an opened run line shows its whole stage')
   assert.match(assistantCSS, /\n\.assistant-model-popover \{\s*position: absolute; z-index: 2; bottom: 100%; inset-inline: 10px; max-height: min\(46dvh, 16rem\);/, 'the Model menu shows its controls at 521px to 675px heights')
   assert.match(assistantCSS, /\n\.chat \.assistant-field \{[^}]*border: 1px solid #6f7a5f;/, 'the field edge is 3:1 against the panel')
   assert.match(assistantCSS, /@media \(max-height: 520px\) \{\s*\.chat-head \{ padding-block: 0; \}\s*\.chat > :is\(\.assistant-route-preview, \.assistant-plugin-note\) \{ padding-block: 2px; font-size: 11px; line-height: 1\.25; \}/, 'both pinned notices leave room for Send in a short window')
@@ -881,9 +917,9 @@ test('the list follows the undo bar when it arrives on its own', t => {
   ]) {
     const f = panel(t, { claude, chat: [{ role: 'user', text: 'First', at: 1 }], assistantReview: before })
     const element = { scrollTop: 0, scrollHeight: 900, clientHeight: 300 }
-    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    let tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     element.scrollTop = 100; byClass(tree, 'chat-list').props.onScroll({ currentTarget: element })
-    f.state.assistantReview = after; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = /)
+    f.state.assistantReview = after; tree = f.draw(); byClass(tree, 'chat-list').ref.current = element; f.flush(/follow\.current = true|scrollTop = |scrollToEnd\(/)
     assert.equal(element.scrollTop, 900, name)
   }
 })
@@ -952,9 +988,9 @@ test('composer menus open above the field unless the window is 520px tall or sho
 
 test('a proposal or a run without an id still shows the preview sentence', t => {
   const review = changes => ({ proposal: null, applying: null, change: null, running: false, runId: null, ...changes })
-  const lines = state => nodes(byClass(panel(t, state).draw(), 'assistant-run')).filter(node => node.type === 'p').map(text)
-  assert.deepEqual(lines({ claude: { state: 'done', runId: 'r1', outcome: PREVIEW_OUTCOME }, assistantReview: review({ proposal: { id: 'p1' } }) }), [PREVIEW_OUTCOME], 'a proposal with no run id')
-  assert.deepEqual(lines({ claude: { state: 'done', outcome: PREVIEW_OUTCOME }, assistantReview: review({ proposal: { id: 'p1', runId: 'r1' } }) }), [PREVIEW_OUTCOME], 'a run with no id')
+  const stage = state => text(byClass(byClass(panel(t, state).draw(), 'assistant-run'), 'assistant-run-stage'))
+  assert.equal(stage({ claude: { state: 'done', runId: 'r1', outcome: PREVIEW_OUTCOME }, assistantReview: review({ proposal: { id: 'p1' } }) }), PREVIEW_OUTCOME, 'a proposal with no run id')
+  assert.equal(stage({ claude: { state: 'done', outcome: PREVIEW_OUTCOME }, assistantReview: review({ proposal: { id: 'p1', runId: 'r1' } }) }), PREVIEW_OUTCOME, 'a run with no id')
 })
 
 test('after Stop, an applied preview from the same run is not called a committed edit of this request', t => {
@@ -1020,9 +1056,9 @@ test('the layout fixes outside the panel stay in the stylesheets', () => {
   assert.match(keys, /\['\/', 'Ask Arya'\]/)
 })
 
-test('a stale catalog that is being rechecked for the first time says Needs refresh, not Checking', () => {
+test('a stale catalog that is being rechecked for the first time says Not set up, not Checking', () => {
   const stale = { provider: 'codex', configured: false, mode: 'auto', loading: true, checkedAt: null, autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } }
   const state = assistantState(stale)
   assert.equal(state.refreshRequired, true); assert.equal(state.checking, false)
-  assert.equal(text(byClass(entryOf(shell({ patch: { assistantStatus: stale } })), 'assistant-entry-state')), 'Needs refresh')
+  assert.equal(text(byClass(entryOf(shell({ patch: { assistantStatus: stale } })), 'assistant-entry-state')), 'Not set up')
 })

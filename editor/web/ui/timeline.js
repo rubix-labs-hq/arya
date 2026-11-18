@@ -155,7 +155,8 @@ function snap(p, t, exclude, enabled = store.snapping) {
 
 function roundRect(ctx, x, y, w, hgt, r) {
   ctx.beginPath()
-  ctx.roundRect(x, y, Math.max(1, w), hgt, Math.min(r, w / 2))
+  // A sliver of a clip can be narrower than its border, and a negative radius throws.
+  ctx.roundRect(x, y, Math.max(1, w), hgt, Math.max(0, Math.min(r, w / 2)))
 }
 
 function drawClip(ctx, p, c, row, state) {

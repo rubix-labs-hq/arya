@@ -15,7 +15,10 @@ const { Icon } = await import(pathToFileURL(path.join(candidate, 'web/ui/icons.j
 const appSource = fs.readFileSync(path.join(candidate, 'web/ui/app.js'), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const phoneSource = fs.readFileSync(path.join(candidate, 'web/ui/phone.js'), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const layoutSource = fs.readFileSync(path.join(candidate, 'web/ui/layout.js'), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
+// The toolbar's Undo and Redo go through the same history move as ⌘Z. Lift just that function from keys.js.
+const moveHistorySource = fs.readFileSync(path.join(candidate, 'web/ui/keys.js'), 'utf8').match(/^export function moveHistory\(direction\) \{[\s\S]*?\n\}$/m)[0].replace(/^export /, '')
 const { newProject, duration, timecode, applyOps, TITLE_ANIMS } = await import(pathToFileURL(path.join(editor, 'core/project.js')))
+const { SYSTEM_FONTS } = await import(pathToFileURL(path.join(editor, 'core/fonts.js')))
 const { openProjectRecovery } = await import(pathToFileURL(path.join(editor, 'web/ui/project-recovery.js')))
 const settingsSource = fs.readFileSync(path.join(editor, 'web/ui/settings.js'), 'utf8')
 const settingsFocusEffects = settingsSource.match(/  useEffect\(\(\) => \{\n    const previous = document\.activeElement\n[\s\S]*?\n  \}, \[\]\)/g)
@@ -30,7 +33,7 @@ const defaults = { media: 310, inspector: 340, chat: 370, upper: 61, showMedia: 
 // CSS geometry, mounted child behavior and real browser input remain Root acceptance.
 function fixture(t, { saved = defaults, width = 1200, focusDocument = null, openRecovery = () => {}, onSettingsOpen = () => {}, viewportWidth = 1200, viewportHeight = 900, requestOverride } = {}) {
   let persisted = copy(saved), active, index = 0, focusCount = 0
-  const groups = new Map(), pending = [], writes = [], mutations = [], requests = [], observers = [], cleanups = []
+  const groups = new Map(), pending = [], writes = [], mutations = [], requests = [], observers = [], cleanups = [], toasts = []
   const state = { project: newProject('A long project name that must remain accessible'), version: 7, page: 'edit', selection: ['c1'], openComp: null,
     selMarker: null, viewerMode: 'source', source: { src: 'owned.png', in: 1, out: 3 }, tool: 'm-pen', scroll: 51, zoom: 32,
     jobs: [], chatOpen: false, claude: { state: 'idle' }, refs: [], connected: true, showKeys: false, settingsOpen: false, assistantSharingReviewOpen: false }
@@ -75,8 +78,9 @@ function fixture(t, { saved = defaults, width = 1200, focusDocument = null, open
   const registry = { pages: [{ id: 'motion', label: 'Motion', order: 30, key: '⇧3', component: () => null }] }
   const phone = new Function('deps', `const { h, htm, useState, useRef, useEffect, matchMedia, useStore, viewProject } = deps;\n${phoneSource}\nreturn { PhonePanelControls, usePhoneLayout, compactPanelToPhone, phonePanelToCompact };`)(
     { h, htm, useState, useRef, useEffect, matchMedia, useStore: () => state, viewProject: () => state.openComp == null ? state.project : state.project.comps[state.openComp] })
-  const app = new Function('deps', `const { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, PhonePanelControls, usePhoneLayout, compactPanelToPhone, phonePanelToCompact, useStore, store, set, api, duration, timecode, registry, host, openProjectRecovery, useLayout, useCompactEditPanel, useWorkspaceWidth, editPaneSizes, editGridColumns, Divider, LayoutMenu, Browser, Inspector, Viewer, Timeline, Toolbar, ScrollTabs, assistantState, assistantActivity } = deps;\n${appSource}\nreturn { TopBar, EditPage };`)(
-    { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, ...phone, useStore: () => state, store: state, set, api, duration, timecode, registry, host: { kind: 'http' }, openProjectRecovery: openRecovery, ...layout, ...components, assistantState, assistantActivity })
+  const app = new Function('deps', `const { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, PhonePanelControls, usePhoneLayout, compactPanelToPhone, phonePanelToCompact, useStore, store, set, api, duration, timecode, registry, host, openProjectRecovery, useLayout, useCompactEditPanel, useWorkspaceWidth, editPaneSizes, editGridColumns, Divider, LayoutMenu, Browser, Inspector, Viewer, Timeline, Toolbar, ScrollTabs, assistantState, assistantActivity, moveHistory } = deps;\n${appSource}\nreturn { TopBar, EditPage };`)(
+    { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, ...phone, useStore: () => state, store: state, set, api, duration, timecode, registry, host: { kind: 'http' }, openProjectRecovery: openRecovery, ...layout, ...components, assistantState, assistantActivity,
+      moveHistory: new Function('store', 'api', 'set', 'toast', `${moveHistorySource}\nreturn moveHistory`)(state, api, set, message => toasts.push(message)) })
   function render(name) {
     if (!groups.has(name)) groups.set(name, [])
     active = groups.get(name); index = 0
@@ -100,7 +104,7 @@ function fixture(t, { saved = defaults, width = 1200, focusDocument = null, open
   }
   const phonePick = label => { const n = nodes(controls()).find(n => n.type === 'button' && text(n) === label); assert(n, label); n.props.onClick(); return edit() }
   const focusInspector = () => { document.activeElement = { closest: selector => selector === '.edit-inspector-pane' ? {} : null }; for (const listener of documentListeners.get('focusin') ?? []) listener(); return edit() }
-  return { viewport, controls, phonePick, focusInspector, document, phone, state, writes, mutations, requests, layout, components, edit, top, menu: () => render('LayoutMenu'), resize, pick, button, persisted: () => persisted, focusCount: () => focusCount, moreTrigger }
+  return { viewport, controls, phonePick, focusInspector, document, phone, state, writes, mutations, requests, layout, components, edit, top, menu: () => render('LayoutMenu'), resize, pick, button, persisted: () => persisted, focusCount: () => focusCount, moreTrigger, toasts }
 }
 const upper = tree => nodes(tree).find(node => node.props?.id === 'edit-upper')
 const componentCount = (tree, type) => nodes(tree).filter(node => node.type === type).length
@@ -222,6 +226,21 @@ test('Undo and Redo retain the existing API and project update behavior', async 
   const f = fixture(t); await f.button('Undo').props.onClick(); await f.button('Redo').props.onClick()
   assert.deepEqual(f.requests.map(call => call.route), ['/api/undo', '/api/redo']); assert.equal(f.state.version, 9); assert.deepEqual(f.state.selection, ['c1'])
 })
+test('Undo and Redo follow the server history depth and say so when nothing moved', async t => {
+  const f = fixture(t, { requestOverride: route => ({ project: f.state.project, version: f.state.version, moved: false, history: { undo: 0, redo: 2 } }) })
+  assert.equal(f.button('Undo').props.disabled, false, 'a host that reports no depth leaves Undo enabled')
+  await f.button('Undo').props.onClick()
+  assert.deepEqual(f.state.history, { undo: 0, redo: 2 }); assert.deepEqual(f.toasts, ['Nothing to undo.'])
+  assert.equal(f.button('Undo').props.disabled, true); assert.equal(f.button('Undo').props.title, 'Nothing to undo')
+  assert.equal(f.button('Redo').props.disabled, false)
+  f.requests.length = 0; f.toasts.length = 0
+  f.state.history = { undo: 1, redo: 0 }
+  assert.equal(f.button('Redo').props.disabled, true)
+  await f.button('Redo').props.onClick?.()
+  assert.deepEqual(f.requests, [], 'a disabled Redo sends nothing even if pressed')
+  assert.deepEqual(f.toasts, ['Nothing to redo.'])
+  assert.equal(f.button('Redo').props.title, 'Nothing to redo')
+})
 test('Settings and recovery still respect sharing review ownership', t => {
   const f = fixture(t); f.state.assistantSharingReviewOpen = true
   assert.equal(f.button('Settings').props.disabled, true); assert.equal(f.button('Recovery').props.disabled, true)
@@ -229,7 +248,7 @@ test('Settings and recovery still respect sharing review ownership', t => {
   f.state.assistantSharingReviewOpen = false; f.button('Settings').props.onClick(); assert.equal(f.state.settingsOpen, true)
 })
 test('queued delivery progress stays visible on More and routes through the existing action', t => {
-  const f = fixture(t); f.state.jobs = [{ state: 'queued', progress: 0.12 }]
+  const f = fixture(t); f.state.jobs = [{ kind: 'export', state: 'queued', progress: 0.12 }]
   assert.equal(text(f.button('More editor actions')), 'More 12%'); assert.equal(f.button('More editor actions').props['aria-label'], 'More editor actions, delivery 12%'); f.button('Open delivery progress').props.onClick(); assert.equal(f.state.page, 'deliver')
 })
 test('Assistant and keyboard controls keep their existing state transitions', t => {
@@ -393,7 +412,7 @@ for (const kind of ['number', 'title']) test(`actual Inspector ${kind} draft com
   const useState = initial => [value ?? initial, next => value = next]
   const inspectorSource = fs.readFileSync(path.join(candidate, 'web/ui/inspector.js'), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
   const edit = op => { commits++; history = copy(f.state.project); f.state.project = applyOps(f.state.project, [op]).project }
-  const actual = new Function('h', 'htm', 'useState', 'edit', 'TITLE_ANIMS', `${inspectorSource}\nreturn { Num, TitleTab }`)(h, htm, useState, edit, TITLE_ANIMS)
+  const actual = new Function('h', 'htm', 'useState', 'edit', 'TITLE_ANIMS', 'FONTS', `${inspectorSource}\nreturn { Num, TitleTab }`)(h, htm, useState, edit, TITLE_ANIMS, SYSTEM_FONTS)
   const render = () => kind === 'number' ? actual.Num({ label: 'Scale', value: 100, onCommit: scale => edit({ op: 'update', id: 'c1', set: { scale: scale / 100 } }) }) : actual.TitleTab({ clip: f.state.project.tracks[0].clips[0] })
   const input = () => nodes(render()).find(n => n.type === (kind === 'number' ? 'input' : 'textarea'))
   const old = copy(f.state.project), identity = pane(f.edit(), 'inspector').key

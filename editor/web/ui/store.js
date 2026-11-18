@@ -29,6 +29,8 @@ export const store = {
   claude: { state: 'idle', text: '' },
   activity: [],
   receipts: [],
+  history: null, // { undo, redo } depth from the server; null when the host does not report it
+  session: null, // { id, startedAt } of the server this editor is connected to
   jobs: [],
   toasts: [],
   playing: false,
@@ -79,6 +81,11 @@ function scoped(ops) {
 }
 
 // History metadata is display-only. It cannot restore a run, route or sharing grant.
+/** The server's undo and redo depth, or null when the host does not report one. */
+export function historyDepth(value) {
+  return Number.isSafeInteger(value?.undo) && value.undo >= 0 && Number.isSafeInteger(value?.redo) && value.redo >= 0 ? { undo: value.undo, redo: value.redo } : null
+}
+
 export function chatHistoryStatus(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return { restored: Number.isSafeInteger(value.restored) && value.restored >= 0 && value.restored <= 200 ? value.restored : null,
@@ -219,17 +226,23 @@ export async function edit(ops, summary, options = {}) {
 
 export function connect(onProject) {
   return host.events({
-    hello: () => set({ connected: true }),
+    // The local server says how deep the undo history is and which server session this is.
+    hello: d => set({ connected: true, ...(historyDepth(d?.history) ? { history: historyDepth(d.history) } : {}), ...(d?.session?.id ? { session: d.session } : {}) }),
     error: () => set({ connected: false }),
     project: d => {
       if (d.version < store.version) return
+      // An event without a depth (the hosted editor) clears a stale one, so Undo and Redo stay enabled.
+      const history = historyDepth(d.history)
       if (d.who === 'you' && pending > 0) {
-        set({ version: d.version })
+        set({ version: d.version, history })
 
         return
       }
       const highlight = new Map(store.highlight)
-      const receipt = changeReceipt(store.project, d.project, { version: d.version, who: d.who, at: d.at })
+      const made = changeReceipt(store.project, d.project, { version: d.version, who: d.who, at: d.at })
+      // The plain sentences the server returns with an assistant edit travel with its receipt.
+      const notes = Array.isArray(d.notes) ? d.notes.filter(note => typeof note === 'string' && note.trim()).slice(0, 10).map(note => note.slice(0, 700)) : []
+      const receipt = made && notes.length ? { ...made, notes } : made
       let receipts = store.receipts
       if (receipt) {
         receipts = [...receipts, { ...receipt, displayBytes: JSON.stringify(receipt).length }].slice(-30)
@@ -240,7 +253,7 @@ export function connect(onProject) {
         // Include changed layers in nested compositions.
         if (receipt) for (const clip of receipt.clips) if (clip.status !== 'deleted') highlight.set(clip.id, performance.now())
       }
-      set({ ...(host.kind === 'browser-local' && d.root && d.root !== store.root ? { root: d.root, source: null, selection: [], selMarker: null, selTrack: null, openComp: null, viewerMode: 'timeline', jobs: d.jobs ?? [] } : {}), project: d.project, version: d.version, highlight, receipts })
+      set({ ...(host.kind === 'browser-local' && d.root && d.root !== store.root ? { root: d.root, source: null, selection: [], selMarker: null, selTrack: null, openComp: null, viewerMode: 'timeline', jobs: d.jobs ?? [] } : {}), project: d.project, version: d.version, highlight, receipts, history })
       onProject?.(d)
     },
     activity: a => set(s => ({ activity: [...s.activity, a].slice(-60) })),

@@ -178,3 +178,32 @@ test('changed owned stage refuses cleanup of the replacement directory', t => {
   assert.throws(() => owned.cleanup(), /directory changed/)
   assert.equal(fs.readFileSync(path.join(stage, 'sentinel'), 'utf8'), 'keep replacement')
 })
+
+test('an export started before a preview copy exists names the file that is not ready, not a path error', t => {
+  const { root, project } = fixture(t)
+  fs.mkdirSync(path.join(root, '.reel/proxies'), { recursive: true })
+  project.assets['media/video.mp4'].proxy = '.reel/proxies/3f9c1a7e.mp4'
+  let thrown
+  try { captureExportSources(root, project) } catch (error) { thrown = error }
+  assert.equal(thrown.message, 'Arya is still preparing a preview copy of video.mp4. Wait for it to finish, then export again.')
+  assert.equal(thrown.code, 'ARYA_PROXY_PENDING')
+  assert.equal(thrown.src, 'media/video.mp4')
+  assert.doesNotMatch(thrown.message, /ENOENT|lstat|\.reel|3f9c1a7e/)
+  // The asset's own name is used when it has one.
+  project.assets['media/video.mp4'].name = 'Harbour walk'
+  assert.throws(() => captureExportSources(root, project), { message: 'Arya is still preparing a preview copy of Harbour walk. Wait for it to finish, then export again.' })
+  // Once the copy is written the same export is admitted, and it still reads the proxy file.
+  fs.writeFileSync(path.join(root, '.reel/proxies/3f9c1a7e.mp4'), 'finished proxy')
+  const captured = captureExportSources(root, project)
+  assert.deepEqual(captured.records.map(record => record.value).sort(), ['.reel/proxies/3f9c1a7e.mp4', 'media/audio.wav', 'media/grade.cube', 'media/video.mp4'])
+})
+
+test('a missing source that is not a preview copy keeps its own error', t => {
+  const { root, project } = fixture(t)
+  fs.rmSync(path.join(root, 'media/audio.wav'))
+  assert.throws(() => captureExportSources(root, project), error => error.code === 'ENOENT' && !/preview copy/.test(error.message))
+  const other = fixture(t)
+  // A proxy path that exists but is not a regular file is still refused as before.
+  fs.rmSync(path.join(other.root, 'media/proxy.mp4')); fs.mkdirSync(path.join(other.root, 'media/proxy.mp4'))
+  assert.throws(() => captureExportSources(other.root, other.project), /not a regular file/)
+})

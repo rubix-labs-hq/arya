@@ -116,6 +116,13 @@ test('routing receipt exposes the requested exact choice and unknown executed-mo
   assert.match(text(tree), /Exact price and remaining allowance are unknown/)
 })
 
+test('routing receipt names the model the CLI reported running', () => {
+  const route = selectRoute({ preferences: { mode: 'auto', enabledModels: status.enabledModels }, catalogs: [catalog], providers: status.providers, request: { text: 'Rename the title', selectionCount: 1 } })
+  const tree = components.RoutingReceipt({ value: { ...route, executedModel: 'swift-2026-sample', executedModelSource: 'cli' } })
+  assert.match(text(tree), /Ran on swift-2026-sample, as the CLI reported\./)
+  assert.doesNotMatch(text(tree), /has not reported an executed model identifier/)
+})
+
 test('Settings renders real account setup steps and Auto pool without malformed nesting', () => {
   const source = componentSource('settings.js')
   for (const mode of ['auto', 'manual']) {

@@ -66,3 +66,32 @@ test('an agent edit returns its notes in the tool result', async t => {
   assert.deepEqual(agent.results[0].notes, ['c1 now plays at 1.1x (was 1x): 6s became 5.45s.'], JSON.stringify(agent.results[0]))
   assert.equal(Object.hasOwn(agent.results[0], 'project'), false)
 })
+
+test('the project event of an edit carries its notes, and an edit with none has no notes field', async t => {
+  const server = await runningServer(t, [], { setup: vertical })
+  const controller = new AbortController()
+  t.after(() => controller.abort())
+  const response = await fetch(`${server.url}/api/events?role=ui`, { signal: controller.signal })
+  const reader = response.body.getReader(), decoder = new TextDecoder()
+  let text = ''
+  const event = async name => {
+    const pattern = new RegExp(`event: ${name}\\ndata: (.*)\\n\\n`)
+    for (;;) {
+      const match = text.match(pattern)
+      if (match) { text = text.slice(match.index + match[0].length); return JSON.parse(match[1]) }
+      const { value, done } = await reader.read()
+      if (done) assert.fail(`no ${name} event`)
+      text += decoder.decode(value, { stream: true })
+    }
+  }
+  await event('hello')
+  const edit = await server.api('POST', '/api/ops', { ops: [wide], who: 'agent', summary: 'Wide title' })
+  const noted = await event('project')
+  // The event carries the person's sentences, the reply keeps the agent's.
+  assert.equal(noted.notes.length > 0, true, JSON.stringify(noted))
+  assert.ok(noted.notes.some(note => /^The title ".+" is wider than the frame\. Make it smaller or let it wrap\.$/.test(note)), JSON.stringify(noted.notes))
+  assert.ok(noted.notes.every(note => !/\bc\d\b|title\.|units wide/.test(note)), JSON.stringify(noted.notes))
+  assert.ok(edit.body.notes.some(note => /^c2 title is about \d+ units wide/.test(note)), JSON.stringify(edit.body.notes))
+  await server.api('POST', '/api/ops', { ops: [{ op: 'update', id: 'c1', set: { opacity: 0.5 } }] })
+  assert.equal(Object.hasOwn(await event('project'), 'notes'), false)
+})

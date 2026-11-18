@@ -97,6 +97,9 @@ export async function startBridge(options = {}) {
         const item = outputEvent(run.request.provider, line)
         // Claude streams deltas and then repeats them as an assistant message.
         if (!['gemini-cli', 'chatgpt'].includes(run.request.provider) && line.includes('text_delta')) partial = true
+        // Progress and model events are for a host that reads them. The Mac app's companion reads
+        // only route, text, tool, done and error, and treats any other kind as a broken reply.
+        if (item && !options.activityEvents && ['progress', 'model'].includes(item.type)) return !run.terminal
         if (item && !(partial && line.includes('"assistant"'))) {
           // A whole message after the first starts a new paragraph. Streamed deltas pass through as sent.
           const { wholeMessage, ...sent } = item

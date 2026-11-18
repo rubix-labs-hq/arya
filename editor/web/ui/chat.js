@@ -27,39 +27,108 @@ function md(text) {
   return esc.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>')
 }
 
-function ChangeReceipt({ receipt }) {
-  const groups = [...new Set(receipt.clips.map(clip => clip.comp))]
-  const legacyAssets = receipt.totalAssets == null && receipt.projectChanges.includes('assets')
+const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
+
+// How long a past run took, from its request to its last reply, as the run line shows it.
+function elapsedBetween(start, end) {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return ''
+  const seconds = Math.floor((end - start) / 1000)
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+}
+
+// Which track a receipt scope names, so a card can say "Caption style changed" for a caption track.
+function scopeTrack(project, scope) {
+  if (scope.track == null) return null
+  const timeline = scope.comp == null ? project : project?.comps?.[scope.comp]
+  return (timeline?.tracks ?? []).find(track => track.id === scope.track) ?? null
+}
+
+/** What a set of receipts changed, in one short line: layers, Media, or which settings. */
+function receiptCaption(receipts, project) {
+  const layers = new Set(receipts.flatMap(receipt => receipt.clips.map(clip => `${clip.comp ?? ''}:${clip.id}`)))
+  const total = Math.max(layers.size, ...receipts.map(receipt => receipt.total ?? 0))
+  const assets = receipts.reduce((sum, receipt) => sum + (receipt.totalAssets ?? 0), 0)
+  const legacyAssets = receipts.some(receipt => receipt.totalAssets == null && receipt.projectChanges.includes('assets'))
+  const scopes = receipts.flatMap(receipt => receipt.scopes ?? []).filter(scope => scope.asset == null && scope.changes.some(change => change.property !== 'Object order'))
+  const otherSettings = assets && scopes.length || legacyAssets && receipts.some(receipt => receipt.projectChanges.some(property => property !== 'assets'))
+  // Settings alone: a caption track's style, another track's settings, or the project's.
+  const tracks = scopes.map(scope => scopeTrack(project, scope))
+  const settings = scopes.length && tracks.every(Boolean) ? tracks.every(track => track.kind === 'caption') ? 'Caption style changed' : 'Track settings changed' : 'Project settings changed'
+  return [total ? `${plural(total, 'layer')} changed` : '',
+    assets ? `${assets} Media ${assets === 1 ? 'asset' : 'assets'} changed` : legacyAssets ? 'Media assets changed' : '',
+    otherSettings ? 'Project or track settings changed' : '',
+    !total && !assets && !legacyAssets ? settings : ''].filter(Boolean).join(' · ')
+}
+
+function ReceiptDetails({ receipt }) {
   const assetChange = change => change.property === 'assets' || change.property.startsWith('assets.') || change.property.startsWith('assets[')
   const scopeLabel = scope => scope.asset != null ? 'Media registration' : scope.comp == null && scope.track == null && scope.changes.some(assetChange)
     ? scope.changes.every(assetChange) ? 'Media metadata' : 'Media and project settings' : scope.track == null ? 'Project or composition settings' : 'Track settings'
-  const headline = [receipt.total ? `${receipt.total} ${receipt.total === 1 ? 'layer' : 'layers'} changed` : '',
-    receipt.totalAssets ? `${receipt.totalAssets} Media ${receipt.totalAssets === 1 ? 'asset' : 'assets'} changed` : legacyAssets ? 'Media assets changed' : '',
-    receipt.totalAssets && (receipt.scopes ?? []).some(scope => scope.asset == null && scope.changes.some(change => change.property !== 'Object order')) ? 'Project or track settings changed' : '',
-    legacyAssets && receipt.projectChanges.some(property => property !== 'assets') ? 'Project or track settings changed' : '',
-    !receipt.total && !receipt.totalAssets && !legacyAssets ? 'Project settings changed' : ''].filter(Boolean).join(' · ')
+  return html`<div class="receipt-edit" key=${receipt.version}>
+    <p class="receipt-meta">Edit ${receipt.version}${receipt.undone ? ' · undone' : ''}${receipt.projectChanges.length ? ` · ${receipt.projectChanges.join(', ')}` : ''}</p>
+    ${(receipt.scopes ?? []).map(scope => html`<div class="receipt-layer"><b>${scope.name}</b><span class="receipt-meta">${scopeLabel(scope)} · ${scope.status}</span>${scope.asset != null ? html`<p class="receipt-meta">${scope.asset}</p>` : null}<dl>${scope.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
+    ${receipt.clips.map(clip => html`<div class="receipt-layer"><b>${clip.name}</b><span class="receipt-meta">${clip.compositionName} · ${clip.id} · ${clip.status}</span><dl>${clip.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
+    ${receipt.truncated ? html`<p class="receipt-meta">Some changes or values are shortened. Showing ${receipt.clips.length} of ${receipt.total} changed layers${receipt.totalScopes == null ? '' : ` and ${(receipt.scopes ?? []).length} of ${receipt.totalScopes} ${receipt.totalAssets ? 'Media and settings' : 'settings'} groups`}.</p>` : null}
+    <details class="receipt-json"><summary>Read-only JSON diff</summary><pre>${JSON.stringify({ clips: receipt.clips, scopes: receipt.scopes, projectChanges: receipt.projectChanges, totalLayers: receipt.total, totalScopes: receipt.totalScopes, totalAssets: receipt.totalAssets, truncated: receipt.truncated }, null, 2)}</pre></details>
+  </div>`
+}
+
+/**
+ * One card per run: what the run changed and what you can do about it. It folds in the one-step
+ * undo of the latest assistant change when that change belongs to this run. With no receipt (after
+ * a reload) it still offers that undo.
+ */
+function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
+  const undoable = Boolean(change?.undoable)
+  const undone = !undoable && receipts.length > 0 && receipts.every(receipt => receipt.undone)
+  const edits = change ? change.edits : receipts.length
+  // An undone preview keeps its name: the receipts remember which kind of change they belonged to.
+  const preview = change ? change.kind === 'preview' : receipts.length > 0 && receipts.every(receipt => receipt.changeKind === 'preview')
+  const title = preview ? 'Applied the preview' : `Made ${plural(edits, 'edit')}`
+  const caption = receipts.length ? receiptCaption(receipts, store.project) : ''
+  const notes = [...new Set(receipts.flatMap(receipt => receipt.notes ?? []))]
+  // Select works on the layers of every edit in the run, one button per timeline they are on.
+  const merged = { clips: receipts.flatMap(receipt => receipt.clips) }
+  const groups = [...new Set(merged.clips.map(clip => clip.comp))]
   const select = comp => {
-    const current = receiptSelection(receipt, store.project, comp)
+    const current = receiptSelection(merged, store.project, comp)
     if (!current) return toast('Those layers are no longer in the project.')
     set({ openComp: current.comp, selection: current.ids, page: 'edit', viewerMode: 'timeline' })
     player.seek(current.start)
   }
-  return html`<section class="assistant-result-card" aria-label=${receipt.undone ? 'Undone edit result' : 'Committed edit result'}>
-    <div class="receipt-heading"><b>${headline}</b><small>${receipt.undone ? 'Undone · Edit' : 'Edit'} ${receipt.version}</small></div>
-    <details class="change-receipt"><summary>View changes</summary>
-      ${receipt.projectChanges.length ? html`<p class="receipt-meta">${receipt.projectChanges.join(', ')}</p>` : null}
-      ${(receipt.scopes ?? []).map(scope => html`<div class="receipt-layer"><b>${scope.name}</b><span class="receipt-meta">${scopeLabel(scope)} · ${scope.status}</span>${scope.asset != null ? html`<p class="receipt-meta">${scope.asset}</p>` : null}<dl>${scope.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
-      ${receipt.clips.map(clip => html`<div class="receipt-layer"><b>${clip.name}</b><span class="receipt-meta">${clip.compositionName} · ${clip.id} · ${clip.status}</span><dl>${clip.changes.map(change => html`<dt>${change.property}</dt><dd><span>${change.before}</span><span class="receipt-arrow" aria-label="changed to">→</span><span>${change.after}</span></dd>`)}</dl></div>`)}
-      ${receipt.truncated ? html`<p class="receipt-meta">Some changes or values are shortened. Showing ${receipt.clips.length} of ${receipt.total} changed layers${receipt.totalScopes == null ? '' : ` and ${(receipt.scopes ?? []).length} of ${receipt.totalScopes} ${receipt.totalAssets ? 'Media and settings' : 'settings'} groups`}.</p>` : null}
-      <details class="receipt-json"><summary>Read-only JSON diff</summary><pre>${JSON.stringify({ clips: receipt.clips, scopes: receipt.scopes, projectChanges: receipt.projectChanges, totalLayers: receipt.total, totalScopes: receipt.totalScopes, totalAssets: receipt.totalAssets, truncated: receipt.truncated }, null, 2)}</pre></details>
-      <p class="receipt-meta">Undo in the toolbar reverts the latest committed edit.</p>
-    </details>
-    ${groups.length ? html`<div class="receipt-actions">${groups.map(comp => {
-      const selectable = receiptSelection(receipt, store.project, comp)
-      const name = comp == null ? 'main timeline' : store.project?.comps?.[comp]?.name ?? comp
-      return html`<button class="ghost tiny" disabled=${!selectable} onClick=${() => select(comp)}>Select changed layers${groups.length > 1 ? ` · ${name}` : ''}</button>`
-    })}</div>` : null}
+  return html`<section class=${`assistant-result-card${undone ? ' undone' : ''}`} aria-label=${undone ? 'Undone edit result' : 'Committed edit result'}>
+    <div class="receipt-heading"><b>${title}</b>${undone ? html`<small>Undone</small>` : null}</div>
+    ${caption ? html`<p class="assistant-result-caption">${caption}</p>` : null}
+    ${undoable || groups.length ? html`<div class="receipt-actions">
+      ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title="Restore the project from before this assistant change. Redo brings it back." onClick=${onUndo}>${busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
+      ${groups.map(comp => {
+        const selectable = receiptSelection(merged, store.project, comp)
+        const name = comp == null ? 'main timeline' : store.project?.comps?.[comp]?.name ?? comp
+        return html`<button class="ghost tiny" disabled=${!selectable} onClick=${() => select(comp)}>Select changed layers${groups.length > 1 ? ` · ${name}` : ''}</button>`
+      })}
+    </div>` : null}
+    ${notes.map(note => html`<p class="assistant-note">${note}</p>`)}
+    ${receipts.length ? html`<details class="change-receipt"><summary>Details</summary>
+      ${[...receipts].reverse().map(receipt => ReceiptDetails({ receipt }))}
+      <p class="receipt-meta">Undo in the toolbar reverts the latest edit.</p>
+    </details>` : null}
   </section>`
+}
+
+/** A run as one quiet line: label, stage and elapsed time. It opens to the tool updates. */
+function RunLine({ label, stage, elapsed, state, symbol, detail = '', updates = [], open = false, children = null, live = false }) {
+  // The detail opens under the line only when it says more than the stage already does.
+  const bare = value => String(value ?? '').replace(/\.$/, '')
+  const extra = detail && !(stage && bare(detail).endsWith(bare(stage))) ? detail : ''
+  const expandable = Boolean(extra || updates.length || [children].flat(Infinity).some(Boolean))
+  const heading = html`<span class="assistant-run-symbol" aria-hidden="true">${symbol}</span><b role=${live ? 'status' : undefined}>${label}</b>${stage ? html`<span class="assistant-run-stage" title=${stage}>${stage}</span>` : null}${elapsed ? html`<span class="assistant-run-time">${elapsed}</span>` : null}`
+  if (!expandable) return html`<div class=${`assistant-run ${state}`}><div class="assistant-run-heading">${heading}</div></div>`
+  return html`<details class=${`assistant-run ${state}`} open=${open}>
+    <summary class="assistant-run-heading">${heading}</summary>
+    ${extra ? html`<p>${extra}</p>` : null}
+    ${updates.length ? html`<ul class="assistant-run-updates" aria-label="Tool updates">${updates.map(update => html`<li>${update.text}</li>`)}</ul>` : null}
+    ${children}
+  </details>`
 }
 
 function AssistantHistoryNotice({ status }) {
@@ -89,7 +158,7 @@ export function ChatPanel() {
   const [refreshing, setRefreshing] = useState(false)
   const [sharingReview, setSharingReview] = useState(null)
   const [now, setNow] = useState(Date.now())
-  const sending = useRef(false), dispatching = useRef(false)
+  const sending = useRef(false), dispatching = useRef(false), lastSent = useRef(null)
   const sharingGate = useRef(null), stopAction = useRef(null)
   if (!sharingGate.current) sharingGate.current = createAssistantSharingGate({ api,
     present: review => {
@@ -139,9 +208,14 @@ export function ChatPanel() {
   // The person's own message, a new preview, an apply, an undo bar or the end of a run brings the list to its end.
   const lastOwnAt = [...s.chat].reverse().find(m => ['user', 'you'].includes(m.role))?.at
   useEffect(() => { follow.current = true }, [lastOwnAt, s.assistantReview?.proposal?.id, s.assistantReview?.applying?.id, s.assistantReview?.change?.id, activity.terminal])
+  // The end of the list. A preview taller than the list shows from its title, not from its buttons.
+  const scrollToEnd = el => {
+    const card = s.assistantReview?.proposal ? el.querySelector?.('.assistant-preview') : null
+    el.scrollTop = card && card.offsetHeight > el.clientHeight ? el.scrollTop + card.getBoundingClientRect().top - el.getBoundingClientRect().top : el.scrollHeight
+  }
   useEffect(() => {
     const hasUpdates = s.chat.length || s.activity.length || s.receipts.length || activity.active || activity.terminal || s.assistantReview
-    if (hasUpdates && list.current && follow.current) list.current.scrollTop = list.current.scrollHeight
+    if (hasUpdates && list.current && follow.current) scrollToEnd(list.current)
   }, [s.chat, s.claude.text, activity.state, s.activity, s.receipts, s.assistantReview, s.chatHistory?.warning])
 
   const send = async (msg = text) => {
@@ -160,7 +234,9 @@ export function ChatPanel() {
       if (!permit?.valid() || !assistantDraftIsCurrent(captured, store)) return
       setPending(true)
       dispatching.current = true
-      await api('/api/bridge/send', { ...request, sharing: permit.sharing, ...(store.caps?.host !== 'native' && store.assistantPreview !== false ? { review: true } : {}) })
+      const options = store.caps?.host !== 'native' && store.assistantPreview !== false ? { review: true } : {}
+      const sent = await api('/api/bridge/send', { ...request, sharing: permit.sharing, ...options })
+      lastSent.current = { request, options, runId: sent?.runId ?? null }
       if (captured.draft && assistantDrafts.get(captured.root) === captured.draft) {
         assistantDrafts.set(captured.root, { ...captured.draft, text: '' })
       }
@@ -168,6 +244,28 @@ export function ChatPanel() {
         setText('')
         set({ refs: store.refs.filter(ref => !consumedRefs.has(ref) || consumedRefs.get(ref) !== JSON.stringify(ref)) })
       }
+    } catch (error) {
+      toast(error.message, 'error')
+    } finally {
+      sending.current = false; dispatching.current = false
+      set({ assistantSharingReviewOpen: false })
+      setPending(false)
+      setNow(Date.now())
+    }
+  }
+  // Retry sends the same request again, with the context it had, after a fresh sharing check.
+  const retry = async () => {
+    const last = lastSent.current
+    if (!last || sending.current || activity.active || !s.connected) return
+    sending.current = true
+    set({ assistantSharingReviewOpen: true, settingsOpen: false })
+    setPending(true)
+    try {
+      const permit = await sharingGate.current.request()
+      if (!permit?.valid()) return
+      dispatching.current = true
+      const sent = await api('/api/bridge/send', { ...last.request, sharing: permit.sharing, ...last.options })
+      lastSent.current = { ...last, runId: sent?.runId ?? null }
     } catch (error) {
       toast(error.message, 'error')
     } finally {
@@ -244,7 +342,7 @@ export function ChatPanel() {
   // The suggestion row is too, for a reader who is already at the end.
   const welcome = Boolean(chatgpt?.welcome)
   useEffect(() => {
-    if (list.current && (checking || !status.ready || welcome || follow.current)) list.current.scrollTop = list.current.scrollHeight
+    if (list.current && (checking || !status.ready || welcome || follow.current)) scrollToEnd(list.current)
   }, [checking, status.ready, status.refreshRequired, providerFailure, chatgptWaiting, signInState, welcome, showSuggestions])
   const lastRequest = [...s.chat].reverse().find(m => ['user', 'you'].includes(m.role) && m.text)?.text ?? ''
   const view = assistantPanel.focus(s.project, { comp: s.openComp, playhead })
@@ -259,30 +357,66 @@ export function ChatPanel() {
     setReviewBusy(kind)
     try {
       await api(route, body)
-      if (undoneChange?.id === body?.id && store.root === root) set({ receipts: store.receipts.map(receipt => receipt.version > undoneChange.beforeVersion && receipt.version <= undoneChange.afterVersion ? { ...receipt, undone: true } : receipt) })
+      if (undoneChange?.id === body?.id && store.root === root) set({ receipts: store.receipts.map(receipt => receipt.version > undoneChange.beforeVersion && receipt.version <= undoneChange.afterVersion ? { ...receipt, undone: true, undoneBy: undoneChange.id, changeKind: undoneChange.kind } : receipt) })
     }
     catch (error) { toast(error.message, 'error') }
     finally { setReviewBusy('') }
   }
   const focusComposer = () => composer.current?.focus()
+  const undoChange = () => decide('undo', '/api/assistant/change/undo', { id: store.assistantReview?.change?.id })
+  // The current run's line, and what a failed run saved and how to try again.
+  const liveSymbol = !s.connected ? '↻' : working ? '◌' : activity.state === 'done' ? '↵' : activity.state === 'error' ? '!' : '■'
+  const liveRunLine = updates => RunLine({ live: true, state: working ? 'active' : activity.state, symbol: liveSymbol, label: activity.label, stage: activity.stage, elapsed: activity.elapsed, detail: activity.detail, updates,
+    children: [activity.connectionNotice ? html`<p>${activity.connectionNotice}</p>` : null,
+      (!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><${RoutingReceipt} value=${s.claude.routing} /></div>` : null] })
+  const failureBlock = lastReply => {
+    if (working || activity.state !== 'error') return null
+    const saved = committed.length > 0 && !committed.every(item => lastReply?.text?.includes(item.summary))
+    return html`<div class="assistant-failure">
+              ${chatgptCode === 'chatgpt_usage_limit' ? html`<div class="assistant-plan-error"><b>Usage limit reached</b><p>ChatGPT account: ${chatgpt?.email || 'your signed-in account'}. Check your usage, then try again later.</p><a class="button primary" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></div>` : null}
+              ${['chatgpt_sign_in_required', 'chatgpt_not_authorized', 'chatgpt_plan_disabled', 'chatgpt_account_changed', 'chatgpt_not_eligible'].includes(chatgptCode) ? html`<div class="assistant-plan-error"><button class="ghost tiny" onClick=${() => set({ settingsOpen: true })}>Review ChatGPT sign-in</button></div>` : null}
+              ${saved ? html`<div class="assistant-saved"><b>Saved before the failure</b><ul>${committed.map(item => html`<li key=${item.version}>${item.summary}</li>`)}</ul></div>` : null}
+              ${lastRequest || canRetry ? html`<div class="assistant-failure-actions">
+                ${lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title="Put the failed request back in the text box to edit or send again. Clear the current draft first." onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
+                ${canRetry ? html`<button class="ghost tiny assistant-resend" disabled=${pending || !s.connected} title="Send the same request again" onClick=${retry}>Retry</button>` : null}
+              </div>` : null}
+            </div>`
+  }
+  // A plain Retry only when the request failed on the network and is the one this panel sent.
+  const canRetry = s.claude?.retryable === true && lastSent.current != null && lastSent.current.runId != null && lastSent.current.runId === s.claude?.runId
   const setPreview = on => {
     set({ assistantPreview: on })
     try { globalThis.localStorage?.setItem('arya.assistant.preview', on ? 'on' : 'off') } catch { /* The choice still applies to this session. */ }
   }
+  // A receipt undone by "Undo this change" counts as current again once Redo brings that change back.
+  const shown = receipt => receipt.undone && receipt.undoneBy != null && review?.change?.undoable && review.change.id === receipt.undoneBy ? { ...receipt, undone: false } : receipt
   const feed = [
     ...s.chat.map(m => ({ ...m, type: 'chat' })),
     ...s.activity.filter(a => ['claude', 'agent', 'assistant'].includes(a.who)).map(a => ({ type: 'act', text: a.text, at: a.at ?? 0 })),
-    ...s.receipts.map(receipt => ({ type: 'receipt', receipt, at: receipt.at })),
+    ...s.receipts.map(receipt => ({ type: 'receipt', receipt: shown(receipt), at: receipt.at })),
   ].sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
-
-  // Collapse consecutive tool updates without moving them past a message or edit.
-  const conversation = []
+  // The conversation as turns. Each starts with your request and holds the replies, tool updates and edits that followed.
+  const turns = []
   for (const entry of feed) {
-    const previous = conversation.at(-1)
-    if (entry.type !== 'act') conversation.push(entry)
-    else if (previous?.type === 'tools') previous.updates.push(entry)
-    else conversation.push({ ...entry, type: 'tools', updates: [entry] })
+    const own = entry.type === 'chat' && ['user', 'you'].includes(entry.role)
+    if (own || !turns.length) turns.push({ at: entry.at ?? 0, request: null, replies: [], updates: [], receipts: [] })
+    const turn = turns.at(-1)
+    if (own) turn.request = entry
+    else if (entry.type === 'chat') turn.replies.push(entry)
+    else if (entry.type === 'act') turn.updates.push(entry)
+    else turn.receipts.push(entry.receipt)
   }
+  const conversation = turns
+  // The latest assistant change belongs to the turn whose edits it covers, or else to the latest turn.
+  const changeShown = review?.change && !runActive && !(review?.applying && !review.applying.finished) ? review.change : null
+  const covers = (change, turn) => turn.receipts.some(receipt => receipt.version > change.beforeVersion && receipt.version <= change.afterVersion)
+  let changeTurn = changeShown ? turns.findLastIndex(turn => covers(changeShown, turn)) : -1
+  if (changeShown && changeTurn < 0) changeTurn = turns.length - 1
+  // Where this server session began, so earlier turns read as history.
+  const sessionStart = Number.isFinite(s.session?.startedAt) ? s.session.startedAt : null
+  const firstOfSession = sessionStart == null ? -1 : turns.findIndex(turn => turn.at >= sessionStart)
+  const liveRun = working || activity.terminal || !s.connected
+  const committed = Array.isArray(s.claude?.committed) ? s.claude.committed.filter(item => typeof item?.summary === 'string') : []
   const inputLocked = working || Boolean(sharingReview)
   const needsRefresh = status.refreshRequired || providerFailure
   const refreshButton = kind => html`<button class=${kind || undefined} disabled=${refreshing || connection?.loading || working || !s.connected} onClick=${refreshAvailability}>${refreshing || connection?.loading ? 'Refreshing…' : status.refreshRequired ? 'Refresh availability' : 'Refresh status'}</button>`
@@ -299,8 +433,9 @@ export function ChatPanel() {
 
   // On a phone the sheet can drop to a one-line bar so the timeline is reachable. The draft and the list stay mounted.
   const collapsed = s.chatCollapsed === true
-  const headStatus = activity.terminal || working || !s.connected ? activity.label : status.ready ? name : checking ? 'Checking' : status.refreshRequired ? 'Needs refresh' : 'Not set up'
-  const runDone = !working && s.connected && activity.state === 'done'
+  // The same status word as the Ask Arya entry. The provider and model are in the composer's model control.
+  const headStatus = assistantActivity.statusWord({ connected: s.connected, run: stopping ? { ...s.claude, state: 'cancelling' } : s.claude, pending, ready: status.ready, checking, proposal: Boolean(review?.proposal) })
+  const modelName = connection?.mode === 'auto' ? 'Auto' : [name, connection?.model].filter(Boolean).join(' · ')
 
   if (hosted) return html`<section class="panel chat assistant-unavailable" id="editor-assistant" aria-label="Assistant">
     <div class="chat-head"><div class="chat-title"><b>Assistant</b><span class="muted">Unavailable in beta</span></div><button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button></div>
@@ -311,12 +446,12 @@ export function ChatPanel() {
     <section class=${`panel chat${collapsed ? ' collapsed' : ''}`} id="editor-assistant" aria-label="Assistant">
       <div class="chat-head">
         <div class="chat-title" onClick=${collapsed ? () => set({ chatCollapsed: false }) : undefined}>
-          <span class=${`claude-dot ${working ? 'busy' : status.ready ? 'ok' : 'off'}`}></span>
+          <span class=${`claude-dot ${working ? 'busy' : headStatus === 'Failed' ? 'failed' : s.connected && status.ready ? 'ok' : 'off'}`}></span>
           <b>Assistant</b>
           <span class="muted">${headStatus}</span>
           ${collapsed && text.trim() ? html`<span class="muted chat-draft-note">Draft kept</span>` : null}
         </div>
-        <button class="ghost tiny chat-settings" aria-label="Assistant settings" title="Assistant settings" disabled=${pending || Boolean(sharingReview)} onClick=${() => openSettings()}>Settings</button>
+        <button class="ghost tiny chat-settings" aria-label="Assistant settings" title="Assistant settings" disabled=${pending || Boolean(sharingReview)} onClick=${() => openSettings()}><${Icon} name="settings" /></button>
         <button class="ghost tiny chat-collapse" aria-label=${collapsed ? 'Expand assistant' : 'Minimize assistant'} title=${collapsed ? 'Expand assistant' : 'Minimize to reach the timeline. Your draft is kept.'} aria-expanded=${!collapsed} onClick=${() => set({ chatCollapsed: !collapsed })}><${Icon} name=${collapsed ? 'chevron-up' : 'chevron-down'} /></button>
         <button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button>
       </div>
@@ -330,41 +465,48 @@ export function ChatPanel() {
         ${status.ready && !working && !conversation.length && !text.trim() ? html`<div class="chat-empty">
           <p>Ask for an edit, or ask a question about this project.</p>
         </div>` : null}
-        ${conversation.map(m => m.type === 'receipt' ? html`<${ChangeReceipt} key=${`edit-${m.receipt.version}-${m.at}`} receipt=${m.receipt} />` : m.type === 'tools'
-          ? html`<details class="assistant-tool-card" key=${`tools-${m.at}-${m.text}`}><summary>${m.updates.length} tool ${m.updates.length === 1 ? 'update' : 'updates'}</summary>
-              <ul>${m.updates.map(update => html`<li>${update.text}</li>`)}</ul>
-            </details>`
-          : html`<div class=${`msg ${['user', 'you'].includes(m.role) ? 'user' : 'claude'}`}>
+        ${turns.map((turn, index) => {
+          const latest = index === turns.length - 1
+          const live = latest && liveRun
+          const failed = turn.replies.some(reply => reply.error)
+          const lastReply = turn.replies.at(-1)
+          const symbol = failed ? '!' : '↵'
+          const updates = turn.updates.length ? plural(turn.updates.length, 'tool update') : ''
+          const past = turn.updates.length && turn.request && lastReply ? elapsedBetween(turn.request.at, lastReply.at) : ''
+          return html`<div class="assistant-turn" key=${`turn-${turn.at}-${index}`}>
+            ${index === firstOfSession && index > 0 ? html`<p class="assistant-session-divider" role="separator">New session</p>` : null}
+            ${[turn.request, ...turn.replies].filter(Boolean).map(m => html`<div class=${`msg ${['user', 'you'].includes(m.role) ? 'user' : 'claude'}`}>
               <span class="sr-only">${['user', 'you'].includes(m.role) ? 'You' : 'Assistant'}</span>
               ${m.refs?.length ? html`<div class="msg-refs">${m.refs.map(r => html`<span class="chip small"><${Icon} name="attach" size=${14} /> ${r.label}</span>`)}</div>` : null}
               <div class="msg-body" dangerouslySetInnerHTML=${{ __html: md(m.text) }}></div>
               ${['user', 'you'].includes(m.role) ? html`<button class="ghost tiny assistant-edit-request" disabled=${working || Boolean(text) || !m.text} title="Restore this text as a draft with the current selection. Clear the existing draft first." onClick=${() => { setText(m.text); focusComposer() }}>Edit request</button>` : null}
             </div>`)}
-        ${working && runActive && s.claude.text ? html`<div class="msg claude assistant-stream"><small>Response in progress</small><div class="msg-body" dangerouslySetInnerHTML=${{ __html: md(s.claude.text) }}></div></div>` : null}
-        ${working || activity.terminal || !s.connected ? html`<div class=${`assistant-run ${working ? 'active' : activity.state}${runDone && !activity.detail ? ' silent' : ''}`}>
-          <div class="assistant-run-heading"><span class="assistant-run-symbol" aria-hidden="true">${!s.connected ? '↻' : working ? '◌' : activity.state === 'done' ? '↵' : activity.state === 'error' ? '!' : '■'}</span><b role="status">${activity.label}</b>${activity.elapsed ? html`<span class="assistant-run-time">${activity.elapsed}</span>` : null}</div>
-          ${activity.detail ? html`<p>${activity.detail}</p>` : null}
-          ${activity.connectionNotice ? html`<p>${activity.connectionNotice}</p>` : null}
-          ${!working && activity.state === 'error' && chatgptCode === 'chatgpt_usage_limit' ? html`<div class="assistant-plan-error"><b>Usage limit reached</b><p>ChatGPT account: ${chatgpt?.email || 'your signed-in account'}. Check your usage, then try again later.</p><a class="button primary" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></div>` : null}
-          ${!working && activity.state === 'error' && ['chatgpt_sign_in_required', 'chatgpt_not_authorized', 'chatgpt_plan_disabled', 'chatgpt_account_changed', 'chatgpt_not_eligible'].includes(chatgptCode) ? html`<div class="assistant-plan-error"><button class="ghost tiny" onClick=${() => set({ settingsOpen: true })}>Review ChatGPT sign-in</button></div>` : null}
-          ${activity.state === 'error' && !working && lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title="Put the failed request back in the text box to edit or send again. Clear the current draft first." onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
-        </div>` : null}
-        ${(!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><small class="muted">${runActive ? 'Current request route' : 'Last request route'}</small><${RoutingReceipt} value=${s.claude.routing} /></div>` : null}
-        ${review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy}
+            ${live && working && runActive && s.claude.text ? html`<div class="msg claude assistant-stream"><span class="sr-only">Writing…</span><div class="msg-body" dangerouslySetInnerHTML=${{ __html: md(s.claude.text) }}></div></div>` : null}
+            ${live ? liveRunLine(turn.updates)
+              : turn.updates.length ? RunLine({ state: failed ? 'error' : 'done', symbol, label: failed ? 'Failed' : 'Done', stage: updates, elapsed: past, updates: turn.updates }) : null}
+            ${live ? failureBlock(lastReply) : null}
+            ${latest && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy}
+              onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
+            ${latest && review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
+            ${turn.receipts.length || index === changeTurn ? html`<${ResultCard} receipts=${turn.receipts} change=${index === changeTurn ? changeShown : null} busy=${reviewBusy} onUndo=${undoChange} />` : null}
+          </div>`
+        })}
+        ${!turns.length && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${false} busy=${reviewBusy}
           onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
-        ${review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
-        ${review?.change && !runActive && !(review?.applying && !review.applying.finished) ? html`<${assistantPanel.ChangeBar} change=${review.change} busy=${reviewBusy} onUndo=${() => decide('undo', '/api/assistant/change/undo', { id: review.change.id })} />` : null}
+        ${!turns.length && review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
+        ${!turns.length && changeShown ? html`<${ResultCard} change=${changeShown} busy=${reviewBusy} onUndo=${undoChange} />` : null}
+        ${!turns.length && liveRun ? html`${liveRunLine([])}${failureBlock(null)}` : null}
         ${chatgpt?.welcome ? html`<section class="assistant-setup chatgpt-welcome" aria-labelledby="chatgpt-welcome-heading"><b id="chatgpt-welcome-heading">You’re using your ChatGPT plan</b><p>Eligible AI requests in Arya use your ChatGPT plan or credits balance. Check and manage usage in your ChatGPT settings.</p><button class="primary" onClick=${chatgptTask(() => chatgptAccountAction('welcome'))}>Got it</button><a class="button" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></section>` : null}
         ${checking ? html`<p class="assistant-checking" role="status"><span class="assistant-run-symbol" aria-hidden="true">◌</span>Checking your assistant…</p>` : !status.ready ? html`<section class="assistant-setup" aria-label="Assistant setup">
-          <b>${chatgptWaiting ? 'Waiting for ChatGPT sign-in' : status.refreshRequired ? status.label : providerFailure ? `${name}: ${status.label}` : 'Connect your editing assistant'}</b>
+          <b>Set up the assistant</b>
+          ${chatgptWaiting || needsRefresh ? html`<p class="assistant-setup-state">${chatgptWaiting ? 'Waiting for ChatGPT sign-in' : status.refreshRequired ? status.label : `${name}: ${status.label}`}</p>` : null}
           <p>${chatgptWaiting ? 'Finish signing in on the ChatGPT page.' : needsRefresh ? status.reason
             : chatgpt?.signedIn && !chatgpt.planUsage ? `Signed in to ChatGPT as ${chatgpt.email || 'your account'}. Plan usage is off for this sign-in.`
             : chatgpt?.signedIn && connection.provider === 'chatgpt' && connection.mode !== 'auto' ? connection.reason ?? 'Refresh ChatGPT status in Settings.'
             : chatgpt?.signedIn ? `Signed in to ChatGPT as ${chatgpt.email || 'your account'}.`
-            : chatgpt ? 'Use your ChatGPT plan for eligible requests. You can keep editing without an account.'
-            : connection?.reason ?? (s.assistantStatusError || 'Choose a provider in Assistant settings. You can keep editing without an account.')}</p>
+            : chatgpt ? 'Use your ChatGPT plan for eligible requests.'
+            : connection?.reason ?? (s.assistantStatusError || 'Choose a provider in Assistant settings.')}</p>
           ${showSignInNotice && !chatgptWaiting && ['failed', 'cancelled', 'expired'].includes(signInState) && chatgpt.attempt.message ? html`<p role="status">${chatgpt.attempt.message}</p>` : null}
-          ${text.trim() ? html`<p>Your draft is kept.</p>` : null}
           <div class="assistant-setup-actions">
             ${chatgptWaiting ? html`${chatgpt.attempt?.startURL ? html`<a class="button primary" href=${chatgpt.attempt.startURL} target="_blank" rel="noopener noreferrer">Open the sign-in page ↗</a>` : null}<button onClick=${chatgptTask(() => chatgptAccountAction('cancel'))}>Cancel sign-in</button>${needsRefresh ? refreshButton('') : null}`
             : needsRefresh ? refreshButton('primary')
@@ -374,6 +516,7 @@ export function ChatPanel() {
             ${chatgpt ? html`<button class="ghost settings-link" onClick=${() => openSettings(true)}>Other ways to connect</button>`
             : needsRefresh ? html`<button class="ghost settings-link" onClick=${() => openSettings()}>Assistant settings</button>` : null}
           </div>
+          <p class="assistant-setup-note">Editing works without an account.${text.trim() ? ' Your draft is kept.' : ''}</p>
         </section>` : null}
         ${showSuggestions && !review?.proposal && !(review?.applying && !review.applying.finished) ? html`<div class=${`assistant-suggestions${conversation.length ? ' compact' : ''}`} role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${item.prompt} onFocus=${e => e.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })} onClick=${() => { setText(item.prompt, 'prompt'); focusComposer() }}>${item.label}</button>`)}</div>` : null}
       </div>
@@ -385,13 +528,13 @@ export function ChatPanel() {
                 <span class="chip small" title=${scopeName}>${s.openComp ? s.project?.comps?.[s.openComp]?.name ?? 'Current composition' : 'Main timeline'}</span>
                 <span class="chip small" title=${view.under.join(', ') || undefined}>${!view.time || view.time === 'unavailable' ? 'Playhead unavailable' : `Playhead ${view.time}`}</span>
               </div>
-              ${native ? null : html`<label class="assistant-preview-toggle" title="Show the clips and settings a request will change, and apply them only when you choose"><input type="checkbox" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview changes</span></label>`}
+              ${native ? null : html`<label class="assistant-preview-toggle" title="Preview changes"><input type="checkbox" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview</span></label>`}
               ${selection.length ? html`<div class="assistant-selection-chips" role="group" aria-label="Current selection included when sending">${selection.map(item => html`<span class="chip small" key=${item.id}><b>${item.label}</b>${item.track || item.id !== item.label ? html`<small>${item.id}${item.track ? ` · ${item.track}` : ''}</small>` : null}</span>`)}</div>` : null}
               ${s.refs.length ? html`<div class="refs" role="group" aria-label="Attached references">${s.refs.map(r => html`<span class="chip"><${Icon} name="attach" size=${14} /> ${r.label}<button aria-label=${`Remove reference ${r.label}`} onClick=${() => set({ refs: s.refs.filter(x => x !== r) })}><${Icon} name="close" size=${14} /></button></span>`)}</div>` : null}
             </div>
           </div>
           <div class="composer">
-            <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'} value=${text}
+            <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${draft.inputKind !== 'prompt' ? 'Paste a script to build editable scenes' : s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'} value=${text}
               onInput=${e => setText(e.target.value)}
               onCompositionStart=${() => { composing.current = true }} onCompositionEnd=${() => { composing.current = false }}
               onKeyDown=${e => {
@@ -409,7 +552,7 @@ export function ChatPanel() {
           <div class="assistant-field-bar">
             <div class="assistant-input-tools" role="group" aria-label="Assistant input">
               <details class="assistant-model-menu" name="assistant-composer-menu" onKeyDown=${closeComposerMenu} onFocusOut=${leaveComposerMenu}>
-                <summary>Model</summary>
+                <summary title=${modelName ? `Provider and model: ${modelName}` : 'Provider and model'}><span>${modelName || 'Model'}</span></summary>
                 <div class="assistant-model-popover">
                   <${AssistantControls} status=${connection} active=${inputLocked} text=${text} selectionCount=${s.selection.length} />
                 </div>
@@ -429,10 +572,10 @@ export function ChatPanel() {
             </div>
             <div class="assistant-primary-action"><button
               class=${working ? 'assistant-stop' : 'send'}
-              aria-label=${working ? activity.state === 'cancelling' ? 'Stopping…' : 'Stop request' : 'Send message'}
-              title=${working ? activity.state === 'cancelling' ? 'Stopping…' : 'Stop request' : draft.inputKind === 'prompt' ? 'Send (Return)' : 'Send (⌘Return)'}
+              aria-label=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : 'Send message'}
+              title=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : draft.inputKind === 'prompt' ? 'Send (Return)' : 'Send (⌘Return)'}
               disabled=${working ? !pending && !activity.canStop : Boolean(sharingReview) || !canSend || text.length > inputLimit || !text.trim() && !s.refs.length}
-              onClick=${working ? stop : () => { closeComposerMenus(); return send() }}><${Icon} name=${working ? 'stop' : 'send'} size=${18} /></button></div>
+              onClick=${working ? stop : () => { closeComposerMenus(); return send() }}><${Icon} name=${working ? 'stop' : 'send'} size=${18} />${working ? html`<span>${activity.state === 'cancelling' ? 'Stopping…' : 'Stop'}</span>` : null}</button></div>
           </div>
         </div>
         ${importing ? html`<div class="assistant-import-status"><span role="status">Reading text file…</span><button class="ghost tiny" onClick=${() => scriptImport.current.cancel()}>Cancel import</button></div>` : null}

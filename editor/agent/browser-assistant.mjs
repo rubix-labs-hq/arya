@@ -364,7 +364,7 @@ export function createBrowserAssistant(options) {
   })
   const companion = async () => {
     assertOpen()
-    if (!bridgePromise) bridgePromise = (options.startBridge ?? startBridge)({ custom: options.custom, chatgpt: options.chatgpt, ...(options.bridgeOptions ?? {}), catalogOptions: { ...(options.bridgeOptions?.catalogOptions ?? {}), providerStatus: probeTiming.probe('agent', 'accounts', options.bridgeOptions?.catalogOptions?.providerStatus ?? providerStatus), readCodexCatalog: probeTiming.probe('agent', 'models', options.bridgeOptions?.catalogOptions?.readCodexCatalog ?? readCodexCatalog) } }).then(value => { bridge = value; return value })
+    if (!bridgePromise) bridgePromise = (options.startBridge ?? startBridge)({ custom: options.custom, chatgpt: options.chatgpt, activityEvents: true, ...(options.bridgeOptions ?? {}), catalogOptions: { ...(options.bridgeOptions?.catalogOptions ?? {}), providerStatus: probeTiming.probe('agent', 'accounts', options.bridgeOptions?.catalogOptions?.providerStatus ?? providerStatus), readCodexCatalog: probeTiming.probe('agent', 'models', options.bridgeOptions?.catalogOptions?.readCodexCatalog ?? readCodexCatalog) } }).then(value => { bridge = value; return value })
     const value = await bridgePromise
     if (closed) { await value.close(); throw failure('The browser assistant has closed.', 410) }
     return value

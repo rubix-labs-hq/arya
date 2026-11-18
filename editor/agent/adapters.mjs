@@ -126,9 +126,34 @@ export async function prepareAdapter(request, transport, custom) {
   } catch (error) { await fs.rm(cwd, { recursive: true, force: true }); throw error }
 }
 
+// A tool name as a progress label shows it: the MCP server prefix goes, and only a plain name is kept.
+const toolLabel = name => {
+  const short = typeof name === 'string' ? name.replace(/^mcp__[A-Za-z0-9_-]+?__/, '') : ''
+  return /^[A-Za-z0-9_.:-]{1,64}$/.test(short) ? `Calling ${short}` : 'Calling a tool'
+}
+
+// What the agent started, once per block and never per delta. A label names the step only: it
+// never carries request text or reasoning text.
+function activityEvent(provider, value) {
+  if (provider === 'claude-code') {
+    if (value.type === 'system' && value.subtype === 'init' && typeof value.model === 'string' && value.model) return { type: 'model', model: value.model }
+    const block = value.type === 'stream_event' && value.event?.type === 'content_block_start' ? value.event.content_block : null
+    if (block?.type === 'thinking' || block?.type === 'redacted_thinking') return { type: 'progress', label: 'Thinking' }
+    if (block?.type === 'tool_use' || block?.type === 'mcp_tool_use') return { type: 'progress', label: toolLabel(block.name) }
+  }
+  if (provider === 'codex' && value.type === 'item.started') {
+    if (value.item?.type === 'reasoning') return { type: 'progress', label: 'Thinking' }
+    if (value.item?.type === 'mcp_tool_call') return { type: 'progress', label: toolLabel(value.item.tool) }
+  }
+  return null
+}
+
 export function outputEvent(provider, line) {
   let value
   try { value = JSON.parse(line) } catch { return provider === 'custom' && line.trim() ? { type: 'text', text: line } : null }
+  if (!value || typeof value !== 'object') return null
+  const activity = activityEvent(provider, value)
+  if (activity) return activity
   if (provider === 'chatgpt') {
     // Arya's own agent writes exactly these three record shapes.
     if (value?.type === 'text' && typeof value.text === 'string') return { type: 'text', text: value.text }

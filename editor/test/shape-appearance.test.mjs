@@ -25,7 +25,7 @@ async function load(relative, mappings) {
 const common = { preact:import.meta.resolve('preact'), 'preact/hooks':hooks, htm:import.meta.resolve('htm'), './store.js':facade }
 const shapeURL=await load('shape-appearance.js',common)
 const { ShapeAppearance, captureShapeAppearance, shapeAppearanceMatches, shapeAppearanceOps, shapeColor } = await import(shapeURL)
-const inspectorURL=await load('inspector.js',{...common,'/core/project.js':coreURL,'./shape-appearance.js':shapeURL,'./menu.js':nulls,'./engine-host.js':nulls,'./registry.js':nulls,'./scroll-tabs.js':nulls,'./icons.js':new URL('../web/ui/icons.js',import.meta.url).href})
+const inspectorURL=await load('inspector.js',{...common,'/core/project.js':coreURL,'/core/fonts.js':new URL('../core/fonts.js',import.meta.url).href,'./shape-appearance.js':shapeURL,'./menu.js':nulls,'./engine-host.js':nulls,'./registry.js':nulls,'./scroll-tabs.js':nulls,'./icons.js':new URL('../web/ui/icons.js',import.meta.url).href})
 const { Inspector } = await import(inspectorURL)
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value,...nodes(value.props?.children)] : []
 const control=(tree,label)=>nodes(tree).find(node=>node.type==='input'&&node.props['aria-label']===label)

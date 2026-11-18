@@ -40,12 +40,20 @@
     "target": "core/describe.js"
   },
   {
+    "source": "core/edit-notes.js",
+    "target": "core/edit-notes.js"
+  },
+  {
     "source": "core/expr.js",
     "target": "core/expr.js"
   },
   {
     "source": "core/figma.js",
     "target": "core/figma.js"
+  },
+  {
+    "source": "core/fonts.js",
+    "target": "core/fonts.js"
   },
   {
     "source": "core/interchange.js",

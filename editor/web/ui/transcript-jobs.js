@@ -44,3 +44,20 @@ export async function runTranscriptJob(request, path, body, { signal, onJob } = 
     signal?.removeEventListener('abort', cancel)
   }
 }
+
+/** What to say where a transcript would be made when this computer cannot make one. Null when it can, or when the host does not say. */
+export function transcriptionSetup(caps) {
+  const state = caps?.transcription
+  if (!state || state.available !== false) return null
+  const commands = (Array.isArray(state.install) ? state.install : []).filter(command => typeof command === 'string' && command.trim())
+  // The reason is the server's own next step, such as which part to install.
+  const reason = typeof state.reason === 'string' ? state.reason.trim() : ''
+  return { text: ['Transcription is not installed on this computer.', reason].filter(Boolean).join(' '), commands }
+}
+
+/** The lines to show with a finished transcript: its own warnings, then that it holds no words. */
+export function transcriptNotes(record, wordCount = record?.words?.length ?? 0) {
+  if (!record || !['complete', 'ready', 'partial'].includes(record.status)) return []
+  const warnings = (Array.isArray(record.warnings) ? record.warnings : []).filter(warning => typeof warning === 'string' && warning.trim())
+  return wordCount === 0 && record.status !== 'partial' ? [...warnings, 'No words were recognized.'] : warnings
+}

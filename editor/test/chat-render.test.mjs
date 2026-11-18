@@ -20,26 +20,35 @@ const render = new Function('Icon', 'h', 'htm', 'useEffect', 'useRef', 'useState
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value == null || value === false ? [] : [value]
 const children = node => flatten(node?.props?.children)
 const nodes = node => typeof node === 'object' && node ? [node, ...children(node).flatMap(nodes)] : []
-function panel(run, connected = true, { draft = '', chat = [], onDraft = () => {}, api = () => {}, status = { provider: 'codex', configured: true }, refresh = async () => {} } = {}) {
-  let hook = 0
-  const state = { claude: run, connected, caps: {}, assistantStatus: status,
-    root: '/fixture', assistantDraft: { root: '/fixture', text: draft, inputKind: 'prompt' }, chat, activity: [], receipts: [], selection: [], refs: [], project: { comps: {} }, openComp: null }
-  return render(Icon, h, htm, () => {}, value => ({ current: value }), value => [value, () => {}], () => state,
+const textContent = node => children(node).map(child => typeof child === 'object' ? textContent(child) : String(child)).join('')
+// The panel's refs in the order ChatPanel creates them, so a test can preset one (the last request sent).
+const refNames = [...source.matchAll(/(\w+) = useRef\(/g)].map(match => match[1])
+function panel(run, connected = true, { draft = '', chat = [], activity = [], receipts = [], review = null, session = null, project = { comps: {} }, lastSent = null, onDraft = () => {}, api = () => {}, status = { provider: 'codex', configured: true }, refresh = async () => {} } = {}) {
+  const state = { claude: run, connected, caps: {}, assistantStatus: status, assistantReview: review, session,
+    root: '/fixture', assistantDraft: { root: '/fixture', text: draft, inputKind: 'prompt' }, chat, activity, receipts, selection: [], refs: [], project, openComp: null }
+  let refIndex = 0
+  const useRef = value => ({ current: refNames[refIndex++] === 'lastSent' && lastSent ? lastSent : value })
+  return render(Icon, h, htm, () => {}, useRef, value => [value, () => {}], () => state,
     assistantActivity, assistantState, assistantPrompt, providerName, () => 0, refresh, api, patch => { Object.assign(state, patch); if (patch.assistantDraft) onDraft(patch.assistantDraft.text) }, state, { t: 0 }, () => {}, () => {}, {}, () => null, () => null, () => null, createAssistantSharingGate, ...Object.values(script), assistantPanel)
 }
 
-test('assistant activity renders detail with Stop in the bar inside the field', () => {
+test('assistant activity renders one run line with Stop in the bar inside the field', () => {
   const tree = panel({ state: 'working', startedAt: Date.now() - 1000, phase: 'Rendering media' })
   const all = nodes(tree), run = all.find(node => node.props?.class === 'assistant-run active')
   assert.ok(run)
   for (const node of all) assert.ok(typeof node.type === 'string' || typeof node.type === 'function', 'every rendered element has a valid Preact type')
   const content = children(run), heading = content.find(node => node.props?.class === 'assistant-run-heading')
   assert.ok(heading)
-  assert.ok(content.some(node => node.type === 'p' && children(node).includes('Rendering media')))
+  assert.equal(textContent(nodes(heading).find(node => node.type === 'b')), 'Working')
+  assert.equal(textContent(nodes(heading).find(node => node.props?.class === 'assistant-run-stage')), 'Rendering media')
+  assert.equal(nodes(heading).find(node => node.props?.class === 'assistant-run-stage').props.title, 'Rendering media', 'a cut-off stage can still be read in full')
+  assert.match(textContent(nodes(heading).find(node => node.props?.class === 'assistant-run-time')), /^\ds$/)
   assert.equal(nodes(run).some(node => node.type === 'button'), false)
   const footer = nodes(all.find(node => node.props?.class === 'assistant-field')).find(node => node.props?.class === 'assistant-field-bar')
   assert.ok(footer)
-  assert.ok(nodes(footer).some(node => node.type === 'button' && node.props['aria-label'] === 'Stop request'))
+  const stop = nodes(footer).find(node => node.type === 'button' && node.props['aria-label'] === 'Stop request')
+  assert.ok(stop)
+  assert.equal(textContent(stop), 'Stop')
   assert.equal(all.filter(node => node.type === 'button' && node.props['aria-label'] === 'Stop request').length, 1)
   assert.equal(nodes(heading).some(node => ['button', 'p'].includes(node.type)), false)
 })
@@ -48,13 +57,113 @@ test('finished disconnected replies keep a separate result and reconnect notice'
   const tree = panel({ state: 'done', outcome: 'No project edits were applied during this request.' }, false)
   const run = nodes(tree).find(node => node.props?.class === 'assistant-run done')
   assert.ok(run)
+  assert.equal(run.type, 'details')
+  const heading = children(run).find(node => node.props?.class === 'assistant-run-heading')
+  assert.equal(textContent(nodes(heading).find(node => node.type === 'b')), 'Done')
+  assert.match(textContent(nodes(heading).find(node => node.props?.class === 'assistant-run-stage')), /No project edits/)
   const paragraphs = children(run).filter(node => node.type === 'p').map(node => children(node).join(''))
-  assert.equal(paragraphs.length, 2)
-  assert.match(paragraphs[0], /No project edits/)
-  assert.match(paragraphs[1], /last confirmed result/)
+  assert.equal(paragraphs.length, 1)
+  assert.match(paragraphs[0], /last confirmed result/)
   assert.equal(nodes(run).some(node => node.type === 'button'), false)
 })
 
+test('a past turn shows its tool updates as one quiet line that opens to the list', () => {
+  const at = Date.now() - 60000
+  const tree = panel({ state: 'idle' }, true, { chat: [{ role: 'user', text: 'Trim the opening', at }, { role: 'claude', text: 'Trimmed it.', at: at + 12000 }],
+    activity: [{ who: 'agent', text: 'Calling get_project', at: at + 1000 }, { who: 'agent', text: 'Calling apply_ops', at: at + 2000 }] })
+  const run = nodes(tree).find(node => node.props?.class === 'assistant-run done')
+  assert.equal(run.type, 'details')
+  assert.equal(run.props.open, false)
+  assert.match(textContent(children(run)[0]), /Done2 tool updates12s/)
+  assert.deepEqual(nodes(run).filter(node => node.type === 'li').map(textContent), ['Calling get_project', 'Calling apply_ops'])
+})
+
+test('inside a turn the reply comes first, then the run line, then one result card', async () => {
+  const { changeReceipt } = await import('../web/ui/change-receipt.js')
+  const at = Date.now() - 5000
+  const before = { tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }], comps: {} }
+  const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
+  const receipt = changeReceipt(before, after, { who: 'agent', version: 5, at: at + 2000 })
+  const tree = panel({ state: 'done', startedAt: at, finishedAt: at + 4000 }, true, { chat: [{ role: 'user', text: 'Make the title longer', at }, { role: 'claude', text: 'Done.', at: at + 3000 }],
+    activity: [{ who: 'agent', text: 'Calling apply_ops', at: at + 1000 }], receipts: [receipt] })
+  const turn = nodes(tree).find(node => node.props?.class === 'assistant-turn')
+  const order = children(turn).map(node => typeof node.type === 'function' ? node.type.name : node.props?.class)
+  assert.deepEqual(order, ['msg user', 'msg claude', 'assistant-run done', 'ResultCard'])
+})
+
+
+// ResultCard is a component, so the walker leaves it as a node. Call it with the panel's own store.
+const resultCard = (tree, state = {}) => {
+  const node = nodes(tree).find(node => node.type?.name === 'ResultCard')
+  return node && { props: node.props, tree: node.type(node.props) }
+}
+
+test('a result card names caption style and track settings changes and lists the edit notes', async () => {
+  const { changeReceipt } = await import('../web/ui/change-receipt.js')
+  const at = Date.now() - 5000
+  const before = { width: 1080, height: 1920, comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [] }, { id: 'C1', kind: 'caption', style: { size: 60 }, clips: [] }, { id: 'A1', kind: 'audio', clips: [] }] }
+  const caption = structuredClone(before); caption.tracks[1].style.size = 72
+  const track = structuredClone(before); track.tracks[2].muted = true
+  const captionReceipt = { ...changeReceipt(before, caption, { who: 'agent', version: 2, at: at + 1000 }), notes: ['C1 captions are 72 units tall.'] }
+  const trackReceipt = changeReceipt(before, track, { who: 'agent', version: 3, at: at + 1000 })
+  const chat = [{ role: 'user', text: 'Make the captions bigger', at }]
+  const card = receipt => resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: caption }))
+  const captioned = card(captionReceipt), muted = card(trackReceipt)
+  assert.equal(textContent(nodes(captioned.tree).find(node => node.props?.class === 'assistant-result-caption')), 'Caption style changed')
+  assert.equal(textContent(nodes(muted.tree).find(node => node.props?.class === 'assistant-result-caption')), 'Track settings changed')
+  assert.deepEqual(nodes(captioned.tree).filter(node => node.props?.class === 'assistant-note').map(textContent), ['C1 captions are 72 units tall.'])
+  assert.deepEqual(nodes(muted.tree).filter(node => node.props?.class === 'assistant-note'), [])
+})
+
+test('Redo brings a change back, so its result card is no longer marked undone', async () => {
+  const { changeReceipt } = await import('../web/ui/change-receipt.js')
+  const at = Date.now() - 5000
+  const before = { comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }] }
+  const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
+  const receipt = { ...changeReceipt(before, after, { who: 'agent', version: 5, at: at + 1000 }), undone: true, undoneBy: 'ch1' }
+  const chat = [{ role: 'user', text: 'Make the title longer', at }]
+  const change = { id: 'ch1', kind: 'request', beforeVersion: 4, afterVersion: 5, edits: 1, undoable: true }
+  const undone = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: null } }))
+  assert.equal(undone.props.receipts[0].undone, true)
+  assert.equal(undone.tree.props['aria-label'], 'Undone edit result')
+  const redone = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change } }))
+  assert.equal(redone.props.receipts[0].undone, false)
+  assert.equal(redone.tree.props['aria-label'], 'Committed edit result')
+  assert.ok(nodes(redone.tree).some(node => node.type === 'button' && textContent(node) === 'Undo this change'))
+  // An undone preview keeps its name.
+  const undonePreview = resultCard(panel({ state: 'done' }, true, { chat, receipts: [{ ...receipt, changeKind: 'preview' }], project: after, review: { change: null } }))
+  assert.equal(textContent(nodes(undonePreview.tree).find(node => node.type === 'b')), 'Applied the preview')
+  // Another change coming back leaves this one undone.
+  const other = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change: { ...change, id: 'ch2' } } }))
+  assert.equal(other.props.receipts[0].undone, true)
+})
+
+test('a failed turn lists what was saved and offers Retry only for the same retryable request', () => {
+  const at = Date.now() - 5000
+  const chat = [{ role: 'user', text: 'Add a title card', at }]
+  const failed = (claude, lastSent) => nodes(panel({ state: 'error', runId: 'r1', startedAt: at, finishedAt: at + 3000, ...claude }, true, { chat, lastSent })).find(node => node.props?.class === 'assistant-failure')
+  const buttons = block => nodes(block).filter(node => node.type === 'button').map(textContent)
+  const committed = [{ version: 7, summary: 'Added a title' }]
+  const saved = failed({ committed }, null)
+  assert.equal(textContent(nodes(saved).find(node => node.type === 'b')), 'Saved before the failure')
+  assert.deepEqual(nodes(saved).filter(node => node.type === 'li').map(textContent), ['Added a title'])
+  assert.deepEqual(buttons(saved), ['Edit and retry'], 'no plain Retry without a retryable failure')
+  assert.deepEqual(buttons(failed({ retryable: true }, null)), ['Edit and retry'], 'not a request this panel sent')
+  assert.deepEqual(buttons(failed({ retryable: true }, { request: { text: 'Add a title card' }, runId: 'r0' })), ['Edit and retry'], 'an earlier request')
+  assert.deepEqual(buttons(failed({ retryable: false }, { request: { text: 'Add a title card' }, runId: 'r1' })), ['Edit and retry'])
+  assert.deepEqual(buttons(failed({ retryable: true }, { request: { text: 'Add a title card' }, runId: 'r1' })), ['Edit and retry', 'Retry'])
+  assert.equal(nodes(failed({ retryable: true, committed: [] }, null)).some(node => node.props?.class === 'assistant-saved'), false, 'nothing saved, nothing listed')
+})
+
+test('a quiet divider marks where a new server session begins', () => {
+  const now = Date.now()
+  const chat = [{ role: 'user', text: 'Trim the end', at: now - 60000 }, { role: 'claude', text: 'Trimmed.', at: now - 59000 }, { role: 'user', text: 'Add a fade', at: now - 1000 }]
+  const dividers = session => nodes(panel({ state: 'idle' }, true, { chat, session })).filter(node => node.props?.class === 'assistant-session-divider')
+  const split = dividers({ id: 's2', startedAt: now - 30000 })
+  assert.deepEqual(split.map(textContent), ['New session']); assert.equal(split[0].props.role, 'separator')
+  assert.deepEqual(dividers({ id: 's1', startedAt: now - 120000 }), [], 'every turn is from this session')
+  assert.deepEqual(dividers(null), [])
+})
 
 test('idle composer has current context, draft and one Send action beside model controls', () => {
   const tree = panel({ state: 'idle' })
@@ -72,8 +181,9 @@ test('stopping action remains in the primary action location with a disabled rec
   const tree = panel({ state: 'cancelling' })
   const primary = nodes(tree).find(node => node.props?.class === 'assistant-primary-action')
   const button = nodes(primary).find(node => node.type === 'button')
-  assert.equal(button.props['aria-label'], 'Stopping…')
-  assert.equal(button.props.title, 'Stopping…')
+  assert.equal(button.props['aria-label'], 'Stopping request')
+  assert.equal(button.props.title, 'Stopping request')
+  assert.equal(textContent(button), 'Stopping…')
   assert.equal(button.props.class, 'assistant-stop', 'the same control, not a second one')
   assert.equal(button.props.disabled, true)
   assert.equal(nodes(tree).filter(node => node.props?.['aria-label'] === 'Send message').length, 0)
@@ -103,14 +213,15 @@ test('existing drafts and active requests disable Edit request', () => {
 })
 
 const { changeReceipt, receiptSelection } = await import('../web/ui/change-receipt.js')
-const receiptComponent = new Function('h', 'htm', 'receiptSelection', 'store', 'set', 'toast', 'player', `${source}\nreturn ChangeReceipt`)
-function renderReceipt(receipt, project) {
+const receiptComponent = new Function('h', 'htm', 'receiptSelection', 'store', 'set', 'toast', 'player', `${source}\nreturn ResultCard`)
+function renderReceipt(receipt, project, change = null) {
   const updates = [], seeks = [], messages = []
   const component = receiptComponent(h, htm, receiptSelection, { project }, update => updates.push(update),
     message => messages.push(message), { seek: value => seeks.push(value) })
-  return { tree: component({ receipt }), updates, seeks, messages }
+  const card = component({ receipts: [receipt], change })
+  const expand = node => typeof node?.type === 'function' ? expand(node.type(node.props)) : node && typeof node === 'object' ? { ...node, props: { ...node.props, children: flatten(node.props.children).map(expand) } } : node
+  return { tree: expand(card), updates, seeks, messages }
 }
-const textContent = node => children(node).map(child => typeof child === 'object' ? textContent(child) : String(child)).join('')
 const receiptFixture = () => ({ tracks: [{ id: 'A3', name: 'Music', kind: 'audio', clips: [{ id: 'music', start: 4, dur: 14, label: 'Reviewed cue' }] }],
   assets: {}, comps: { nested: { name: 'Nested mix', tracks: [{ id: 'A3', clips: [{ id: 'music', start: 20, dur: 14 }] }] } } })
 

@@ -76,7 +76,7 @@ test('hosts without Sign in with ChatGPT show no ChatGPT option and honest app l
   assert.equal(nodes(tree).some(node => node.type === 'option' && node.props.value === 'chatgpt'), false)
   const chat = panel(baseStatus())
   assert.doesNotMatch(all(chat.tree), /ChatGPT/)
-  assert.match(all(chat.tree), /Connect your editing assistant/)
+  assert.match(all(chat.tree), /Set up the assistant/)
 })
 
 test('signed out: Continue with ChatGPT is first and installed apps move under Other ways to connect', async () => {

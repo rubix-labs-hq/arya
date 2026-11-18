@@ -362,6 +362,8 @@ label.btn { background: var(--accent); color: var(--accent-ink); border-radius: 
 .deliver-preset.on { border-color: var(--accent); background: #efbc680f; }
 .job { border: 1px solid var(--line); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .job.failed { border-color: #6a2a2a; }
+/* The status wraps; Cancel and Dismiss keep the width of their labels. */
+.job .row > button { flex: none; }
 .job-name { display: flex; flex-direction: column; }
 .bar { height: 5px; background: #000; border-radius: 3px; overflow: hidden; }
 .bar div { height: 100%; background: var(--accent); transition: width 0.3s; }
@@ -487,7 +489,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .audio-top { grid-template-rows: minmax(0, 1fr); }
 .audio-tools, .mixer, .media-left, .media-center, .media-right { min-height: 0; min-width: 0; }
 .audio-tools > *, .deliver-settings > *, .deliver-queue > *, .media-right > * { flex-shrink: 0; }
-.claude-dot.ok, .claude-dot.busy { background: var(--accent); }
+/* The same colours as the Ask Arya entry: green when ready, amber while working, red after a failure. */
+.claude-dot.ok { background: var(--good); }
+.claude-dot.busy { background: var(--accent); }
+.claude-dot.failed { background: var(--danger); }
 .chat-head { flex: none; min-width: 0; gap: 6px; }
 .assistant-setup { flex: none; padding: 14px 12px; background: #efbc6808; border-bottom: 1px solid var(--line); }
 .assistant-setup b { font-size: 12px; }
@@ -716,9 +721,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
   .chat > .chat-list:has(> :not(.chat-empty)) { min-height: 44px; }
 }
 
-.assistant-tool-card, .assistant-result-card { min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); overflow-wrap: anywhere; }
+.assistant-result-card { min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); overflow-wrap: anywhere; }
 .assistant-card-label { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.5; }
-.assistant-tool-card p { margin: 4px 0 0; font-size: 12px; line-height: 1.5; text-wrap: pretty; }
 .assistant-result-card .change-receipt { margin-top: 5px; padding: 0; border: 0; background: transparent; }
 .assistant-selection-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 10px; }
 .assistant-selection-chips .chip, .assistant-composer-card .refs .chip { max-width: 100%; overflow-wrap: anywhere; }

@@ -166,12 +166,28 @@ function silenceTimelineRanges(project, src, silences) {
   return merged.reverse()
 }
 
+// A filmstrip the server refuses while it is busy (HTTP 429), or that the network drops, is asked
+// for again after 1, 2, 4 and 8 s: five tries in all. It stops as soon as its card is gone.
+const STRIP_RETRY_MS = [1000, 2000, 4000, 8000]
+async function requestStrip(url, alive, { request = api, wait = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+  for (let attempt = 0; alive(); attempt++) {
+    try { return await request(url) }
+    catch (error) {
+      // Only a busy server (429) or a request that never arrived (fetch's TypeError) is tried again.
+      // Any other error, with or without a status, is final.
+      if (!(error?.status === 429 || error instanceof TypeError) || attempt >= STRIP_RETRY_MS.length) return null
+      await wait(STRIP_RETRY_MS[attempt])
+    }
+  }
+  return null
+}
+
 function MediaCard({ p, src, asset }) {
   const [strip, setStrip] = useState(null)
   useEffect(() => {
     let active = true
     setStrip(null)
-    if (asset.hasVideo) api(`/api/strip?quality=high&src=${encodeURIComponent(src)}`).then(d => active && !d.error && setStrip(d)).catch(() => {})
+    if (asset.hasVideo) requestStrip(`/api/strip?quality=high&src=${encodeURIComponent(src)}`, () => active).then(d => { if (active && d && !d.error) setStrip(d) })
     return () => { active = false }
   }, [src, asset.proxy, store.root])
   const kind = !asset.hasVideo ? 'audio' : asset.duration ? 'video' : 'image'
