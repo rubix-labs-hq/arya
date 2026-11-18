@@ -74,7 +74,7 @@ final class AssistantChangeTests: XCTestCase {
         let third = try await edit(0.25)
         _ = try await call("POST", "/api/undo", "{}")
         let base = await backend.currentVersion()
-        _ = try await call("POST", "/api/undo", #"{"who":"agent"}"#)
+        _ = try await backend.handleAssistant(method: "POST", path: "/api/undo", body: #"{"who":"agent"}"#)
         let moves = await backend.historyMoves(after: base)
         XCTAssertEqual(moves, ["undo"])
         let owners = await backend.commitOwners(after: base)
@@ -96,7 +96,7 @@ final class AssistantChangeTests: XCTestCase {
         XCTAssertEqual(top, third)
         let agentBase = await backend.currentVersion()
         XCTAssertGreaterThan(agentBase, twice)
-        _ = try await call("POST", "/api/undo", #"{"who":"agent"}"#); _ = try await call("POST", "/api/undo", #"{"who":"agent"}"#)
+        _ = try await backend.handleAssistant(method: "POST", path: "/api/undo", body: #"{"who":"agent"}"#); _ = try await backend.handleAssistant(method: "POST", path: "/api/undo", body: #"{"who":"agent"}"#)
         let both = await backend.historyMoves(after: agentBase)
         XCTAssertEqual(both, ["undo", "undo"])
         _ = try await backend.restoreAssistantChange(third, expected: first, line: "Undo assistant change")
@@ -106,10 +106,33 @@ final class AssistantChangeTests: XCTestCase {
 
         // A request with an edit among its commits is not a history move.
         let mixed = await backend.currentVersion()
-        _ = try await call("POST", "/api/undo", #"{"who":"agent"}"#)
+        _ = try await backend.handleAssistant(method: "POST", path: "/api/undo", body: #"{"who":"agent"}"#)
         _ = try await edit(0.75)
         let none = await backend.historyMoves(after: mixed)
         XCTAssertNil(none)
+    }
+
+    /// The same for a request where the assistant pressed Redo: it goes back as an Undo, so Redo
+    /// still holds what it held.
+    func testRestoringAnAssistantRedoIsAnUndoThatKeepsRedoHistory() async throws {
+        func current() async throws -> String { let project = await backend.currentProject(); return try XCTUnwrap(project) }
+        let first = try await current()
+        for opacity in [0.5, 0.25] {
+            _ = try await call("POST", "/api/ops", JSON.object([("ops", .array([.object([("op", "update"), ("id", "c1"), ("set", .object([("opacity", .number(opacity))]))])])), ("who", "agent")]).text)
+        }
+        let third = try await current()
+        _ = try await call("POST", "/api/undo", "{}"); _ = try await call("POST", "/api/undo", "{}")
+        let base = await backend.currentVersion()
+        _ = try await backend.handleAssistant(method: "POST", path: "/api/redo", body: #"{"who":"agent"}"#)
+        let second = try await current()
+        let moves = await backend.historyMoves(after: base)
+        XCTAssertEqual(moves, ["redo"])
+        _ = try await backend.restoreAssistantChange(first, expected: second, line: "Undo assistant change", historyMove: true)
+        let restored = try await current()
+        XCTAssertEqual(restored, first)
+        _ = try await call("POST", "/api/redo", "{}"); _ = try await call("POST", "/api/redo", "{}")
+        let redone = try await current()
+        XCTAssertEqual(redone, third, "both Redo steps survive")
     }
 
     func testHistoryChangeTitlesCountTheNetMove() {

@@ -255,8 +255,10 @@ public actor ReelBackend {
     /// Restores the project from before an assistant change, only while the project is still
     /// exactly the result of that change. When the change was the assistant pressing Undo, the
     /// project before it is in Redo history, so it comes back as a Redo that keeps the rest of that
-    /// history. Otherwise the restore is one new undoable edit.
-    public func restoreAssistantChange(_ snapshot: String, expected: String, line: String) throws -> Int {
+    /// history. When `historyMove` says the change was only the assistant's Undo and Redo presses
+    /// and the project is in Undo history, it goes back as an Undo, so Redo can bring the change
+    /// back. Otherwise the restore is one new undoable edit.
+    public func restoreAssistantChange(_ snapshot: String, expected: String, line: String, historyMove: Bool = false) throws -> Int {
         guard let current = project, current == expected else { throw APIError("The project changed after this assistant change. Use Undo step by step.") }
         if let index = future.lastIndex(of: snapshot) {
             try commit(snapshot, who: "you", lines: [line], history: false, move: "redo")
@@ -264,7 +266,16 @@ public actor ReelBackend {
             let passed = Array(future[(index + 1)...].reversed())
             future.removeSubrange(index...)
             rememberProject(current)
-            passed.forEach(rememberProject)
+            for project in passed { rememberProject(project) }
+            return version
+        }
+        if historyMove, let index = past.lastIndex(of: snapshot) {
+            try commit(snapshot, who: "you", lines: [line], history: false, move: "undo")
+            // Every project undone on the way goes to Redo history, as that many presses of Undo would.
+            let passed = Array(past[(index + 1)...].reversed())
+            past.removeSubrange(index...)
+            future.append(current)
+            future.append(contentsOf: passed)
             return version
         }
         try commit(snapshot, who: "you", lines: [line])

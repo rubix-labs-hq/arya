@@ -3458,7 +3458,7 @@ extension NativeAssistant {
             return
         }
         do {
-            _ = try await backend.restoreAssistantChange(change.before, expected: change.after, line: "Undo assistant change")
+            _ = try await backend.restoreAssistantChange(change.before, expected: change.after, line: "Undo assistant change", historyMove: change.kind == "history")
             lastChange = nil
             if applyingProposal?.finished == true { applyingProposal = nil }
         } catch { session.nativeEditor.status = error.localizedDescription }
