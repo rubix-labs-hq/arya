@@ -114,6 +114,36 @@ test('a request whose own commits were only Undo moves is a history change, undo
   assert.equal(review.snapshot().change.reason, 'This change left the project as it was before.')
 })
 
+test('a change reads undone while the project is the one before it, whoever moved there, and applied again after Redo', () => {
+  const state = { version: 1, epoch: 1, project: newProject('Start'), events: [] }
+  const review = createAssistantReview({ getVersion: () => state.version, getEpoch: () => state.epoch, getProject: () => state.project, onChange: value => state.events.push(value) })
+  const move = (project, call, kind) => { state.project = project; state.version++; review.commitBy(call, kind) }
+  const start = state.project, edited = newProject('Edited')
+  // Run 1 edits. Run 2 calls Undo, which takes the project back to before run 1.
+  review.observe({ state: 'thinking', runId: 'r1' }, start)
+  move(edited, { runId: 'r1' })
+  review.observe({ state: 'done', runId: 'r1' }, edited)
+  review.observe({ state: 'thinking', runId: 'r2' }, edited)
+  move(start, { runId: 'r2' }, 'undo')
+  review.observe({ state: 'done', runId: 'r2' }, start)
+  const listed = () => review.snapshot().changes.map(item => [item.runId, item.undone])
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+  assert.deepEqual(state.events.at(-1).changes.map(item => item.undone), [true, false], 'the page hears it')
+  // Toolbar Redo brings run 1's edit back and reverses run 2.
+  move(edited, undefined, 'redo')
+  assert.deepEqual(listed(), [['r1', false], ['r2', true]])
+  assert.deepEqual(state.events.at(-1).changes.map(item => item.undone), [false, true])
+  // Toolbar Undo of a plain request marks it undone too, and a later edit elsewhere leaves that alone.
+  move(start, undefined, 'undo')
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+  move(newProject('Elsewhere'), undefined)
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+  // A replaced project keeps every state for good, even if the same objects come back.
+  state.epoch++; move(edited, undefined)
+  state.epoch--; move(edited, undefined)
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+})
+
 test('previews accumulate within one request, reset on request and refuse unsafe ops', () => {
   const { state, review } = tracker()
   review.observe({ state: 'thinking', runId: 'r1' }, newProject('A'))

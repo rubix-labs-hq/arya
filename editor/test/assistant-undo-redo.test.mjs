@@ -262,3 +262,41 @@ test('a request that redid an edit offers no card undo and points at the toolbar
   assert.equal(pressed.status, 409)
   assert.deepEqual((await server.api('GET', '/api/project')).body.history, { undo: 1, redo: 0 }, 'nothing moved')
 })
+
+// A card undone with "Undo this change" kept reading Undone after toolbar Redo brought its edit
+// back, when an assistant run had moved the history in between (round 2 review of B02).
+test('Redo brings back a card-undone change after an assistant undo run, and its card reads applied', async t => {
+  const server = await runningServer(t, [{ method: 'POST', path: '/api/undo' }])
+  await server.api('POST', '/api/ops', { ops: [{ op: 'marker', t: 1, label: 'Mine' }] })
+  const change = await appliedPreview(server, 'Sample heading')
+  const applied = (await server.api('GET', '/api/project')).body.project
+  assert.equal((await server.api('POST', '/api/assistant/change/undo', { id: change.id })).status, 200)
+  await server.ask('Undo the last edit.')
+  assert.deepEqual((await server.api('GET', '/api/project')).body.history, { undo: 0, redo: 2 })
+  const middle = (await server.api('GET', '/api/assistant/review')).body
+  assert.deepEqual(middle.changes.map(item => [item.kind, item.label, item.undone]), [['preview', 'Applied assistant preview', true], ['history', 'Undid 1 edit', false]])
+  // The first Redo reverses the assistant's undo, the second brings the preview back.
+  assert.equal((await server.api('POST', '/api/redo', {})).body.moved, true)
+  const once = (await server.api('GET', '/api/assistant/review')).body
+  assert.deepEqual(once.changes.map(item => item.undone), [true, true])
+  assert.equal((await server.api('POST', '/api/redo', {})).body.moved, true)
+  assert.deepEqual((await server.api('GET', '/api/project')).body.project, applied)
+  const review = (await server.api('GET', '/api/assistant/review')).body
+  assert.deepEqual(review.changes.map(item => [item.kind, item.undone]), [['preview', false], ['history', true]])
+  assert.equal(review.change.id, change.id, 'the preview is the change its card can undo again')
+  assert.equal(review.change.undoable, true)
+  const again = await server.api('POST', '/api/assistant/change/undo', { id: change.id })
+  assert.equal(again.status, 200, JSON.stringify(again))
+  assert.equal(titleOf((await server.api('GET', '/api/project')).body.project), null)
+})
+
+// A run that edits and then calls Undo was titled "Made 2 edits" with no reason on its card.
+test('a request that edits and then undoes that edit is named for both and says why it has no card undo', async t => {
+  const server = await runningServer(t, [{ method: 'POST', path: '/api/ops', body: { ops: [{ op: 'marker', t: 3, label: 'Agent' }] } }, { method: 'POST', path: '/api/undo' }])
+  await server.api('POST', '/api/ops', { ops: [{ op: 'marker', t: 1, label: 'Mine' }] })
+  await server.ask('Add a marker, then take it back.')
+  const change = (await server.api('GET', '/api/assistant/review')).body.change
+  assert.equal(change.kind, 'request'); assert.equal(change.label, 'Made 1 edit and undid 1')
+  assert.equal(change.undoable, false); assert.equal(change.reason, 'This change left the project as it was before.')
+  assert.deepEqual((await server.api('GET', '/api/project')).body.history, { undo: 1, redo: 1 })
+})
