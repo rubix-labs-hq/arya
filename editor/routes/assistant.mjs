@@ -187,7 +187,7 @@ export default ctx => {
       } else {
         // A history move, so Redo brings the change back. It falls back to a forward edit when the
         // project from before the change is no longer in the undo history.
-        ;(ctx.restoreProject ?? ctx.commit)(target.change.before, 'you', [`Undo ${target.change.label.toLowerCase()}`])
+        ;(ctx.restoreProject ?? ctx.commit)(target.change.before, 'you', [target.change.kind === 'preview' ? 'Undo applied assistant preview' : 'Undo assistant request'])
       }
       r.undone(target.change.id)
       if (target.change.kind === 'preview') ctx.assistant?.settlePreview?.('undone')

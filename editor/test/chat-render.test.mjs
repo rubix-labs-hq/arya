@@ -164,6 +164,28 @@ test('a history card is named for its move and offers Undo only as the server al
   assert.equal(textContent(nodes(card({ change: null, changes: [] })).find(node => node.type === 'b')), 'Undid 1 edit', 'an older card keeps the name too')
 })
 
+test('a request that edited and then undid is named for both steps and says why it has no card undo', async () => {
+  const { changeReceipt } = await import('../web/ui/change-receipt.js')
+  const at = Date.now() - 5000
+  const before = { comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }] }
+  const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
+  const label = 'Made 1 edit and undid 1'
+  const receipts = [5, 6].map((version, index) => ({ ...changeReceipt(before, after, { who: 'agent', version, at: at + 1000 + index }), changeId: 'm1', changeKind: 'request', changeLabel: label }))
+  const chat = [{ role: 'user', text: 'Try a longer title, then go back', at }]
+  const reason = 'This change left the project as it was before.'
+  const change = { id: 'm1', kind: 'request', label, moves: { edit: 1, undo: 1, redo: 0 }, beforeVersion: 4, afterVersion: 6, edits: 2, undoable: false, reason }
+  const card = review => resultCard(panel({ state: 'done' }, true, { chat, receipts, project: before, review })).tree
+  const latest = card({ change, changes: [{ ...change, undone: false }] })
+  assert.equal(textContent(nodes(latest).find(node => node.type === 'b')), label, 'the undo is not counted as an edit')
+  assert.deepEqual(nodes(latest).filter(node => node.props?.class === 'assistant-note').map(textContent), [reason])
+  assert.equal(textContent(nodes(card({ change: null, changes: [] })).find(node => node.type === 'b')), label, 'an older card keeps the name too')
+  // A plain request that cannot be undone in one step keeps its quiet card.
+  const plain = { ...change, label: 'Assistant request', moves: undefined, edits: 1, afterVersion: 5, reason: 'The project changed after this assistant change. Use Undo step by step.' }
+  const quiet = resultCard(panel({ state: 'done' }, true, { chat, receipts: [{ ...receipts[0], changeLabel: 'Assistant request' }], project: after, review: { change: plain, changes: [{ ...plain, undone: false }] } })).tree
+  assert.equal(textContent(nodes(quiet).find(node => node.type === 'b')), 'Made 1 edit')
+  assert.equal(nodes(quiet).some(node => node.props?.class === 'assistant-note'), false)
+})
+
 test('a stopped request that changed nothing says so and offers Retry and Edit and retry', () => {
   const at = Date.now() - 5000
   const chat = [{ role: 'user', text: 'Tighten the opening', at }]

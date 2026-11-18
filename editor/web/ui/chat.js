@@ -73,9 +73,12 @@ function ReceiptDetails({ receipt }) {
   </div>`
 }
 
-/** A card is named for its kind of change: an applied preview, Undo or Redo the assistant ran, or edits. */
+/**
+ * A card is named for its kind of change: an applied preview, Undo or Redo the assistant ran, or
+ * edits. A request that also called Undo or Redo carries a label that counts each kind of step.
+ */
 function resultTitle(kind, label, edits) {
-  return kind === 'preview' ? 'Applied the preview' : kind === 'history' && label ? label : `Made ${plural(edits, 'edit')}`
+  return kind === 'preview' ? 'Applied the preview' : (kind === 'history' || kind === 'request' && label !== 'Assistant request') && label ? label : `Made ${plural(edits, 'edit')}`
 }
 
 /** Compositions the receipts added that still exist and are not open, as [id, name]. */
@@ -97,8 +100,9 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
   const kinds = new Set(receipts.map(receipt => receipt.changeKind))
   const kind = change ? change.kind : kinds.size === 1 ? receipts[0]?.changeKind : null
   const title = resultTitle(kind, change ? change.label : receipts[0]?.changeLabel, edits)
-  // The assistant undid or redid edits, and Redo cannot simply reverse that: the toolbar can.
-  const pointer = kind === 'history' && change && !undoable && !undone ? change.reason : ''
+  // The assistant undid or redid edits, and the card cannot simply reverse that: the reason says what can.
+  const moved = kind === 'history' || Boolean(change?.moves?.undo || change?.moves?.redo)
+  const pointer = moved && change && !undoable && !undone ? change.reason : ''
   const added = undone ? [] : addedCompositions(receipts, store.project, store.openComp)
   const openComposition = id => set({ openComp: id, compParents: { ...(store.compParents ?? {}), [id]: null }, selection: [], page: 'edit', viewerMode: 'timeline', scroll: 0 })
   const caption = receipts.length ? receiptCaption(receipts, store.project) : ''
