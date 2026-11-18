@@ -144,8 +144,8 @@ export function outputEvent(provider, line) {
   if (value.type === 'result' && typeof value.result === 'string') return { type: 'done', text: value.result }
   if (value.type === 'stream_event' && value.event?.delta?.type === 'text_delta') return { type: 'text', text: value.event.delta.text }
   if (value.type === 'assistant' && value.message?.content) return { type: 'text', text: value.message.content.filter(part => part.type === 'text').map(part => part.text).join('\n') }
-  // Codex sends each finished message whole. `message` tells the bridge to keep them apart; it is not sent on.
-  if (value.type === 'item.completed' && value.item?.type === 'agent_message') return { type: 'text', text: value.item.text, message: true }
+  // Codex sends each finished message whole. `wholeMessage` tells the bridge to keep them apart; it is not sent on.
+  if (value.type === 'item.completed' && value.item?.type === 'agent_message') return { type: 'text', text: value.item.text, wholeMessage: true }
   if (value.type === 'message' && typeof value.content === 'string') return { type: 'text', text: value.content }
   if (value.type === 'text' && typeof value.text === 'string') return { type: 'text', text: value.text }
   if (value.type === 'done') return { type: 'done', ...(value.text ? { text: String(value.text) } : {}) }

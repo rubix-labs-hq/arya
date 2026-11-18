@@ -165,9 +165,10 @@ test('whole assistant messages join as paragraphs and streamed text stays as sen
     'empty first message': [message(''), message('Only this.')],
     'streamed deltas': [delta('Hel'), delta('lo'), JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Hello' }] } })],
     'text records': [JSON.stringify({ type: 'text', text: 'One' }), JSON.stringify({ type: 'text', text: 'Two' })],
+    'a failure': [message('I started.'), JSON.stringify({ type: 'error', message: 'The usage limit was reached.' })],
   }
   const bridge = await startBridge({ prepareAdapter: async request => ({ command: process.execPath, args: ['-e', `for (const line of ${JSON.stringify(outputs[request.text])}) console.log(line)`], cwd: folder, env: { PATH: process.env.PATH }, prompt: '', cleanup: async () => {} }) })
-  const texts = async text => {
+  const run = async text => {
     const id = randomUUID(), events = []
     assert.equal((await request(bridge, 'POST', '/v1/runs', { id, provider: 'claude-code', text })).status, 201)
     for (let i = 0, cursor = 0; i < 400; i++) {
@@ -176,16 +177,23 @@ test('whole assistant messages join as paragraphs and streamed text stays as sen
       if (events.some(event => event.type === 'done' || event.type === 'error')) break
       await new Promise(resolve => setTimeout(resolve, 25))
     }
+    assert.ok(events.every(event => !('wholeMessage' in event)), 'the whole-message marker stays inside the bridge')
+    return events
+  }
+  const texts = async text => {
+    const events = await run(text)
     assert.equal(events.at(-1)?.type, 'done', JSON.stringify(events.at(-1)))
-    assert.ok(events.every(event => !('message' in event)), 'the whole-message marker stays inside the bridge')
     return events.filter(event => event.type === 'text').map(event => event.text)
   }
   try {
-    assert.deepEqual(outputEvent('codex', message('Hi')), { type: 'text', text: 'Hi', message: true })
+    assert.deepEqual(outputEvent('codex', message('Hi')), { type: 'text', text: 'Hi', wholeMessage: true })
     assert.deepEqual(await texts('whole messages'), ['I trimmed the opening.', '\n\nThe cut now lands on the beat.', '\n\nNothing else changed.'])
     assert.equal((await texts('empty first message')).join(''), 'Only this.', 'an empty message opens no paragraph')
     assert.deepEqual(await texts('streamed deltas'), ['Hel', 'lo'], 'deltas are not separated and the repeated whole message is still dropped')
     assert.deepEqual(await texts('text records'), ['One', 'Two'])
+    const failure = (await run('a failure')).at(-1)
+    assert.equal(failure.type, 'error')
+    assert.equal(failure.message, 'The usage limit was reached.', 'removing the marker leaves an error its message')
   } finally { await bridge.close(); await fs.rm(folder, { recursive: true, force: true }) }
 })
 

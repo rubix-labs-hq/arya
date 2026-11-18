@@ -99,8 +99,8 @@ export async function startBridge(options = {}) {
         if (!['gemini-cli', 'chatgpt'].includes(run.request.provider) && line.includes('text_delta')) partial = true
         if (item && !(partial && line.includes('"assistant"'))) {
           // A whole message after the first starts a new paragraph. Streamed deltas pass through as sent.
-          const { message, ...sent } = item
-          event(run, message && sent.text && messages++ ? { ...sent, text: `\n\n${sent.text}` } : sent)
+          const { wholeMessage, ...sent } = item
+          event(run, wholeMessage && sent.text && messages++ ? { ...sent, text: `\n\n${sent.text}` } : sent)
         }
         return !run.terminal
       })
