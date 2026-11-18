@@ -80,6 +80,10 @@
     "target": "core/project.js"
   },
   {
+    "source": "core/proposal-ops.js",
+    "target": "core/proposal-ops.js"
+  },
+  {
     "source": "core/support-prompt.js",
     "target": "core/support-prompt.js"
   },
@@ -590,6 +594,10 @@
   {
     "source": "web/ui/plugins/video-processing.js",
     "target": "editor/ui/plugins/video-processing.js"
+  },
+  {
+    "source": "web/ui/preview-banner.js",
+    "target": "editor/ui/preview-banner.js"
   },
   {
     "source": "web/ui/processing-workflows.js",
