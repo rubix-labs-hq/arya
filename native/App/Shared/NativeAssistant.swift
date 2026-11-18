@@ -3522,7 +3522,11 @@ extension NativeAssistant {
             reason = "Choose your signed-in subscription agent in Assistant settings."
             return
         }
-        configured = true
+        // Connected with no conversation yet: the sentence and the suggestions.
+        if kind == "empty" { configured = true; chat = []; return }
+        // Not set up, with earlier messages: the reason and the setup action must still be in view.
+        configured = kind != "setupConversation"
+        if !configured { reason = "Your ChatGPT sign-in has expired. Sign in again in Assistant settings." }
         chat = [
             row("you", "Tighten the opening and add a title over the first clip.", ["clip": "c1", "clips": ["c1"], "inputKind": "prompt"]),
             row("assistant", "I trimmed the first 0.8 seconds of clip.mp4 so it starts on movement, and added a Launch day title from 1 s to 5 s on Video 2. Undo removes both changes together."),
@@ -3532,6 +3536,14 @@ extension NativeAssistant {
             state = "working"; startedAt = Date().addingTimeInterval(-14); updatedAt = Date(); finishedAt = nil
             progress = "Updating the title animation"
             partialReply = "I'm lengthening the rise on the Launch day title to 1.2 seconds"
+        } else if kind == "failed" || kind == "stopped" {
+            if kind == "failed" {
+                chat.append(JSON(any: ["role": "assistant", "text": "The assistant stopped responding before it finished. No edits were made.", "provider": provider, "at": now, "refs": NSNull(), "error": true] as [String: Any]))
+            }
+            state = kind == "failed" ? "error" : "cancelled"; progress = ""
+            startedAt = Date().addingTimeInterval(-9); finishedAt = Date(); updatedAt = finishedAt
+        } else if kind == "setupConversation" {
+            chat.append(row("assistant", "Done. The title now rises over 1.2 seconds instead of 0.5."))
         } else {
             chat.append(row("assistant", "Done. The title now rises over 1.2 seconds instead of 0.5."))
             state = "done"; startedAt = Date().addingTimeInterval(-21); finishedAt = Date(); updatedAt = finishedAt

@@ -16,11 +16,12 @@ import AppKit
 ///                                once the project opens, to check the native preview card
 ///     --assistant-panel          open the Assistant panel
 ///     --assistant-apply          apply the staged preview, as the Apply button does
-///     --assistant-fixture <kind> seed a display-only conversation: conversation, working or setup.
+///     --assistant-fixture <kind> seed a display-only conversation: conversation, working, setup,
+///                                setupConversation, empty, failed or stopped.
 ///                                Sending stays off while a fixture is shown.
 ///     --page <name>              show this workflow page once the project opens
 ///     --select <id,id>           select these clips once the project opens
-///     --present <sheet>          open settings, assistantSettings, pro or askArya for screenshots
+///     --present <sheet>          open settings, assistantSettings or pro for screenshots
 ///     --window-size <w>x<h>      Mac: resize the editor window once the project opens
 ///     --no-activate              Mac: launch without taking focus from the person at the Mac
 ///
@@ -29,7 +30,7 @@ import AppKit
 @MainActor
 enum Automation {
     static var echoConsole = false
-    /// Posted with a sheet name (settings, assistantSettings, pro, askArya) for screenshots.
+    /// Posted with a sheet name (settings, assistantSettings, pro) for screenshots.
     static let presentNotification = Notification.Name("AryaAutomationPresent")
 
     static func value(_ flag: String) -> String? {
