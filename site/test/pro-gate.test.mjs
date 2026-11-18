@@ -156,6 +156,10 @@ test('iPhone and iPad sell Arya Pro while the Mac App Store edition is still at 
   assert.ok(support.includes('The Mac App Store edition is at version 1.1.1, which has no Arya Pro. Its optional tips are bought in the app through Apple and unlock no features.'));
   assert.ok(support.includes('Arya Pro on iPhone and iPad is separate.'));
 
+  // Sign in with ChatGPT is not stated as present in the Mac App Store edition before its version 1.2.0.
+  assert.ok(privacy.includes('Sign in with ChatGPT is available in the direct Mac app and, from version 1.2.0, in the iPhone and iPad apps. It comes to the Mac App Store edition with version 1.2.0. You sign in'));
+  assert.ok(privacy.includes('Assistant editing is optional and runs through your own AI account.'));
+
   // The direct Mac download and the browser editor never need Arya Pro.
   for (const page of [download, support]) assert.ok(page.includes('The Mac download from this site and the browser editor stay free and never need Arya Pro.'));
   assert.ok(full.includes('The Mac download and the browser editor are free and never need Arya Pro.'));
@@ -184,6 +188,8 @@ test('once the Mac App Store edition sells Arya Pro too, one purchase covers all
   assert.doesNotMatch(support, /Its optional tips are bought in the app/);
   assert.ok(privacy.includes('Apple processes Arya Pro subscriptions and purchases in App Store builds'));
   assert.ok(!privacy.includes('Apple processes optional in-app purchases'));
+  assert.ok(privacy.includes('Sign in with ChatGPT is available in the direct Mac app and, from version 1.2.0, in the iPhone, iPad and Mac App Store apps. You sign in'));
+  assert.doesNotMatch(privacy, /It comes to the Mac App Store edition/);
   assert.ok(download.includes(early) && home.includes(early));
 
   // Both sell Arya Pro at different versions: each channel keeps its own version line.

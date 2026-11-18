@@ -39,6 +39,8 @@ Each release channel is stated by itself. `release` is the direct Mac download, 
 - `pro` true: the sentence "One Arya Pro purchase covers iPhone, iPad and the Mac App Store edition." returns. When both versions match, the version line reads "iPhone, iPad and Mac"; otherwise each channel keeps its own line.
 - Object missing, or without a version such as `1.2.0`: no page names a Mac App Store version or says Arya Pro covers that edition. `storeScope` in `scripts/product-home.mjs` decides all of this.
 
+The privacy page says Sign in with ChatGPT "comes to the Mac App Store edition with version 1.2.0" until `version` here is 1.2.0 or later. From then on it lists the Mac App Store app beside the iPhone and iPad apps.
+
 Update `macAppStoreRelease` whenever the Mac App Store version changes. It can change without anyone acting, because an approved version releases by itself. The direct Mac download and the browser editor are always stated as free and never needing Arya Pro.
 
 Contribution URLs have a separate allowlist. A preset checkout URL must represent that exact one-time USD amount at the provider. The custom destination must let the user explicitly choose the amount at the provider. The site never creates a payment, changes provider amounts by query string or claims payment success. Test the actual hosted checkout and receipt before configuring it.
