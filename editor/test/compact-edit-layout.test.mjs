@@ -16,6 +16,7 @@ const appSource = fs.readFileSync(path.join(candidate, 'web/ui/app.js'), 'utf8')
 const phoneSource = fs.readFileSync(path.join(candidate, 'web/ui/phone.js'), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const layoutSource = fs.readFileSync(path.join(candidate, 'web/ui/layout.js'), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
 const { newProject, duration, timecode, applyOps, TITLE_ANIMS } = await import(pathToFileURL(path.join(editor, 'core/project.js')))
+const { SYSTEM_FONTS } = await import(pathToFileURL(path.join(editor, 'core/fonts.js')))
 const { openProjectRecovery } = await import(pathToFileURL(path.join(editor, 'web/ui/project-recovery.js')))
 const settingsSource = fs.readFileSync(path.join(editor, 'web/ui/settings.js'), 'utf8')
 const settingsFocusEffects = settingsSource.match(/  useEffect\(\(\) => \{\n    const previous = document\.activeElement\n[\s\S]*?\n  \}, \[\]\)/g)
@@ -229,7 +230,7 @@ test('Settings and recovery still respect sharing review ownership', t => {
   f.state.assistantSharingReviewOpen = false; f.button('Settings').props.onClick(); assert.equal(f.state.settingsOpen, true)
 })
 test('queued delivery progress stays visible on More and routes through the existing action', t => {
-  const f = fixture(t); f.state.jobs = [{ state: 'queued', progress: 0.12 }]
+  const f = fixture(t); f.state.jobs = [{ kind: 'export', state: 'queued', progress: 0.12 }]
   assert.equal(text(f.button('More editor actions')), 'More 12%'); assert.equal(f.button('More editor actions').props['aria-label'], 'More editor actions, delivery 12%'); f.button('Open delivery progress').props.onClick(); assert.equal(f.state.page, 'deliver')
 })
 test('Assistant and keyboard controls keep their existing state transitions', t => {
@@ -393,7 +394,7 @@ for (const kind of ['number', 'title']) test(`actual Inspector ${kind} draft com
   const useState = initial => [value ?? initial, next => value = next]
   const inspectorSource = fs.readFileSync(path.join(candidate, 'web/ui/inspector.js'), 'utf8').replace(/^import .*$/gm, '').replace(/^export /gm, '')
   const edit = op => { commits++; history = copy(f.state.project); f.state.project = applyOps(f.state.project, [op]).project }
-  const actual = new Function('h', 'htm', 'useState', 'edit', 'TITLE_ANIMS', `${inspectorSource}\nreturn { Num, TitleTab }`)(h, htm, useState, edit, TITLE_ANIMS)
+  const actual = new Function('h', 'htm', 'useState', 'edit', 'TITLE_ANIMS', 'FONTS', `${inspectorSource}\nreturn { Num, TitleTab }`)(h, htm, useState, edit, TITLE_ANIMS, SYSTEM_FONTS)
   const render = () => kind === 'number' ? actual.Num({ label: 'Scale', value: 100, onCommit: scale => edit({ op: 'update', id: 'c1', set: { scale: scale / 100 } }) }) : actual.TitleTab({ clip: f.state.project.tracks[0].clips[0] })
   const input = () => nodes(render()).find(n => n.type === (kind === 'number' ? 'input' : 'textarea'))
   const old = copy(f.state.project), identity = pane(f.edit(), 'inspector').key
