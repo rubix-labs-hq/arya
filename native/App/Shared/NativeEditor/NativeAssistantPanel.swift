@@ -899,8 +899,8 @@ struct NativeAssistantPanel: View {
                     stackedActionRow(width: width) { primaryAction }
                     stackedActionRow(width: width) { primaryAction.labelStyle(NativeAssistantIconActionStyle()) }
                 }
-                // The largest text sizes cannot fit "· Default" even on a row of its own.
-                modelControls(short: dynamicTypeSize >= .accessibility3)
+                // The largest text sizes, and a phone at any accessibility size, show only the provider even on a row of its own.
+                modelControls(short: dynamicTypeSize >= .accessibility3 || Self.touch && horizontalSizeClass == .compact)
             }.frame(maxWidth: .infinity)
         } else {
             // In one row the model shares the width, so a narrow pane or a phone shows only the
