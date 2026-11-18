@@ -287,3 +287,15 @@ test('the person overlap note on a crowded track says there are more and keeps i
   assert.equal(crowded.match(/is hidden under/g).length, 3, crowded)
   assert.match(crowded, /; and more\. Move one to another track to show both\.$/)
 })
+
+test('a clip name that cannot be read costs only that name, and the agent keeps every note', () => {
+  const before = wide()
+  const ops = [0, 1].map(start => ({ op: 'add_title', text: `Pier ${start}`, title: { size: 40 }, track: 'V1', start, dur: 3 }))
+  const after = applyOps(before, ops).project
+  const clip = after.tracks.find(track => track.id === 'V1').clips[1]
+  Object.defineProperty(clip, 'label', { get() { throw new Error('unreadable label') }, enumerable: false })
+  const agent = editNotes(before, after, { ops, created: ['c1', 'c2'] })
+  assert.ok(agent.some(note => /c2 is hidden under c1 on V1/.test(note)), agent.join('\n'))
+  const person = editNotes(before, after, { ops, created: ['c1', 'c2'], audience: 'person' })
+  assert.ok(person.some(note => /^A track shows one clip at a time, so overlapping clips hide each other: "a clip" is hidden under "Pier 0"/.test(note)), person.join('\n'))
+})

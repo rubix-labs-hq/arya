@@ -29,8 +29,8 @@ const list = values => values.length < 2 ? values.join('') : `${values.slice(0, 
 const quote = text => { const flat = String(text ?? '').replace(/\s+/g, ' ').trim(); return `"${flat.length > 40 ? `${flat.slice(0, 37)}...` : flat}"` }
 /** One note: the agent's sentence and the person's, or null when the person gets none. */
 const note = (agent, person = null) => ({ agent, person })
-/** A clip as the person sees it on the timeline, quoted and shortened. */
-const named = (index, clip) => quote(clipName(index.project, clip))
+/** A clip as the person sees it on the timeline, quoted and shortened. A name that cannot be read never costs the agent its notes. */
+const named = (index, clip) => { try { return quote(clipName(index.project, clip)) } catch { return '"a clip"' } }
 /** The first `LISTED` parts joined, with a count of the rest. */
 const capped = (parts, join = '; ') => parts.length > LISTED ? `${parts.slice(0, LISTED).join(join)}${join}and ${parts.length - LISTED} more` : parts.join(join)
 
