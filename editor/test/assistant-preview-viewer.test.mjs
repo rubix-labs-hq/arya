@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { registerHooks } from 'node:module'
@@ -132,7 +133,13 @@ test('the banner over the viewer says it shows the preview and offers Apply, Dis
   reset()
   showPreview('a')
   const tree = PreviewBanner()
-  assert.match(text(tree), /^Showing the preview Add a title \. Not applied yet; editing is off\./)
+  assert.match(text(tree), /^Preview Add a title \. Nothing is saved until you apply, and editing is off\./)
+  // On a phone the banner is one row (label, Apply, Discard) over a frame that takes the viewer's width.
+  const css = readFileSync(new URL('../web/ui/assistant.css', import.meta.url), 'utf8')
+  const phone = css.slice(css.indexOf('/* On a phone the preview takes the viewer'))
+  assert.match(phone, /\.viewer-preview-banner :is\(\.viewer-preview-copy, \.viewer-preview-steps\) \{ position: absolute; width: 1px;/)
+  assert.match(phone, /\.viewer-preview-banner \.viewer-preview-back \{ display: none; \}/)
+  assert.match(phone, /\.page\.phone-edit \.viewer\.showing-preview :is\(\.viewer-bar, \.viewer-info, \.transport \.buttons\.right\) \{ display: none; \}/)
   assert.doesNotMatch(text(tree), /processing step/)
   button(tree, 'Apply').props.onClick()
   button(tree, 'Discard').props.onClick()

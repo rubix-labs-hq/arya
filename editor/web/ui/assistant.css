@@ -32,6 +32,16 @@
 .viewer-preview-banner .assistant-preview-actions { margin-top: 6px; flex-wrap: wrap; }
 .viewer-preview-banner .assistant-preview-actions button { min-height: 32px; padding: 4px 12px; }
 @media (pointer: coarse) { .viewer-preview-banner .assistant-preview-actions button { min-height: 44px; } }
+/* On a phone the preview takes the viewer: a one-row banner, no viewer controls, and the frame at full width. */
+@media (max-width: 720px) {
+  .viewer-preview-banner { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; }
+  .viewer-preview-banner p { flex: 1; min-width: 0; }
+  .viewer-preview-banner :is(.viewer-preview-copy, .viewer-preview-steps) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .viewer-preview-banner .assistant-preview-actions { flex: none; flex-wrap: nowrap; margin: 0; }
+  .viewer-preview-banner .assistant-preview-actions button { min-height: 44px; }
+  .viewer-preview-banner .viewer-preview-back { display: none; }
+  .page.phone-edit .viewer.showing-preview :is(.viewer-bar, .viewer-info, .transport .buttons.right) { display: none; }
+}
 
 /* One-step undo of the latest assistant change. In the panel it sits inside the result card. */
 .chat .assistant-change { flex: none; display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
