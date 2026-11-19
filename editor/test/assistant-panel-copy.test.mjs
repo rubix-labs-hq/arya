@@ -85,7 +85,7 @@ test('route previews render when ready and stay hidden when not ready', () => {
 test('the empty state has one sentence and Input tips retains the attachment hint', () => {
   const tree = render(readyStatus)
   const empty = find(tree, 'chat-empty'), card = find(tree, 'assistant-composer-card')
-  assert.equal(text([empty]).trim(), 'Ask for an edit, or ask a question about this project.')
+  assert.equal(text([empty]).trim(), 'Ask for an edit, or ask a question about this project.Sees Main timeline · nothing selected · playhead 00:00:00:00')
   assert.equal(text([find(render(readyStatus, { caps: { host: 'native' } }), 'chat-empty')]).trim(), text([empty]).trim())
   assert.equal(walk([empty]).filter(node => node.type === 'p').length, 1)
   const help = find([card], 'assistant-input-help')
@@ -126,7 +126,7 @@ test('assistant update cards retain their labels and reference chips use drawn i
   const update = find(tree, 'assistant-run done')
   assert.equal(update.type, 'details')
   assert.equal(update.props.open, false)
-  assert.equal(text([update]), '↵Done1 tool updateInspecting clips')
+  assert.equal(text([update]), 'Done1 tool updateInspecting clips')
   const chips = all.filter(node => ['chip', 'chip small'].includes(node.props.class) && iconsIn(node).length)
   assert.equal(chips.length, 2)
   for (const chip of chips) {
@@ -149,7 +149,8 @@ test('assistant update cards retain their labels and reference chips use drawn i
 
 test('hosted assistant explains the limit with working destinations and no composer', () => {
   const tree = render(setupStatus, { caps: { host: 'browser-local' } })
-  assert.match(text(tree), /Unavailable in beta/)
+  assert.match(text(tree), /Mac app/); assert.match(text(tree), /Ask for edits in Arya for Mac/)
+  assert.equal(walk(tree).filter(node => node.props?.class === 'button primary').length, 1, 'one primary action')
   assert.equal(walk(tree).some(node => node.type === 'textarea'), false)
   assert.equal(find(tree, 'assistant-composer-card'), undefined)
   assert.deepEqual(walk(tree).filter(node => node.type === 'a').map(node => node.props.href), [

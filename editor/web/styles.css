@@ -661,14 +661,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .assistant-run { flex: none; min-width: 0; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--panel-2); }
 .assistant-run-heading { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; }
 .assistant-run-symbol { color: var(--accent); font-size: 16px; }
-.assistant-run.active .assistant-run-symbol { animation: assistant-spin 1.4s linear infinite; }
 .assistant-run-time { margin-left: auto; color: var(--muted); font: 11px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .assistant-run p { margin: 5px 0 0; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .assistant-run button { margin-top: 7px; min-height: 44px; }
 .assistant-run.error .assistant-run-symbol { color: var(--danger); }
 .assistant-stream small { display: block; color: var(--muted); margin-bottom: 5px; font-size: 10px; }
 @keyframes assistant-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .assistant-run.active .assistant-run-symbol { animation: none; } }
 
 /* Account setup and model selection share compact, scrollable editor surfaces. */
 .assistant-onboarding{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;list-style:none;padding:0;margin:18px 0 24px}

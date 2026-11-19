@@ -108,17 +108,18 @@ test('a preview lists each changed layer with readable before and after values',
   assert.deepEqual(calls, ['apply', 'discard'])
 })
 
-test('a preview names the track kind, so a clip and its linked audio read apart', () => {
+test('a preview names the track and time, and marks linked audio, so a clip and its sound read apart', () => {
   const p = interview()
   const proposal = { id: 'p3', baseVersion: 3, at: 1, summary: 'Quieter and dimmer', stale: false, ops: [
     { op: 'update', id: 'c1', set: { opacity: 0.5 } },
     { op: 'update', id: 'c1a', set: { gain: -6 } },
   ] }
   const changes = assistantPanel.previewChanges(p, proposal)
-  assert.deepEqual(changes.layers.map(layer => [layer.name, layer.track]), [['a.mp4', 'Video'], ['a.mp4', 'Audio']])
+  assert.deepEqual(changes.layers.map(layer => [layer.name, layer.track]), [['a.mp4', 'V1 at 0:00'], ['a.mp4 audio', 'A1 at 0:00']])
   const tree = assistantPanel.PreviewCard({ proposal, project: p, version: 3, running: false, busy: '' })
   const rows = nodes(tree).filter(node => node.type === 'small').map(text)
-  assert.deepEqual(rows, ['Main timeline · Video', 'Main timeline · Audio'])
+  assert.deepEqual(rows, ['V1 at 0:00', 'A1 at 0:00'])
+  assert.doesNotMatch(text(tree), /\bc1a?\b/, 'no stored id shows')
 })
 
 test('stale, failing, running and new-media previews are explained and cannot apply when unsafe', () => {

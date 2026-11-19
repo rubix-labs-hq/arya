@@ -157,13 +157,18 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo, onRedo = 
   </section>`
 }
 
+const RUN_SYMBOL = {
+  working: () => html`<${Icon} name="spinner" size=${14} />`, reconnecting: () => html`<${Icon} name="spinner" size=${14} />`,
+  done: () => html`<${Icon} name="check" size=${14} />`, error: () => html`<${Icon} name="alert" size=${14} />`, stopped: () => html`<${Icon} name="stop" size=${14} />`,
+}
+
 /** A run as one quiet line: label, stage and elapsed time. It opens to the tool updates. */
 function RunLine({ label, stage, elapsed, state, symbol, detail = '', updates = [], open = false, children = null, live = false }) {
   // The detail opens under the line only when it says more than the stage already does.
   const bare = value => String(value ?? '').replace(/\.$/, '')
   const extra = detail && !(stage && bare(detail).endsWith(bare(stage))) ? detail : ''
   const expandable = Boolean(extra || updates.length || [children].flat(Infinity).some(Boolean))
-  const heading = html`<span class="assistant-run-symbol" aria-hidden="true">${symbol}</span><b role=${live ? 'status' : undefined}>${label}</b>${stage ? html`<span class="assistant-run-stage" title=${stage}>${stage}</span>` : null}${elapsed ? html`<span class="assistant-run-time">${elapsed}</span>` : null}`
+  const heading = html`<span class="assistant-run-symbol" aria-hidden="true">${RUN_SYMBOL[symbol] ? RUN_SYMBOL[symbol]() : symbol}</span><b role=${live ? 'status' : undefined}>${label}</b>${stage ? html`<span class="assistant-run-stage" title=${stage}>${stage}</span>` : null}${elapsed ? html`<span class="assistant-run-time">${elapsed}</span>` : null}`
   if (!expandable) return html`<div class=${`assistant-run ${state}`}><div class="assistant-run-heading">${heading}</div></div>`
   return html`<details class=${`assistant-run ${state}`} open=${open}>
     <summary class="assistant-run-heading">${heading}</summary>
@@ -172,6 +177,11 @@ function RunLine({ label, stage, elapsed, state, symbol, detail = '', updates = 
     ${children}
   </details>`
 }
+
+// The kind of job a starter is, shown beside it so the list scans by task.
+const STARTER_GROUPS = { 'rough-cut': 'Cut', silences: 'Cut', 'silences-selection': 'Cut', shorts: 'Cut', vertical: 'Cut', 'animate-title': 'Titles and captions', captions: 'Titles and captions',
+  'clean-audio': 'Sound', 'explain-selection': 'Explain', review: 'Explain', match: 'Color', 'grade-shot': 'Color', 'match-all': 'Color' }
+const starterGroup = id => STARTER_GROUPS[id] ?? 'Edit'
 
 function AssistantHistoryNotice({ status }) {
   const warning = typeof status?.warning === 'string' ? status.warning.slice(0, 500) : ''
@@ -389,6 +399,8 @@ export function ChatPanel() {
     return { id, label: transition ? label ? `Transition into ${label}` : `Transition ${id.slice(3)}` : label || id,
       track: object ? object.track.name ? `${object.track.name} (${object.track.id})` : object.track.id : null }
   })
+  // One chip for the selection: a name for one object, a count for more. Ids stay in the tooltip.
+  const selectedText = selection.length === 1 ? selection[0].label : selection.length ? `${selection.length} ${selection.every(item => !item.id.startsWith('tr:')) ? 'clips' : 'items'} selected` : ''
   const quick = assistantPanel.suggestions(s.project, { selection: s.selection, comp: s.openComp })
   // Suggestions populate an empty draft as a prompt.
   const showSuggestions = canSend && quick.length > 0 && !text.trim()
@@ -439,7 +451,7 @@ export function ChatPanel() {
   }
   const shownPreview = Boolean(review?.proposal?.id) && s.previewShown?.id === review.proposal.id
   // The current run's line, and what a failed run saved and how to try again.
-  const liveSymbol = !s.connected ? '↻' : working ? '◌' : activity.state === 'done' ? '↵' : activity.state === 'error' ? '!' : '■'
+  const liveSymbol = !s.connected ? 'reconnecting' : working ? 'working' : activity.state === 'done' ? 'done' : activity.state === 'error' ? 'error' : 'stopped'
   const liveRunLine = updates => RunLine({ live: true, state: working ? 'active' : activity.state, symbol: liveSymbol, label: activity.label, stage: activity.stage, elapsed: activity.elapsed, detail: activity.detail, updates,
     children: [activity.connectionNotice ? html`<p>${activity.connectionNotice}</p>` : null,
       (!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><${RoutingReceipt} value=${s.claude.routing} /></div>` : null] })
@@ -448,13 +460,17 @@ export function ChatPanel() {
     const stopped = activity.state === 'cancelled'
     if (working || activity.state !== 'error' && !stopped) return null
     const saved = committed.length > 0 && !committed.every(item => lastReply?.text?.includes(item.summary))
-    return html`<div class=${`assistant-failure${stopped ? ' stopped' : ''}`}>
+    // The provider's own words sit inside the card, so the failure reads as one thing.
+    const message = !stopped && lastReply?.error ? String(lastReply.text ?? '').trim() : ''
+    return html`<div class=${`assistant-failure${stopped ? ' stopped' : ''}`} role="group" aria-label=${stopped ? 'Stopped request' : 'Failed request'}>
+              <div class="assistant-failure-heading"><${Icon} name=${stopped ? 'stop' : 'alert'} /><b>${stopped ? 'You stopped this request' : 'The request did not finish'}</b></div>
+              ${message ? html`<div class="assistant-failure-message msg-body" dangerouslySetInnerHTML=${{ __html: md(message) }}></div>` : null}
               ${chatgptCode === 'chatgpt_usage_limit' ? html`<div class="assistant-plan-error"><b>Usage limit reached</b><p>ChatGPT account: ${chatgpt?.email || 'your signed-in account'}. Check your usage, then try again later.</p><a class="button primary" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></div>` : null}
               ${['chatgpt_sign_in_required', 'chatgpt_not_authorized', 'chatgpt_plan_disabled', 'chatgpt_account_changed', 'chatgpt_not_eligible'].includes(chatgptCode) ? html`<div class="assistant-plan-error"><button class="ghost tiny" onClick=${() => set({ settingsOpen: true })}>Review ChatGPT sign-in</button></div>` : null}
               ${saved ? html`<div class="assistant-saved"><b>${stopped ? 'Saved before you stopped it' : 'Saved before the failure'}</b><ul>${committed.map(item => html`<li key=${item.version}>${item.summary}</li>`)}</ul></div>` : null}
               ${lastRequest || canRetry ? html`<div class="assistant-failure-actions">
-                ${lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title=${`Put the ${stopped ? 'stopped' : 'failed'} request back in the text box to edit or send again. Clear the current draft first.`} onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
-                ${canRetry ? html`<button class="ghost tiny assistant-resend" disabled=${pending || !s.connected} title="Send the same request again" onClick=${retry}>Retry</button>` : null}
+                ${canRetry ? html`<button class="primary tiny assistant-resend" disabled=${pending || !s.connected} title="Send the same request again" onClick=${retry}>Retry</button>` : null}
+                ${lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title=${`Put the ${stopped ? 'stopped' : 'failed'} request back in the text box to edit or send again. Clear the current draft first.`} onClick=${() => { setText(lastRequest); focusComposer() }}>Edit request</button>` : null}
               </div>` : null}
             </div>`
   }
@@ -515,8 +531,8 @@ export function ChatPanel() {
   const modelName = connection?.mode === 'auto' ? 'Auto' : [name, connection?.model].filter(Boolean).join(' · ')
 
   if (hosted) return html`<section class="panel chat assistant-unavailable" id="editor-assistant" aria-label="Assistant">
-    <div class="chat-head"><div class="chat-title"><b>Assistant</b><span class="muted">Unavailable in beta</span></div><button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button></div>
-    <div class="chat-list"><div class="assistant-setup"><b>Use Assistant in Arya for Mac</b><p>Assistant is also available in the local editor.</p><div class="assistant-setup-actions"><a class="button primary" href="https://editwitharya.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a><a class="settings-link" href="https://editwitharya.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run locally</a></div></div></div>
+    <div class="chat-head"><div class="chat-title"><b>Assistant</b><span class="muted">Mac app</span></div><button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button></div>
+    <div class="chat-list"><div class="assistant-setup"><b>Ask for edits in Arya for Mac</b><p>The assistant cuts, titles, mixes and explains your project from a plain request. It runs in the Mac app and the local editor, not in this browser build.</p><div class="assistant-setup-actions"><a class="button primary" href="https://editwitharya.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a></div><p class="assistant-setup-note">Editing here works without it. <a class="settings-link" href="https://editwitharya.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run the editor locally</a></p></div></div>
   </section>`
 
   return html`
@@ -541,18 +557,21 @@ export function ChatPanel() {
       }}>
         ${status.ready && !working && !conversation.length && !text.trim() ? html`<div class="chat-empty">
           <p>Ask for an edit, or ask a question about this project.</p>
+          <span class="assistant-sees" title="What the assistant is given with your request">Sees ${openTimeline ? openTimeline.name ?? s.openComp : 'Main timeline'} · ${selectedText || 'nothing selected'} · ${!view.time || view.time === 'unavailable' ? 'playhead unavailable' : `playhead ${view.time}`}</span>
         </div>` : null}
         ${turns.map((turn, index) => {
           const latest = index === turns.length - 1
           const live = latest && liveRun
           const failed = turn.replies.some(reply => reply.error)
           const lastReply = turn.replies.at(-1)
-          const symbol = failed ? '!' : '↵'
+          const symbol = failed ? 'error' : 'done'
+          // The failure card of the live turn carries the provider's message, so its bubble is not drawn twice.
+          const inCard = live && !working && activity.state === 'error' && Boolean(lastReply?.error)
           const updates = turn.updates.length ? plural(turn.updates.length, 'tool update') : ''
           const past = turn.updates.length && turn.request && lastReply ? elapsedBetween(turn.request.at, lastReply.at) : ''
           return html`<div class="assistant-turn" key=${`turn-${turn.at}-${index}`}>
             ${index === firstOfSession && index > 0 ? html`<p class="assistant-session-divider" role="separator">New session</p>` : null}
-            ${[turn.request, ...turn.replies].filter(Boolean).map(m => html`<div class=${`msg ${['user', 'you'].includes(m.role) ? 'user' : 'claude'}`}>
+            ${[turn.request, ...turn.replies].filter(m => m && !(inCard && m === lastReply)).map(m => html`<div class=${`msg ${['user', 'you'].includes(m.role) ? 'user' : 'claude'}`} data-last=${latest && ['user', 'you'].includes(m.role) ? '' : undefined}>
               <span class="sr-only">${['user', 'you'].includes(m.role) ? 'You' : 'Assistant'}</span>
               ${m.refs?.length ? html`<div class="msg-refs">${m.refs.map(r => html`<span class="chip small"><${Icon} name="attach" size=${14} /> ${r.label}</span>`)}</div>` : null}
               <div class="msg-body" dangerouslySetInnerHTML=${{ __html: md(m.text) }}></div>
@@ -560,7 +579,7 @@ export function ChatPanel() {
             </div>`)}
             ${live && working && runActive && s.claude.text ? html`<div class="msg claude assistant-stream"><span class="sr-only">Writing…</span><div class="msg-body" dangerouslySetInnerHTML=${{ __html: md(s.claude.text) }}></div></div>` : null}
             ${live ? liveRunLine(turn.updates)
-              : turn.updates.length ? RunLine({ state: failed ? 'error' : 'done', symbol, label: failed ? 'Failed' : 'Done', stage: updates, elapsed: past, updates: turn.updates }) : null}
+              : turn.updates.length && (failed || !turn.receipts.length) ? RunLine({ state: failed ? 'error' : 'done', symbol, label: failed ? 'Failed' : 'Done', stage: updates, elapsed: past, updates: turn.updates }) : null}
             ${live ? failureBlock(lastReply) : null}
             ${latest && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy} shown=${shownPreview} onShow=${showInViewer}
               onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
@@ -574,7 +593,7 @@ export function ChatPanel() {
         ${!turns.length && changeShown ? html`<${ResultCard} change=${changeShown} busy=${reviewBusy} onUndo=${undoChange} />` : null}
         ${!turns.length && liveRun ? html`${liveRunLine([])}${failureBlock(null)}` : null}
         ${chatgpt?.welcome ? html`<section class="assistant-setup chatgpt-welcome" aria-labelledby="chatgpt-welcome-heading"><b id="chatgpt-welcome-heading">You’re using your ChatGPT plan</b><p>Eligible AI requests in Arya use your ChatGPT plan or credits balance. Check and manage usage in your ChatGPT settings.</p><button class="primary" onClick=${chatgptTask(() => chatgptAccountAction('welcome'))}>Got it</button><a class="button" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></section>` : null}
-        ${checking ? html`<p class="assistant-checking" role="status"><span class="assistant-run-symbol" aria-hidden="true">◌</span>Checking your assistant…</p>` : !status.ready ? html`<section class="assistant-setup" aria-label="Assistant setup">
+        ${checking ? html`<p class="assistant-checking" role="status"><span class="assistant-run-symbol" aria-hidden="true"><${Icon} name="spinner" size=${14} /></span>Checking your assistant…</p>` : !status.ready ? html`<section class="assistant-setup" aria-label="Assistant setup">
           <b>Set up the assistant</b>
           ${chatgptWaiting || needsRefresh ? html`<p class="assistant-setup-state">${chatgptWaiting ? 'Waiting for ChatGPT sign-in' : status.refreshRequired ? status.label : `${name}: ${status.label}`}</p>` : null}
           <p>${chatgptWaiting ? 'Finish signing in on the ChatGPT page.' : needsRefresh ? status.reason
@@ -595,7 +614,7 @@ export function ChatPanel() {
           </div>
           <p class="assistant-setup-note">Editing works without an account.${text.trim() ? ' Your draft is kept.' : ''}</p>
         </section>` : null}
-        ${showSuggestions && !review?.proposal && !(review?.applying && !review.applying.finished) ? html`<div class=${`assistant-suggestions${conversation.length ? ' compact' : ''}`} role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${item.prompt} onFocus=${e => e.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })} onClick=${() => { setText(item.prompt, 'prompt'); focusComposer() }}>${item.label}</button>`)}</div>` : null}
+        ${showSuggestions && !conversation.length && !review?.proposal && !(review?.applying && !review.applying.finished) ? html`<div class="assistant-suggestions" role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${item.prompt} onFocus=${e => e.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })} onClick=${() => { setText(item.prompt, 'prompt'); focusComposer() }}><small>${starterGroup(item.id)}</small><span>${item.label}</span></button>`)}</div>` : null}
       </div>
       <div class="assistant-composer-card" role="group" aria-label="Assistant composer">
         <div class="assistant-field">
@@ -605,13 +624,12 @@ export function ChatPanel() {
                 <span class="chip small" title=${scopeName}>${openTimeline ? openTimeline.name ?? s.openComp : 'Main timeline'}</span>
                 <span class="chip small" title=${view.under.join(', ') || undefined}>${!view.time || view.time === 'unavailable' ? 'Playhead unavailable' : `Playhead ${view.time}`}</span>
               </div>
-              ${native ? null : html`<label class="assistant-preview-toggle" title=${preview ? 'Preview changes: edits wait for Apply' : 'Preview changes is off: edits apply directly'}><input type="checkbox" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview</span></label>`}
-              ${selection.length ? html`<div class="assistant-selection-chips" role="group" aria-label="Current selection included when sending">${selection.map(item => html`<span class="chip small" key=${item.id}><b>${item.label}</b>${item.track || item.id !== item.label ? html`<small>${item.id}${item.track ? ` · ${item.track}` : ''}</small>` : null}</span>`)}</div>` : null}
+              ${selection.length ? html`<div class="assistant-selection-chips" role="group" aria-label="Current selection included when sending"><span class="chip small" title=${selection.map(item => `${item.label}${item.track ? `, ${item.track}` : ''} (${item.id})`).join('\n')}><b>${selectedText}</b>${selection.length === 1 && selection[0].track ? html`<small>${selection[0].track}</small>` : null}<button aria-label="Clear selection" onClick=${() => set({ selection: [] })}><${Icon} name="close" size=${14} /></button></span></div>` : null}
               ${s.refs.length ? html`<div class="refs" role="group" aria-label="Attached references">${s.refs.map(r => html`<span class="chip"><${Icon} name="attach" size=${14} /> ${r.label}<button aria-label=${`Remove reference ${r.label}`} onClick=${() => set({ refs: s.refs.filter(x => x !== r) })}><${Icon} name="close" size=${14} /></button></span>`)}</div>` : null}
             </div>
           </div>
           <div class="composer">
-            <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${`${draft.inputKind !== 'prompt' ? 'Paste a script to build editable scenes' : s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'}${mode ? ` · ${mode}` : ''}`} value=${text}
+            <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${draft.inputKind !== 'prompt' ? 'Paste a script to build editable scenes' : s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit or ask about the project'} value=${text}
               onInput=${e => setText(e.target.value)}
               onCompositionStart=${() => { composing.current = true }} onCompositionEnd=${() => { composing.current = false }}
               onKeyDown=${e => {
@@ -635,11 +653,11 @@ export function ChatPanel() {
                 </div>
               </details>
               <label class="assistant-input-kind"><select aria-label="Assistant input kind" value=${draft.inputKind} disabled=${inputLocked} onChange=${e => setText(text, e.target.value)}><option value="prompt">Prompt</option><option value="script">Script</option><option value="screenplay">Screenplay</option></select></label>
-              <label class="assistant-script-import"><span>Import text</span><input type="file" aria-label="Import script or screenplay" accept=".txt,.md,.fountain,.script,.screenplay,text/plain,text/markdown" disabled=${inputLocked || importing || !s.project}
+              <label class="assistant-script-import" title="Import a script or screenplay text file"><${Icon} name="attach" /><span class="sr-only">Import text</span><input type="file" aria-label="Import script or screenplay" accept=".txt,.md,.fountain,.script,.screenplay,text/plain,text/markdown" disabled=${inputLocked || importing || !s.project}
                 onClick=${() => { scriptPicker.current = scriptImport.current.begin() }}
                 onChange=${e => { const captured = scriptPicker.current; scriptPicker.current = null; const file = e.target.files?.[0]; e.target.value = ''; return scriptImport.current.consume(file, captured) }}
                 onCancel=${() => { scriptImport.current.cancel(scriptPicker.current); scriptPicker.current = null }} /></label>
-              <details class="assistant-input-help" name="assistant-composer-menu" onKeyDown=${closeComposerMenu} onFocusOut=${leaveComposerMenu}><summary aria-label="Input tips">?</summary>
+              <details class="assistant-input-help" name="assistant-composer-menu" onKeyDown=${closeComposerMenu} onFocusOut=${leaveComposerMenu}><summary aria-label="Input tips" title="Input tips"><${Icon} name="help" /></summary>
                 <div class="assistant-model-popover">
                   <p class="assistant-composer-hint">⌥-click a clip, keyframe, track, marker or inspector field to attach it.</p>
                   <p class="assistant-composer-hint">Press / anywhere to type here · ${draft.inputKind === 'prompt' ? 'Return to send · Shift+Return for a new line' : '⌘Return to send · Return for a new line'} · ${inputLimit.toLocaleString()} character limit.</p>
@@ -647,7 +665,7 @@ export function ChatPanel() {
                 </div>
               </details>
             </div>
-            <div class="assistant-primary-action"><button
+            <div class="assistant-primary-action">${native ? null : html`<label class="assistant-preview-toggle" title=${preview ? 'Preview changes: edits wait for Apply' : 'Preview changes is off: edits apply directly'}><input type="checkbox" role="switch" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span class="assistant-switch" aria-hidden="true"></span><span>Preview first</span></label>`}<button
               class=${working ? 'assistant-stop' : 'send'}
               aria-label=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : 'Send message'}
               title=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : `${draft.inputKind === 'prompt' ? 'Send (Return)' : 'Send (⌘Return)'}${mode ? `. ${preview ? 'Preview first: edits wait for Apply' : 'Applies edits directly'}` : ''}`}

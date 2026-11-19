@@ -186,7 +186,7 @@ test('a request that edited and then undid is named for both steps and says why 
   assert.equal(nodes(quiet).some(node => node.props?.class === 'assistant-note'), false)
 })
 
-test('a stopped request that changed nothing says so and offers Retry and Edit and retry', () => {
+test('a stopped request that changed nothing says so and offers Retry and Edit request', () => {
   const at = Date.now() - 5000
   const chat = [{ role: 'user', text: 'Tighten the opening', at }]
   const stopped = { state: 'cancelled', runId: 'r1', startedAt: at, finishedAt: at + 3000 }
@@ -195,10 +195,10 @@ test('a stopped request that changed nothing says so and offers Retry and Edit a
   assert.equal(textContent(nodes(run).find(node => node.props?.class === 'assistant-run-stage')), 'Nothing was changed.')
   assert.equal(nodes(tree).find(node => node.props?.class?.startsWith('assistant-failure ')).props.class, 'assistant-failure stopped', 'not drawn as an error')
   const actions = nodes(tree).find(node => node.props?.class === 'assistant-failure-actions')
-  assert.deepEqual(nodes(actions).filter(node => node.type === 'button').map(textContent), ['Edit and retry', 'Retry'])
-  // Another request's run gets Edit and retry only.
+  assert.deepEqual(nodes(actions).filter(node => node.type === 'button').map(textContent), ['Retry', 'Edit request'])
+  // Another request's run gets Edit request only.
   const other = panel(stopped, true, { chat, review: { change: null, changes: [] }, lastSent: { request: {}, options: {}, runId: 'r0' } })
-  assert.deepEqual(nodes(nodes(other).find(node => node.props?.class === 'assistant-failure-actions')).filter(node => node.type === 'button').map(textContent), ['Edit and retry'])
+  assert.deepEqual(nodes(nodes(other).find(node => node.props?.class === 'assistant-failure-actions')).filter(node => node.type === 'button').map(textContent), ['Edit request'])
 })
 
 test('a failed turn lists what was saved and offers Retry only for the same retryable request', () => {
@@ -208,13 +208,13 @@ test('a failed turn lists what was saved and offers Retry only for the same retr
   const buttons = block => nodes(block).filter(node => node.type === 'button').map(textContent)
   const committed = [{ version: 7, summary: 'Added a title' }]
   const saved = failed({ committed }, null)
-  assert.equal(textContent(nodes(saved).find(node => node.type === 'b')), 'Saved before the failure')
+  assert.deepEqual(nodes(saved).filter(node => node.type === 'b').map(textContent), ['The request did not finish', 'Saved before the failure'])
   assert.deepEqual(nodes(saved).filter(node => node.type === 'li').map(textContent), ['Added a title'])
-  assert.deepEqual(buttons(saved), ['Edit and retry'], 'no plain Retry without a retryable failure')
-  assert.deepEqual(buttons(failed({ retryable: true }, null)), ['Edit and retry'], 'not a request this panel sent')
-  assert.deepEqual(buttons(failed({ retryable: true }, { request: { text: 'Add a title card' }, runId: 'r0' })), ['Edit and retry'], 'an earlier request')
-  assert.deepEqual(buttons(failed({ retryable: false }, { request: { text: 'Add a title card' }, runId: 'r1' })), ['Edit and retry'])
-  assert.deepEqual(buttons(failed({ retryable: true }, { request: { text: 'Add a title card' }, runId: 'r1' })), ['Edit and retry', 'Retry'])
+  assert.deepEqual(buttons(saved), ['Edit request'], 'no plain Retry without a retryable failure')
+  assert.deepEqual(buttons(failed({ retryable: true }, null)), ['Edit request'], 'not a request this panel sent')
+  assert.deepEqual(buttons(failed({ retryable: true }, { request: { text: 'Add a title card' }, runId: 'r0' })), ['Edit request'], 'an earlier request')
+  assert.deepEqual(buttons(failed({ retryable: false }, { request: { text: 'Add a title card' }, runId: 'r1' })), ['Edit request'])
+  assert.deepEqual(buttons(failed({ retryable: true }, { request: { text: 'Add a title card' }, runId: 'r1' })), ['Retry', 'Edit request'])
   assert.equal(nodes(failed({ retryable: true, committed: [] }, null)).some(node => node.props?.class === 'assistant-saved'), false, 'nothing saved, nothing listed')
 })
 
