@@ -66,6 +66,11 @@ test('a finished request carries a warning only for an outcome a result card doe
   const preview = new Function(`return ${server.match(/const PREVIEW_OUTCOMES = (\{[\s\S]*?\n\})/)[1]}`)()
   const none = server.match(/: '(No project edits were applied[^']*)'/)[1]
   for (const routine of [editedOutcome(1, 1), editedOutcome(4, 4), editedOutcome(1, 0), editedOutcome(3, 1), preview.pending, preview.applied, preview.discarded, preview.undone, none, '', undefined]) assert.equal(done(routine), '', String(routine))
+  // The Mac app hosts the same panel and ends an ordinary edit with its own sentence.
+  const native = new URL('../../native/ReelKit/Sources/ReelKit/AssistantToolOutcomes.swift', import.meta.url)
+  const changed = 'The project changed during this request. Review edits in the timeline.'
+  if (fs.existsSync(native)) assert.ok(fs.readFileSync(native, 'utf8').includes(`"${changed}"`))
+  assert.equal(done(changed), ''); assert.equal(done('2 processing result(s) were not applied. Review saved assets and any committed edits.'), '2 processing result(s) were not applied. Review saved assets and any committed edits.')
   const failedJob = unfinishedJobsOutcome([{ state: 'failed', kind: 'denoise', name: 'clip.mov', error: 'ffmpeg exited with code 1' }])
   const warnings = [failedJob, unfinishedJobsOutcome([{ state: 'cancelled' }]), preview.failed, unresolvedToolOutcome({ ...createToolOutcomes(), unconfirmedCompletedFailure: true }),
     unresolvedToolOutcome({ ...createToolOutcomes(), otherPlacementFailed: true, otherAssetReady: true }), 'A sentence a newer server might send.']

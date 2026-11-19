@@ -12,6 +12,7 @@ export const PREVIEW_OUTCOME = 'Preview mode was on. Proposed edits are applied 
 // The outcomes that only repeat what a result card already shows. Anything else a finished request
 // ends with, such as a processing job that failed, is a warning the card does not carry.
 const ROUTINE_OUTCOMES = [PREVIEW_OUTCOME, 'You applied the preview. Use Undo this change to remove it.', 'You discarded the preview. No edits were applied.', 'You undid the applied preview.', 'No project edits were applied during this request.',
+  'The project changed during this request. Review edits in the timeline.', // the Mac app's sentence for an ordinary edit
   /^This request made \d+ edits?\. Review (it|them) in the timeline\.$/, /^\d+ edits? (was|were) saved while this request ran\. Review (it|them) in the timeline\.$/]
 export const outcomeWarning = run => run?.state === 'done' && typeof run.outcome === 'string' && run.outcome.trim() && !ROUTINE_OUTCOMES.some(known => typeof known === 'string' ? known === run.outcome : known.test(run.outcome)) ? run.outcome : ''
 
