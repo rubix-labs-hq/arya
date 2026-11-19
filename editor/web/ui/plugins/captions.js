@@ -40,6 +40,12 @@ const CSS = `
 .cap-text { width: 100%; resize: vertical; min-height: 38px; font-size: 12.5px; line-height: 1.35; }
 .cap-n { color: var(--muted); font-size: 11px; }
 .cap-warn { color: #e3b341; font-size: 11.5px; }
+.cap-note { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--input); color: var(--muted); font-size: 12px; }
+.cap-note p { margin: 0; }
+.cap-note a { justify-self: start; color: var(--accent); }
+.cap-command { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cap-command code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; padding: 4px 6px; border-radius: 4px; background: var(--panel-2); color: var(--text); font-size: var(--mono-small, 11px); }
+.cap-disabled-reason { margin: 0; text-align: right; }
 .cap-preview { max-height: 30vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
 .cap-preview div { padding: 2px 0; border-bottom: 1px solid var(--line); white-space: pre-wrap; }
 .cap-preview div:last-child { border-bottom: none; }
@@ -330,22 +336,25 @@ function TranscriptDialog({ onClose }) {
 
   return html`
     <div class="modal-back" onClick=${() => { request.current?.ctrl.abort(); onClose() }}>
-      <div class="modal cap-dialog" onClick=${e => e.stopPropagation()}>
-        <h3>Captions from a transcript</h3>
+      <div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby="cap-transcript-title" onClick=${e => e.stopPropagation()}>
+        <header><div><h3 id="cap-transcript-title">Captions from a transcript</h3><p class="dialog-subtitle">Pick a clip and a style, then preview the captions before they are added.</p></div></header>
         ${sources.length ? html`
           <div class="field"><label>Media</label><select disabled=${busy} value=${src} onChange=${e => (setSrc(e.target.value), setResult(null), setNotes([]))}>${sources.map(x => html`<option value=${x}>${x.split('/').pop()}</option>`)}</select></div>
           <div class="field"><label>Style</label><select disabled=${busy} value=${style} onChange=${e => setStyle(e.target.value)}><option value="plain">Plain</option><option value="boxed">Boxed</option><option value="karaoke">Word highlight</option><option value="word">One word at a time</option></select></div>
-          ${selected?.src === src ? html`<label class="row gap"><input type="checkbox" disabled=${busy} checked=${onlySelected} onChange=${e => setOnlySelected(e.target.checked)} />Only selected clip ${selected.id}</label>` : null}
+          ${selected?.src === src ? html`<label class="row gap"><input type="checkbox" disabled=${busy} checked=${onlySelected} onChange=${e => setOnlySelected(e.target.checked)} />Only the selected clip</label>` : null}
           <${Num} label="Characters/line" value=${maxChars} step=${1} min=${16} max=${80} onCommit=${setMaxChars} />
           <${Num} label="Lines" value=${maxLines} step=${1} min=${1} max=${3} onCommit=${setMaxLines} />
           <div class="hint">Uses the saved transcript revision and maps its words to the clip's timeline positions. Save word corrections in Transcript before previewing captions.</div>
-          ${!local?.words?.length && !(s.caps.analysis?.transcript ?? s.caps.whisper) ? html`<div class="cap-warn">${setup ? `${setup.text} You can also import a timed transcript.` : s.caps.host === 'native' ? 'Apple Speech is unavailable on this device. You can import a timed transcript.' : 'Install whisper.cpp and a model to transcribe, or import a timed transcript.'}</div>${setup?.commands.map(command => html`<div class="cap-warn">Run in Terminal: <code>${command}</code></div>`)}` : null}
+          ${!local?.words?.length && !(s.caps.analysis?.transcript ?? s.caps.whisper) ? html`<div class="cap-note" role="note"><p>${setup ? `${setup.text} You can also import a timed transcript.` : s.caps.host === 'native' ? 'Apple Speech is unavailable on this device. You can import a timed transcript.' : 'Install whisper.cpp and a model to transcribe, or import a timed transcript.'}</p>
+            ${/* One command to copy, not a list of warnings. The rest of the steps are behind the link. */ setup?.commands.length ? html`<div class="cap-command"><code>${setup.commands[0]}</code><button type="button" class="ghost tiny" onClick=${() => globalThis.navigator?.clipboard?.writeText(setup.commands[0]).then(() => toast('Command copied'), () => toast('Could not copy. Select the command and copy it.', 'error'))}>Copy</button></div>` : null}
+            <a href="https://editwitharya.app/install/" target="_blank" rel="noopener noreferrer">How to install</a></div>` : null}
           ${notes.map(note => html`<div class="cap-warn" role="status">${note}</div>`)}`
         : html`<div class="empty-hint">Put a clip with sound on the timeline first.</div>`}
         <div class="modal-actions">
           <button class="ghost" onClick=${() => { request.current?.ctrl.abort(); onClose() }}>Cancel</button>
-          <button disabled=${busy || !src} onClick=${run}>${busy ? job?.message ?? 'Preparing preview...' : 'Preview captions'}</button>
+          <button class="primary" disabled=${busy || !src} title=${!src ? 'Put a clip with sound on the timeline first' : undefined} onClick=${run}>${busy ? job?.message ?? 'Preparing preview...' : 'Preview captions'}</button>
         </div>
+        ${!src ? html`<p class="cap-disabled-reason muted small">Preview needs a clip with sound on the timeline.</p>` : null}
       </div>
     </div>
   `

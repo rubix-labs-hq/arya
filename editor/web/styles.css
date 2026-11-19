@@ -295,6 +295,15 @@ label.btn { background: var(--accent); color: var(--accent-ink); border-radius: 
 .menu-item.has-sub:hover .submenu { display: block; }
 .modal-back { position: fixed; inset: 0; background: #0009; display: grid; place-items: center; z-index: 900; }
 .modal { background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 16px; width: min(560px, 92vw); max-height: 80vh; display: flex; flex-direction: column; gap: 8px; }
+/* One dialog shell: an 18px sentence-case title, a quiet subtitle under it, close at the top right, a body that
+   scrolls and a footer of ghost actions with at most one gold primary. Settings, Shortcuts, Captions from a
+   transcript, the sharing review and the hosted project picker all take it. */
+.modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.modal > header :is(h2, h3), .modal > :is(h2, h3):first-child, .settings-head h2, .assistant-sharing-dialog > h2 { margin: 0; font-size: var(--text-dialog); font-weight: 600; letter-spacing: -.02em; line-height: 1.25; color: var(--text); }
+.dialog-subtitle, .settings-head p { margin: 3px 0 0; font-size: var(--text-label); color: var(--muted); }
+.modal > header > button, .settings-close { flex: none; display: inline-grid; place-items: center; min-width: 32px; min-height: 32px; padding: 0 8px; }
+.modal { max-height: min(80vh, calc(100dvh - 32px)); overflow-y: auto; }
+.modal-actions, .settings-footer { gap: 8px; }
 .modal.keys { width: min(880px, 94vw); max-height: min(96dvh, 860px); }
 .keys-grid { display: grid; grid-template-columns: max-content 1fr max-content 1fr; gap: 6px 12px; overflow: auto; align-items: center; }
 .file-list { overflow: auto; max-height: 50vh; border: 1px solid var(--line); border-radius: 6px; }
