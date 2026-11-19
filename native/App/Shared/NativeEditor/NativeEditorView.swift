@@ -409,7 +409,7 @@ struct NativeEditorView: View {
             .sheet(item: compactTaskBinding(assistantDocked: assistantDock > 0)) { panel in
                 NavigationStack {
                     NativePanelView(panel: panel, model: model, session: session, inSheet: true)
-                        .navigationTitle(panel.name)
+                        .navigationTitle(panel == .assistant ? "Arya" : panel.name)
                         #if os(iOS)
                         // Every panel sheet uses the inline title, so the picker under it is not repeated.
                         .navigationBarTitleDisplayMode(.inline)
