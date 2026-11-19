@@ -458,7 +458,7 @@ export function ChatPanel() {
       (!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><${RoutingReceipt} value=${s.claude.routing} /></div>` : null] })
   // Once the latest run has finished and its result card is there, the card says what happened. The line
   // goes, as on a past turn, unless it still has the request's route or a connection notice to show.
-  const finishedWithCard = turn => !working && activity.state === 'done' && turn.receipts.length > 0
+  const finishedWithCard = turn => !working && activity.state === 'done' && turn.receipts.some(receipt => receipt.total > 0 || receipt.clips?.length || receipt.projectChanges?.length)
   const lineStillNeeded = () => Boolean(activity.connectionNotice || s.claude.routing?.ok)
   const failureBlock = lastReply => {
     // A stopped request can be sent again as well.
