@@ -94,6 +94,8 @@ struct ReelIOSApp: App {
     @UIApplicationDelegateAdaptor(NativeMobileAppDelegate.self) private var appDelegate
     @StateObject private var session = EditorSession(platform: nil)
     @State private var presentation = NativeMobilePresentation()
+    /// The same stored flag the editor reads, so the View menu names what it will do.
+    @AppStorage("editor.layout.assistantVisible") private var assistantVisible = false
 
     init() {
         // Turns on the App Store export rule and starts the purchase listener. StoreKit delivers
@@ -186,6 +188,30 @@ struct ReelIOSApp: App {
                     }
                 }
         }
+        .commands {
+            // On an iPad and on Mac Catalyst the View menu owns Option-Command-A, as on the Mac.
+            // The toolbar button carries no second copy, which made the key do nothing after a click.
+            CommandGroup(after: .toolbar) {
+                Button(assistantVisible || session.nativeMenu.compactAssistantOpen ? "Hide Assistant" : "Show Assistant", action: toggleAssistant)
+                    .keyboardShortcut(session.useWebEditor || !NativeAssistantShortcut.menuOwnsKey ? nil : NativeAssistantShortcut.key)
+                    .disabled(session.folder == nil || session.useWebEditor)
+            }
+        }
+    }
+
+    /// Runs only with nothing presented over the editor, except the compact assistant's own sheet.
+    private func toggleAssistant() {
+        guard session.folder != nil, session.error == nil, !session.useWebEditor, presentation.sheet == nil, presentation.picker == nil,
+              NativeAssistantShortcut.permits(presented: presentedControllers(), compactAssistantOpen: session.nativeMenu.compactAssistantOpen) else { return }
+        session.nativeEditor.assistantToggleRequests += 1
+    }
+
+    private func presentedControllers() -> Int {
+        let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows).first { $0.isKeyWindow }
+        var count = 0
+        var next = window?.rootViewController?.presentedViewController
+        while let controller = next { count += 1; next = controller.presentedViewController }
+        return count
     }
 
     private func pickerBinding(_ request: NativeMobilePresentation.PickerRequest?) -> Binding<Bool> {

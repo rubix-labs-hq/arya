@@ -484,7 +484,8 @@ struct NativeEditorView: View {
                 showRequestedWorkspace(compact: compact)
             }
             .onChange(of: model.assistantToggleRequests) { _, _ in
-                if compact { select(.assistant, compact: true) } else { toggleAssistant() }
+                if compact { if model.mobilePanel == .assistant { closeCompactAssistant() } else { select(.assistant, compact: true) } }
+                else { toggleAssistant() }
             }
             .onChange(of: model.panel) { previous, next in
                 if compact {
@@ -1322,10 +1323,10 @@ struct NativeEditorView: View {
                         select(.assistant, compact: true)
                     }
                         .accessibilityIdentifier("editor.compactAssistant")
-                        .keyboardShortcut("a", modifiers: [.command, .option])
+                        .keyboardShortcut(NativeAssistantShortcut.onButton)
                 } else {
+                // On an iPad and on Mac Catalyst the View menu owns Option-Command-A, as on the Mac.
                 NativeAssistantEntry(assistant: session.assistant, open: assistantVisible, action: toggleAssistant)
-                    .keyboardShortcut("a", modifiers: [.command, .option])
                     .padding(.horizontal, 4)
                 }
                 workspaceMenu(compact: compact)
@@ -1625,6 +1626,25 @@ private struct NativeSettingsCategoryControl: View {
 enum NativeDeveloperOptions {
     static func visible(optionHeld: Bool, webEditorInUse: Bool, developerDefault: Bool = UserDefaults.standard.bool(forKey: "editor.developerMenu")) -> Bool {
         optionHeld || webEditorInUse || developerDefault
+    }
+}
+
+/// Who owns Option-Command-A. A shortcut on a button stopped working once right after a click on
+/// that button, so wherever there is a menu bar or a command list the View menu owns the key.
+/// An iPhone has neither, so there the compact Ask Arya button keeps it. One owner, never two.
+@MainActor
+enum NativeAssistantShortcut {
+    static let key = KeyboardShortcut("a", modifiers: [.command, .option])
+    #if os(iOS)
+    static var menuOwnsKey: Bool { UIDevice.current.userInterfaceIdiom != .phone }
+    #else
+    static let menuOwnsKey = true
+    #endif
+    static var onButton: KeyboardShortcut? { menuOwnsKey ? nil : key }
+    /// The View menu command runs only with nothing presented over the editor. The compact
+    /// assistant may itself be the one sheet, and then the command closes it.
+    static func permits(presented: Int, compactAssistantOpen: Bool) -> Bool {
+        presented == 0 || presented == 1 && compactAssistantOpen
     }
 }
 

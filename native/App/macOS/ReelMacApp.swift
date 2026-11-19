@@ -88,7 +88,7 @@ struct ReelMacApp: App {
         }
         CommandGroup(after: .toolbar) {
             // Option-Command-A lives here, not on the toolbar button, so it works after a click on that button.
-            Button(assistantVisible ? "Hide Assistant" : "Show Assistant") { session.nativeEditor.assistantToggleRequests += 1 }
+            Button(assistantVisible ? "Hide Assistant" : "Show Assistant", action: toggleAssistant)
                 .keyboardShortcut(editorShortcut("a", modifiers: [.command, .option]))
                 .disabled(session.folder == nil || session.useWebEditor)
             Divider()
@@ -142,6 +142,16 @@ struct ReelMacApp: App {
     /// a panel that handles them, so Delete in the Color graph unlinks a node, not a clip.
     private func timelineKeyShortcut(_ key: KeyEquivalent, modifiers: EventModifiers) -> KeyboardShortcut? {
         panelOwnsEditingKeys == true ? nil : editorShortcut(key, modifiers: modifiers)
+    }
+
+    /// Unlike the Timeline commands this runs while a text field has focus, so the key also
+    /// closes the assistant from its own draft. It waits while a sheet, a modal or Settings is up.
+    private func toggleAssistant() {
+        guard session.folder != nil, session.error == nil, !session.useWebEditor,
+              MacEditorTextCommandGuard.permitsWindowCommand(
+                editorWindowIsKey: appDelegate.editorWindow != nil && NSApp.keyWindow === appDelegate.editorWindow,
+                hasModal: NSApp.modalWindow != nil, hasSheet: appDelegate.editorWindow?.attachedSheet != nil) else { return }
+        session.nativeEditor.assistantToggleRequests += 1
     }
 
     private func performEditorCommand(_ command: MacEditorCommand) {
@@ -253,7 +263,11 @@ enum MacEditorTextCommandGuard {
     // Explicit Timeline menu admission, not a claim that the canvas owns keyboard focus.
     static func permitsTimelineAction(editorWindowIsKey: Bool, hasModal: Bool, hasSheet: Bool,
                                       textSelectable: Bool, textEditable: Bool) -> Bool {
-        editorWindowIsKey && !hasModal && !hasSheet && !textSelectable && !textEditable
+        permitsWindowCommand(editorWindowIsKey: editorWindowIsKey, hasModal: hasModal, hasSheet: hasSheet) && !textSelectable && !textEditable
+    }
+
+    static func permitsWindowCommand(editorWindowIsKey: Bool, hasModal: Bool, hasSheet: Bool) -> Bool {
+        editorWindowIsKey && !hasModal && !hasSheet
     }
 
     static func protects(keyCode: UInt16, characters: String, command: Bool, control: Bool) -> Bool {
