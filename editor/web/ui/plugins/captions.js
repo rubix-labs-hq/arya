@@ -292,12 +292,14 @@ function TranscriptDialog({ onClose }) {
   const dismiss = useRef(null)
   dismiss.current = () => { request.current?.ctrl.abort(); onClose() }
   useEffect(() => {
-    const opener = document.activeElement
+    const doc = globalThis.document
+    if (!doc) return
+    const opener = doc.activeElement
     const element = dialog.current
     if (element) (dialogControls(element)[0] ?? element).focus()
     const key = event => { if (dialog.current?.getClientRects().length) dialogKey(event, dialog.current, () => dismiss.current()) }
-    document.addEventListener('keydown', key, true)
-    return () => { document.removeEventListener('keydown', key, true); if (opener?.isConnected) opener.focus?.() }
+    doc.addEventListener('keydown', key, true)
+    return () => { doc.removeEventListener('keydown', key, true); if (opener?.isConnected) opener.focus?.() }
   }, [])
   const run = async () => {
     if (request.current || !src || renderIdentity.current !== identity || store.root !== identity.root || store.project !== identity.project || store.version !== identity.version || (store.openComp ?? null) !== identity.comp) return
