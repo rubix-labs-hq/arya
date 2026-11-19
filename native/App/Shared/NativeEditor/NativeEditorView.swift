@@ -343,11 +343,12 @@ struct NativeEditorView: View {
                 #if os(iOS)
                 HStack(spacing: 0) {
                     mobileWorkspace(compact: compact)
-                    // Where there is room the assistant sits beside the picture, not over it.
+                    // Where there is room the assistant sits beside the picture, not over it. A docked
+                    // column has no navigation bar, so it draws its own header: name, status, settings, close.
                     if assistantDock > 0, model.mobilePanel == .assistant {
                         Rectangle().fill(NativeEditorStyle.line).frame(width: 1)
                         NativeAssistantPanel(assistant: session.assistant, model: model, openSettings: { settingsVisible = true },
-                                             close: { model.mobilePanel = nil }, inSheet: true)
+                                             close: { model.mobilePanel = nil })
                             .frame(width: assistantDock)
                             .background(NativeEditorStyle.panel)
                             .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
@@ -363,8 +364,16 @@ struct NativeEditorView: View {
                 }
                 #endif
                 // The desktop keeps this line's height, so a message arriving never moves the panes.
+                // An unseen copy of the closed line always takes that room, drawn the same way.
                 if !status.isEmpty || !compact {
-                    Group {
+                    ZStack(alignment: .topLeading) {
+                    if !compact {
+                        DisclosureGroup(isExpanded: .constant(false)) { EmptyView() } label: {
+                            HStack(spacing: 8) { Image(systemName: "info.circle"); Text("Status").lineLimit(1) }
+                        }
+                        .font(.system(size: 11)).padding(.horizontal, 12).padding(.vertical, 6)
+                        .hidden().accessibilityHidden(true)
+                    }
                     if !status.isEmpty {
                     DisclosureGroup {
                         Text(status).font(compact ? .caption : .system(size: 11)).textSelection(.enabled)
@@ -384,7 +393,7 @@ struct NativeEditorView: View {
                     .transition(.opacity)
                     }
                     }
-                    .frame(maxWidth: .infinity, minHeight: compact ? nil : 28, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(NativeEditorStyle.panel)
                     .animation(NativeMotion.content, value: status.isEmpty)
                 }
@@ -1168,12 +1177,12 @@ struct NativeEditorView: View {
                 #if os(macOS)
                 // A borderless Mac menu keeps one text label and draws its own indicator,
                 // so a second chevron or a stacked label renders as "⌄ Name ⌄".
-                Text(model.composition == nil ? model.project?.name ?? "Opening project"
-                     : "\(model.project?.name ?? "Opening project") · \(desktopCompositionName)")
+                Text(model.composition == nil ? model.project?.name ?? model.pendingProjectName
+                     : "\(model.project?.name ?? model.pendingProjectName) · \(desktopCompositionName)")
                     .font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 #else
                 // One short word while the project loads, so a phone title never truncates.
-                Text(model.project?.compositions.first { $0.id == model.composition }?.name ?? model.project?.name ?? "Opening")
+                Text(model.project?.compositions.first { $0.id == model.composition }?.name ?? model.project?.name ?? (model.projectMissing ? "No project" : model.projectLoadFailed ? "Not opened" : "Opening"))
                     .font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(NativeEditorStyle.muted)
                 #endif
@@ -1186,13 +1195,13 @@ struct NativeEditorView: View {
         }
         #if os(macOS)
         .menuStyle(.borderlessButton)
-        .help("Project: \(model.project?.name ?? "Opening project")\nTimeline: \(desktopCompositionName)")
+        .help("Project: \(model.project?.name ?? model.pendingProjectName)\nTimeline: \(desktopCompositionName)")
         .accessibilityLabel("Project and timeline or composition")
-        .accessibilityValue("\(model.project?.name ?? "Opening project"), \(desktopCompositionName)")
+        .accessibilityValue("\(model.project?.name ?? model.pendingProjectName), \(desktopCompositionName)")
         #else
         .help("Switch timeline or composition")
         .accessibilityLabel("Timeline or composition")
-        .accessibilityValue(model.project?.compositions.first { $0.id == model.composition }?.name ?? model.project?.name ?? "Opening project")
+        .accessibilityValue(model.project?.compositions.first { $0.id == model.composition }?.name ?? model.project?.name ?? model.pendingProjectName)
         #endif
         .accessibilityIdentifier("editor.composition")
     }

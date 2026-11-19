@@ -764,6 +764,14 @@ struct NativeViewer: View {
                         Button("Create project") { model.perform { _ = try await model.call("/api/new", ["name": model.folder?.lastPathComponent ?? "Untitled"]); await model.refresh() } }
                             .buttonStyle(NativePrimaryButtonStyle())
                     }
+                } else if model.project == nil, model.projectLoadFailed {
+                    // The request failed. The reason is on the status line; this is the way on.
+                    VStack(spacing: 10) {
+                        Text("The project did not open").foregroundStyle(NativeEditorStyle.text)
+                        Button("Try again") { Task { await model.refresh() } }
+                            .buttonStyle(NativeSecondaryButtonStyle())
+                            .accessibilityIdentifier("viewer.project.retry")
+                    }
                 } else if model.project == nil {
                     // Still opening: the canvas waits quietly and offers nothing to press.
                     NativeViewerPlaceholder(size: CGSize(width: model.width * scale, height: model.height * scale), label: "Opening project", since: waitingSince)
