@@ -47,7 +47,8 @@ private struct NativeSelectionAIIntent: View {
                     let ids = selection["nativeLayerIDs"] as? [String] ?? []
                     Text("\(ids.count) \(ids.count == 1 ? "editable layer" : "editable layers") · Composition \(selection.string("composition"))").font(.caption).foregroundStyle(.secondary)
                     TextField("Describe the animation or edit", text: $intent, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(4...8)
-                    if !context.suggestions.isEmpty {
+                    // Like the panel, starting points show only while the intent is empty, so one never replaces typed text.
+                    if !context.suggestions.isEmpty && intent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("Starting points").font(.subheadline)
                         ForEach(context.suggestions, id: \.self) { suggestion in
                             Button { intent = suggestion } label: { Text(suggestion).font(.caption).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading) }

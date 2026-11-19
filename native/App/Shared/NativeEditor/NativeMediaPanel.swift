@@ -524,7 +524,7 @@ struct NativeMediaPanel: View {
                             Image(systemName: section == "Titles" ? "textformat" : section == "Transitions" ? "rectangle.on.rectangle" : "wand.and.stars")
                                 .font(.system(size: 20)).foregroundStyle(NativeEditorStyle.accent).frame(width: 32)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(name.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression).capitalized).font(.caption.weight(.semibold))
+                                Text(NativeOptionName.words(name)).font(.caption.weight(.semibold))
                                 Text(section == "Titles" ? "Editable text and animation" : section == "Transitions" ? "Editable transition at the selected cut" : "Editable effect on the selected clip")
                                     .font(.caption2).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
                             }
@@ -532,7 +532,7 @@ struct NativeMediaPanel: View {
                             Image(systemName: "plus").font(.caption)
                         }.padding(10).frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
                             .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 6))
-                    }.buttonStyle(.plain).accessibilityLabel("Add \(name)").disabled(model.busy || (section != "Titles" && !eligible))
+                    }.buttonStyle(.plain).accessibilityLabel("Add \(NativeOptionName.words(name))").disabled(model.busy || (section != "Titles" && !eligible))
                 }
                 Divider()
                 NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask Arya about selection").buttonStyle(NativeToolbarButtonStyle())
