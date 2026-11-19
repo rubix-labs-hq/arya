@@ -190,6 +190,7 @@ struct NativeAssistantPanel: View {
     @State private var inspectedReferences: NativeAssistantReferenceInspection?
     @State private var activityExpanded = false
     @State private var resultChangesExpanded = false
+    @State private var runReceipts = NativeAssistantRunReceipts()
     @State private var draftWidth = 280.0
     /// Counts the times the run line grew a second line, so the history can keep it in view.
     @State private var runLineGrowth = 0
@@ -479,7 +480,9 @@ struct NativeAssistantPanel: View {
                 .frame(width: 36, height: 36)
                 .background(NativeEditorStyle.selectionFill, in: Circle())
                 .accessibilityHidden(true)
-            Text("Tell Arya what to change. You approve every edit.")
+            // The promise follows Preview changes: with it off a request can edit at once.
+            Text(assistant.previewChanges ? "Tell Arya what to change. You approve every edit."
+                 : "Tell Arya what to change. Edits apply right away, and you can undo them.")
                 .font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
@@ -551,10 +554,16 @@ struct NativeAssistantPanel: View {
             }.frame(maxWidth: .infinity, alignment: .trailing).padding(.leading, 28)
         } else {
             let failed = fields["error"] as? Bool == true
-            // Every reply is signed Arya. The account that answered is in the run line below.
+            // Every reply is signed Arya. The account saved with it is quiet detail on the same
+            // line, so an earlier reply still says who answered after another run or a restore.
+            let title = failed ? "Arya could not finish" : "Arya"
+            let account = NativeAssistant.providerName(fields.string("provider"))
             let reply = VStack(alignment: .leading, spacing: 4) {
-                Label(failed ? "Arya could not finish" : "Arya", systemImage: failed ? "exclamationmark.triangle.fill" : "text.bubble")
+                Label {
+                    Text(title) + Text(account.isEmpty ? "" : " · \(account)").fontWeight(.regular).foregroundStyle(NativeEditorStyle.muted)
+                } icon: { Image(systemName: failed ? "exclamationmark.triangle.fill" : "text.bubble") }
                     .font(.caption.weight(.medium)).foregroundStyle(failed ? NativeEditorStyle.error : NativeEditorStyle.muted)
+                    .accessibilityLabel(account.isEmpty ? title : "\(title), answered by \(account)")
                 Text(text).font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             }.frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
@@ -722,7 +731,8 @@ struct NativeAssistantPanel: View {
                 // Fires when the line appears and again when its text gets longer or changes.
                 .onChange(of: below ? stage : "") { _, text in if !text.isEmpty { runLineGrowth += 1 } }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(label), \(quiet ? detail : stage), \(elapsed)")
+                // Spoken as shown: the account follows the time, also where large text hides it.
+                .accessibilityLabel("\(label), \(quiet ? detail : stage), \(elapsed)\(account.isEmpty ? "" : ", \(account)")")
             }
             .font(.system(size: activityFontSize))
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -754,12 +764,17 @@ struct NativeAssistantPanel: View {
 
     private var resultCard: some View {
         let undoable = assistant.lastChange.flatMap { assistant.canUndoLastChange(version: model.version) ? $0 : nil }
-        let latest = model.changeReceipts.last
+        // The card describes what its Undo reverses. "Undo this change" restores the project from
+        // before the whole run, so the headline, the count and the rows come from the run's two
+        // snapshots, however many commits it made. Without that Undo the card is about the latest
+        // edit, which is what "Undo latest edit" reverses.
+        let latest = undoable.map { runReceipts.receipt(for: $0) } ?? model.changeReceipts.last
         let changed = (latest?.clips ?? []).filter { $0.status != "deleted" && model.receiptSelection($0) != nil }
         let kind = undoable.map { $0.kind == "preview" ? "Applied the preview" : $0.kind == "history" ? ReelBackend.historyChangeTitle(moves: $0.moves) : "Made \($0.edits) edit\($0.edits == 1 ? "" : "s")" }
             ?? "Recent assistant edits"
-        // The sentence says what changed. How it happened is the quiet line under it.
-        let sentence = latest.flatMap { $0.summary.isEmpty ? nil : $0.summary } ?? kind
+        // The sentence says what changed. How it happened is the quiet line under it. A run that
+        // only moved through history is named by that move.
+        let sentence = undoable?.kind == "history" ? kind : latest.flatMap { $0.summary.isEmpty ? nil : $0.summary } ?? kind
         let rows = latest.map(NativeAssistantChangeText.rows) ?? []
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -835,14 +850,9 @@ struct NativeAssistantPanel: View {
 
     // MARK: Composer
 
-    /// Touch devices get 44-point targets.
-    private static var touch: Bool {
-        #if os(iOS)
-        true
-        #else
-        false
-        #endif
-    }
+    /// The iPhone and iPad get 44-point targets. The Mac Catalyst app is a pointer app and
+    /// keeps the Mac's compact rows, as the shared control styles do.
+    private static var touch: Bool { NativeEditorStyle.touchControls }
 
     /// One bordered field holds the chips, the draft and the controls, as in the browser editor.
     /// The border is a background shape, so the three regions still add up to the composer.
@@ -1436,6 +1446,21 @@ struct NativeAssistantPanel: View {
     }
 }
 
+/// The receipt of the run the result card can undo, built once for each change. The panel
+/// redraws far more often than a run ends, and the receipt compares two whole projects.
+private final class NativeAssistantRunReceipts {
+    private var id: UUID?
+    private var receipt: NativeChangeReceipt?
+
+    func receipt(for change: NativeAssistantChange) -> NativeChangeReceipt? {
+        if id != change.id {
+            id = change.id
+            receipt = NativeChangeReceipt.run(before: change.before, after: change.after, version: change.afterVersion, edits: change.edits)
+        }
+        return receipt
+    }
+}
+
 private struct NativeAssistantReferenceInspection: Identifiable {
     let id = UUID()
     let text: String
@@ -1449,13 +1474,10 @@ private struct NativeAssistantReferenceInspection: Identifiable {
 
 
 // BEGIN ASSISTANT PREVIEW CARDS
-/// Touch builds give card actions 44-point targets. The Mac keeps its compact rows.
+/// The iPhone and iPad give card actions 44-point targets. The Mac keeps its compact rows,
+/// in the Mac Catalyst app too.
 private enum NativeAssistantCardMetrics {
-    #if os(iOS)
-    static let touch = true
-    #else
-    static let touch = false
-    #endif
+    static let touch = NativeEditorStyle.touchControls
 }
 
 /// Send or Stop as its icon alone, wide enough to stay a 44-point target. VoiceOver still
@@ -1478,7 +1500,16 @@ enum NativeAssistantChangeText {
         if change.before == "Absent", let data = change.after.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             return object.keys.sorted().map { key in (property: "\(property).\(key)", before: missing, after: value(object[key] as Any)) }
         }
+        // Two numbers that differ never read the same, however close they are.
+        if let before = number(change.before), let after = number(change.after), before != after {
+            let pair = NativeChangeReceipt.decimals(before, after)
+            return [(property: property, before: pair.before, after: pair.after)]
+        }
         return [(property: property, before: scalar(change.before), after: scalar(change.after))]
+    }
+
+    private static func number(_ text: String) -> Double? {
+        Double(text.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isFinite ? $0 : nil }
     }
 
     /// A receipt value as a person reads it: up to three decimals, "not set" for a missing one.
@@ -1489,14 +1520,7 @@ enum NativeAssistantChangeText {
         return trimmed
     }
 
-    static func decimal(_ number: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.numberStyle = .decimal; formatter.usesGroupingSeparator = false
-        formatter.minimumFractionDigits = 0; formatter.maximumFractionDigits = 3
-        let rounded = (number * 1000).rounded() / 1000
-        return formatter.string(from: NSNumber(value: rounded == 0 ? 0 : rounded)) ?? "\(number)"
-    }
+    static func decimal(_ number: Double) -> String { NativeChangeReceipt.decimal(number) }
 
     private static func value(_ item: Any) -> String {
         if let number = item as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() { return decimal(number.doubleValue) }

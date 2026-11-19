@@ -399,6 +399,37 @@ struct NativeChangeReceipt: Identifiable {
                     clips: clips, scopes: scopes, truncated: truncated, displayJSON: json)
     }
 
+    /// One receipt for a whole assistant run, from the project before it to the project after
+    /// it. A card whose Undo reverses the run lists everything that Undo restores, however many
+    /// commits the run made.
+    static func run(before: String, after: String, version: Int, edits: Int, at: Double = Date().timeIntervalSince1970 * 1000) -> Self? {
+        guard let old = (try? JSONSerialization.jsonObject(with: Data(before.utf8))) as? [String: Any],
+              let new = (try? JSONSerialization.jsonObject(with: Data(after.utf8))) as? [String: Any] else { return nil }
+        return make(before: old, after: new, previousVersion: max(0, version - edits), version: version, who: "agent", at: at)
+    }
+
+    /// A number as a person reads it: up to `digits` decimals, and never "-0".
+    static func decimal(_ number: Double, digits: Int = 3) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal; formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0; formatter.maximumFractionDigits = digits
+        let scale = pow(10, Double(digits)), rounded = (number * scale).rounded() / scale
+        let shown = !rounded.isFinite ? number : rounded == 0 ? 0 : rounded
+        return formatter.string(from: NSNumber(value: shown)) ?? "\(number)"
+    }
+
+    /// Two different numbers as text that also differs: 0.85001 and 0.85002 read as themselves,
+    /// not as "0.85" twice. Three decimals where that tells them apart, more only when needed.
+    static func decimals(_ before: Double, _ after: Double) -> (before: String, after: String) {
+        guard before != after else { return (decimal(before), decimal(after)) }
+        for digits in 3...15 {
+            let old = decimal(before, digits: digits), new = decimal(after, digits: digits)
+            if old != new { return (old, new) }
+        }
+        return ("\(before)", "\(after)")
+    }
+
     static func appending(_ receipt: Self, to history: [Self]) -> [Self] {
         var result = Array((history + [receipt]).suffix(maximumReceipts))
         var bytes = result.reduce(0) { $0 + $1.displayBytes }

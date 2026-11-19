@@ -186,4 +186,31 @@ let unchangedAsset = try JSONSerialization.data(withJSONObject: registeredAsset,
 let preservedAsset = try JSONSerialization.data(withJSONObject: (assetSaved["assets"] as! [String: Any])[assetPath]!, options: [.sortedKeys])
 expect(unchangedAsset == preservedAsset, "Receipt construction must preserve the captured metadata.")
 
+// A run that edits two layers in separate commits is one change to undo, so its card lists both.
+func text(_ project: [String: Any]) -> String { String(data: try! JSONSerialization.data(withJSONObject: project, options: [.sortedKeys]), encoding: .utf8)! }
+func runFixture(_ opacity: [String: Double]) -> [String: Any] {
+    ["name": "Run fixture", "fps": 30, "tracks": [["id": "V1", "clips": ["a", "b"].map { id in
+        ["id": id, "kind": "shape", "label": "Layer \(id)", "start": 0, "dur": 2, "opacity": opacity[id] ?? 1] as [String: Any]
+    }]]]
+}
+let runStart = runFixture([:]), runMiddle = runFixture(["a": 0.5]), runEnd = runFixture(["a": 0.5, "b": 0.25])
+let lastCommit = receipt(runMiddle, runEnd, previous: 8, version: 9)!
+expect(lastCommit.summary == "1 layer changed", "The last commit of a two-commit run names only its own layer.")
+let wholeRun = NativeChangeReceipt.run(before: text(runStart), after: text(runEnd), version: 9, edits: 2, at: 123)!
+expect(wholeRun.summary == "2 layers changed" && wholeRun.totalClips == 2, "The run receipt counts every layer Undo restores.")
+expect(Set(wholeRun.clips.map(\.clipID)) == ["a", "b"] && wholeRun.clips.allSatisfy { $0.changes.map(\.property) == ["/opacity"] }, "The run receipt lists each layer's change.")
+expect(wholeRun.version == 9, "The run receipt is the change at the version Undo expects.")
+expect(NativeChangeReceipt.run(before: text(runStart), after: text(runStart), version: 9, edits: 2) == nil, "A run that left the project as it was has no rows.")
+expect(NativeChangeReceipt.run(before: "not json", after: text(runEnd), version: 9, edits: 2) == nil, "A snapshot that cannot be read gives no receipt, not another change's rows.")
+expect(NativeChangeReceipt.run(before: text(runStart), after: text(runEnd), version: 1, edits: 5) != nil, "A run measured from the first version still has its receipt.")
+
+// Values a person reads: three decimals, and more only when two different values would read the same.
+expect(NativeChangeReceipt.decimal(0.84999999999999998) == "0.85" && NativeChangeReceipt.decimal(-0.0001) == "0" && NativeChangeReceipt.decimal(2) == "2", "A single value keeps its short form.")
+expect(NativeChangeReceipt.decimals(1, 0.84999999999999998) == ("1", "0.85"), "Values that differ at three decimals keep three.")
+expect(NativeChangeReceipt.decimals(0.85001, 0.85002) == ("0.85001", "0.85002"), "A real edit must not read as 0.85 to 0.85.")
+expect(NativeChangeReceipt.decimals(12.3456, 12.3457) == ("12.3456", "12.3457") && NativeChangeReceipt.decimals(0, 0.0004) == ("0", "0.0004"), "Precision grows only as far as the values need.")
+let nearest = NativeChangeReceipt.decimals(0.1 + 0.2, 0.3)
+expect(nearest.before != nearest.after, "Adjacent doubles still read differently.")
+expect(NativeChangeReceipt.decimals(0.5, 0.5) == ("0.5", "0.5"), "Equal values are not padded.")
+
 print("Passed \(assertions) native change-receipt assertions.")

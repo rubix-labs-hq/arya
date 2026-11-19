@@ -9,6 +9,8 @@ struct ReelMacApp: App {
     @StateObject private var session = EditorSession(platform: MacPlatform())
     @Environment(\.openWindow) private var openWindow
     @FocusedValue(\.panelOwnsEditingKeys) private var panelOwnsEditingKeys
+    /// Option reveals the developer entries of the View menu, as it does in the workspace menu.
+    @ObservedObject private var optionKey = NativeOptionKey.shared
 
     var body: some Scene {
         Window("Arya", id: "main") {
@@ -86,11 +88,14 @@ struct ReelMacApp: App {
             ForEach(NativePanel.allCases) { page in
                 Button("\(page.name) Page") { session.showPage(page.rawValue) }.disabled(session.folder == nil)
             }
-            Toggle("Web Editor", isOn: $session.useWebEditor).disabled(session.folder == nil)
-            Divider()
-            Button("Reload Editor") { session.reloadEditor() }
-                .keyboardShortcut("r", modifiers: [.command, .option])
-                .disabled(session.folder == nil)
+            // The browser editor is a development aid, under the same rule as the workspace menu.
+            if NativeDeveloperOptions.visible(optionHeld: optionKey.held, webEditorInUse: session.useWebEditor) {
+                Toggle("Web Editor", isOn: $session.useWebEditor).disabled(session.folder == nil)
+                Divider()
+                Button("Reload Editor") { session.reloadEditor() }
+                    .keyboardShortcut("r", modifiers: [.command, .option])
+                    .disabled(session.folder == nil)
+            }
         }
         CommandMenu("Timeline") {
             Group {
