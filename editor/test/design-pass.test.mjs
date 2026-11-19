@@ -129,3 +129,9 @@ test('phone panels use 44px targets, whole-label checkboxes and 16px field text'
   assert.match(block, /\.page :is\(\.inspector, \.browser\) button \{ min-height: 44px; min-width: 44px; \}/)
   assert.match(block, /label:has\(> input:is\(\[type=checkbox\], \[type=radio\]\)\) \{ display: inline-flex; align-items: center; gap: 8px; min-height: 44px; \}/)
 })
+
+test('panel headings share one sentence-case style', () => {
+  assert.match(styles, /\nh3, \.panel-heading \{ margin: 4px 0 10px; font-size: var\(--text-body\); font-weight: 600; letter-spacing: 0; color: var\(--text\); \}/)
+  for (const css of [styles, assistantCSS, read('ui/phone.css')]) assert.doesNotMatch(css, /text-transform:\s*uppercase/)
+  for (const file of ['ui/deliver.js', 'ui/media-page.js', 'ui/browser.js']) for (const [, heading] of read(file).matchAll(/<h3[^>]*>([A-Za-z][^<$]*)<\/h3>/g)) assert.match(heading, /^[A-Z][^A-Z]*$|^[A-Z][a-z]+ [a-z]/, `${file}: ${heading}`)
+})
