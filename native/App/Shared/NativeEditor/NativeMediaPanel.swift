@@ -112,7 +112,7 @@ struct NativeMediaPanel: View {
                 }.fixedSize(horizontal: true, vertical: false).padding(.horizontal, 6)
                 Picker("Media section", selection: $section) {
                     ForEach(sections, id: \.self) { Text($0).tag($0) }
-                }.pickerStyle(.menu).labelsHidden().padding(.horizontal, 10)
+                }.pickerStyle(.menu).labelsHidden().menuStyle(NativeMenuButtonStyle()).fixedSize().padding(.horizontal, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("Media browser section")
             }.frame(height: NativeEditorStyle.minimumControlHeight + 4)
@@ -133,7 +133,7 @@ struct NativeMediaPanel: View {
                 HStack {
                     Button("Cancel") { model.missingMediaRestoreRequest = nil }
                     Spacer()
-                    Button("Choose original…") { choosingOriginal = true }.buttonStyle(NativeToolbarButtonStyle(selected: true))
+                    Button("Choose original…") { choosingOriginal = true }.buttonStyle(NativePrimaryButtonStyle())
                 }
             }.padding(24)
             .fileImporter(isPresented: $choosingOriginal, allowedContentTypes: [.movie, .audio, .image], allowsMultipleSelection: false) { result in
@@ -197,8 +197,10 @@ struct NativeMediaPanel: View {
 
     // BEGIN MEDIA INLINE STATUS
     @ViewBuilder private var mediaStatus: some View {
+        // The editor's status line carries edit and assistant messages. This column repeats them
+        // only inside the phone's Media sheet, which covers that line.
         let status = session.projectReadOnlyReason.map { "Project is read-only. \($0)" }
-            ?? (model.status.isEmpty ? session.error ?? "" : model.status)
+            ?? (model.status.isEmpty || model.mobilePanel != .media ? session.error ?? "" : model.status)
         if !status.isEmpty {
             DisclosureGroup {
                 ScrollView {
@@ -233,8 +235,9 @@ struct NativeMediaPanel: View {
                 #if os(iOS)
                 Text("Add media").font(.subheadline.weight(.semibold))
                 #else
+                // Neutral: bringing in media is routine here, and amber is kept for the one primary action.
                 Button { model.showFiles = true } label: { Label("Import", systemImage: "square.and.arrow.down") }
-                    .buttonStyle(NativeToolbarButtonStyle(selected: true))
+                    .buttonStyle(NativeSecondaryButtonStyle(height: 28))
                     .accessibilityLabel("Import media")
                     .accessibilityHint("Choose files or a media folder.")
                     .accessibilityIdentifier("editor.media.import")
@@ -264,9 +267,8 @@ struct NativeMediaPanel: View {
             }
             #else
             HStack(spacing: 6) {
-                TextField("Search media", text: $query).textFieldStyle(.roundedBorder)
-                Picker("Media type", selection: $kind) { ForEach(["All", "Video", "Audio", "Image"], id: \.self) { Text($0).tag($0) } }
-                    .labelsHidden().frame(width: 76)
+                TextField("Search media", text: $query).textFieldStyle(.plain).modifier(NativeInputField())
+                NativeMenuPicker(label: "Media type", selection: $kind, options: ["All", "Video", "Audio", "Image"]).fixedSize()
                 if browserMode { browserControls }
             }
             #endif
@@ -341,7 +343,7 @@ struct NativeMediaPanel: View {
         Picker("Sort", selection: $sort) {
             ForEach(["Imported", "Name", "Duration", "Type"], id: \.self) { Text($0).tag($0) }
         }
-        .pickerStyle(.menu).fixedSize()
+        .pickerStyle(.menu).menuStyle(NativeMenuButtonStyle()).fixedSize()
         .help("Sort media").accessibilityLabel("Sort media").accessibilityValue(sort)
     }
 
@@ -435,7 +437,7 @@ struct NativeMediaPanel: View {
                     #if os(iOS)
                     if model.project?.assets.isEmpty != false { mobileImportSources }
                     #else
-                    Button("Import media") { model.showFiles = true }.buttonStyle(NativeToolbarButtonStyle(selected: true))
+                    Button("Import media") { model.showFiles = true }.buttonStyle(NativePrimaryButtonStyle())
                     #endif
                 }
                 else {
@@ -486,8 +488,8 @@ struct NativeMediaPanel: View {
     }
 
     private var searchField: some View {
-        TextField("Search media", text: $query).textFieldStyle(.roundedBorder)
-            .font(.subheadline).frame(minHeight: 44)
+        TextField("Search media", text: $query).textFieldStyle(.plain)
+            .font(.subheadline).modifier(NativeInputField())
             .focused($searchFocused).submitLabel(.search)
             .onSubmit { searchFocused = false }
             .accessibilityIdentifier("editor.media.search")

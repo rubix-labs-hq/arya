@@ -2340,12 +2340,12 @@ private struct NativeTimelineClipMedia: View {
 enum NativeTimelineWords {
     #if targetEnvironment(macCatalyst) || os(macOS)
     static let selectHint = "Click a clip; scroll to see more"
-    static let edgeHint = "Press and hold an edge, then drag"
-    static func dragHint(_ action: String) -> String { "Press and hold, then drag to \(action)" }
+    static let edgeHint = "Click and hold an edge, then drag"
+    static func dragHint(_ action: String) -> String { "Click and hold, then drag to \(action)" }
     static let helpTitle = "Pointer editing"
     static let help = ["Click a clip to select it. Scroll with the trackpad or mouse to move along the timeline.",
-                       "Press and hold a clip or its edge, then drag to edit. Pinch on the trackpad to zoom."]
-    static let clipAccessibilityHint = "Scroll to see more. Press and hold, then drag to edit. Select this clip for Start and End precision controls."
+                       "Click and hold a clip or its edge, then drag to edit. Pinch on the trackpad to zoom."]
+    static let clipAccessibilityHint = "Scroll to see more. Click and hold, then drag to edit. Select this clip for Start and End precision controls."
     #else
     static let selectHint = "Tap a clip; swipe to scroll"
     static let edgeHint = "Hold an edge, then drag"

@@ -337,7 +337,10 @@ struct NativeEditorView: View {
                     desktopWorkspace
                 }
                 #endif
-                if !status.isEmpty {
+                // The desktop keeps this line's height, so a message arriving never moves the panes.
+                if !status.isEmpty || !compact {
+                    Group {
+                    if !status.isEmpty {
                     DisclosureGroup {
                         Text(status).font(compact ? .caption : .system(size: 11)).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
@@ -351,9 +354,14 @@ struct NativeEditorView: View {
                     }
                     .font(compact ? .caption : .system(size: 11)).foregroundStyle(NativeEditorStyle.muted)
                     .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(NativeEditorStyle.panel)
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Editor status. \(status)")
+                    .transition(.opacity)
+                    }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: compact ? nil : 28, alignment: .leading)
+                    .background(NativeEditorStyle.panel)
+                    .animation(NativeMotion.content, value: status.isEmpty)
                 }
             }
             // Before the inset so the card sits above the compact workflow bar.
@@ -381,9 +389,12 @@ struct NativeEditorView: View {
                         // Every panel sheet uses the inline title, so the picker under it is not repeated.
                         .navigationBarTitleDisplayMode(.inline)
                         #endif
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { model.mobilePanel = nil } } }
+                        // The assistant's sheet closes. "Done" there read as finishing the draft.
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(panel == .assistant ? "Close" : "Done") { model.mobilePanel = nil } } }
+                        .modifier(NativeSheetSurface())
                 }
                 .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+                .presentationBackground(NativeEditorStyle.panel)
                 // At accessibility text sizes the assistant's chips, draft and actions leave the medium
                 // sheet one line of history, so it opens at full height. Standard sizes keep the viewer visible.
                 .presentationDetents(panel == .assistant && dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
@@ -396,8 +407,10 @@ struct NativeEditorView: View {
                     NativeLibraryPanel(model: model)
                         .navigationTitle("Project library")
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { libraryVisible = false } } }
+                        .modifier(NativeSheetSurface())
                 }
                 .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+                .presentationBackground(NativeEditorStyle.panel)
                 #if os(macOS)
                 .frame(minWidth: 320, idealWidth: 480, minHeight: 440)
                 #endif
@@ -753,7 +766,7 @@ struct NativeEditorView: View {
                 .accessibilityElement(children: .combine).accessibilityLabel("\(compactEditingPanel.name) controls")
                 .accessibilityValue(model.chosenClipCount > 1 ? "\(model.chosenClipCount) selected clips" : model.selected?.name ?? "No selected clip")
             if model.selected != nil {
-                NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask AI",
+                NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask Arya",
                                         compact: dynamicTypeSize.isAccessibilitySize)
                     .buttonStyle(NativeToolbarButtonStyle())
                     .frame(minWidth: 44, minHeight: 44)
@@ -1082,7 +1095,7 @@ struct NativeEditorView: View {
             Button { libraryVisible = true } label: { Image(systemName: "books.vertical") }
                 .help("Project library").accessibilityLabel("Project library")
             if model.selected != nil || model.composition != nil {
-                NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask AI about selection", compact: true)
+                NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask Arya about selection", compact: true)
             }
             Menu {
                 Toggle("Show media", isOn: mediaToggle).keyboardShortcut("1", modifiers: [.command, .option])
@@ -1102,7 +1115,7 @@ struct NativeEditorView: View {
             Button { settingsVisible = true } label: { Image(systemName: "gearshape") }
                 .keyboardShortcut(",", modifiers: [.command])
                 .help("Settings (⌘,)").accessibilityLabel("Settings")
-            NativeAssistantEntry(assistant: session.assistant, open: assistantVisible, shortcut: width >= 1320, action: toggleAssistant)
+            NativeAssistantEntry(assistant: session.assistant, open: assistantVisible, action: toggleAssistant)
                 .keyboardShortcut("a", modifiers: [.command, .option])
                 .padding(.horizontal, 4)
             workspaceMenu(compact: false)
@@ -1132,7 +1145,8 @@ struct NativeEditorView: View {
                      : "\(model.project?.name ?? "Opening project") · \(desktopCompositionName)")
                     .font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 #else
-                Text(model.project?.compositions.first { $0.id == model.composition }?.name ?? model.project?.name ?? "Opening project")
+                // One short word while the project loads, so a phone title never truncates.
+                Text(model.project?.compositions.first { $0.id == model.composition }?.name ?? model.project?.name ?? "Opening")
                     .font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(NativeEditorStyle.muted)
                 #endif
@@ -1156,22 +1170,32 @@ struct NativeEditorView: View {
         .accessibilityIdentifier("editor.composition")
     }
 
+    /// The workflow tabs as one group, as wide as its names and centred. A header too narrow
+    /// for all six scrolls the same group.
     private var workflowPages: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
-                ForEach(NativePanel.workflow) { panel in
-                    Button { select(panel) } label: { Text(panel.name).lineLimit(1).fixedSize(horizontal: true, vertical: false).padding(.horizontal, 1) }
-                        .buttonStyle(NativeToolbarButtonStyle(selected: model.panel == panel))
-                        .keyboardShortcut(KeyEquivalent(Character(String((NativePanel.workflow.firstIndex(of: panel) ?? 0) + 1))), modifiers: [.shift])
-                        .accessibilityLabel("\(panel.name) workflow")
-                        .accessibilityAddTraits(model.panel == panel ? [.isSelected] : [])
-                }
-            }.padding(3)
+        ViewThatFits(in: .horizontal) {
+            workflowTabs.fixedSize()
+                .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 7))
+                .overlay { RoundedRectangle(cornerRadius: 7).stroke(NativeEditorStyle.line) }
+            ScrollView(.horizontal, showsIndicators: false) { workflowTabs }
+                .frame(maxWidth: .infinity).fixedSize(horizontal: false, vertical: true)
+                .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 7))
+                .overlay { RoundedRectangle(cornerRadius: 7).stroke(NativeEditorStyle.line) }
         }
-        .frame(maxWidth: .infinity).fixedSize(horizontal: false, vertical: true)
-        .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 7))
-        .overlay { RoundedRectangle(cornerRadius: 7).stroke(NativeEditorStyle.line) }
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain).accessibilityLabel("Workflow")
+    }
+
+    private var workflowTabs: some View {
+        HStack(spacing: 2) {
+            ForEach(NativePanel.workflow) { panel in
+                Button { select(panel) } label: { Text(panel.name).lineLimit(1).fixedSize(horizontal: true, vertical: false).padding(.horizontal, 1) }
+                    .buttonStyle(NativeToolbarButtonStyle(selected: model.panel == panel))
+                    .keyboardShortcut(KeyEquivalent(Character(String((NativePanel.workflow.firstIndex(of: panel) ?? 0) + 1))), modifiers: [.shift])
+                    .accessibilityLabel("\(panel.name) workflow")
+                    .accessibilityAddTraits(model.panel == panel ? [.isSelected] : [])
+            }
+        }.padding(3)
     }
 
     private func headerActions(compact: Bool, width: Double) -> some View {
@@ -1188,7 +1212,7 @@ struct NativeEditorView: View {
                         Button { libraryVisible = true } label: { Image(systemName: "books.vertical") }
                             .help("Project titles, transitions, effects and motion").accessibilityLabel("Project library")
                         if model.selected != nil || model.composition != nil {
-                            NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask AI about selection", compact: true)
+                            NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask Arya about selection", compact: true)
                         }
                     }
                 }.fixedSize(horizontal: true, vertical: false)
@@ -1280,9 +1304,12 @@ struct NativeEditorView: View {
                     Button("Reset layout") { resetLayout() }
                 }
             }
-            Section {
-                Toggle("Web editor", isOn: $session.useWebEditor)
-                Button("Reload editor") { session.reloadEditor() }
+            // The browser editor is a development aid. It shows with Option held or a developer default.
+            if NativeDeveloperOptions.visible || session.useWebEditor {
+                Section {
+                    Toggle("Web editor", isOn: $session.useWebEditor)
+                    Button("Reload editor") { session.reloadEditor() }
+                }
             }
         }
         return Menu {
@@ -1429,9 +1456,9 @@ private struct NativeDesktopChromeButtonStyle: ButtonStyle {
                 .font(.system(size: 12, weight: selected ? .semibold : .medium))
                 .foregroundStyle(selected ? NativeEditorStyle.accent : NativeEditorStyle.text)
                 .padding(.horizontal, 8).frame(minWidth: 30, minHeight: 30)
-                .background(selected ? NativeEditorStyle.selectionFill : hovered ? NativeEditorStyle.panelRaised : .clear)
+                .background(selected || hovered ? NativeEditorStyle.panelRaised : .clear)
                 .clipShape(RoundedRectangle(cornerRadius: 5))
-                .overlay { RoundedRectangle(cornerRadius: 5).stroke(selected ? NativeEditorStyle.accent.opacity(0.38) : hovered ? NativeEditorStyle.line : .clear) }
+                .overlay { RoundedRectangle(cornerRadius: 5).stroke(hovered && !selected ? NativeEditorStyle.line : .clear) }
                 .opacity(enabled ? 1 : 0.4)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
                 .contentShape(Rectangle()).onHover { hovered = $0 }
@@ -1488,23 +1515,64 @@ private struct NativeResizeDivider: View {
     }
 }
 
-/// Three segments do not fit a phone, where "Assistant accounts" was cut short. There the
-/// category is a menu that shows the whole name.
-private struct NativeSettingsCategoryStyle: ViewModifier {
+/// The settings category as Arya's own segmented control. Three segments do not fit a phone,
+/// where "Assistant accounts" was cut short, so there the category is a menu with the whole name.
+private struct NativeSettingsCategoryControl: View {
+    @Binding var section: String
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
 
-    func body(content: Content) -> some View {
+    private var options: [(value: String, title: String)] {
+        var all = [(value: "assistant", title: "Assistant accounts"), (value: "figma", title: "Figma")]
+        #if os(iOS)
+        all.append((value: "interaction", title: "Interaction"))
+        #endif
+        return all
+    }
+
+    var body: some View {
         #if os(iOS)
         if horizontalSizeClass == .compact {
-            content.pickerStyle(.menu).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            Picker("Settings category", selection: $section) {
+                ForEach(options, id: \.value) { Text($0.title).tag($0.value) }
+            }.pickerStyle(.menu).labelsHidden().frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         } else {
-            content.pickerStyle(.segmented)
+            NativeSegmentedControl(label: "Settings category", selection: $section, options: options, fill: true)
         }
         #else
-        content.pickerStyle(.segmented)
+        NativeSegmentedControl(label: "Settings category", selection: $section, options: options, fill: true)
         #endif
+    }
+}
+
+/// The developer entries in the workspace menu show with Option held as the menu is built, or
+/// with the "editor.developerMenu" default set.
+enum NativeDeveloperOptions {
+    static var visible: Bool {
+        if UserDefaults.standard.bool(forKey: "editor.developerMenu") { return true }
+        #if os(macOS)
+        return NSEvent.modifierFlags.contains(.option)
+        #else
+        return false
+        #endif
+    }
+}
+
+/// A sheet over the editor is an opaque panel with a hairline top edge, so the viewer and
+/// timeline never show through its content.
+struct NativeSheetSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(NativeEditorStyle.panel)
+            .overlay(alignment: .top) {
+                Rectangle().fill(NativeEditorStyle.controlLine).frame(height: 1).ignoresSafeArea(edges: .horizontal)
+                    .allowsHitTesting(false).accessibilityHidden(true)
+            }
+            #if os(iOS)
+            .toolbarBackground(NativeEditorStyle.panel, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            #endif
     }
 }
 
@@ -1525,13 +1593,7 @@ private struct NativeEditorPreferences: View {
                 Spacer()
                 Button("Done") { dismiss() }.buttonStyle(NativeToolbarButtonStyle())
             }.padding(.horizontal, 18).padding(.top, 8)
-            Picker("Settings category", selection: $section) {
-                Text("Assistant accounts").tag("assistant")
-                Text("Figma").tag("figma")
-                #if os(iOS)
-                Text("Interaction").tag("interaction")
-                #endif
-            }.modifier(NativeSettingsCategoryStyle()).labelsHidden().padding(.horizontal, 18).padding(.vertical, 12)
+            NativeSettingsCategoryControl(section: $section).padding(.horizontal, 18).padding(.vertical, 12)
             // Plain rows with a chevron read as places to go, not as a selected list item.
             Button { gettingStartedVisible = true } label: {
                 HStack {
@@ -1686,7 +1748,7 @@ extension NativeEditorModel {
     /// What an AI request about the selection sends, including linked audio or video.
     var aiSelectionLabel: String {
         let linked = selectedIDs.count > chosenClipCount
-        if chosenClipCount > 1 { return linked ? "Ask AI about selected clips and their linked clips" : "Ask AI about selected clips" }
-        return linked ? "Ask AI about selected clip and its linked clip" : "Ask AI about selected clip"
+        if chosenClipCount > 1 { return linked ? "Ask Arya about selected clips and their linked clips" : "Ask Arya about selected clips" }
+        return linked ? "Ask Arya about selected clip and its linked clip" : "Ask Arya about selected clip"
     }
 }

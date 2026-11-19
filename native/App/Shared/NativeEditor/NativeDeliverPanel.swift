@@ -254,7 +254,7 @@ struct NativeDeliverPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 // The phone sheet already shows Deliver as its title.
                 if model.mobilePanel != .deliver { Text("Deliver").font(.headline) }
-                TextField("File name", text: $name).textFieldStyle(.roundedBorder)
+                TextField("File name", text: $name).textFieldStyle(.plain).modifier(NativeInputField())
                 Picker("Preset", selection: $preset) { ForEach(presets, id: \.self) { Text(Self.presetName($0) + ($0.hasPrefix("prores-") ? proBadge : "")).tag($0) } }
                 if hdrAvailable {
                     Picker("Color delivery", selection: $transfer) {
@@ -273,12 +273,12 @@ struct NativeDeliverPanel: View {
                 Text("\(nativeTimecode(range?.lowerBound ?? 0, fps: model.fps)) to \(nativeTimecode(range?.upperBound ?? model.duration, fps: model.fps))")
                     .font(.system(.caption, design: .monospaced)).foregroundStyle(NativeEditorStyle.muted)
                 HStack(spacing: 8) {
-                    Text("Size").font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                    Text("Size").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted)
                     Button("1080p") { chooseSize(long: 1920, short: 1080) }.accessibilityIdentifier("deliver.size.1080")
                     Button("4K" + proBadge) { chooseSize(long: 3840, short: 2160) }.accessibilityIdentifier("deliver.size.4k")
                     Button("Canvas") { outputOverrides = false }.accessibilityIdentifier("deliver.size.canvas")
                 }
-                .buttonStyle(.bordered).font(.caption)
+                .buttonStyle(NativeSecondaryButtonStyle(height: NativeDeliverMetrics.rowHeight))
                 .accessibilityElement(children: .contain).accessibilityLabel("Output size")
                 // Start from the canvas only when the person turns this on, so the 1080p and 4K
                 // buttons keep the size they chose.
@@ -300,10 +300,11 @@ struct NativeDeliverPanel: View {
                         .accessibilityIdentifier("deliver.proNote")
                 }
                 Button(starting ? "Starting export" : needsPro ? "Export with Arya Pro" : "Export video") { needsPro ? showPro() : export() }
-                    .buttonStyle(NativeToolbarButtonStyle(selected: true))
+                    .buttonStyle(NativePrimaryButtonStyle(fill: true))
                     .disabled(starting || model.duration <= 0 || presets.isEmpty || outputError != nil)
                     .accessibilityIdentifier("deliver.export")
                 Button("Save current frame") { still() }.disabled(model.metalFrame == nil)
+                    .buttonStyle(NativeSecondaryButtonStyle(fill: true))
                 #if os(iOS)
                 if !mobileExport.message.isEmpty { Text(mobileExport.message).font(.caption).foregroundStyle(.secondary) }
                 if mobileExport.pending {
@@ -841,4 +842,14 @@ struct NativeInterchangeImportSheet: View {
             }
         }
     }
+}
+
+
+/// Deliver's small rows share one height: compact on the Mac, a full touch target elsewhere.
+enum NativeDeliverMetrics {
+    #if os(macOS)
+    static let rowHeight: CGFloat = 26
+    #else
+    static let rowHeight: CGFloat = 44
+    #endif
 }
