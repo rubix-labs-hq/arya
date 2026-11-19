@@ -372,13 +372,16 @@ label.btn { background: var(--accent); color: var(--accent-ink); border-radius: 
 /* deliver page */
 .page.deliver { display: grid; grid-template-columns: minmax(220px, 330px) minmax(0, 1fr) minmax(0, 320px); grid-template-rows: repeat(2, minmax(0, 1fr)); padding: 6px; gap: 6px; container-type: inline-size; container-name: delivery-workspace; }
 .deliver-settings { grid-column: 1; grid-row: 1 / span 2; width: auto; padding: 10px 12px; overflow: auto; gap: 8px; }
-.deliver-center { grid-column: 2; grid-row: 1 / span 2; display: flex; min-width: 0; }
-.deliver-center .viewer { flex: 1; }
+.deliver-center { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+.deliver-viewer-tools { flex: none; display: flex; justify-content: flex-end; }
+.deliver-viewer-tools button { display: inline-flex; align-items: center; gap: 6px; }
+.deliver-center .viewer { flex: 1; min-height: 0; }
 .deliver-queue { grid-column: 3; grid-row: 1 / span 2; width: auto; padding: 10px 12px; overflow: auto; gap: 8px; }
 .preset-list { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
 .deliver-preset { padding: 6px 9px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; display: flex; flex-direction: column; align-items: stretch; width: 100%; background: none; color: inherit; font: inherit; text-align: left; white-space: normal; }
 /* Keep Render reachable when the preset list is taller than the window. */
-.deliver-actions { position: sticky; bottom: -10px; z-index: 1; margin: 0 -12px; padding: 8px 12px; background: var(--panel); border-top: 1px solid var(--line); }
+.deliver-actions { position: sticky; bottom: -10px; z-index: 1; display: flex; flex-direction: column; gap: 6px; margin: 0 -12px; padding: 8px 12px 10px; background: var(--panel); border-top: 1px solid var(--line); }
+.deliver-actions .deliver-render { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 36px; font-weight: 600; }
 .deliver-preset .muted { font-size: 11px; }
 .deliver-preset.on { border-color: var(--accent); background: #efbc680f; }
 .job { border: 1px solid var(--line); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }

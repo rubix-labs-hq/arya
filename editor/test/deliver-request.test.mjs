@@ -90,7 +90,7 @@ function component({ hostKind = 'browser', caps = {} } = {}) {
   }
   const button = rendered => {
     const row = find(rendered, 'aria-busy=')
-    const offset = row.strings.findIndex(text => text.includes('button class="primary" disabled='))
+    const offset = row.strings.findIndex(text => text.includes('button class="primary deliver-render" disabled='))
     return { disabled: row.values[offset], busy: row.values[offset + 1], click: row.values[offset + 2], label: row.values[offset + 3] }
   }
   return { render, find, button, resolve, reject, calls, state, toasts, cleanups }
@@ -171,10 +171,17 @@ test('failed queue rows retry the exact spec this tab requested, including the c
 })
 
 
-test('Render has a plain accessible label and hides its decorative arrow', () => {
+test('Render has a plain accessible label and a drawn icon that is hidden from it', () => {
   const f = component(), rendered = f.render()
   assert.equal(f.button(rendered).label, 'Render')
-  assert.match(f.find(rendered, 'deliver-actions').strings.join(''), /<span aria-hidden="true">⇪<\/span>/)
+  const actions = f.find(rendered, 'deliver-actions').strings.join('')
+  assert.match(actions, /<button class="primary deliver-render"[^>]*><svg class="ico"[^>]*aria-hidden="true">/)
+  assert.doesNotMatch(actions, /⇪/)
+  // The range summary sits above the one full-width primary, and Save still frame lives with the viewer.
+  assert.ok(actions.indexOf('deliver-range-note') < actions.indexOf('deliver-render'))
+  const source = fs.readFileSync(new URL('../web/ui/deliver.js', import.meta.url), 'utf8'), css = fs.readFileSync(new URL('../web/styles.css', import.meta.url), 'utf8')
+  assert.match(source, /<div class="deliver-center"><div class="deliver-viewer-tools"><button class="ghost tiny"[^\n]*Save still frame<\/button><\/div>/)
+  assert.match(css, /\.deliver-actions \.deliver-render \{[^}]*width: 100%;/); assert.match(css, /\.deliver-actions \{ position: sticky;/)
 })
 
 test('an export name has no dash or dot left at either end, and the page shows the name the server writes', () => {
