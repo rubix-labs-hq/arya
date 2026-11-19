@@ -331,6 +331,9 @@ struct NativeEditorView: View {
     @State private var settingsVisible = false
     /// Set by the Ask Arya entry so the opened assistant focuses its draft once.
     @State private var assistantFocusRequest = false
+    /// The compact assistant came from the wide layout's open pane, not from a request made in
+    /// the compact layout, so it is shown only while there is a column for it.
+    @State private var assistantCarried = false
     @State private var lastEditingPanel: NativePanel = .edit
     @State private var compactToolsExpanded = false
     @State private var compactControlsDetailed = false
@@ -459,6 +462,9 @@ struct NativeEditorView: View {
                     .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
             }
             .onChange(of: model.mobilePanel) { _, next in
+                // Other panels open and replace the compact assistant directly, so the carried
+                // mark is dropped wherever the panel stops being the assistant.
+                if next != .assistant { assistantCarried = false }
                 // A nested picker belongs to the panel that presented it. Never queue it
                 // behind a dismissed panel or migrate it across a layout/project switch.
                 if let request = model.mediaImportRequest, request.panelID != next?.rawValue {
@@ -509,7 +515,7 @@ struct NativeEditorView: View {
                     // An open assistant stays open across the change where the compact layout
                     // has a column for it. Where it would be a sheet over the picture it waits,
                     // still marked open, for the window to widen or for an explicit close.
-                    if NativeAssistantVisibility.opensCompact(wideVisible: assistantVisible, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = .assistant }
+                    if NativeAssistantVisibility.opensCompact(wideVisible: assistantVisible, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = .assistant; assistantCarried = true }
                 } else {
                     let tool = model.mobilePanel
                     // Bounded tasks keep their sheet identity and unsaved form state
@@ -521,6 +527,14 @@ struct NativeEditorView: View {
                     if tool == .assistant || model.panel == .assistant { assistantVisible = true; model.panel = lastEditingPanel }
                     else if let tool, NativePanel.tools.contains(tool) { model.panel = tool }
                 }
+            }
+            // A compact window can lose or gain the column while it stays compact, as when an
+            // iPad or Mac window is dragged through 900 points. A carried assistant leaves with
+            // the column, still marked open, and returns with it. It never turns into a sheet.
+            .onChange(of: assistantDock > 0) { _, docked in
+                guard compact else { return }
+                if NativeAssistantVisibility.hidesWithoutDock(carried: assistantCarried, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = nil }
+                else if docked, NativeAssistantVisibility.opensCompact(wideVisible: assistantVisible, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = .assistant; assistantCarried = true }
             }
         }
         .background(NativeEditorStyle.background)
@@ -632,7 +646,8 @@ struct NativeEditorView: View {
             get: {
                 guard let panel = model.mobilePanel, !NativeCompactWorkspaceRouting.inlineWorkspaces.contains(panel) else { return nil }
                 // A docked assistant is a column in the workspace, so no sheet presents it.
-                if assistantDocked && panel == .assistant { return nil }
+                // A carried one whose column just ended is about to be hidden, so it gets none either.
+                if (assistantDocked || assistantCarried) && panel == .assistant { return nil }
                 return panel
             },
             set: { next in
@@ -1454,6 +1469,9 @@ struct NativeEditorView: View {
             } else {
                 // Task presentation never changes the active editing workspace.
                 dismissCompactKeyboard()
+                // Another tool chosen over the open assistant replaces it, so a wider layout
+                // does not bring the assistant back.
+                if NativeAssistantVisibility.replacedByTool(compactPanel: model.mobilePanel?.rawValue, next: panel.rawValue) { assistantVisible = NativeAssistantVisibility.afterCompactClose }
                 model.mobilePanel = panel
             }
             return
@@ -1612,6 +1630,15 @@ enum NativeAssistantVisibility {
     /// is one and nothing else is presented.
     static func opensCompact(wideVisible: Bool, compactPanel: String?, dock: Double) -> Bool {
         wideVisible && compactPanel == nil && dock > 0
+    }
+    /// While the layout stays compact, an assistant carried from the wide layout leaves when
+    /// its column does. One opened in the compact layout keeps its sheet.
+    static func hidesWithoutDock(carried: Bool, compactPanel: String?, dock: Double) -> Bool {
+        carried && compactPanel == "assistant" && !(dock > 0)
+    }
+    /// Choosing another tool over the open compact assistant closes the assistant.
+    static func replacedByTool(compactPanel: String?, next: String) -> Bool {
+        compactPanel == "assistant" && next != "assistant"
     }
 }
 

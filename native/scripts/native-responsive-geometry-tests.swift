@@ -182,6 +182,22 @@ check(NativeAssistantVisibility.opensCompact(wideVisible: true, compactPanel: ni
 check(!NativeAssistantVisibility.opensCompact(wideVisible: false, compactPanel: nil, dock: 340), "A closed assistant stays closed when the window narrows")
 check(!NativeAssistantVisibility.opensCompact(wideVisible: true, compactPanel: nil, dock: 0), "Narrowing a window never presents the assistant as a sheet by itself")
 check(!NativeAssistantVisibility.opensCompact(wideVisible: true, compactPanel: "transcript", dock: 340), "The assistant never replaces a tool that is already presented")
+// A window dragged from wide through the docked band to below 900 points, then back.
+do {
+    var panel: String? = nil
+    var carried = false
+    let wideVisible = true
+    if NativeAssistantVisibility.opensCompact(wideVisible: wideVisible, compactPanel: panel, dock: dock(1100, 800)) { panel = "assistant"; carried = true }
+    check(panel == "assistant" && carried, "Going compact at 1100 points docks the open assistant")
+    check(dock(850, 800) == 0 && NativeAssistantVisibility.hidesWithoutDock(carried: carried, compactPanel: panel, dock: dock(850, 800)), "A carried assistant leaves when the window narrows past its column, so no sheet covers the picture")
+    panel = nil; carried = false
+    check(wideVisible && NativeAssistantVisibility.opensCompact(wideVisible: wideVisible, compactPanel: panel, dock: dock(950, 800)), "The carried assistant returns to the column when the window grows back, still marked open")
+}
+check(!NativeAssistantVisibility.hidesWithoutDock(carried: false, compactPanel: "assistant", dock: 0), "An assistant opened in the compact layout keeps its sheet when the column ends")
+check(!NativeAssistantVisibility.hidesWithoutDock(carried: true, compactPanel: "assistant", dock: 340) && !NativeAssistantVisibility.hidesWithoutDock(carried: true, compactPanel: "transcript", dock: 0), "Only a docked assistant that lost its column is hidden")
+check(NativeAssistantVisibility.hidesWithoutDock(carried: true, compactPanel: "assistant", dock: .nan), "A dock that is not a number hides the carried assistant, not presents it")
+check(NativeAssistantVisibility.replacedByTool(compactPanel: "assistant", next: "transcript") && !NativeAssistantVisibility.replacedByTool(compactPanel: "assistant", next: "assistant") && !NativeAssistantVisibility.replacedByTool(compactPanel: nil, next: "transcript"), "Another tool chosen over the compact assistant closes it for the wide layout too")
+check(NativeAssistantLayout.draftLineHeight == 17, "The Mac measures the draft at its own body line; iOS builds, Mac Catalyst included, use 22")
 check(!NativeAssistantVisibility.afterCompactClose, "Closing the compact assistant clears the saved wide flag, so widening does not reopen it")
 
 // One rule shows Web Editor and Reload Editor in the Mac's View menu and the workspace menu.
