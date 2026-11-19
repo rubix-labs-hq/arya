@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assistantActivity, assistantStatusWord, elapsedLabel } from '../web/ui/assistant-activity.js'
+import fs from 'node:fs'
+import { assistantActivity, assistantStatusWord, elapsedLabel, outcomeWarning } from '../web/ui/assistant-activity.js'
+import { createToolOutcomes, editedOutcome, unfinishedJobsOutcome, unresolvedToolOutcome } from '../agent/tool-outcomes.mjs'
 
 test('completed replies remain visibly complete and elapsed time stops', () => {
   const run = {state:'done', startedAt:1000, updatedAt:5500, finishedAt:5500}
@@ -55,4 +57,20 @@ test('the status word follows the order the Mac app uses', () => {
 test('legacy and malformed timestamps produce readable state without fabricated elapsed time', () => {
   assert.equal(assistantActivity({state:'thinking'}).elapsed,'');assert.equal(assistantActivity({state:'thinking'}).active,true)
   assert.equal(assistantActivity({state:'done',startedAt:NaN}).elapsed,'');assert.equal(elapsedLabel(-10),'0s');assert.equal(elapsedLabel(125000),'2m 05s')
+})
+
+test('a finished request carries a warning only for an outcome a result card does not already say', () => {
+  const done = outcome => assistantActivity({ state: 'done', outcome }).warning
+  // The server's own sentences, so a change of wording there fails here.
+  const server = fs.readFileSync(new URL('../agent/browser-assistant.mjs', import.meta.url), 'utf8')
+  const preview = new Function(`return ${server.match(/const PREVIEW_OUTCOMES = (\{[\s\S]*?\n\})/)[1]}`)()
+  const none = server.match(/: '(No project edits were applied[^']*)'/)[1]
+  for (const routine of [editedOutcome(1, 1), editedOutcome(4, 4), editedOutcome(1, 0), editedOutcome(3, 1), preview.pending, preview.applied, preview.discarded, preview.undone, none, '', undefined]) assert.equal(done(routine), '', String(routine))
+  const failedJob = unfinishedJobsOutcome([{ state: 'failed', kind: 'denoise', name: 'clip.mov', error: 'ffmpeg exited with code 1' }])
+  const warnings = [failedJob, unfinishedJobsOutcome([{ state: 'cancelled' }]), preview.failed, unresolvedToolOutcome({ ...createToolOutcomes(), unconfirmedCompletedFailure: true }),
+    unresolvedToolOutcome({ ...createToolOutcomes(), otherPlacementFailed: true, otherAssetReady: true }), 'A sentence a newer server might send.']
+  for (const warning of warnings) { assert.ok(warning); assert.equal(done(warning), warning) }
+  assert.match(failedJob, /1 processing job did not finish\./)
+  // Only a finished request has an outcome to warn about.
+  assert.equal(assistantActivity({ state: 'working', outcome: failedJob }).warning, ''); assert.equal(outcomeWarning({ state: 'error', outcome: failedJob }), '')
 })

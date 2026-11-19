@@ -106,7 +106,7 @@ function addedCompositions(receipts, project, open) {
  * undo of the latest assistant change when that change belongs to this run. With no receipt (after
  * a reload) it still offers that undo.
  */
-function ResultCard({ receipts = [], change = null, busy = '', onUndo, onRedo = null }) {
+function ResultCard({ receipts = [], change = null, busy = '', onUndo, onRedo = null, updates = [] }) {
   const undoable = Boolean(change?.undoable)
   const undone = !undoable && receipts.length > 0 && receipts.every(receipt => receipt.undone)
   const edits = change ? change.edits : receipts.length
@@ -151,6 +151,7 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo, onRedo = 
     ${notes.map(note => html`<p class="assistant-note">${note}</p>`)}
     ${receipts.length ? html`<details class="change-receipt"><summary>Details</summary>
       ${[...receipts].reverse().map(receipt => ReceiptDetails({ receipt }))}
+      ${/* The tool updates of a run whose line gave way to this card. */ updates.length ? html`<p class="receipt-meta">${plural(updates.length, 'tool update')}</p><ul class="assistant-run-updates" aria-label="Tool updates">${updates.map(update => html`<li>${update.text}</li>`)}</ul>` : null}
       <p class="receipt-meta">${undone ? 'Redo in the toolbar brings this change back.' : 'Undo in the toolbar reverts the latest edit.'}</p>
       ${TechnicalDetails({ receipts })}
     </details>` : null}
@@ -459,7 +460,8 @@ export function ChatPanel() {
       (!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><${RoutingReceipt} value=${s.claude.routing} /></div>` : null] })
   // Once the latest run has finished and its result card is there, the card says what happened. The line
   // goes, as on a past turn, unless it still has the request's route or a connection notice to show.
-  const finishedWithCard = turn => !working && activity.state === 'done' && turn.receipts.some(receipt => receipt.total > 0 || receipt.clips?.length || receipt.projectChanges?.length)
+  // A request that saved edits and ended with a warning, such as a failed processing job, keeps its whole line.
+  const finishedWithCard = turn => !working && activity.state === 'done' && !activity.warning && turn.receipts.some(receipt => receipt.total > 0 || receipt.clips?.length || receipt.projectChanges?.length)
   const lineStillNeeded = () => Boolean(activity.connectionNotice || s.claude.routing?.ok)
   const failureBlock = lastReply => {
     // A stopped request can be sent again as well.
@@ -577,6 +579,8 @@ export function ChatPanel() {
           const inCard = live && !working && activity.state === 'error' && Boolean(lastReply?.error)
           const updates = turn.updates.length ? plural(turn.updates.length, 'tool update') : ''
           const past = turn.updates.length && turn.request && lastReply ? elapsedBetween(turn.request.at, lastReply.at) : ''
+          const line = live ? (finishedWithCard(turn) ? (lineStillNeeded() ? liveRunLine(turn.updates, true) : null) : liveRunLine(turn.updates))
+            : turn.updates.length && (failed || !turn.receipts.length) ? RunLine({ state: failed ? 'error' : 'done', symbol, label: failed ? 'Failed' : 'Done', stage: updates, elapsed: past, updates: turn.updates }) : null
           return html`<div class="assistant-turn" key=${`turn-${turn.at}-${index}`}>
             ${index === firstOfSession && index > 0 ? html`<p class="assistant-session-divider" role="separator">New session</p>` : null}
             ${[turn.request, ...turn.replies].filter(m => m && !(inCard && m === lastReply)).map(m => html`<div class=${`msg ${['user', 'you'].includes(m.role) ? 'user' : 'claude'}`} data-last=${latest && ['user', 'you'].includes(m.role) ? '' : undefined}>
@@ -586,13 +590,12 @@ export function ChatPanel() {
               ${['user', 'you'].includes(m.role) ? html`<button class="ghost tiny assistant-edit-request" disabled=${working || Boolean(text) || !m.text} title="Restore this text as a draft with the current selection. Clear the existing draft first." onClick=${() => { setText(m.text); focusComposer() }}>Edit request</button>` : null}
             </div>`)}
             ${live && working && runActive && s.claude.text ? html`<div class="msg claude assistant-stream"><span class="sr-only">Writing…</span><div class="msg-body" dangerouslySetInnerHTML=${{ __html: md(s.claude.text) }}></div></div>` : null}
-            ${live ? (finishedWithCard(turn) ? (lineStillNeeded() ? liveRunLine(turn.updates, true) : null) : liveRunLine(turn.updates))
-              : turn.updates.length && (failed || !turn.receipts.length) ? RunLine({ state: failed ? 'error' : 'done', symbol, label: failed ? 'Failed' : 'Done', stage: updates, elapsed: past, updates: turn.updates }) : null}
+            ${line}
             ${live ? failureBlock(lastReply) : null}
             ${latest && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy} shown=${shownPreview} onShow=${showInViewer}
               onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
             ${latest && review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
-            ${turn.receipts.length || index === changeTurn ? html`<${ResultCard} receipts=${turn.receipts} change=${index === changeTurn ? changeShown : null} busy=${reviewBusy} onUndo=${undoChange} onRedo=${redoFor(turn.receipts)} />` : null}
+            ${turn.receipts.length || index === changeTurn ? html`<${ResultCard} receipts=${turn.receipts} change=${index === changeTurn ? changeShown : null} busy=${reviewBusy} onUndo=${undoChange} onRedo=${redoFor(turn.receipts)} updates=${line ? [] : turn.updates} />` : null}
           </div>`
         })}
         ${!turns.length && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${false} busy=${reviewBusy} shown=${shownPreview} onShow=${showInViewer}

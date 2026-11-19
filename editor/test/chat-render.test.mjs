@@ -9,6 +9,7 @@ import { assistantPanel } from '../web/ui/assistant-panel.js'
 import { assistantActivity } from '../web/ui/assistant-activity.js'
 import { createAssistantSharingGate } from '../web/ui/assistant-sharing.js'
 import { assistantState, assistantPrompt, providerName } from '../web/ui/assistant-state.js'
+import { createToolOutcomes, editedOutcome, unfinishedJobsOutcome, unresolvedToolOutcome } from '../agent/tool-outcomes.mjs'
 
 // Render the actual component with inert host and hook boundaries. HTM and
 // Preact remain real so malformed template nesting cannot pass as text tests.
@@ -99,6 +100,26 @@ test('inside a turn the reply comes first, then one result card, and a finished 
   const line = nodes(routed).find(node => node.props?.class === 'assistant-run done')
   assert.equal(nodes(line).some(node => node.props?.class === 'assistant-run-stage'), false, 'no outcome sentence beside the card')
   assert.ok(nodes(line).some(node => node.props?.class === 'assistant-route'))
+  // The line that gave way took the tool updates with it, so the card's Details list them. A line that stayed keeps them.
+  const updatesIn = tree => nodes(tree).filter(node => node.props?.['aria-label'] === 'Tool updates').flatMap(list => nodes(list).filter(node => node.type === 'li').map(textContent))
+  const carded = resultCard(panel(run, true, options))
+  assert.deepEqual(updatesIn(nodes(carded.tree).find(node => node.props?.class === 'change-receipt')), ['Calling apply_ops'])
+  assert.deepEqual(updatesIn(line), ['Calling apply_ops']); assert.deepEqual(resultCard(routed).props.updates, [])
+  // An older turn that succeeded has no line either, and its card keeps its tool updates too.
+  const older = panel({ state: 'idle' }, true, { ...options, chat: [...options.chat, { role: 'user', text: 'Thanks', at: at + 3500 }] })
+  assert.deepEqual(order(older), ['msg user', 'msg claude', 'ResultCard']); assert.deepEqual(updatesIn(resultCard(older).tree), ['Calling apply_ops'])
+  // A request that saved an edit and ended with a failed processing job keeps its whole line: the warning is not the card's to say.
+  const warning = unfinishedJobsOutcome([{ state: 'failed', kind: 'denoise', name: 'clip.mov', error: 'ffmpeg exited with code 1' }])
+  for (const outcome of [warning, unresolvedToolOutcome({ ...createToolOutcomes(), otherPlacementFailed: true })]) {
+    const warned = panel({ ...run, outcome }, true, options)
+    assert.deepEqual(order(warned), ['msg user', 'msg claude', 'assistant-run done', 'ResultCard'])
+    const kept = nodes(warned).find(node => node.props?.class === 'assistant-run done')
+    assert.equal(textContent(nodes(kept).find(node => node.props?.class === 'assistant-run-stage')), outcome)
+    assert.deepEqual(updatesIn(kept), ['Calling apply_ops']); assert.deepEqual(resultCard(warned).props.updates, [])
+    assert.equal(nodes(panel({ ...run, outcome, routing: { ok: true } }, true, options)).find(node => node.props?.class === 'assistant-run-stage')?.props.title, outcome, 'and beside the route as well')
+  }
+  // Both sentences the server ends an ordinary edit with are the card's to say.
+  for (const outcome of [editedOutcome(1, 1), editedOutcome(3, 2)]) assert.deepEqual(order(panel({ ...run, outcome }, true, options)), ['msg user', 'msg claude', 'ResultCard'], outcome)
   // With no result card the line keeps its outcome sentence.
   const bare = panel(run, true, { ...options, receipts: [] })
   assert.deepEqual(order(bare), ['msg user', 'msg claude', 'assistant-run done'])

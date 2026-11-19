@@ -226,6 +226,7 @@
 .chat-list .assistant-run p { margin: 4px 0 0 20px; overflow-wrap: anywhere; }
 .chat-list .assistant-run-updates { margin: 4px 0 0; padding-left: 34px; }
 .chat-list .assistant-run-updates li + li { margin-top: 3px; }
+.chat-list .change-receipt .assistant-run-updates { padding-left: 18px; }
 .chat-list .assistant-run.error :is(.assistant-run-symbol, b) { color: var(--danger); }
 .chat-list .assistant-route { margin: 4px 0 0 20px; padding: 0; border: 0; }
 .chat-list .assistant-failure { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--danger); border-radius: 8px; background: var(--panel-2); font-size: 12px; overflow-wrap: anywhere; }
