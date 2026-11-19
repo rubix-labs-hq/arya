@@ -567,6 +567,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 @media (max-width: 1120px) {
   .page.edit.customizable .viewer { overflow-y: auto; }
   .page.edit.customizable .viewer-stage { min-height: 120px; }
+}
+/* The top bar has one height at each width: one 48px row down to 721px, two rows (88px) on a phone.
+   Before it would wrap, the format readout goes and the secondary actions move into More. */
+@media (max-width: 1439px) { .topbar .proj-format { display: none; } }
+@media (max-width: 1279px) { .topbar { gap: 8px; } }
+@media (max-width: 720px) {
   .app { --topbar-height: 88px; }
   .topbar { grid-template-columns: minmax(100px, 1fr) auto; grid-template-rows: 44px 38px; height: var(--topbar-height); padding-bottom: 5px; column-gap: 8px; row-gap: 0; }
   .workflow-pages { grid-column: 1 / -1; grid-row: 2; }
@@ -812,6 +818,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
   .topbar-project { overflow: hidden; gap: 4px; }
   .topbar-project .brand img { width: 64px; height: 30px; }
   .topbar .proj { display: block; flex: 1; margin-left: 0; }
+}
+@media (max-width: 899px) {
   .topbar-actions { gap: 4px; position: relative; }
   .topbar-actions .conn { flex: none; }
   .topbar-action-tools { display: block; }
@@ -903,8 +911,13 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 .topbar-actions .settings-entry { min-width: 32px; justify-content: center; padding-inline: 6px; color: var(--muted); }
 .topbar-actions .settings-entry:hover:not(:disabled) { color: var(--text); }
 .topbar-actions .recovery-entry { color: var(--muted); }
+.topbar-actions :is(.recovery-entry, .workspace-layout-menu > button) { display: inline-flex; align-items: center; gap: 6px; }
+@media (min-width: 900px) and (max-width: 1279px) {
+  .topbar-actions :is(.recovery-entry, .workspace-layout-menu > button) { min-width: 32px; justify-content: center; padding-inline: 6px; }
+  .topbar-actions :is(.recovery-entry, .workspace-layout-menu > button) .entry-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
 .topbar-actions .recovery-entry:hover:not(:disabled) { color: var(--text); }
-@media (max-width: 720px) {
+@media (max-width: 899px) {
   .topbar-sep { display: none; }
   .topbar-action-list.open .action-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
   .topbar-action-list.open .topbar-history { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 0; border: 0; }
@@ -913,7 +926,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
   .topbar-action-list.open .recovery-entry { color: var(--text); }
 }
 /* With no project open, the top bar keeps one row: the page tabs and edit actions are hidden. */
-@media (max-width: 1120px) {
+@media (max-width: 720px) {
   .app:has(> .main > .welcome) { --topbar-height: 48px; }
   .app:has(> .main > .welcome) .topbar { grid-template-rows: 44px; padding-bottom: 0; }
 }

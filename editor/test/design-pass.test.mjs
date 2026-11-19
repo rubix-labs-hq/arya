@@ -42,3 +42,11 @@ test('composer tools stay in place while a run works, and a disabled Send is a q
   assert.match(assistantCSS, /\.assistant-preview-toggle:has\(input:focus-visible\) \{ outline: 2px solid var\(--accent\);/)
   assert.match(styles, /--accent:/)
 })
+
+test('Layout and Recovery are icon buttons that keep their names when the label hides', () => {
+  const app = read('ui/app.js'), layout = read('ui/layout.js')
+  assert.match(app, /class="ghost recovery-entry" aria-label="Recovery"[^\n]*<\$\{Icon\} name="recovery" \/><span class="entry-text">Recovery<\/span>/)
+  assert.match(layout, /<span class="entry-text">Layout<\/span>/)
+  assert.doesNotMatch(layout, /from '\.\/icons\.js'/, 'layout.js draws its own icon so its test harnesses keep loading it alone')
+  assert.match(styles, /@media \(min-width: 900px\) and \(max-width: 1279px\) \{[^@]*\.entry-text \{[^}]*clip-path: inset\(50%\)/)
+})

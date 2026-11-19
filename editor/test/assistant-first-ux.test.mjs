@@ -103,7 +103,7 @@ test('the entry dot and label agree in every assistant state, and the state stay
   for (const state of ['sending', 'queued', 'thinking', 'running', 'working']) expectState({ assistantStatus: ready, claude: { state } }, 'Working', 'working')
   expectState({ assistantStatus: ready, claude: { state: 'cancelling' } }, 'Stopping', 'working')
   for (const state of ['done', 'cancelled']) expectState({ assistantStatus: ready, claude: { state } }, 'Ready', 'ready')
-  expectState({ assistantStatus: ready, claude: { state: 'error' } }, 'Failed', 'ready')
+  expectState({ assistantStatus: ready, claude: { state: 'error' } }, 'Failed', 'failed')
   expectState({ assistantStatus: ready, assistantReview: { proposal: { id: 'p1' } } }, 'Preview ready', 'ready')
   expectState({ assistantStatus: ready, assistantSharingReviewOpen: true }, 'Working', 'working', true)
   expectState({ assistantStatus: ready, claude: { state: 'working' }, connected: false }, 'Reconnecting', 'idle')
@@ -114,13 +114,15 @@ test('the entry dot and label agree in every assistant state, and the state stay
   assert.equal(hosted.props['data-state'], 'idle')
 })
 
-test('the entry is never hidden or clipped by CSS and only drops its key hint on a phone', () => {
+test('the entry is never hidden by CSS: below 1100px it keeps icon, label and dot, and on a phone it is a 44px icon button', () => {
   // Every rule in every sheet whose subject is the entry, its label, its state or a direct child span.
   for (const [name, css] of [['assistant.css', assistantCSS], ['phone.css', phoneCSS], ['styles.css', baseCSS]]) {
     for (const [, selectors, body] of css.replace(/\/\*[^]*?\*\//g, '').matchAll(/([^{}@;]+)\{([^{}]*)\}/g)) {
       for (const selector of selectors.split(',').map(item => item.trim())) {
         const subject = selector.split(/\s*[\s>+~]\s*/).at(-1)
         const entryPart = /^\.assistant-entry(?:-label|-state)?(?![\w-])/.test(subject) || /\.assistant-entry(?![\w-])[^\s>]*\s*>\s*(?:span|\*)$/.test(selector)
+        // The one exception: at 480px and under the label is kept for screen readers and the button is the icon.
+        if (selector === '.topbar .assistant-entry .assistant-entry-label') { assert.match(media(css, '(max-width: 480px)'), /\.topbar \.assistant-entry \.assistant-entry-label \{ position: absolute;/); continue }
         if (entryPart) assert.doesNotMatch(body, /display:\s*none|visibility:\s*hidden|opacity:\s*0(?![.\d])|font-size:\s*0[;\s}]|text-overflow|overflow:\s*hidden|max-width:\s*\d/, `${name}: ${selector}`)
       }
     }
@@ -128,6 +130,15 @@ test('the entry is never hidden or clipped by CSS and only drops its key hint on
   const phone = media(assistantCSS, '(max-width: 720px)')
   assert.match(phone, /\.assistant-entry kbd \{ display: none; \}/)
   assert.match(media(assistantCSS, '(pointer: coarse), (max-width: 720px)'), /\.topbar \.assistant-entry \{ min-height: 44px; min-width: 0; \}/)
+  const narrow = media(assistantCSS, '(max-width: 1099px)')
+  assert.match(narrow, /\.topbar \.assistant-entry :is\(\.assistant-entry-hint, kbd\) \{ display: none; \}/)
+  assert.match(narrow, /\.topbar \.assistant-entry \.assistant-entry-word \{ position: absolute; width: 1px; height: 1px;/, 'the status word stays in the accessible name')
+  assert.match(media(assistantCSS, '(max-width: 480px)'), /\.topbar \.assistant-entry \{ position: relative; justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; \}/)
+  assert.match(assistantCSS, /\.assistant-entry\[data-state="failed"\] i \{ color: var\(--danger\); background: currentColor; \}/, 'a failed request turns the dot red')
+  // One row at every width above a phone, and two rows there. More takes Layout and Recovery before anything wraps.
+  assert.doesNotMatch(baseCSS, /@media \(max-width: 1120px\) \{[^@]*--topbar-height: 88px/)
+  assert.match(baseCSS, /@media \(max-width: 720px\) \{\s*\.app \{ --topbar-height: 88px; \}/)
+  assert.match(baseCSS, /@media \(max-width: 899px\) \{[^@]*\.compact-actions-toggle/)
 })
 
 test('opening from the entry focuses the composer after the panel has rendered, never before', async () => {
@@ -673,7 +684,7 @@ test('the entry counts attached references and reads as the start of a request a
   const wide = media(assistantCSS, '(min-width: 1280px)')
   assert.match(wide, /\.assistant-entry\[data-state="ready"\]:not\(\.on\) \.assistant-entry-hint \{ display: block;/, 'the hint shows when ready and closed')
   assert.match(wide, /\.topbar \.assistant-entry \{[^}]*cursor: text; \}/)
-  assert.doesNotMatch(assistantCSS, /\.assistant-entry(?:-label|-state|-hint)?[^{},]*\{[^}]*(?:text-overflow|overflow:\s*hidden)/, 'no part of the entry is clipped')
+  assert.doesNotMatch(assistantCSS.replace(/[^{}\n]*\.assistant-entry-(?:word|label) \{ position: absolute;[^}]*\}/g, ''), /\.assistant-entry(?:-label|-state|-hint)?[^{},]*\{[^}]*(?:text-overflow|overflow:\s*hidden)/, 'no part of the entry is cut off with an ellipsis')
 })
 
 test('the phone sheet minimizes to a one-line bar that keeps the draft, and every way in expands it', async t => {
