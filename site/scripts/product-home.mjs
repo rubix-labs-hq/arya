@@ -25,7 +25,7 @@ export const assistantCopy = {
   // Shown after the account point while the App Store release is live. It names no CLI provider,
   // because those run on a Mac.
   mobilePoint: ['On iPad and iPhone.', 'Use ChatGPT where offered, an Anthropic API key, or a connection to Arya on your Mac.'],
-  ask: 'Open Ask Arya in the top bar on any editor page. After an edit, the reply comes first. A card below it shows what changed and offers Undo this change. Turn on Preview to see the edit before you choose Apply or Discard.',
+  ask: 'Open Ask Arya in the top bar on any editor page. After an edit, the reply comes first. A card below it shows what changed, with Undo on it. Turn on Preview to see the edit before you choose Apply or Discard.',
   card: 'Assistant editing with your own AI account.',
   hostedLimit: 'The browser editor has no assistant, Figma import or transcription.',
   link: ['/install/#accounts', 'How assistant sign-in works'],
