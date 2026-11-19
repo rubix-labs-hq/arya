@@ -15,6 +15,9 @@ let before = try JSONSerialization.data(withJSONObject: project, options: [.sort
 let context = NativeSelectionAIContext.make(project: project, clipID: "cNested", composition: "kRoot", time: 2)!
 let selection = context.refs["sourceSelection"] as! [String: Any]
 expect(selection["composition"] as? String == "kNested", "The selected composition must remain exact.")
+expect(context.scopeName == "Card", "The sheet names the source composition, not its ID.")
+expect(NativeSelectionAIContext.make(project: project, clipID: "cNested", composition: nil, time: 2)?.scopeName == "Card", "A composition clip on the main timeline names its composition.")
+expect(NativeSelectionAIContext.make(project: project, clipID: nil, composition: "kRoot", time: 2)?.scopeName == "Imported frame", "A whole composition is named by its name.")
 expect(Set(selection["nativeLayerIDs"] as! [String]) == Set(["cNested", "cText", "cShape"]), "Nested source layers must all be attached.")
 expect(selection["figmaSourceNodeIDs"] as? [String] == ["12:30", "12:34", "12:35"], "Figma node IDs must come from import metadata.")
 let layers = selection["layers"] as! [[String: Any]]

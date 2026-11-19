@@ -144,6 +144,16 @@ enum NativeStatusText {
         }
         if let parts = capture(#"^renamed library item \S+ to "(.*)"$"#) { return "Renamed a library item to “\(parts[0])”." }
         if let parts = capture(#"^removed library item "(.*)"$"#) { return "Removed library item “\(parts[0])”." }
+        // Title text and marker labels may hold line breaks or quotes of their own.
+        func quoted(_ text: String) -> String { text.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: " ") }
+        if let parts = capture(#"^added title \S+ "([\s\S]*)"$"#) {
+            let text = quoted(parts[0])
+            return text.isEmpty ? "Added a title." : "Added title “\(text)”."
+        }
+        if let parts = capture(#"^marker \S+ "([\s\S]*)" at (-?[0-9.]+)s$"#) {
+            let label = quoted(parts[0])
+            return label.isEmpty ? "Added a marker at \(parts[1])s." : "Added marker “\(label)” at \(parts[1])s."
+        }
         // The core logs the exact cut time, such as 3.0333333s. Round it as the timeline does.
         if let parts = capture(#"^bladed (\S+) at (-?[0-9.]+)s → (\S+)$"#), let at = Double(parts[1]) {
             return sentence(replacingIDs(in: "bladed \(parts[0]) at \(String(format: "%.2f", at)) s → \(parts[2])", names, project: project))

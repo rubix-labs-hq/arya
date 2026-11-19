@@ -45,7 +45,7 @@ private struct NativeSelectionAIIntent: View {
                     Text(context.label).font(.headline)
                     let selection = context.refs.dictionary("sourceSelection")
                     let ids = selection["nativeLayerIDs"] as? [String] ?? []
-                    Text("\(ids.count) \(ids.count == 1 ? "editable layer" : "editable layers") · Composition \(selection.string("composition"))").font(.caption).foregroundStyle(.secondary)
+                    Text("\(ids.count) \(ids.count == 1 ? "editable layer" : "editable layers") · \(context.scopeName)").font(.caption).foregroundStyle(.secondary)
                     TextField("Describe the animation or edit", text: $intent, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(4...8)
                     // Like the panel, starting points show only while the intent is empty, so one never replaces typed text.
                     if !context.suggestions.isEmpty && intent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

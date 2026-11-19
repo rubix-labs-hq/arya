@@ -484,7 +484,14 @@ private struct NativeLibrarySaveSheet: View {
         _category = State(initialValue: initialCategory)
         let capture = request.capture
         let composition = capture.composition.flatMap { (capture.project["comps"] as? [String: Any])?[$0] as? [String: Any] }
-        _name = State(initialValue: capture.selected.map { NativeClip(fields: $0).name } ?? composition?["name"] as? String ?? "")
+        _name = State(initialValue: capture.selected.map { Self.clipName($0, project: capture.project) } ?? composition?["name"] as? String ?? "")
+    }
+
+    /// A composition clip without a label goes by its composition's name, not by its kind.
+    private static func clipName(_ clip: [String: Any], project: [String: Any]) -> String {
+        if clip["kind"] as? String == "comp", (clip["label"] as? String ?? "").isEmpty,
+           let name = ((project["comps"] as? [String: Any])?[clip["comp"] as? String ?? ""] as? [String: Any])?["name"] as? String, !name.isEmpty { return name }
+        return NativeClip(fields: clip).name
     }
 
     private var source: [String: String]? {
@@ -495,7 +502,7 @@ private struct NativeLibrarySaveSheet: View {
     }
     /// The layer or composition the copy is taken from, by name. IDs stay out of the sheet.
     private var sourceName: String {
-        if source?["clip"] != nil, let selected = capture.selected { return NativeClip(fields: selected).name }
+        if source?["clip"] != nil, let selected = capture.selected { return Self.clipName(selected, project: capture.project) }
         let comps = capture.project["comps"] as? [String: Any]
         return (source?["composition"].flatMap { comps?[$0] as? [String: Any] })?["name"] as? String ?? ""
     }

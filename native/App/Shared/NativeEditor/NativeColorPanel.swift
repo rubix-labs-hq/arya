@@ -1033,7 +1033,7 @@ struct NativeColorPanel: View {
         case "layerMixer":
             ForEach(0..<inputCount(clip, node), id: \.self) { input in
                 Picker("Input \(input + 1) blend", selection: blendBinding(clip, node, input: input)) {
-                    ForEach(["normal", "add", "screen", "multiply", "overlay", "softLight", "lighten", "darken", "difference", "colorDodge"], id: \.self) { Text($0).tag($0) }
+                    ForEach(["normal", "add", "screen", "multiply", "overlay", "softLight", "lighten", "darken", "difference", "colorDodge"], id: \.self) { Text(NativeOptionName.words($0)).tag($0) }
                 }.disabled(input == 0)
             }
         case "lut":

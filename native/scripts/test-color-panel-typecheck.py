@@ -24,7 +24,7 @@ def main():
     for marker in ['struct NativeRenderPreviewCapture {','struct NativeDisplayedFrameCapture {','struct NativeViewerColorPicker {','struct NativeViewerComparison {']:
         source+=block(model_source,marker)+'\n'
     source+=block(textures,'public enum ReelLUTInspection {')+'\n'+block(textures,'struct NativeCube {')+'\n'+block(textures,'struct NativeLUTSource {')+'\n'
-    for marker in ['enum NativeEditorStyle {','enum NativeType {','enum NativeRadius {','struct NativeToolbarButtonStyle: ButtonStyle {','struct NativeNumberRow: View {','struct NativeTextRow: View {','struct NativeEmptySelection: View {','extension View {']:
+    for marker in ['enum NativeEditorStyle {','enum NativeType {','enum NativeRadius {','enum NativeOptionName {','struct NativeToolbarButtonStyle: ButtonStyle {','struct NativeNumberRow: View {','struct NativeTextRow: View {','struct NativeEmptySelection: View {','extension View {']:
         source+=block(controls,marker)+'\n'
     editor_view=(editor/'NativeEditorView.swift').read_text();source+='#if os(iOS)\n'
     for marker in ['private struct NativeContextInteractionsEnabledKey: EnvironmentKey {','struct NativeContextInteractionLayout: Equatable {','private struct NativeContextInteractionLayoutKey: EnvironmentKey {','extension EnvironmentValues {']:

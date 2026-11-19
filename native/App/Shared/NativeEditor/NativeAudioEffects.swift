@@ -146,6 +146,7 @@ struct NativeAudioEffects: View {
     }
     private struct Parameter { let key: String; let name: String; let value: Double; let range: ClosedRange<Double> }
     private static let types = ["eq", "compressor", "gate", "deesser", "limiter", "reverb", "delay", "gain"]
+    private static let bandTypeNames = ["lowshelf": "Low Shelf", "peaking": "Peak", "highshelf": "High Shelf", "lowpass": "Low Pass", "highpass": "High Pass", "notch": "Notch"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -160,7 +161,7 @@ struct NativeAudioEffects: View {
                         ForEach(Array(params.objects("bands").enumerated()), id: \.offset) { bandIndex, band in
                             GroupBox("Band \(bandIndex + 1)") {
                                 Picker("Type", selection: Binding(get: { band.string("type", "peaking") }, set: { updateBand(index, bandIndex, ["type": $0]) })) {
-                                    ForEach(["lowshelf", "peaking", "highshelf", "lowpass", "highpass", "notch"], id: \.self) { Text($0).tag($0) }
+                                    ForEach(["lowshelf", "peaking", "highshelf", "lowpass", "highpass", "notch"], id: \.self) { Text(Self.bandTypeNames[$0] ?? $0).tag($0) }
                                 }
                                 NativeNumberRow("Frequency Hz", value: band.number("freq", 1000), range: 20...20000) { updateBand(index, bandIndex, ["freq": $0]) }
                                 NativeNumberRow("Gain dB", value: band.number("gain"), range: -24...24) { updateBand(index, bandIndex, ["gain": $0]) }
