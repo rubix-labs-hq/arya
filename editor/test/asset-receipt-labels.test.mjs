@@ -9,17 +9,18 @@ const root = resolve(process.env.ARYA_RECEIPT_SOURCE_ROOT ?? fileURLToPath(new U
 const dependency = createRequire(resolve(process.env.ARYA_RECEIPT_DEPENDENCY_ROOT ?? 'editor', 'package.json'))
 const { h } = dependency('preact'), htm = dependency('htm')
 const { changeReceipt, receiptSelection } = await import(pathToFileURL(resolve(root, 'web/ui/change-receipt.js')))
+const { assistantPanel } = await import(pathToFileURL(resolve(root, 'web/ui/assistant-panel.js')))
 const source = readFileSync(resolve(root, 'web/ui/chat.js'), 'utf8')
-const receiptSource = source.slice(source.indexOf('function ChangeReceipt'), source.indexOf('export function ChatPanel'))
-const component = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', `${receiptSource}\nreturn ChangeReceipt`)
+const receiptSource = source.slice(source.indexOf('const plural'), source.indexOf('export function ChatPanel'))
+const component = new Function('html', 'receiptSelection', 'store', 'set', 'toast', 'player', 'assistantPanel', `${receiptSource}\nreturn ResultCard`)
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value == null || value === false ? [] : [value]
 const children = node => flatten(node?.props?.children)
 const nodes = node => node && typeof node === 'object' ? [node, ...children(node).flatMap(nodes)] : []
 const text = node => children(node).map(child => typeof child === 'object' ? text(child) : String(child)).join('')
 function render(receipt, project) {
   const updates = [], seeks = [], messages = []
-  const view = component(htm.bind(h), receiptSelection, { project }, value => updates.push(value), value => messages.push(value), { seek: value => seeks.push(value) })
-  return { tree: view({ receipt }), updates, seeks, messages }
+  const view = component(htm.bind(h), receiptSelection, { project }, value => updates.push(value), value => messages.push(value), { seek: value => seeks.push(value) }, assistantPanel)
+  return { tree: view({ receipts: [receipt] }), updates, seeks, messages }
 }
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/asset-receipt-recorded.json', import.meta.url)))
 const actualBefore = recorded.before, actualAfter = recorded.after, actualRecord = recorded.record
@@ -44,8 +45,8 @@ test('saved-only actual asset renders as Media registration and exposes separate
   assert.equal(receipt.scopes[0].asset, path)
   assert.equal(receipt.scopes[0].status, 'added')
   const { tree } = render(receipt, after), displayed = text(tree)
-  assert.match(displayed, /Edit 4 · 1 Media asset changed/)
-  assert.match(displayed, /Media registration · added/)
+  assert.match(displayed, /^1 change: media1 Media asset changedDetailsMedia asset/)
+  assert.match(displayed, /Media registration · New/)
   assert.doesNotMatch(displayed, /Project settings changed|Project or composition settings/)
   assert.ok(displayed.includes(path))
   assert.ok(displayed.includes(asset.generated.provenance))
@@ -62,7 +63,7 @@ test('saved-only actual asset renders as Media registration and exposes separate
 test('the actual saved-only component headline does not classify registration as project settings', () => {
   const after = saved(), receipt = changeReceipt(actualBefore, after, { version: 4, who: 'agent' })
   const displayed = text(render(receipt, after).tree)
-  assert.match(displayed, /Edit 4 · 1 Media asset changed/)
+  assert.match(displayed, /^1 change: media1 Media asset changedDetailsMedia asset/)
   assert.doesNotMatch(displayed, /Project settings changed/)
 })
 
@@ -193,12 +194,12 @@ test('retained legacy asset receipts use Media labels without recovering missing
     scopes: [{ comp: null, track: null, name: 'Main timeline', status: 'changed', changes: [{ property: prefix, before: 'Absent', after: '{"score":"shortened…"}' }] }] }
   const displayed = text(render(receipt, saved()).tree)
   assert.match(displayed, /Media assets changed/)
-  assert.match(displayed, /Media metadata · changed/)
+  assert.match(displayed, /Media metadata · Changed/)
   assert.doesNotMatch(displayed, /Project settings changed|Locally synthesized/)
   receipt.projectChanges.push('fps'); receipt.scopes[0].changes.push({ property: 'fps', before: '30', after: '24' })
   const mixed = text(render(receipt, saved()).tree)
   assert.match(mixed, /Media assets changed · Project or track settings changed/)
-  assert.match(mixed, /Media and project settings · changed/)
+  assert.match(mixed, /Media and project settings · Changed/)
 })
 
 test('receipt generation and component rendering leave captured projects unchanged', () => {

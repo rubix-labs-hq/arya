@@ -7,7 +7,8 @@ import { createRequire } from 'node:module'
 import test from 'node:test'
 import { createRecoveryController, openProjectRecovery } from '../web/ui/project-recovery.js'
 import { assistantDraft, assistantDraftContext, assistantDraftIsCurrent } from '../web/ui/assistant-script.js'
-import { assistantPrompt } from '../web/ui/assistant-state.js'
+import { assistantPrompt, assistantState } from '../web/ui/assistant-state.js'
+import { assistantActivity } from '../web/ui/assistant-activity.js'
 
 const family = '11111111-1111-4111-8111-111111111111', copyID = '22222222-2222-4222-8222-222222222222'
 const listing = patch => ({ protocol: 1, familyID: family, version: 7, rootIdentity: { device: '1', inode: '2' }, observed: { status: 'invalid', token: 'a'.repeat(64), writable: true }, snapshots: [{ id: copyID, host: 'browser', name: 'Saved project', createdAt: '2026-10-04T00:00:00Z', bytes: 900, sha256: 'c'.repeat(64) }], preservedOriginals: 0, warning: null, ...patch })
@@ -178,10 +179,13 @@ const app = fs.readFileSync(new URL('../web/ui/app.js', import.meta.url), 'utf8'
 const storeSource = fs.readFileSync(new URL('../web/ui/store.js', import.meta.url), 'utf8')
 const nodes = (value, output = []) => { if (Array.isArray(value)) value.forEach(child => nodes(child, output)); else if (value && typeof value === 'object') { output.push(value); nodes(value.props?.children, output) } return output }
 const nodeText = node => [node.props.children].flat(Infinity).filter(value => typeof value === 'string').join('')
+// The top bar Recovery button is an icon with a label that hides on narrow windows, so its name is the aria-label.
+const named = node => node.props['aria-label'] || nodeText(node)
 function shell(status, kind = 'http', history) {
   const store = { project: null, version: 7, root: '/selected', recovery: { status, history }, jobs: [], claude: { state: 'idle' }, refs: [] }, requests = [], opened = []
-  const context = vm.createContext({ html: htm.bind(h), h, Icon, store, host: { kind }, useStore: () => store, useState: value => [value, () => {}], useRef: value => ({ current: value }), showRecovery: () => opened.push(true), api: async route => { requests.push(route); return {} }, set: value => Object.assign(store, value), toast() {}, PAGES: [], registry: { pages: [] }, ScrollTabs() {}, LayoutMenu() {} })
+  const context = vm.createContext({ html: htm.bind(h), h, Icon, assistantState, assistantActivity, store, host: { kind }, useStore: () => store, useState: value => [value, () => {}], useRef: value => ({ current: value }), showRecovery: () => opened.push(true), api: async route => { requests.push(route); return {} }, set: value => Object.assign(store, value), toast() {}, PAGES: [], registry: { pages: [] }, ScrollTabs() {}, LayoutMenu() {} })
   vm.runInContext(storeSource.match(/export function chatHistoryStatus\([^]*?\n}\n/)[0].replace('export ', ''), context)
+  vm.runInContext(storeSource.match(/export function historyDepth\([^]*?\n}\n/)[0].replace('export ', ''), context)
   for (const name of ['Welcome', 'TopBar']) vm.runInContext(app.match(new RegExp(`function ${name}\\([^]*?\\n}\\n`))[0], context)
   return { context, store, requests, opened }
 }
@@ -211,17 +215,18 @@ test('actual welcome in a new folder offers creation without a missing-file warn
 
 test('actual normal top bar exposes browser recovery while native retains its own chooser', () => {
   const browser = shell('valid'), native = shell('valid', 'native')
-  assert.ok(nodes(browser.context.TopBar()).find(node => node.type === 'button' && nodeText(node) === 'Recovery'))
-  assert.equal(nodes(native.context.TopBar()).some(node => node.type === 'button' && nodeText(node) === 'Recovery'), false)
+  assert.ok(nodes(browser.context.TopBar()).find(node => node.type === 'button' && named(node) === 'Recovery'))
+  assert.equal(nodes(native.context.TopBar()).some(node => node.type === 'button' && named(node) === 'Recovery'), false)
 })
 
 test('actual app bootstrap retains cold recovery status without dispatching restoration', async () => {
-  const f = shell('invalid'), routes = [], bootstrap = { project: null, version: 0, root: '/cold', recovery: { status: 'invalid', warning: 'Original file preserved' } }
+  const f = shell('invalid'), routes = [], bootstrap = { project: null, version: 0, root: '/cold', recovery: { status: 'invalid', warning: 'Original file preserved' }, history: { undo: 2, redo: 0 }, session: { id: 'session-b', startedAt: 5 } }
   Object.assign(f.context, { api: async route => { routes.push(route); return route === '/api/project' ? bootstrap : {} }, connect() {}, installKeys() {}, installDropImport() {}, render() {}, App() {}, player: {}, window: {} })
   const source = app.match(/export async function mountApp\([^]*?\n}\n/)[0].replace('export ', '')
   vm.runInContext(source, f.context); await f.context.mountApp({})
   assert.equal(f.store.project, null); assert.equal(f.store.version, 0); assert.equal(f.store.root, '/cold')
   assert.equal(f.store.recovery.status, 'invalid'); assert.equal(f.store.recovery.warning, 'Original file preserved')
+  assert.equal(JSON.stringify(f.store.history), '{"undo":2,"redo":0}'); assert.equal(f.store.session.id, 'session-b')
   assert.equal(routes.includes('/api/recovery/restore'), false)
 })
 
@@ -248,7 +253,7 @@ test('actual pending assistant send blocks both recovery entries and their stale
   f.context.s = f.store
   vm.runInContext(app.match(/function showRecovery\([^]*?\n}\n/)[0], f.context)
   const controls = () => [f.context.TopBar(), f.context.Welcome()].flatMap(value => nodes(value))
-    .filter(node => node.type === 'button' && ['Recovery', 'Choose a recovery copy'].includes(nodeText(node)))
+    .filter(node => node.type === 'button' && ['Recovery', 'Choose a recovery copy'].includes(named(node)))
   const staleClicks = controls().map(node => node.props.onClick)
   assert.equal(staleClicks.length, 2)
   const chat = fs.readFileSync(new URL('../web/ui/chat.js', import.meta.url), 'utf8')
@@ -268,4 +273,16 @@ test('actual pending assistant send blocks both recovery entries and their stale
   assert.equal(f.store.assistantSharingReviewOpen, false)
   staleClicks[0]()
   assert.equal(opened.length, 1)
+})
+
+test('a recovery copy shows a readable local time and keeps the exact stamp as its tooltip', async t => {
+  const f = fixture(t); await tick()
+  const meta = f.document.body.querySelectorAll('small').find(node => /KiB/.test(node.textContent))
+  assert.ok(meta)
+  const expected = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date('2026-10-04T00:00:00Z'))
+  assert.ok(meta.textContent.startsWith(`${expected} · browser · 1 KiB · SHA256 cccccccccccc`), meta.textContent)
+  assert.doesNotMatch(meta.textContent, /2026-10-04T00:00:00Z/)
+  assert.equal(meta.title, '2026-10-04T00:00:00Z')
+  const odd = fixture(t, { initial: listing({ snapshots: [{ id: copyID, host: 'browser', name: 'Saved project', createdAt: 'not a date', bytes: 900, sha256: 'c'.repeat(64) }] }) }); await tick()
+  assert.match(odd.document.body.querySelectorAll('small').find(node => /KiB/.test(node.textContent)).textContent, /^not a date · /)
 })

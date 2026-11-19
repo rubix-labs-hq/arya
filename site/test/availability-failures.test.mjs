@@ -10,6 +10,11 @@ const defaults = { ...shipped, contributions: { ...shipped.contributions, checko
 const source = (await readFile(new URL('../assets/site.mjs', import.meta.url), 'utf8')).replace(/^import[^\n]+\n/, '');
 const ready = { ...defaults, release: { ...defaults.release, ready: true, notarized: true, version: '0.3.0', sha256: 'a'.repeat(64), macURL: 'https://example.com/Arya.dmg', allowedHosts: ['example.com'] } };
 
+const chooser = 'Choose the direct Mac download, the App Store or the browser editor.';
+const editions = 'See which editions are available.';
+const heroReady = 'Free Mac download · macOS 14 or later.';
+const heroWithdrawn = 'Check the download page for the Mac release.';
+
 class Element {
   constructor(properties = {}) {
     this.listeners = {}; this.attributes = {}; this.children = []; this.dataset = {};
@@ -29,9 +34,14 @@ class Element {
 }
 
 function fixture(fetch) {
-  const elements = Object.fromEntries(['#release-state', '#release-heading', '#release-description', '#release-action', '#contribution-form', '#custom-amount', '#contribution-state'].map(selector => [selector, new Element()]));
-  elements['#release-action'].append(new Element({ href: ready.release.macURL }));
-  elements['#release-heading'].textContent = 'The official Mac release is available.';
+  const elements = Object.fromEntries(['#release-state', '#release-description', '#release-action', '#contribution-form', '#custom-amount', '#contribution-state'].map(selector => [selector, new Element()]));
+  elements['#release-action'].append(new Element({ href: ready.release.macURL, textContent: 'Download Arya for Mac' }));
+  elements['#release-action a'] = elements['#release-action'].children[0];
+  elements['[data-direct-download]'] = new Element({ href: ready.release.macURL, textContent: 'Download Arya for Mac' });
+  elements['#release-details'] = new Element();
+  elements['#release-checksum'] = new Element();
+  elements['.download-hero .lead'] = new Element({ textContent: chooser });
+  elements['#hero-release'] = new Element({ textContent: heroReady });
   const submit = new Element();
   const input = elements['#custom-amount']; input.value = '15';
   const amounts = [5, 15, 30].map(amount => new Element({ dataset: { amount: String(amount) } }));
@@ -39,17 +49,22 @@ function fixture(fetch) {
   elements['#contribution-form'].querySelectorAll = () => [...amounts, input, submit];
   const document = { documentElement: new Element(), querySelector: selector => elements[selector] ?? null, querySelectorAll: selector => selector === '[data-amount]' ? amounts : [], addEventListener() {}, createTextNode: textContent => new Element({ textContent }), createElement: () => new Element() };
   let timeout;
-  const context = { document, contributionAmount, checkoutDestination, releaseDestination, safeDestination, AbortController, fetch, setTimeout: callback => { timeout = callback; return 1; }, clearTimeout() {} };
+  const timers = [], cleared = [];
+  const context = { document, contributionAmount, checkoutDestination, releaseDestination, safeDestination, AbortController, fetch, setTimeout: (callback, delay) => { timeout = callback; timers.push({ callback, delay, id: timers.length + 1 }); return timers.length; }, clearTimeout: id => { cleared.push(id); } };
   vm.createContext(context);
   vm.runInContext(`${source}\nglobalThis.loaded = configLoad;`, context);
-  return { elements, submit, input, amounts, loaded: context.loaded, expire: () => timeout(), submitAmount: () => elements['#contribution-form'].listeners.submit({ preventDefault() {} }) };
+  return { elements, submit, input, amounts, timers, cleared, loaded: context.loaded, expire: () => timeout(), submitAmount: () => elements['#contribution-form'].listeners.submit({ preventDefault() {} }) };
 }
 
 function assertUnavailable(f) {
   assert.equal(f.elements['#release-action'].children.length, 0);
   assert.equal(f.elements['#release-state'].textContent, 'Release status unavailable');
-  assert.equal(f.elements['#release-heading'].textContent, 'We could not check the current release.');
+  assert.equal(f.elements['[data-direct-download]'].href, '/download/#mac');
+  assert.equal(f.elements['[data-direct-download]'].textContent, 'Check Mac availability');
+  assert.equal(f.elements['#release-details'].hidden, true);
   assert.match(f.elements['#release-description'].textContent, /Reload/);
+  assert.equal(f.elements['.download-hero .lead'].textContent, editions);
+  assert.equal(f.elements['#hero-release'].textContent, heroWithdrawn);
   assert.match(f.elements['#contribution-state'].textContent, /could not be loaded/);
 }
 
@@ -113,7 +128,10 @@ test('unsupported configuration does not offer release or contribution options',
 test('valid unavailable configuration remains distinct from a load failure', async () => {
   const f = fixture(async () => ({ ok: true, json: async () => defaults }));
   await f.loaded;
-  assert.equal(f.elements['#release-heading'].textContent, 'The public installer is not ready.');
+  assert.equal(f.elements['#release-description'].textContent, 'The public installer is not ready.');
+  assert.equal(f.elements['.download-hero .lead'].textContent, editions);
+  assert.equal(f.elements['#hero-release'].textContent, heroWithdrawn);
+  assert.equal(f.elements['[data-direct-download]'].textContent, 'Check Mac availability');
   await f.submitAmount();
   assert.match(f.elements['#contribution-state'].textContent, /Contributions are not open yet/);
   assert.doesNotMatch(f.elements['#contribution-state'].textContent, /could not be loaded/);
@@ -123,7 +141,13 @@ test('valid approved configuration still offers its exact release and checkout d
   const config = { ...ready, contributions: { ...defaults.contributions, allowedHosts: ['example.com'], checkoutURLs: { '15': 'https://example.com/support-fifteen' } } };
   const f = fixture(async () => ({ ok: true, json: async () => config }));
   await f.loaded;
+  assert.equal(f.elements['#release-action'].children[0], f.elements['#release-action a']);
   assert.equal(f.elements['#release-action'].children[0].href, config.release.macURL);
+  assert.equal(f.elements['[data-direct-download]'].href, config.release.macURL);
+  assert.equal(f.elements['#release-checksum'].textContent, config.release.sha256);
+  assert.equal(f.elements['#release-details'].hidden, false);
+  assert.equal(f.elements['.download-hero .lead'].textContent, chooser);
+  assert.equal(f.elements['#hero-release'].textContent, heroReady);
   await f.submitAmount();
   assert.equal(f.elements['#contribution-state'].children[1].href, config.contributions.checkoutURLs['15']);
   assert.match(f.elements['#contribution-state'].textContent, /one-time contribution/);
@@ -142,5 +166,41 @@ test('changing an amount removes an offered checkout before a new check', async 
     await f.submitAmount();
     assert.match(f.elements['#contribution-state'].textContent, /There is no checkout for \$5\.00/);
     assert.doesNotMatch(f.elements['#contribution-state'].textContent, /Contributions are not open yet/);
+  }
+});
+
+test('direct links stay on the site while checking configuration and after a paid release is rejected', async () => {
+  let respond;
+  const pending = new Promise(resolve => { respond = resolve; });
+  const f = fixture(() => pending);
+  assert.equal(f.elements['[data-direct-download]'].href, '/download/#mac');
+  assert.equal(f.elements['#release-action a'].href, '#release-state');
+  respond({ ok: true, json: async () => ({ ...ready, contributions: { ...ready.contributions, policy: 'paid-download' } }) });
+  await f.loaded;
+  assert.equal(f.elements['[data-direct-download]'].href, '/download/#mac');
+  assert.equal(f.elements['#release-action'].children.length, 0);
+  assert.equal(f.elements['#release-details'].hidden, true);
+});
+
+test('a slow release check says so on the download button, and a quick one never changes the label', async () => {
+  for (const outcome of ['ready', 'not ready', 'failed']) {
+    let respond, fail;
+    const f = fixture(() => new Promise((resolve, reject) => { respond = resolve; fail = reject; }));
+    const anchor = f.elements['#release-action a'];
+    assert.equal(anchor.textContent, 'Download Arya for Mac');
+    const slow = f.timers.filter(timer => timer.delay === 400);
+    assert.equal(slow.length, 1);
+    assert.equal(f.timers.at(-1).delay, 8000);
+    slow[0].callback();
+    assert.equal(anchor.textContent, 'Checking release…');
+    assert.equal(anchor.href, '#release-state');
+    if (outcome === 'failed') fail(new Error('offline'));
+    else respond({ ok: true, json: async () => outcome === 'ready' ? ready : defaults });
+    await f.loaded;
+    assert.ok(f.cleared.includes(slow[0].id), 'the slow-check timer is cleared once the check settles');
+    if (outcome === 'ready') {
+      assert.equal(anchor.textContent, 'Download Arya for Mac');
+      assert.equal(anchor.href, ready.release.macURL);
+    } else assert.equal(f.elements['#release-action'].children.length, 0);
   }
 });

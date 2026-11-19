@@ -249,6 +249,8 @@ export function PresetsPanel({ clip, ids }) {
 
 /** Grabs the viewer's current graded frame as a still (kept for this session). */
 export function grabStill(clip) {
+  // While the viewer shows an assistant preview, its frame is not the project's.
+  if (store.previewShown) { toast('The viewer shows the assistant preview. Go back to the project to grab a still.', 'error'); return null }
   try {
     const url = canvas.toDataURL('image/jpeg', 0.9)
     const p = store.project

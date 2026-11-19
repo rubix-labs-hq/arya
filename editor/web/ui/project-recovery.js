@@ -78,7 +78,7 @@ export function openProjectRecovery({ document = globalThis.document, ...options
   const backdrop = element('div', undefined, 'modal-back project-recovery-backdrop'), panel = element('div', undefined, 'modal project-recovery')
   panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-labelledby', 'project-recovery-title'); panel.tabIndex = -1
   const title = element('h3', 'Restore a saved project'); title.id = 'project-recovery-title'
-  const explanation = element('p', 'Choose a verified copy, then select Restore. Recovery does not replace the project automatically.'), disk = element('p'), warning = element('p', undefined, 'project-recovery-warning'), feedback = element('p')
+  const explanation = element('p', 'Choose a verified copy, then select Restore selected copy.'), disk = element('p'), warning = element('p', undefined, 'project-recovery-warning'), feedback = element('p')
   feedback.setAttribute('role', 'status'); feedback.setAttribute('aria-live', 'polite')
   const copies = element('div', undefined, 'project-recovery-copies'), actions = element('div', undefined, 'modal-actions')
   const close = element('button', 'Close', 'ghost'), refresh = element('button', 'Refresh', 'ghost'), restore = element('button', 'Restore selected copy')
@@ -122,7 +122,11 @@ export function openProjectRecovery({ document = globalThis.document, ...options
         const row = element('label', undefined, 'project-recovery-copy'), radio = element('input'), description = element('span')
         radio.type = 'radio'; radio.name = 'project-recovery-copy'; radio.value = copy.id
         const name = typeof copy.name === 'string' ? copy.name : 'Untitled project'
-        description.textContent = `${name} · ${copy.createdAt} · ${copy.host} · ${Math.ceil(copy.bytes / 1024)} KiB · SHA256 ${String(copy.sha256).slice(0, 12)}`
+        const when = new Date(copy.createdAt)
+        const created = Number.isNaN(when.getTime()) ? copy.createdAt : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }).format(when)
+        const meta = element('small', `${created} · ${copy.host} · ${Math.ceil(copy.bytes / 1024)} KiB · SHA256 ${String(copy.sha256).slice(0, 12)}`)
+        meta.title = copy.createdAt
+        description.append(element('b', name), meta)
         radio.addEventListener('change', () => controller.choose(copy.id)); radios.push(radio); row.append(radio, description); copies.append(row)
       }
     }

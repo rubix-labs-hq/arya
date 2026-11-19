@@ -5,11 +5,23 @@ import { runProcessingProcess } from '../core/processing-process.mjs'
 import { buildShortsOps, captionItems, framingKeys, proposeShorts, subjectCenters, transcriptDeleteOps, validateWords } from '../core/shorts.js'
 import { guardedOutput } from '../core/output-path.js'
 import { findClip } from '../core/project.js'
+import { wavHasSignal, wavPauses } from '../core/wav-signal.mjs'
+import { clampWordsToDuration, keepWordsInSpeech } from '../core/word-timing.js'
+import { MAX_TIMED_TRANSCRIPT_BYTES, parseTimedTranscript } from '../core/transcript-edit.js'
 
 const digest = value => createHash('sha256').update(value).digest('hex')
 const MAX_TRANSCRIPT_BYTES = 16 * 1024 * 1024
 const cancelled = () => { const error = new Error('cancelled'); error.name = 'AbortError'; return error }
 const check = signal => { if (signal?.aborted) throw cancelled() }
+const refused = (message, status = 409) => Object.assign(new Error(message), { status })
+// Saved with an empty transcript when the extracted audio never reaches -60 dBFS. whisper.cpp
+// answers digital silence with an invented word, so recognition is skipped for such a source.
+export const SILENT_SOURCE_WARNING = 'No audible audio in this clip. Its sound never reaches -60 dBFS, so speech recognition was not run.'
+export const lateWordsWarning = count => `${count} recognized word${count === 1 ? ' was' : 's were'} timed after the end of the file and ${count === 1 ? 'was' : 'were'} left out.`
+// What to run when local transcription is unavailable. server.mjs sends these to the assistant.
+export const WHISPER_INSTALL_COMMAND = 'brew install whisper-cpp'
+export const WHISPER_MODEL_COMMAND = 'mkdir -p ~/.reel/models && curl -L -o ~/.reel/models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin'
+const IMPORT_FORMATS = ['srt', 'vtt', 'json']
 
 function sourceStamp(stat) {
   let seconds = stat.mtimeNs / 1000000000n, nanoseconds = stat.mtimeNs % 1000000000n
@@ -75,6 +87,8 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
     const valid = validateWords(words, info.duration)
     const value = { ...previous, ...(previous.status === 'missing' ? { provider: 'manual' } : {}), ...metadata, src: info.src, locale: info.locale, words: valid, revision: previous.revision + 1, fingerprint: info.fingerprint, status: metadata.status ?? (['missing', 'stale'].includes(previous.status) ? 'complete' : previous.status), updatedAt: Date.now() }
     if (previous.status === 'stale') delete value.warning
+    // Words saved by hand replace a silent result, so its warning no longer describes this transcript.
+    if (valid.length && metadata.warnings === undefined && Array.isArray(value.warnings)) value.warnings = value.warnings.filter(warning => warning !== SILENT_SOURCE_WARNING)
     const encoded = JSON.stringify(value)
     if (Buffer.byteLength(encoded) > MAX_TRANSCRIPT_BYTES) throw new Error('The transcript is larger than 16 MB')
     const temp = path.join(directory, `${randomUUID()}.json.part`)
@@ -89,7 +103,9 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
   const model = () => (modelPaths ?? [processEnvModel(), path.join(globalThis.process.env.HOME ?? '', '.reel/models/ggml-base.bin'), path.join(globalThis.process.env.HOME ?? '', '.reel/models/ggml-base.en.bin'), '/opt/homebrew/share/whisper-cpp/ggml-base.bin', '/opt/homebrew/share/whisper-cpp/ggml-base.en.bin']).filter(Boolean).find(file => fs.existsSync(file) && fs.statSync(file).isFile())
   const capability = async () => {
     const binary = await findWhisper(), file = model()
-    return { available: Boolean(binary && file), durable: true, jobs: true, provider: 'whisper.cpp', onDevice: true, locales: file?.endsWith('.en.bin') ? ['en-US', 'en-GB'] : [], reason: !binary ? 'Install whisper.cpp to transcribe locally.' : !file ? 'Download a whisper.cpp model to ~/.reel/models/ggml-base.bin.' : undefined }
+    // install lists only what is missing. Both are looked up again on every call, so no restart is needed.
+    const install = [...(binary ? [] : [WHISPER_INSTALL_COMMAND]), ...(file ? [] : [WHISPER_MODEL_COMMAND])]
+    return { available: Boolean(binary && file), durable: true, jobs: true, provider: 'whisper.cpp', onDevice: true, locales: file?.endsWith('.en.bin') ? ['en-US', 'en-GB'] : [], reason: !binary ? 'Install whisper.cpp to transcribe locally.' : !file ? 'Download a whisper.cpp model to ~/.reel/models/ggml-base.en.bin.' : undefined, ...(install.length ? { install } : {}) }
   }
   const transcribe = async body => {
     const guard = captureProcessing?.() ?? {}
@@ -100,7 +116,7 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
     const startedMeanwhile = running.get(info.jobKey)
     if (startedMeanwhile) return body.wait === false ? publicJob(startedMeanwhile.job) : startedMeanwhile.promise
     if (!binary) throw new Error('Transcription needs whisper.cpp. Install whisper-cpp and a model first.')
-    if (!modelFile) throw new Error('Download a whisper.cpp model to ~/.reel/models/ggml-base.bin first.')
+    if (!modelFile) throw new Error('Download a whisper.cpp model to ~/.reel/models/ggml-base.en.bin first.')
     if (modelFile.endsWith('.en.bin') && !locale.toLowerCase().startsWith('en')) throw new Error('The installed English model only recognizes English. Install a multilingual whisper.cpp model for this language.')
     guard.assertCurrent?.(); assertCapacity?.()
     const job = newJob('transcript', { src: info.src, locale }), controller = new AbortController()
@@ -116,17 +132,32 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
         guardedOutput(root, wav)
         await process('ffmpeg', ['-nostdin', '-n', '-loglevel', 'error', '-i', info.file, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav], { signal: controller.signal })
         check(controller.signal); guardedOutput(root, wav); guardedOutput(root, `${prefix}.json`)
-        job.message = 'Recognizing speech'; publish(job)
-        await process(binary, ['-m', modelFile, '-f', wav, '-l', locale.split('-')[0].toLowerCase(), '-oj', '-ml', '1', '-sow', '-of', prefix], { signal: controller.signal })
-        check(controller.signal); unchanged(info)
-        const recognized = guardedOutput(root, `${prefix}.json`)
-        if (fs.statSync(recognized).size > MAX_TRANSCRIPT_BYTES) throw new Error('The recognized transcript is larger than 16 MB')
-        const raw = JSON.parse(fs.readFileSync(recognized, 'utf8'))
-        const words = (raw.transcription ?? []).map(segment => ({ t: Number(segment.offsets?.from) / 1000, end: Number(segment.offsets?.to) / 1000, text: String(segment.text ?? '').trim() })).filter(word => word.text && word.end > word.t)
+        // false only when every sample was read and none reached the level. A WAV that cannot be
+        // read gives null and is recognized as before.
+        const silent = await wavHasSignal(wav, { signal: controller.signal }) === false
+        check(controller.signal)
+        let words = [], late = 0
+        if (!silent) {
+          job.message = 'Recognizing speech'; publish(job)
+          await process(binary, ['-m', modelFile, '-f', wav, '-l', locale.split('-')[0].toLowerCase(), '-oj', '-ml', '1', '-sow', '-of', prefix], { signal: controller.signal })
+          check(controller.signal); unchanged(info)
+          const recognized = guardedOutput(root, `${prefix}.json`)
+          if (fs.statSync(recognized).size > MAX_TRANSCRIPT_BYTES) throw new Error('The recognized transcript is larger than 16 MB')
+          const raw = JSON.parse(fs.readFileSync(recognized, 'utf8'))
+          words = (raw.transcription ?? []).map(segment => ({ t: Number(segment.offsets?.from) / 1000, end: Number(segment.offsets?.to) / 1000, text: String(segment.text ?? '').trim() })).filter(word => word.text && word.end > word.t)
+          // whisper.cpp can time the last word past the end of the file, which the save refuses.
+          const clamped = clampWordsToDuration(words, info.duration)
+          words = clamped.words; late = clamped.dropped
+          // It also charges a pause to the words beside it. Words it timed inside a pause are moved
+          // into the speech next to it, so a cut that removes the pause keeps their captions.
+          const sound = await wavPauses(wav, { signal: controller.signal })
+          check(controller.signal)
+          if (sound) words = keepWordsInSpeech(words, sound.pauses, Math.min(info.duration, sound.duration)).words
+        } else unchanged(info)
         check(controller.signal)
         if (job.state === 'failed') throw cancelled()
-        const result = save(info, words, previousRevision, { status: 'complete', onDevice: true, provider: 'whisper.cpp', warnings: [] }, true)
-        job.state = 'done'; job.progress = 1; job.finished = Date.now(); job.result = result; job.message = 'Transcript saved'; publish(job)
+        const result = save(info, words, previousRevision, { status: 'complete', onDevice: true, provider: 'whisper.cpp', warnings: silent ? [SILENT_SOURCE_WARNING] : late ? [lateWordsWarning(late)] : [] }, true)
+        job.state = 'done'; job.progress = 1; job.finished = Date.now(); job.result = result; job.message = silent ? 'No audible audio found' : 'Transcript saved'; publish(job)
         return result
       } catch (error) {
         if (job.state !== 'done') { job.state = 'failed'; job.error = error.message; job.finished = Date.now(); publish(job) }
@@ -207,6 +238,26 @@ export function createTranscriptRoutes({ root, resolveMedia, getProject, getVers
       return { ...record, words: record.words.slice(offset, end), offset, totalWords, nextOffset: end < totalWords ? end : null }
     },
     save: body => save(source(body.src, cleanLocale(body.locale)), body.words, body.revision),
+    // The Transcript panel's import in one call: parseTimedTranscript, then the same save. The
+    // answer leaves the words out, because a long transcript is larger than a tool result may be.
+    importTimed: body => {
+      const call = assertPublication?.()
+      const format = String(body?.format ?? '').toLowerCase()
+      if (!IMPORT_FORMATS.includes(format)) throw refused('format must be srt, vtt or json.', 400)
+      if (typeof body.text !== 'string' || !body.text.trim()) throw refused('text must hold the whole SRT, WebVTT or timed JSON transcript as one string.', 400)
+      if (Buffer.byteLength(body.text) > MAX_TIMED_TRANSCRIPT_BYTES) throw refused('Choose a timed transcript smaller than 16 MB', 400)
+      if (body.revision !== undefined && (!Number.isSafeInteger(body.revision) || body.revision < 0)) throw refused('revision must be the revision GET /api/transcript returned.', 400)
+      const info = source(body.src, cleanLocale(body.locale)), previous = read(info)
+      const exists = !['missing', 'stale'].includes(previous.status)
+      // A saved transcript has no undo and no preview. A first import overwrites nothing.
+      if (exists && call?.review) throw refused('Preview changes is on, and replacing a saved transcript has no preview or undo. Tell the user what you would import, or ask them to turn off Preview changes.')
+      if (exists && body.revision === undefined) throw refused(`This source already has a saved transcript (revision ${previous.revision}, ${previous.words.length} words). Importing replaces all of it and cannot be undone. To replace it, send revision ${previous.revision}.`)
+      const parsed = parseTimedTranscript(body.text, `import.${format}`, info.duration)
+      // A stale record's words are already hidden, so the import starts a new hand-supplied transcript.
+      const stale = previous.status === 'stale'
+      const saved = save(info, parsed.words, body.revision, stale ? { provider: 'manual', onDevice: true, warnings: [] } : {}, stale)
+      return { saved: true, src: saved.src, locale: saved.locale, revision: saved.revision, status: saved.status, provider: saved.provider, replaced: exists, format: parsed.format, wordCount: saved.words.length, from: parsed.from, to: parsed.to, warnings: parsed.warnings }
+    },
     edit: body => {
       const result = transcriptDeleteOps(getProject(), body)
       if (body.apply) { checkVersion(body); return { ...result, ...apply(result.ops, 'Lifted the transcript passage from the selected clip') } }
@@ -255,6 +306,7 @@ function publicJob(job) {
 export default ctx => ({ routes: {
   'GET /api/transcript': ctx.transcripts.get,
   'POST /api/transcript': ctx.transcripts.save,
+  'POST /api/transcript/import': ctx.transcripts.importTimed,
   'POST /api/transcript/edit': ctx.transcripts.edit,
   'POST /api/shorts/propose': ctx.transcripts.propose,
   'POST /api/shorts/build': ctx.transcripts.build,

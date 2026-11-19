@@ -1,6 +1,6 @@
 # Arya website
 
-A framework-free static website with six pages, real editor captures, local fonts and no third-party scripts. It is a separate marketing site, not the editing application.
+A framework-free static website with seven pages and a 404 page, real editor captures, local fonts and no third-party scripts. It is a separate marketing site, not the editing application.
 
 ## Build and check
 
@@ -27,11 +27,29 @@ A Mac download requires `ready`, `notarized`, version, SHA-256 and an HTTPS URL 
 
 Arya Pro copy for the App Store edition follows `mobileRelease.pro`. It appears only when that field is the JSON boolean `true` and the App Store release is live (`mobileRelease.ready` and a valid App Store URL). Any other value keeps the tip-era copy, byte for byte. Set it to `true` only after the App Store version that sells Arya Pro (1.2.0) is live, then run `npm run build`. The Pro sentences live in `proCopy` in `scripts/product-home.mjs`. They never state a price, because prices vary by storefront. Check the privacy policy date when you flip it, because the privacy page text changes.
 
+Each release channel is stated by itself. `release` is the direct Mac download, `mobileRelease` is the iPhone and iPad app, and the optional `macAppStoreRelease` object records what is live on the Mac App Store, which passes App Review on its own schedule:
+
+```json
+"macAppStoreRelease": { "version": "1.1.1", "build": "5", "pro": false }
+```
+
+`version` is the live Mac App Store version, `build` is its build number (recorded for the release checklist and not printed) and `pro` is the JSON boolean `true` once that version sells Arya Pro. The object changes nothing while `mobileRelease.pro` is not `true`. With `mobileRelease.pro` true:
+
+- `pro` false: the Pro sentences name iPhone and iPad only. The download page adds a "Mac App Store · Version" line that says that edition has optional tips and that Arya Pro starts there with version 1.2.0. No sentence says one purchase covers the Mac App Store edition, and the privacy and support pages keep the tip disclosure.
+- `pro` true: the sentence "One Arya Pro purchase covers iPhone, iPad and the Mac App Store edition." returns. When both versions match, the version line reads "iPhone, iPad and Mac"; otherwise each channel keeps its own line.
+- Object missing, or without a version such as `1.2.0`: no page names a Mac App Store version or says Arya Pro covers that edition. `storeScope` in `scripts/product-home.mjs` decides all of this.
+
+The privacy page says Sign in with ChatGPT "comes to the Mac App Store edition with version 1.2.0" until `version` here is 1.2.0 or later. From then on it lists the Mac App Store app beside the iPhone and iPad apps.
+
+Update `macAppStoreRelease` whenever the Mac App Store version changes. It can change without anyone acting, because an approved version releases by itself. The direct Mac download and the browser editor are always stated as free and never needing Arya Pro.
+
 Contribution URLs have a separate allowlist. A preset checkout URL must represent that exact one-time USD amount at the provider. The custom destination must let the user explicitly choose the amount at the provider. The site never creates a payment, changes provider amounts by query string or claims payment success. Test the actual hosted checkout and receipt before configuring it.
 
 `publicSourceURL` holds the public repository URL once it is published. An approved HTTPS `contactURL` on `externalHosts` adds a footer support link. A configured `siteURL` adds canonical links and the link preview metadata, which points at `assets/brand/link-preview.png`. Neither field proves deployment or reachability. The six pages explain current product and release limits. Check those facts against the product before every release.
 
-Beta access: until a form service is chosen, `requestAccessURL` stays `null` and the download page shows a placeholder form marked "Placeholder. This form is not connected yet." Its controls start disabled, it has no `action`, and its handler validates the email in the browser, sends nothing and says so. Until then, primary buttons read "Beta access" and no page asks visitors to request access. After a release is approved, every primary button reads "Download Arya" and goes to `/download/#mac`. To connect the form, put the hosted form's HTTPS URL in `requestAccessURL` and its host in `externalHosts`; the build then replaces the placeholder with a link to that form. Update the data guide in the same change to name the service.
+The assistant section describes the top-bar button, change card and preview controls for each live 1.3 or later download separately. The direct Mac download follows `release`, and the iPhone and iPad apps follow `mobileRelease`. The desktop App Store edition has its own release schedule. The home page uses the reviewed local browser capture until the mobile gate admits the iPhone assistant capture in `native.next`.
+
+Beta access: until a form service is chosen, `requestAccessURL` stays `null` and the download page shows a placeholder form marked "Placeholder. This form is not connected yet." Its controls start disabled, it has no `action`, and its handler validates the email in the browser, sends nothing and says so. Until then, primary buttons read "Beta access" and no page asks visitors to request access. After a release is approved, the header button reads "Downloads" and goes to `/download/`. The Home hero button reads "Download Arya for Mac" and links to the release URL; the browser script points it at `/download/#mac` until it has re-checked `config.json`. The closing button reads "Download for Mac" and goes to `/download/#mac`. At 650px and below, the App Store button comes first and takes the primary color in the Home hero and the closing section, because a phone visitor cannot use the Mac download. To connect the form, put the hosted form's HTTPS URL in `requestAccessURL` and its host in `externalHosts`; the build then replaces the placeholder with a link to that form. Update the data guide in the same change to name the service.
 
 Search indexing follows `indexing` in `config.json`. It is `true` now, so `robots.txt` excludes `/editor/` and `/api/` and the build writes `sitemap.xml`. With `indexing` false or no `siteURL`, `robots.txt` blocks everything and no sitemap is written. Before changing `siteURL`, confirm the canonical metadata, the raster social preview and the dated privacy policy still match. The included SVG social artwork has outlined type and a 1200 by 630 PNG export. The identity board, app-icon concept and installer artwork live beside it in `assets/brand/`. Do not claim it is a validated preview for every social platform.
 
@@ -60,6 +78,14 @@ The current illustration is Afterlight, an original study of the cut-A identity.
 Home is generated by `scripts/product-home.mjs`. Its workspace gallery reads the reviewed local images and captions in `assets/product/captures.json`; the chapter images come from `assets/product/figures.json`. The gallery needs exactly four entries and the first must be the editing workspace. The build rejects a missing capture or a nonlocal image path. It preserves each image's original aspect ratio and provides a full-size link. Capture URLs include a SHA-256 content version so revised screenshots cannot reuse an older browser-cache entry. The link check verifies those versions against the actual bytes. New workspace sections appear only after their corresponding capture is registered.
 
 Every product claim on Home must be true of the code today. Before changing feature copy, check it against the editor source, and state limits next to the claim (for example, no Premiere XML, no planar tracker, suggestion scores do not predict views). The captures show a development build of the browser editor; the Mac app opens a native editor with the same project format. The optional Afterlight illustration remains a distinct secondary demonstration. No image establishes a public release or a performance result.
+
+## Home and download pages
+
+Home leads with the suite headline and a lead that names the assistant. The assistant section is the first section after the hero, ahead of the launch film. It says where the assistant works (the Mac app, the iPad and iPhone apps while the App Store release is live, and the local browser editor), what it reads, that every change has a receipt and reverses with Undo, and that Arya includes no AI credits. Its copy lives in `assistantCopy` in `scripts/product-home.mjs`.
+
+The download page shows one section per edition: Mac download, App Store and Browser editor. Each states its own version or requirements and keeps longer detail (checksum, purchase options, browser storage) in a disclosure. Its heading and lead change when no Mac release is ready, and the browser script changes the lead when it withdraws the Mac link. On Home, the script also replaces "Free Mac download" under the hero buttons with "Check the download page for the Mac release."
+
+Wherever a page offers the hosted browser editor, a visible sentence beside the link says it has no assistant, Figma import or transcription. Keep that sentence when moving or adding a link to `/editor/`.
 
 ## Navigation and failed scripts
 

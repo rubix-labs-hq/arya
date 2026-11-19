@@ -87,8 +87,7 @@ export function PhoneWideNotice({ name }) {
     <div class="page phone-wide-notice">
       <div class="phone-wide-card">
         <h2>${name} needs a wider window</h2>
-        <p>${name} shows its compositions, properties and layers side by side. Use a tablet in landscape, a laptop or a desktop window at least 900 pixels wide.</p>
-        <p class="muted">Edit, Media, Color, Audio and Deliver work at this width.</p>
+        <p>${name} uses side-by-side panels. Open it on a wider screen to work with compositions, properties and layers.</p>
         <button class="primary" onClick=${() => set({ page: 'edit' })}>Back to Edit</button>
       </div>
     </div>

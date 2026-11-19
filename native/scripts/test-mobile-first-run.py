@@ -38,6 +38,7 @@ def check(value,message):
 creation=section(session,'// BEGIN PROJECT CREATION','// END PROJECT CREATION')
 policy=section(view,'// BEGIN WELCOME LAYOUT','// END WELCOME LAYOUT')
 opening=method(session,'func open(_ url: URL, completion:')
+retrying=method(session,'var canRetryFailedOpen: Bool')+'\n'+method(session,'func retryFailedOpen()')
 legacy_opening=method(session,'func open(_ url: URL, prepare:')
 creating=method(session,'func createNewProject(')
 legacy_creation=method(session,'func create(at ')
@@ -58,6 +59,8 @@ check('Darwin.rmdir' in creation and 'removeItem' not in creation,'Rollback must
 check('self.backend === backend else { completion?(.failure(CancellationError()))' in opening,'Superseded open completes its waiter')
 check(opening.index('guard self.backend === backend',opening.index('catch {',opening.index('Task {'))) < opening.index('self.close()',opening.index('Task {')),'Failure close is guarded by current backend identity')
 check('if completion == nil { self.error' in opening,'New errors stay in sheet; legacy Open retains its alert')
+check(opening.index('failedOpen = nil') < opening.index('let generation = backendID'),'Every open starts without an earlier retry target')
+check('if session.canRetryFailedOpen {' in view and 'Button("Try again") { session.retryFailedOpen() }' in view,'The failed-open alert offers the open again')
 check('.buttonStyle(.borderedProminent)' in view and '.buttonStyle(.bordered)' in view,'Welcome primary actions have real button surfaces')
 check('.fixedSize(horizontal: true, vertical: false)' in view and 'ViewThatFits(in: .horizontal)' in view,'Noncompressing landscape actions fall back when labels do not fit')
 check('NativeWelcomeLayout.horizontalActions(width: geometry.size.width' in view and 'dynamicTypeSize.isAccessibilitySize' in view,'Actual welcome consumes tested geometry/accessibility policy')
@@ -141,6 +144,7 @@ let log=Logger(subsystem:"test.arya",category:"open")
 @MainActor final class Harness {
     var backend:ReelBackend?;var folder:URL?;var accessing:URL?;var recents:[URL]=[]
     var backendID=UUID().uuidString;var sessionID=UUID().uuidString;var error:String?;var pageReady=false
+    var failedOpen:(folder:URL,message:String)?
     let platform:Int?=nil;let editor=EditorBundle(coreScript:URL(fileURLWithPath:"/unused"))
     let nativeEditor=EditorMock();let webView=WebMock();var closes=0;var documentRefreshes=0
     let assistant=AssistantMock();var projectRecoveryRequest:NativeProjectRecoveryRequest?
@@ -150,6 +154,7 @@ let log=Logger(subsystem:"test.arya",category:"open")
     func refreshDocument(backend:ReelBackend,folder:URL){documentRefreshes += 1}
     func push(_ name:String,_ json:String){}
     // EXTRACTED OPEN
+    // EXTRACTED RETRY
     // EXTRACTED LEGACY CREATE
 }
 @MainActor final class Outcome {
@@ -261,13 +266,32 @@ let log=Logger(subsystem:"test.arya",category:"open")
         initFailure.open(first,completion:initResult.receive);ReelBackend.failInit=false
         expect(initResult.calls==1 && !initResult.succeeded && initFailure.folder==nil,"init error completes New and leaves welcome")
         expect(initFailure.error==nil,"New error belongs to form")
+        expect(initFailure.failedOpen==nil && !initFailure.canRetryFailedOpen,"a New failure is retried from its form, not from the alert")
+        let initLegacy=Harness();ReelBackend.failInit=true
+        initLegacy.open(first);ReelBackend.failInit=false
+        expect(initLegacy.failedOpen?.folder==first && initLegacy.canRetryFailedOpen,"an Open that fails before startup keeps its folder to try again")
         let failed=Harness();let failedResult=Outcome();let failedGate=Gate();ReelBackend.nextGate=failedGate
         failed.open(first,completion:failedResult.receive);await drain();failedGate.finish(TestFailure());await drain()
         expect(failedResult.calls==1 && !failedResult.succeeded && failed.backend==nil && failed.folder==nil,"current startup failure closes failed editor")
         expect(failed.error==nil && failed.webView.loads==0,"failed New retains local error and does not load empty web editor")
+        expect(failed.failedOpen==nil,"failed New keeps no alert retry target")
         let legacy=Harness();let legacyGate=Gate();ReelBackend.nextGate=legacyGate
         legacy.open(first);await drain();legacyGate.finish(TestFailure());await drain()
         expect(legacy.error?.contains("fixture failure")==true && legacy.folder==nil,"legacy Open failure alerts and returns welcome")
+        // The project read fails in backend.start(), before the editor can show its own retry.
+        expect(legacy.failedOpen?.folder==first && legacy.failedOpen?.message==legacy.error && legacy.canRetryFailedOpen,"failed Open keeps the folder as the retry target of its alert")
+        ReelBackend.nextGate=nil;legacy.retryFailedOpen();await drain()
+        expect(legacy.folder==first && legacy.backend != nil && legacy.webView.loads==1,"Try again repeats the whole open")
+        expect(legacy.error==nil && legacy.failedOpen==nil && !legacy.canRetryFailedOpen,"a retried open clears its alert and its target")
+        let unrelated=Harness();let unrelatedGate=Gate();ReelBackend.nextGate=unrelatedGate
+        unrelated.open(first);await drain();unrelatedGate.finish(TestFailure());await drain()
+        unrelated.error="Another message";ReelBackend.nextGate=nil
+        expect(!unrelated.canRetryFailedOpen,"another alert never inherits Try again")
+        unrelated.retryFailedOpen();await drain()
+        expect(unrelated.folder==nil && unrelated.backend==nil,"retry only runs from the alert that reported the failed open")
+        let prepared=Harness();let preparedGate=Gate();ReelBackend.nextGate=preparedGate
+        prepared.open(first,prepare:{_ in});await drain();preparedGate.finish(TestFailure());await drain();ReelBackend.nextGate=nil
+        expect(prepared.error != nil && prepared.failedOpen==nil,"an open with its own preparation step is not rerun without it")
         for failOld in [false,true] {
             let switched=Harness();let old=Outcome();let current=Outcome();let oldGate=Gate();var prepared=false
             ReelBackend.nextGate=oldGate
@@ -295,7 +319,7 @@ let log=Logger(subsystem:"test.arya",category:"open")
     }
 }
 '''
-swift=swift.replace('    // EXTRACTED OPEN',legacy_opening+'\n'+opening).replace('    // EXTRACTED LEGACY CREATE',legacy_creation).replace('    // EXTRACTED PAGE DRAIN',page_drain)
+swift=swift.replace('    // EXTRACTED OPEN',legacy_opening+'\n'+opening).replace('    // EXTRACTED RETRY',retrying).replace('    // EXTRACTED LEGACY CREATE',legacy_creation).replace('    // EXTRACTED PAGE DRAIN',page_drain)
 with tempfile.TemporaryDirectory(prefix='arya-first-run-') as tmp:
     tmp=Path(tmp)
     bundled=tmp/'reel-core.js'

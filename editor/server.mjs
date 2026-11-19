@@ -3,18 +3,26 @@
 //
 // node server.mjs --root <project folder> [--port 4870]
 
+// First on purpose: it fills USER, LOGNAME and HOME when the server was started without them,
+// before any module below reads the environment or starts a CLI. Written with `from` so the tests
+// that run a copy of this file from another folder rewrite its path like every other import.
+import {} from './core/process-identity.mjs'
 import { spawn } from 'node:child_process'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import http from 'node:http'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { prepareLibraryOps, verifyLibraryInputs } from './core/library-resources.js'
 import { applyOps, compView, duration, migrate, newProject, outline, OPS_DOC } from './core/project.js'
 import { describeFocus } from './core/describe.js'
+import { editNotes } from './core/edit-notes.js'
+import { ANALYSIS_HELP, measuredNothing, parseLoudness, parseSilence } from './core/analysis-parse.js'
+import { BUNDLED_FONTS, SYSTEM_FONTS } from './core/fonts.js'
 import { thumbnailPlan } from './core/thumbnail-plan.js'
 import { guardedOutput } from './core/output-path.js'
 import { captureExportSources, prepareExportCohort, createExportDestination } from './core/export-cohort.mjs'
@@ -22,14 +30,16 @@ import { DeliveryHistory, deliveryOpenArguments } from './core/delivery-history.
 import { writeProjectAtomic } from './core/project-persistence.mjs'
 import { storeMediaUpload } from './core/media-upload.mjs'
 import { colorCapabilities } from './routes/color.mjs'
+import { createDerivativeWaiters } from './core/derivative-waiters.mjs'
 import { createProcessingAdmission, captureProcessingIdentity, processingCancelled } from './core/processing-admission.mjs'
 import { runProcessingProcess } from './core/processing-process.mjs'
-import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, processingWorkerConnected, retireProcessingWorkerClients, createWorkerWatchdog, noteWorkerActivity, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
-import { validateExportSpec } from './core/processing-export.js'
+import { reserveProcessingWorker, armProcessingWorkerCancellation, acknowledgeProcessingWorkerExit, createProcessingWorkerHost, workerClosedMessage, createWorkerWatchdog, noteWorkerActivity, noteWorkerSetupStep, frameJobDeadline, ASSISTANT_FRAME_QUEUE_MS, queuedJobWait, workerClock, WORKER_CHECK_MS } from './core/processing-worker.mjs'
+import { exportFileName, validateExportSpec } from './core/processing-export.js'
 import { ProjectRecovery, recoveryProject } from './core/project-recovery.mjs'
 import { runRecoveryJournal } from './core/project-recovery-bridge.mjs'
 import { createTranscriptRoutes } from './routes/transcript.mjs'
 import { createBrowserAssistant, confinedFile } from './agent/browser-assistant.mjs'
+import { createAccountFingerprint } from './agent/account-fingerprint.mjs'
 import { createChatGPTAccount } from './agent/chatgpt-account.mjs'
 import { createChatHistory } from './agent/chat-history.mjs'
 import { createAssistantReview } from './agent/assistant-review.mjs'
@@ -69,7 +79,16 @@ const chat = chatHistory.messages()
 let claude = { state: 'idle', text: '' }
 let uiState = { playhead: 0, selection: [], page: 'edit' }
 // The latest assistant change for one-step undo, and the pending preview in Preview changes mode.
-const assistantReview = createAssistantReview({ getVersion: () => version, getEpoch: () => projectEpoch, getProject: () => project, onChange: value => broadcast('assistantReview', value, 'ui') })
+const assistantReview = createAssistantReview({ getVersion: () => version, getEpoch: () => projectEpoch, getProject: () => project,
+  // How many Redo moves lead to a project, so a run that undid edits can be reversed by Redo.
+  redoDepth: target => { const index = future.lastIndexOf(target); return index < 0 ? 0 : future.length - index },
+  onChange: value => broadcast('assistantReview', value, 'ui'),
+  // Redo brought an undone preview back, so a request that says its preview was undone says
+  // applied again. A later request that shows another outcome keeps it.
+  onRestore: change => { if (change.kind === 'preview') assistantService.settlePreview('applied', 'undone') } })
+// One per server process. The version counter, the undo history and the assistant's change cards
+// start again with each one, so a page can tell a restart from a continued session.
+const session = { id: randomUUID(), startedAt: Date.now() }
 let lastPoll = 0
 const jobs = new Map()
 const deliveries = new DeliveryHistory(ROOT, () => Object.entries(project?.assets ?? {}).flatMap(([src, asset]) => [src, asset?.proxy].filter(v => typeof v === 'string')))
@@ -187,6 +206,10 @@ function admit(work, options = {}) { return processing.run(work, { ...capturePro
 // Filmstrips, waveform peaks and preview audio are cached by source content and never written
 // into the project. An edit made while one renders must not discard it; capacity still applies.
 function admitSourceDerivative(work) { return processing.run(work) }
+// Filmstrips and waveform peaks wait for a slot instead of being refused: an import of 16 files asks
+// for 16 filmstrips at once and the processing queue holds 8. Work already inside a reservation runs there.
+const derivativeWaiters = createDerivativeWaiters({ admit: admitSourceDerivative })
+function waitForSourceDerivative(work) { return processing.current() ? admitSourceDerivative(work) : derivativeWaiters.run(work) }
 
 // Only composition may retain a completed asset after an ordinary edit. Its private
 // scope cannot place clips or change the generic processing/assistant write policy.
@@ -279,7 +302,13 @@ function commit(next, who, lines, options = {}) {
   } else if (options.historyMove === 'redo') {
     future.pop()
     rememberProject(previous)
-  } else if (project && options.history !== false) {
+  } else if (options.historyMove === 'restore' && past.lastIndexOf(options.restoreTo) >= 0) {
+    // "Undo this change": everything from the restored project on leaves the undo history, and
+    // the project being left becomes the one Redo step.
+    past.length = past.lastIndexOf(options.restoreTo)
+    future.length = 0
+    future.push(previous)
+  } else if (project && (options.history !== false || options.historyMove === 'restore')) {
     rememberProject(project)
     future.length = 0
   }
@@ -289,11 +318,11 @@ function commit(next, who, lines, options = {}) {
   if (call) { call.version = version; call.acceptIdentity(projectEpoch) }
   lastText = publication.text
   // A commit outside the active request or preview apply makes that change unsafe to undo whole.
-  assistantReview.commitBy(call)
+  assistantReview.commitBy(call, options.historyMove)
   processing.current()?.accept()
   try {
     if (!publication.directorySynced) log('Project saved, but the directory flush failed:', publication.warningCode)
-    broadcast('project', { project, version, who })
+    broadcast('project', { project, version, who, history: { undo: past.length, redo: future.length }, ...(options.notes?.length ? { notes: options.notes } : {}) })
     for (const line of lines.slice(-8)) pushActivity(who, line)
   } catch { /* Notification failure does not reverse a published edit. */ }
   return { directorySynced: publication.directorySynced, ...(publication.warningCode ? { warningCode: publication.warningCode } : {}) }
@@ -304,7 +333,7 @@ fs.watchFile(FILE, { interval: 700 }, () => {
   const before = version
   loadFromDisk()
   if (version !== before) {
-    broadcast('project', { project, version, who: 'disk' })
+    broadcast('project', { project, version, who: 'disk', history: { undo: past.length, redo: future.length } })
     pushActivity('claude', 'reel.project.json changed on disk')
   }
 })
@@ -436,6 +465,8 @@ async function cacheKey(abs, ...extra) {
 }
 
 const inflight = new Map()
+// Export source copies that are alive now: absolute path of the copy to the SHA-256 of its bytes.
+const exportCopyDigests = new Map()
 function once(key, fn) {
   if (!inflight.has(key)) inflight.set(key, fn().finally(() => inflight.delete(key)))
 
@@ -478,7 +509,14 @@ async function probe(rel) {
   return asset
 }
 
-async function ensureProxy(rel, asset) { return processing.submit(() => makeProxy(rel, asset), captureProcessing()).promise }
+// A proxy waits for a processing slot. An import of more than 8 files used to fill the queue in one
+// tick: the proxies past the eighth were refused and never made, and an export started in the same
+// second was refused too. At most 2 proxies sit in the queue at a time; a file that needs none takes no slot.
+const proxyWaiters = createDerivativeWaiters({ what: 'proxies', share: 2, maxWait: Infinity, admit: work => processing.submit(work, captureProcessing()).promise })
+async function ensureProxy(rel, asset) {
+  if (!asset?.proxy || fs.existsSync(path.join(ROOT, asset.proxy))) return
+  return proxyWaiters.run(() => makeProxy(rel, asset))
+}
 
 async function makeProxy(rel, asset) {
   if (!asset.proxy) return
@@ -500,13 +538,27 @@ async function makeProxy(rel, asset) {
   })
 }
 
-async function filmstrip(rel, high = false) {
-  const asset = project?.assets[rel] ?? (await probe(rel))
+async function filmstripCache(asset, rel, high) {
   const abs = resolveMedia(asset.proxy && asset.proxy.endsWith('.mp4') && fs.existsSync(path.join(ROOT, asset.proxy)) ? asset.proxy : rel)
   const key = await cacheKey(abs, high ? 'strip4-high' : 'strip4')
   const dir = guardedOutput(ROOT, path.join(CACHE, key))
-  const meta = guardedOutput(ROOT, path.join(dir, 'strip.json'))
-  const jpeg = guardedOutput(ROOT, path.join(dir, 'strip.jpg'))
+  return { abs, key, dir, meta: guardedOutput(ROOT, path.join(dir, 'strip.json')), jpeg: guardedOutput(ROOT, path.join(dir, 'strip.jpg')) }
+}
+
+// A filmstrip that is already in the cache is answered without a processing slot. Null means it
+// has to be made (or the request is wrong, which the queued path reports).
+async function cachedFilmstrip(rel, high = false) {
+  const asset = project?.assets[rel]
+  if (!asset) return null
+  try {
+    const { meta } = await filmstripCache(asset, rel, high)
+    return fs.existsSync(meta) ? JSON.parse(fs.readFileSync(meta, 'utf8')) : null
+  } catch { return null }
+}
+
+async function filmstrip(rel, high = false) {
+  const asset = project?.assets[rel] ?? (await probe(rel))
+  const { abs, key, dir, meta, jpeg } = await filmstripCache(asset, rel, high)
   if (fs.existsSync(meta)) return JSON.parse(fs.readFileSync(meta, 'utf8'))
 
   return once(`strip:${key}`, async () => {
@@ -538,6 +590,14 @@ async function filmstrip(rel, high = false) {
     return publish(data)
     } finally { try { fs.unlinkSync(guardedOutput(ROOT, part)) } catch {} }
   })
+}
+
+// Waveform peaks that are already in the cache are answered without a processing slot.
+async function cachedPeaks(rel) {
+  try {
+    const file = path.join(CACHE, await cacheKey(resolveMedia(rel), 'peaks2'), 'peaks.json')
+    return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null
+  } catch { return null }
 }
 
 async function peaks(rel) {
@@ -575,7 +635,11 @@ async function peaks(rel) {
 async function audioRange(rel, from, dur) {
   if (!Number.isFinite(from) || from < 0 || !Number.isFinite(dur) || dur <= 0 || dur > 3600) throw new Error('Audio range must be finite, nonnegative and at most one hour')
   const abs = resolveMedia(rel)
-  const key = await cacheKey(abs, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3))
+  // An export reads a private copy of each source, at a new path for every job. Keyed by path,
+  // every export left new WAV files in the cache and none was ever reused. A copy is keyed by the
+  // SHA-256 of its bytes instead, so the second export of the same media reuses the first one's audio.
+  const digest = exportCopyDigests.get(abs)
+  const key = digest ? hashOf('export-copy', digest, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3)) : await cacheKey(abs, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3))
   const file = path.join(CACHE, 'audio', `${key}.wav`)
   if (fs.existsSync(file)) return file
   fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -596,8 +660,22 @@ function analysisNumber(value, fallback, min, max, name) {
   return number
 }
 
+// An optional part of the file, in source seconds, for the analyses that measure sound.
+function analysisRange(options) {
+  const given = value => value !== undefined && value !== null
+  const start = given(options.in) ? analysisNumber(options.in, 0, 0, 1000000, 'in') : null
+  const length = given(options.dur) ? analysisNumber(options.dur, 0, 0.1, 3600, 'dur') : null
+  return {
+    start: start ?? 0, given: start !== null || length !== null,
+    // Before -i, so ffmpeg seeks instead of decoding from the start, and counts time from the range.
+    args: [...(start === null ? [] : ['-ss', String(start)]), ...(length === null ? [] : ['-t', String(length)])],
+    echo: { ...(start === null ? {} : { in: start }), ...(length === null ? {} : { dur: length }) },
+  }
+}
+
 async function analyze(rel, kind, options = {}) {
   const abs = resolveMedia(rel)
+  if (!['loudness', 'silence'].includes(kind) && [options.in, options.dur].some(value => value !== undefined && value !== null)) throw new Error('in and dur apply only to kind loudness and silence')
   if (kind === 'scenes') {
     const threshold = analysisNumber(options.threshold, 10, 0, 100, 'threshold')
     const { stderr } = await run('ffmpeg', ['-nostdin', '-i', abs, '-an', '-vf', `scale=320:-2,scdet=t=${threshold}`, '-f', 'null', '-'], { allowFail: true })
@@ -608,20 +686,11 @@ async function analyze(rel, kind, options = {}) {
   if (kind === 'silence') {
     const noise = analysisNumber(options.noise, -32, -90, 0, 'noise')
     const min = analysisNumber(options.min, 0.45, 0.01, 60, 'min')
-    const { stderr } = await run('ffmpeg', ['-nostdin', '-i', abs, '-vn', '-af', `silencedetect=n=${noise}dB:d=${min}`, '-f', 'null', '-'], { allowFail: true })
-    const ranges = []
-    let open = null
-    for (const line of stderr.split('\n')) {
-      const s = /silence_start:\s*([-\d.]+)/.exec(line)
-      const e = /silence_end:\s*([\d.]+)/.exec(line)
-      if (s) open = Math.max(0, Number(s[1]))
-      if (e && open !== null) {
-        ranges.push([open, Number(e[1])])
-        open = null
-      }
-    }
+    const range = analysisRange(options)
+    const { stderr } = await run('ffmpeg', ['-nostdin', ...range.args, '-i', abs, '-vn', '-af', `silencedetect=n=${noise}dB:d=${min}`, '-f', 'null', '-'], { allowFail: true })
+    if (range.given && measuredNothing(stderr)) throw new Error('No sound was measured: that part is past the end of the file, or the file has no sound.')
 
-    return { kind, ranges }
+    return { kind, ranges: parseSilence(stderr, range.start), ...range.echo }
   }
   if (kind === 'beats') {
     // Onset detection on a low-passed energy envelope: peaks of rising energy.
@@ -660,11 +729,11 @@ async function analyze(rel, kind, options = {}) {
     return { kind, times, bpm: med ? Math.round(60 / med) : undefined }
   }
   if (kind === 'loudness') {
-    const { stderr } = await run('ffmpeg', ['-nostdin', '-i', abs, '-vn', '-af', 'ebur128=framelog=quiet', '-f', 'null', '-'], { allowFail: true })
-    const i = /I:\s*([-\d.]+) LUFS/.exec(stderr.split('Summary:').pop() ?? '')
-    const lra = /LRA:\s*([-\d.]+) LU/.exec(stderr.split('Summary:').pop() ?? '')
+    const range = analysisRange(options)
+    const { stderr } = await run('ffmpeg', ['-nostdin', ...range.args, '-i', abs, '-vn', '-af', 'ebur128=peak=true:framelog=quiet', '-f', 'null', '-'], { allowFail: true })
+    if (range.given && measuredNothing(stderr)) throw new Error('No sound was measured: that part is past the end of the file, or the file has no sound.')
 
-    return { kind, lufs: i ? Number(i[1]) : undefined, lra: lra ? Number(lra[1]) : undefined }
+    return { kind, ...parseLoudness(stderr), ...range.echo }
   }
   if (kind === 'transcript') return transcribe(rel)
   throw new Error(`unknown analysis ${kind}`)
@@ -685,38 +754,33 @@ async function transcribe(rel) {
 
 // ---------------------------------------------------------------- render worker (headless Chrome)
 
+// The host starts the worker Chrome, replaces one that cannot serve (never connected, page closed,
+// stalled or stopping) and refuses pages from a process it has replaced. See processing-worker.mjs.
+const workerHost = createProcessingWorkerHost({
+  launch: token => spawn(CHROME, [
+    '--headless=new', '--use-angle=metal', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required',
+    '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--mute-audio', '--no-first-run',
+    `--user-data-dir=${path.join(DOT, 'chrome')}`, '--window-size=1280,800', `http://127.0.0.1:${PORT}/?worker=1&id=${token}`,
+  ], { stdio: 'ignore' }),
+  clients, log,
+  onChange: value => { worker = value },
+  onExit: ownedWorker => acknowledgeProcessingWorkerExit(jobs.values(), ownedWorker, failJob),
+  onLost: ownedWorker => acknowledgeProcessingWorkerExit(jobs.values(), ownedWorker, failJob, workerClosedMessage),
+})
+
 function workerConnected() {
-  return processingWorkerConnected(worker, clients)
+  return workerHost.connected()
 }
 
-async function ensureWorker(signal) {
-  const until = Date.now() + 20000
-  while (!workerConnected()) {
-    if (signal?.aborted) throw processingCancelled()
-    if (!worker) {
-      log('starting the render worker')
-      worker = spawn(CHROME, [
-        '--headless=new', '--use-angle=metal', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required',
-        '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--mute-audio', '--no-first-run',
-        `--user-data-dir=${path.join(DOT, 'chrome')}`, '--window-size=1280,800', `http://127.0.0.1:${PORT}/?worker=1`,
-      ], { stdio: 'ignore' })
-      const ownedWorker = worker
-      ownedWorker.on('exit', () => {
-        retireProcessingWorkerClients(clients, ownedWorker)
-        if (worker === ownedWorker) worker = null
-        acknowledgeProcessingWorkerExit(jobs.values(), ownedWorker, failJob)
-      })
-    }
-    if (Date.now() > until) throw new Error('the render worker did not start')
-    await new Promise(r => setTimeout(r, 150))
-  }
+function ensureWorker(signal) {
+  return workerHost.ensure(signal)
 }
 
 function touchWorker() {
   clearTimeout(workerIdleTimer)
   workerIdleTimer = setTimeout(() => {
     if (processing.snapshot().active || [...jobs.values()].some(j => j.state === 'running' || j.state === 'queued')) return touchWorker()
-    if (worker) { worker.processingStopping = true; worker.kill() }
+    workerHost.retire(worker, 'idle for 5 minutes')
   }, 5 * 60 * 1000)
 }
 
@@ -745,7 +809,7 @@ function newJob(kind, spec) {
 }
 
 function jobPublic(job) {
-  const { ffmpeg: _f, resolve: _r, reject: _j, exportSources: _s, exportDestination: _d, ...rest } = job
+  const { ffmpeg: _f, resolve: _r, reject: _j, exportSources: _s, exportDestination: _d, exportCopies: _c, frameDeadline: _t, ...rest } = job
 
   return rest
 }
@@ -761,15 +825,41 @@ function checkExportOutput(file, sequence = false) {
   return out
 }
 
+// A job that has not reached the worker says why in `waiting`: { reason, since, job? }.
+// reason is 'behind-job' (job is the id of the render job that has the worker), 'behind-processing'
+// (a proxy, analysis or other processing has the queue), 'copying-sources' (its media is being
+// copied and hashed) or 'worker-starting' (waiting for the render worker to connect).
+function setJobWait(job, wait) {
+  if ((job.waiting?.reason ?? null) === (wait?.reason ?? null) && (job.waiting?.job ?? null) === (wait?.job ?? null)) return false
+  if (wait) job.waiting = { ...wait, since: Date.now() }
+  else delete job.waiting
+  return true
+}
+
+function refreshQueuedJobWaits(except) {
+  for (const queued of jobs.values()) {
+    if (queued === except || !queued.processing || queued.admissionState !== 'queued') continue
+    if (setJobWait(queued, queuedJobWait(queued, jobs.values(), processing.snapshot().active > 0))) broadcast('job', jobPublic(queued))
+  }
+}
+
 function queueWorkerJob(job, snapshot, guard) {
   const state = reserveProcessingWorker(processing, job, {
     ...guard, ensureWorker: async signal => {
       const check = () => { guard.assertCurrent(); if (signal.aborted) throw new Error('Export cancelled') }
+      if (setJobWait(job, { reason: 'copying-sources' })) broadcast('job', jobPublic(job))
+      const copyStarted = performance.now()
       const cohort = await prepareExportCohort(ROOT, job.exportSources, check)
+      // Every frame and export copies and hashes all project media first. Keep the cost visible.
+      job.sourceCopyMs = Math.round(performance.now() - copyStarted)
+      log(`job ${job.id} (${job.kind}): copied ${cohort.receipt.count} source${cohort.receipt.count === 1 ? '' : 's'} in ${job.sourceCopyMs} ms`)
       job.exportSources = cohort
+      job.exportCopies = cohort.copies.map(copy => path.resolve(copy.file))
+      for (const copy of cohort.copies) exportCopyDigests.set(path.resolve(copy.file), copy.digest)
       job.spec.sourceCohort = cohort.receipt
       for (const key of Object.keys(snapshot)) delete snapshot[key]
       Object.assign(snapshot, cohort.project)
+      if (setJobWait(job, workerConnected() ? null : { reason: 'worker-starting' })) broadcast('job', jobPublic(job))
       await ensureWorker(signal)
       check()
     },
@@ -779,6 +869,9 @@ function queueWorkerJob(job, snapshot, guard) {
       if (job.kind === 'export') job.exportDestination.assertCurrent()
       reservation.worker = worker
       job.lastWorkerActivity = job.workerDispatchedAt = performance.now()
+      delete job.waiting
+      // A still frame's 30 s limit starts now, when the worker has it.
+      job.frameDeadline?.dispatched()
       reservation.payload = { job: jobPublic(job), project: snapshot, version: job.projectVersion }
       broadcast('render', reservation.payload, 'worker')
     },
@@ -788,15 +881,23 @@ function queueWorkerJob(job, snapshot, guard) {
       if (ownedWorker) job.processing.cancelWorker = armProcessingWorkerCancellation(ownedWorker, { isCurrent: () => worker === ownedWorker, isDrained: () => job.processing.drained })
     },
     waitEncoder: () => job.done ?? Promise.resolve(),
-    onState: state => { job.admissionState = state; if (job.kind !== 'export' || job.state !== 'done') broadcast('job', jobPublic(job)) },
+    onState: state => {
+      job.admissionState = state
+      setJobWait(job, queuedJobWait(job, jobs.values(), processing.snapshot().active > 0) ?? (state === 'queued' || job.waiting?.reason?.startsWith('behind-') ? null : job.waiting))
+      refreshQueuedJobWaits(job)
+      if (job.kind !== 'export' || job.state !== 'done') broadcast('job', jobPublic(job))
+    },
   })
   state.ticket.promise.catch(error => failJob(job, error)).finally(() => {
     state.cancelWorker?.(); state.cancelWorker = null
     state.worker = null; state.payload = null; state.ticket = null; state.assertCurrent = () => { throw new Error('This worker reservation has drained') }
     delete job.ffmpeg; delete job.done
+    for (const copy of job.exportCopies ?? []) exportCopyDigests.delete(copy)
+    delete job.exportCopies
     for (const owned of [job.exportSources, job.exportDestination]) try { owned?.cleanup?.() } catch { job.cleanupWarning = 'An export stage changed or could not be removed. Its files were retained.' }
     delete job.exportSources; delete job.exportDestination
     cleanupExportAudio(job)
+    if (setJobWait(job, null)) broadcast('job', jobPublic(job))
   })
 }
 
@@ -810,7 +911,7 @@ async function startExport(spec) {
   if (!selected) throw new Error('no such composition')
   const validated = validateExportSpec({ ...spec, range: spec.range ?? selected.range ?? { in: 0, out: duration(selected) } }, selected)
   delete validated.sourceCohort
-  const base = String(spec.name ?? selected.name).replace(/[^\w.-]+/g, '-') || 'reel'
+  const base = exportFileName(spec.name ?? selected.name)
   const outDir = guardedOutput(ROOT, path.join(ROOT, 'renders'))
   // A name that is already taken gets the next free number (clip-2.mp4, clip-3.mp4), as Final Cut
   // and Resolve do, instead of failing. An explicit `out` path is never renamed.
@@ -834,6 +935,70 @@ async function startExport(spec) {
   try { queueWorkerJob(job, snapshot, guard) } catch (error) { destination.cleanup(); jobs.delete(job.id); throw error }
   pushActivity('reel', `export queued: ${path.relative(ROOT, out)}`)
   return job
+}
+
+// Measures the loudness of the timeline mix and leaves no file. The render worker mixes the range
+// as it does for an audio export, into .reel/<job>.wav; ffmpeg measures that file, and it is
+// removed when the job settles, also when the job fails or is cancelled. Nothing is written to
+// renders/ or the delivery record, and the project does not change. The numbers are in job.result.
+async function startMixMeasure(body = {}) {
+  if (!project) throw new Error('no project')
+  processing.assertCapacity()
+  const guard = captureProcessing()
+  const selected = body.comp ? compView(project, body.comp) : project
+  if (!selected) throw new Error('no such composition')
+  const end = duration(selected)
+  if (!(end > 0)) throw new Error('There is nothing on the timeline to measure.')
+  const given = key => body[key] !== undefined && body[key] !== null
+  for (const key of ['from', 'to']) if (given(key) && !(Number.isFinite(body[key]) && body[key] >= 0)) throw new Error(`${key} must be a time on the timeline in seconds`)
+  // With no from and no to, the measured part is what an export with no range would render.
+  const whole = !given('from') && !given('to') && selected.range ? selected.range : { in: 0, out: end }
+  const from = given('from') ? body.from : whole.in, to = Math.min(given('to') ? body.to : whole.out, end)
+  if (!(to > from)) throw new Error(`Nothing to measure from ${from} s to ${to} s: the timeline is ${end} s long and from must be before to.`)
+  const validated = validateExportSpec({ preset: 'audio-wav', ...(body.comp ? { comp: body.comp } : {}), range: { in: from, out: to } }, selected)
+  guard.assertCurrent()
+  const captured = captureExportSources(ROOT, project)
+  const snapshot = structuredClone(project)
+  const job = newJob('measure-mix', validated)
+  job.projectVersion = version
+  job.exportSources = captured
+  job.audioFile = path.join(DOT, `${job.id}.wav`)
+  try { queueWorkerJob(job, snapshot, guard) } catch (error) { jobs.delete(job.id); throw error }
+  return job
+}
+
+async function finishMixMeasure(job) {
+  if (job.state === 'done' || job.state === 'failed' || job.finishing) return
+  job.finishing = true
+  job.processing?.assertCurrent()
+  if (!job.audioUploaded) throw new Error('The render worker sent no mix to measure.')
+  // The same measurement POST /api/analyze makes of one file, here of the rendered mix.
+  const ff = spawn('ffmpeg', ['-nostdin', '-i', guardedOutput(ROOT, job.audioFile), '-vn', '-af', 'ebur128=peak=true:framelog=quiet', '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] })
+  let err = ''
+  ff.stderr.on('data', d => (err = (err + d).slice(-1024 * 1024)))
+  // failJob stops this process as it stops an encoder, and the reservation waits for it to close.
+  job.ffmpeg = ff
+  job.done = new Promise(resolve => {
+    ff.once('error', error => { err = error.message })
+    ff.once('close', code => {
+      if (job.processing) { clearTimeout(job.processing.encoderKillTimer); job.processing.encoderKillTimer = null; job.processing.encoderClosed = true }
+      cleanupExportAudio(job)
+      resolve({ code })
+    })
+  })
+  const { code } = await job.done
+  if (job.state === 'done' || job.state === 'failed') return
+  if (code !== 0) throw new Error(`ffmpeg: ${err.slice(-500)}`)
+  job.processing?.assertCurrent()
+  await job.exportSources.assertCurrent(() => job.processing.assertCurrent())
+  job.processing.assertCurrent()
+  const { in: from, out: to } = job.spec.range
+  job.result = { ...parseLoudness(err), from, to, dur: Math.round((to - from) * 1e6) / 1e6 }
+  job.state = 'done'
+  job.progress = 1
+  job.finished = Date.now()
+  broadcast('job', jobPublic(job))
+  pushActivity('reel', `measured the mix in ${((job.finished - job.created) / 1000).toFixed(1)}s`)
 }
 
 function cleanupExportAudio(job) {
@@ -934,23 +1099,45 @@ function failJob(job, error) {
   job.reject?.(new Error(job.error))
 }
 
-async function renderFrame(at, width = 1280, comp = null) {
+// A still frame. When the render worker goes away under it, the frame is tried once more: the
+// next job starts a new worker, so the caller does not see a failure that a retry cures.
+// `preview` is a project to draw instead of the saved one: what an assistant preview would make.
+// It is rendered from memory and never saved.
+async function renderFrame(at, width = 1280, comp = null, { queueMs, preview = null } = {}) {
+  const began = Date.now()
+  let lost
+  try { return await (lost = frameAttempt(at, width, comp, { queueMs, preview })).done } catch (error) { if (!lost?.job.workerLost) throw error }
+  // The retry waits only for what is left of the first attempt's wait, so the answer is no later.
+  const left = queueMs === undefined ? undefined : queueMs - (Date.now() - began)
+  if (left !== undefined && left < 1000) throw new Error('The preview renderer restarted. Try again.')
+  log('the render worker went away under a frame; rendering it again on a new worker')
+  try { return await (lost = frameAttempt(at, width, comp, { queueMs: left, preview })).done } catch (error) {
+    throw lost?.job.workerLost ? new Error('The preview renderer restarted. Try again.') : error
+  }
+}
+
+function frameAttempt(at, width, comp, { queueMs, preview = null } = {}) {
   if (!project) throw new Error('no project')
   processing.assertCapacity()
   const guard = captureProcessing()
-  if (comp && !project.comps?.[comp]) throw new Error(`no composition ${comp}`)
-  const selected = comp ? compView(project, comp) : project
+  // The guard still watches the saved project: a preview is only valid on the version it was made from.
+  const shown = preview ?? project
+  if (comp && !shown.comps?.[comp]) throw new Error(`no composition ${comp}`)
+  const selected = comp ? compView(shown, comp) : shown
   const spec = validateExportSpec({ at, width, comp, range: { in: 0, out: Math.max(duration(selected), 1 / selected.fps) } }, selected, { frame: true })
   guard.assertCurrent()
-  const captured = captureExportSources(ROOT, project)
-  const snapshot = structuredClone(project)
+  // The media copies are taken for the project that is drawn, so media a preview adds is copied too.
+  const captured = captureExportSources(ROOT, shown)
+  const snapshot = structuredClone(shown)
   const job = newJob('frame', spec)
+  if (preview) job.preview = true
   job.projectVersion = version
   job.exportSources = captured
   const done = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject })
-  queueWorkerJob(job, snapshot, guard)
-  const timeout = setTimeout(() => failJob(job, 'frame render timed out'), 30000)
-  return done.finally(() => clearTimeout(timeout))
+  // 30 s to render once the worker has the frame. Before that it may wait 5 minutes, or 85 s for the assistant.
+  job.frameDeadline = frameJobDeadline(message => failJob(job, message), { queueMs })
+  try { queueWorkerJob(job, snapshot, guard) } catch (error) { job.frameDeadline.clear(); jobs.delete(job.id); throw error }
+  return { job, done: done.finally(() => job.frameDeadline.clear()) }
 }
 
 // ---------------------------------------------------------------- routes
@@ -968,6 +1155,19 @@ const transcriptService = createTranscriptRoutes({
   },
 })
 
+// What a run is told about local transcription. getOutline is synchronous, so it reads this copy.
+// It is refreshed at startup, on GET /api/caps and before each assistant request, because the
+// whisper.cpp binary and model are looked up on every call and can be installed while Arya runs.
+let transcriptionState = null
+async function refreshTranscription() {
+  try {
+    const { available, provider, reason, install } = await transcriptService.capability()
+    transcriptionState = { available, provider, ...(reason ? { reason } : {}), ...(install ? { install } : {}) }
+  } catch (error) { log('transcription check:', error.message) }
+  return transcriptionState
+}
+refreshTranscription()
+
 const customExecutable = args['custom-executable']
 const customArguments = process.argv.slice(2).flatMap((value, index, values) => value === '--custom-arg' ? [values[index + 1]] : [])
 if (customArguments.length > 64 || customArguments.some(value => typeof value !== 'string' || value.length > 4096 || value.includes('\0'))) throw new Error('Invalid startup custom-agent arguments')
@@ -978,8 +1178,16 @@ const assistantService = createBrowserAssistant({
   root: ROOT, custom: customExecutable ? { executable: customExecutable, args: customArguments } : undefined,
   chatgpt: chatgptAccount,
   getIdentity: () => projectEpoch,
-  getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus) } : {}) }),
-  renderFrame: (frame, assertCurrent, registerJob) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null) }),
+  getVersion: () => version,
+  // Ties a saved sharing permission to the signed-in provider account, so it holds across restarts.
+  accountFingerprint: createAccountFingerprint(),
+  hostKeyFile: path.join(os.homedir(), '.arya', 'assistant-host-key'),
+  // exportFolder tells the prompt this is the browser editor, whose exports land in renders/ (see EXPORT_GUIDE).
+  getOutline: focus => ({ outline: project ? outline(project) : 'no project', opsDoc: OPS_DOC, uiState, version, projectEpoch, ...(focus && project ? { focus: describeFocus(project, focus), exportFolder: 'renders' } : {}), ...(focus && transcriptionState ? { transcription: transcriptionState } : {}) }),
+  // A frame shows the request's own pending preview, so the assistant can check a change the
+  // project does not hold yet. Any other frame shows the saved project.
+  framePreview: (runId, options) => assistantReview.previewing(runId, options),
+  renderFrame: (frame, assertCurrent, registerJob, run = {}) => assistantCalls.run({ assertCurrent, registerJob }, () => { assertCurrent(); return renderFrame(frame.at, frame.width ?? 1280, frame.comp ?? null, { queueMs: ASSISTANT_FRAME_QUEUE_MS, preview: assistantReview.trial(run.runId, applyOps, { strict: run.review === true }) }) }),
   dispatch: (call, assertCurrent, acceptIdentity, registerJob, run = {}) => {
     assertCurrent()
     const url = new URL(call.path, 'http://127.0.0.1')
@@ -995,18 +1203,28 @@ const assistantService = createBrowserAssistant({
   },
   cancelJob: job => routes[`POST ${job.path}`]?.({ id: job.id }),
   jobState: job => job.path === '/api/jobs/cancel' ? jobs.get(job.id)?.state : routes[job.path === '/api/video/jobs/cancel' ? 'GET /api/video/jobs' : 'GET /api/analysis/jobs']?.().jobs.find(value => value.id === job.id)?.state,
+  // What a failed or cancelled job of an assistant request was and why it stopped, for the sentence
+  // the request ends with. Only the kind, the export file name and the error the job list already shows.
+  jobFailure: job => {
+    const result = job.path === '/api/jobs/cancel' ? jobs.get(job.id) : routes[job.path === '/api/video/jobs/cancel' ? 'GET /api/video/jobs' : 'GET /api/analysis/jobs']?.().jobs.find(value => value.id === job.id)
+    if (!result || !['failed', 'cancelled'].includes(result.state)) return undefined
+    const name = job.path === '/api/jobs/cancel' && result.kind === 'export' ? String(result.spec?.out ?? '').split(/[\\/]/).pop() : ''
+    return { kind: result.kind, ...(name ? { name } : {}), error: result.error }
+  },
   jobOutcome: job => {
     const result = job.path === '/api/jobs/cancel' ? jobs.get(job.id) : routes[job.path === '/api/video/jobs/cancel' ? 'GET /api/video/jobs' : 'GET /api/analysis/jobs']?.().jobs.find(value => value.id === job.id)
     return result ? { state: result.state, applied: result.applied, applyError: result.applyError, assetRegistered: result.assetRegistered } : undefined
   },
   onState: next => { claude = next; assistantReview.observe(next, project); broadcast('claude', claude) },
+  // The saved conversation, for the short history a run starts with.
+  getHistory: () => chat,
   onPrompt: (text, refs) => { appendChat({ role: 'user', text, refs, at: Date.now() }); broadcast('chat', chat.slice(-100)) },
   onReply: (text, error) => { const snapshot = assistantService.snapshot(); appendChat({ role: 'claude', text, error, provider: snapshot.routing?.provider ?? snapshot.provider, at: Date.now() }); broadcast('chat', chat.slice(-100)) },
   diagnostic: message => log('assistant', message),
 })
 
 const routes = {
-  'GET /api/project': () => ({ project, version, root: ROOT, recovery: { status: recoveryState?.status, warning: recovery.warning, history: fs.existsSync(path.join(ROOT, '.reel', 'recovery')) }, activity: activity.slice(-40), chat: chat.slice(-100), chatHistory: chatHistory.status(), claude, jobs: [...jobs.values()].map(jobPublic).slice(-20) }),
+  'GET /api/project': () => ({ project, version, history: { undo: past.length, redo: future.length }, session, root: ROOT, recovery: { status: recoveryState?.status, warning: recovery.warning, history: fs.existsSync(path.join(ROOT, '.reel', 'recovery')) }, activity: activity.slice(-40), chat: chat.slice(-100), chatHistory: chatHistory.status(), claude, jobs: [...jobs.values()].map(jobPublic).slice(-20) }),
   'GET /api/recovery': () => ({ ...recovery.list(), version }),
   'POST /api/recovery/restore': body => restoreRecovery(body),
 
@@ -1040,26 +1258,36 @@ const routes = {
     const result = applyOps(project, prepared.ops)
     verifyLibraryInputs(prepared.inputs, inspectLibraryLUT)
     assertLibraryCurrent()
-    commit(result.project, body.who ?? 'you', body.summary ? [body.summary] : result.log.filter(l => !l.startsWith('imported')), { projectChanged: all.some(op => op.op === 'replace') })
+    // Facts the log does not state, such as a title wider than the frame. They are part of this
+    // reply and of the project event the editor shows under the change: never in the project, the
+    // activity list or an undo summary.
+    // A note that cannot be worked out never blocks the edit.
+    // The reply carries the agent's notes; the project event carries the sentences the person reads.
+    let notes = [], personNotes = []
+    try {
+      notes = editNotes(capturedProject, result.project, { ops, created: result.created })
+      personNotes = editNotes(capturedProject, result.project, { ops, created: result.created, audience: 'person' })
+    } catch (error) { log('Edit notes failed:', error.message) }
+    commit(result.project, body.who ?? 'you', body.summary ? [body.summary] : result.log.filter(l => !l.startsWith('imported')), { projectChanged: all.some(op => op.op === 'replace'), notes: personNotes })
     for (const [src, asset] of Object.entries(assets)) ensureProxy(src, asset).catch(e => log(e.message))
 
-    return { version, log: result.log, created: result.created, project: body.returnProject === false ? undefined : project }
+    return { version, log: result.log, created: result.created, ...(notes.length ? { notes } : {}), project: body.returnProject === false ? undefined : project }
   },
 
   'POST /api/undo': () => {
     const prev = past.at(-1)
-    if (!prev) return { version, project }
+    if (!prev) return { version, project, moved: false, history: { undo: past.length, redo: future.length } }
     commit(prev, 'you', ['undo'], { history: false, historyMove: 'undo' })
 
-    return { version, project }
+    return { version, project, moved: true, history: { undo: past.length, redo: future.length } }
   },
 
   'POST /api/redo': () => {
     const next = future.at(-1)
-    if (!next) return { version, project }
+    if (!next) return { version, project, moved: false, history: { undo: past.length, redo: future.length } }
     commit(next, 'you', ['redo'], { history: false, historyMove: 'redo' })
 
-    return { version, project }
+    return { version, project, moved: true, history: { undo: past.length, redo: future.length } }
   },
 
   'POST /api/new': async body => {
@@ -1119,7 +1347,7 @@ const routes = {
     }
     for (const [src, asset] of Object.entries(assets)) {
       ensureProxy(src, asset).catch(e => log(e.message))
-      if (asset.hasVideo && !asset.proxy) filmstrip(src).catch(() => {})
+      if (asset.hasVideo && !asset.proxy) waitForSourceDerivative(() => filmstrip(src)).catch(() => {})
     }
 
     return { assets, version, failures, warnings: warnings.filter(item => assets[item.path]) }
@@ -1146,13 +1374,14 @@ const routes = {
     }
   },
 
-  'GET /api/strip': (_b, q) => admitSourceDerivative(() => filmstrip(q.get('src'), q.get('quality') === 'high')),
-  'GET /api/peaks': (_b, q) => admitSourceDerivative(() => peaks(q.get('src'))),
+  'GET /api/strip': async (_b, q) => (await cachedFilmstrip(q.get('src'), q.get('quality') === 'high')) ?? waitForSourceDerivative(() => filmstrip(q.get('src'), q.get('quality') === 'high')),
+  'GET /api/peaks': async (_b, q) => (await cachedPeaks(q.get('src'))) ?? waitForSourceDerivative(() => peaks(q.get('src'))),
 
   'POST /api/analyze': body => body.kind === 'transcript' ? transcriptService.transcribe(body) : body.kind === 'stabilization' && routes['POST /api/analysis/stabilize'] ? routes['POST /api/analysis/stabilize'](body) : admit(() => analyze(body.src, body.kind, body)),
 
   'GET /api/caps': async () => {
     const transcription = await transcriptService.capability()
+    refreshTranscription()
     const whisper = transcription.available
     const chrome = fs.existsSync(CHROME)
     const presets = Object.keys(PRESETS)
@@ -1164,6 +1393,10 @@ const routes = {
       export: { renderer: 'chrome', presets, still: chrome },
       // Saliency, auto reframe and person masks need the Arya app's Vision analysis.
       analysis: { transcript: whisper, scenes: true, silence: true, beats: true, loudness: true, opticalFlow: true, tracking: Boolean(routes['POST /api/analysis/track']), stabilization: Boolean(routes['POST /api/analysis/stabilize']), saliency: false, autoReframe: false, personMask: false },
+      // How to measure sound with POST /api/analyze, and what the measurements do not cover.
+      analysisHelp: ANALYSIS_HELP,
+      // Families that can be named in title.font or a caption style. Only the bundled ones are certain.
+      fonts: { bundled: BUNDLED_FONTS, system: SYSTEM_FONTS, note: 'Bundled fonts ship with the editor and draw the same on every machine. System fonts are the names the title inspector offers and are not checked on this machine. Any other family draws only if this machine has it. Without it the text falls back to a system sans, with no error.' },
       color: colorCapabilities({ renderer: chrome }),
       processing: { audioClean: true, multicamSync: true, deshake: true },
       music: routes['GET /api/audio/compose/capabilities']?.() ?? { available: false },
@@ -1186,7 +1419,10 @@ const routes = {
   },
 
   // Built-in sends use consent guards. Legacy plugins cannot identify their recipients.
-  'POST /api/bridge/send': body => {
+  'POST /api/bridge/send': async body => {
+    if (body.mode !== 'plugin' && assistantReview.applying()) throw Object.assign(new Error('Wait for the preview to finish applying before sending another request.'), { status: 409 })
+    // The run's outline says whether transcription works now. Two seconds at most: a slow check keeps the last answer.
+    if (body.mode !== 'plugin') await Promise.race([refreshTranscription(), new Promise(resolve => setTimeout(resolve, 2000))])
     if (body.mode !== 'plugin' && assistantReview.applying()) throw Object.assign(new Error('Wait for the preview to finish applying before sending another request.'), { status: 409 })
     if (body.mode !== 'plugin') return assistantService.send({ ...body, ids: body.ids ?? uiState.selection ?? [], comp: Object.hasOwn(body, 'comp') ? body.comp : uiState.openComp ?? null, playhead: body.playhead ?? uiState.playhead ?? 0 })
     throw Object.assign(new Error('This plugin connection has no verified AI recipient. Choose a built-in assistant provider and review sharing permission before sending.'), { status: 403 })
@@ -1206,6 +1442,8 @@ const routes = {
 
   // Rendering.
   'POST /api/export': body => startExport(body).then(jobPublic),
+  // The loudness of the timeline mix as a job: wait with GET /api/jobs/wait and read `result`. Writes no file.
+  'POST /api/audio/measure-mix': body => startMixMeasure(body).then(jobPublic),
   'POST /api/frame': async body => renderFrame(body.at ?? uiState.playhead ?? 0, body.width ?? 1280, body.comp ?? null),
   'GET /api/jobs': () => ({ jobs: [...jobs.values()].map(jobPublic) }),
 
@@ -1280,7 +1518,7 @@ async function handleJobUpload(req, res, url) {
     if (!job.processing?.dispatched || job.processing.drained) return send(res, 409, { error: 'This job has no active worker reservation' })
     job.processing.assertCurrent()
     if (what === 'start') {
-      if (job.kind !== 'export' || job.state !== 'queued') return send(res, 409, { error: 'This export job has already started.' })
+      if (!['export', 'measure-mix'].includes(job.kind) || job.state !== 'queued') return send(res, 409, { error: 'This export job has already started.' })
       job.state = 'running'
       noteWorkerActivity(job, workerClock(), 'setup')
       if (job.kind === 'export') startEncoder(job)
@@ -1290,12 +1528,14 @@ async function handleJobUpload(req, res, url) {
     }
     if (what === 'alive') {
       noteWorkerActivity(job, workerClock(), 'heartbeat')
+      // The body names the setup step the page is on, so a setup that hangs can say where.
+      noteWorkerSetupStep(job, (await readBody(req, 64).catch(() => Buffer.alloc(0))).toString('utf8'))
 
       return send(res, 200, { ok: true })
     }
     if (what === 'audio') {
       noteWorkerActivity(job, workerClock(), 'setup')
-      if (job.kind !== 'export' || job.state !== 'queued' || job.audioUploaded) return send(res, 409, { error: 'Audio must arrive once before the export starts.' })
+      if (!['export', 'measure-mix'].includes(job.kind) || job.state !== 'queued' || job.audioUploaded) return send(res, 409, { error: 'Audio must arrive once before the export starts.' })
       const buf = await readBody(req, Math.min(1024 ** 3, Math.ceil((job.spec.range.out - job.spec.range.in) * 48000 * 8 + 4096)))
       job.processing.assertCurrent()
       if (job.state !== 'queued' || job.audioUploaded) return send(res, 410, { error: 'The export changed while audio was uploading.' })
@@ -1346,8 +1586,8 @@ async function handleJobUpload(req, res, url) {
       return send(res, 200, { ok: true })
     }
     if (what === 'done') {
-      if (job.kind !== 'export' || job.state !== 'running' || job.finishing) return send(res, 409, { error: 'The export is already finishing or has not started.' })
-      await finishExport(job)
+      if (!['export', 'measure-mix'].includes(job.kind) || job.state !== 'running' || job.finishing) return send(res, 409, { error: 'The export is already finishing or has not started.' })
+      await (job.kind === 'export' ? finishExport(job) : finishMixMeasure(job))
       if (job.state === 'failed') return send(res, 410, { error: job.error })
 
       return send(res, 200, { ok: true })
@@ -1368,7 +1608,7 @@ async function handleJobUpload(req, res, url) {
 }
 
 // A hung render worker would otherwise hold the export queue forever (limits in processing-worker.mjs).
-setInterval(createWorkerWatchdog({ jobs: () => jobs.values(), failJob }), WORKER_CHECK_MS).unref()
+setInterval(createWorkerWatchdog({ jobs: () => jobs.values(), failJob, retireWorker: ownedWorker => workerHost.retire(ownedWorker, 'its job stalled') }), WORKER_CHECK_MS).unref()
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
@@ -1394,11 +1634,15 @@ const server = http.createServer(async (req, res) => {
   }
   try {
     if (url.pathname === '/api/events') {
+      const role = url.searchParams.get('role') ?? 'ui'
+      // A page of a worker Arya has replaced must not serve the new worker's jobs. 204 tells its
+      // EventSource to stop reconnecting.
+      if (role === 'worker' && !workerHost.accepts(url.searchParams.get('worker'))) { res.writeHead(204, { 'cache-control': 'no-store' }); return res.end() }
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
-      const client = { res, role: url.searchParams.get('role') ?? 'ui' }
-      if (client.role === 'worker') client.worker = worker
+      const client = { res, role }
+      if (client.role === 'worker') workerHost.attach(client)
       clients.add(client)
-      res.write(`event: hello\ndata: ${JSON.stringify({ version, role: client.role })}\n\n`)
+      res.write(`event: hello\ndata: ${JSON.stringify({ version, role: client.role, session, history: { undo: past.length, redo: future.length } })}\n\n`)
       if (client.role === 'ui') {
         // Reconnects must recover terminal status even if an event was missed.
         res.write(`event: claude\ndata: ${JSON.stringify(claude)}\n\n`)
@@ -1410,6 +1654,8 @@ const server = http.createServer(async (req, res) => {
       req.on('close', () => {
         clearInterval(ping)
         clients.delete(client)
+        // A worker whose page stays away for 5 s has lost it: its jobs fail and it is replaced.
+        workerHost.detached(client)
       })
       if (client.role === 'worker' && workerConnected() && client.worker === worker) {
         for (const job of jobs.values()) if (job.processing?.dispatched && !job.processing.drained && job.state === 'queued') res.write(`event: render\ndata: ${JSON.stringify(job.processing.payload)}\n\n`)
@@ -1429,7 +1675,7 @@ const server = http.createServer(async (req, res) => {
       let file
       if (owner) {
         const job = jobs.get(owner)
-        if (!job || job.kind !== 'export' || job.state !== 'queued' || !job.processing?.dispatched || job.processing.drained) return send(res, 410, { error: 'This worker job cannot request audio' })
+        if (!job || !['export', 'measure-mix'].includes(job.kind) || job.state !== 'queued' || !job.processing?.dispatched || job.processing.drained) return send(res, 410, { error: 'This worker job cannot request audio' })
         job.processing.assertCurrent()
         file = await processing.within(job.processing.lease, audioWork)
       } else file = await admitSourceDerivative(audioWork)
@@ -1481,8 +1727,10 @@ const routeCtx = {
   assistant: assistantService,
   getProject: () => project,
   getVersion: () => version,
+  getHistory: () => ({ undo: past.length, redo: future.length }),
   getProjectGeneration: () => projectEpoch,
   getAssistantReview: () => assistantReview,
+  getChat: () => chat,
   // Runs a preview's apply as its own owner, so its commits and jobs count as the assistant change.
   asAssistantApply: (id, work) => assistantCalls.run({ applyId: id, get version() { return version }, set version(_) {}, assertCurrent() {}, acceptIdentity() {}, registerJob() {} }, work),
   referenceAvailable: () => colorCapabilities({ renderer: fs.existsSync(CHROME) }).referenceMatch,
@@ -1494,6 +1742,8 @@ const routeCtx = {
     return handler(body, new URLSearchParams(), { headers: {} })
   },
   commit: (next, who, lines) => commit(next, who, lines),
+  // "Undo this change" as a history move back to `before`, so one Redo brings the change back.
+  restoreProject: (before, who, lines) => commit(before, who, lines, { history: false, historyMove: 'restore', restoreTo: before }),
   editOps: async (ops, who = 'reel', summary, options = {}) => routes['POST /api/ops']({ ops, who, summary, returnProject: options.returnProject ?? false, ...(options.expectedVersion === undefined ? {} : { expectedVersion: options.expectedVersion }) }),
 }
 

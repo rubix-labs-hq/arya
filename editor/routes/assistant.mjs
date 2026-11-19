@@ -1,6 +1,14 @@
 import { applyOps, outline } from '../core/project.js'
 import { describeRequest } from '../core/describe.js'
+import { editNotes } from '../core/edit-notes.js'
+import { historyPage } from '../agent/agent-views.mjs'
 import { describeStep, PREVIEW_STEP_WAITS } from '../core/assistant-steps.js'
+
+// Every propose reply ends with this. During the request that made a preview, reel_frame draws
+// the project with the preview's ops applied in memory (server.mjs renderFrame and
+// assistant-review.mjs trial). /api/outline and /api/describe read the saved project, which a
+// preview never changes, and steps have not run.
+export const PREVIEW_NOTE = 'Not applied. The user reviews this preview and applies or discards it. Steps render only after the user applies. reel_frame now shows this preview: the project with every op of the preview applied, without saving it. Check a frame of what you changed before you reply. A frame does not show steps, because they have not run. GET /api/outline and GET /api/describe still show the saved project, not this preview; use the outline in this reply and notes, when this reply has them.'
 
 const ID = /^[a-zA-Z0-9_-]{1,128}$/
 const PAGES = ['media', 'edit', 'motion', 'color', 'audio', 'deliver']
@@ -94,6 +102,13 @@ export default ctx => {
       return { shown: true, ...value }
     },
 
+    // The saved conversation in pages, or with `at` the rest of one long message. Read-only.
+    // GET /api/project gives an agent only the newest messages, cut short; this is the rest.
+    'GET /api/assistant/history': (_body, query) => {
+      ctx.assertCurrent?.()
+      return historyPage(ctx.getChat?.() ?? [], Object.fromEntries(query ?? []))
+    },
+
     // Checks the ops against the current project without saving them, and stores them as the
     // preview the user sees. Agents use this when Preview changes is on.
     'POST /api/assistant/propose': async body => {
@@ -116,9 +131,11 @@ export default ctx => {
       })
       const staged = review().stage(next)
       ctx.pushActivity?.('agent', `Preview ready: ${staged.summary || `${staged.ops.length} ops`}`.slice(0, 300))
+      // The same notes an edit returns, for every op the preview now holds.
+      const notes = editNotes(project, trial.project, { ops: next.ops, created: trial.created })
       return { previewed: true, applied: false, proposal: staged.id, baseVersion: staged.baseVersion, ops: staged.ops.length, steps: staged.steps.map(step => step.preview),
-        log: trial.log.filter(line => !line.startsWith('imported')), created: trial.created, outline: outline(trial.project),
-        note: 'Not applied. The user reviews this preview and applies or discards it. Steps render only after the user applies.' }
+        log: trial.log.filter(line => !line.startsWith('imported')), created: trial.created, ...(notes.length ? { notes } : {}), outline: outline(trial.project),
+        note: PREVIEW_NOTE }
     },
 
     'POST /api/assistant/proposal/apply': async body => {
@@ -154,17 +171,28 @@ export default ctx => {
       return { discarded }
     },
 
-    // Restores the project from before the latest assistant change in one undoable step.
+    // Restores the project from before the latest assistant change in one step that Redo reverses.
     'POST /api/assistant/change/undo': body => {
       userOnly()
       const r = review()
       if (r.active()) throw refused('Wait for the assistant to finish before undoing its change.')
       const target = r.undoTarget(body?.id)
       if (!target.change) throw refused(target.reason)
-      ctx.commit(target.change.before, 'you', [`Undo ${target.change.label.toLowerCase()}`])
-      r.undone(target.change.id)
+      if (target.change.kind === 'history') {
+        // The assistant undid edits, so undoing that is Redo, never a new edit that would empty the
+        // redo history. The review offers this only while Redo leads exactly back.
+        for (let step = 0; step < target.change.moves.undo; step++) {
+          if (!ctx.callAPI('POST', '/api/redo', {})?.moved) throw refused('Redo could not bring the undone edits back. Use Redo in the toolbar.')
+        }
+      } else {
+        // A history move, so Redo brings the change back. It falls back to a forward edit when the
+        // project from before the change is no longer in the undo history.
+        ;(ctx.restoreProject ?? ctx.commit)(target.change.before, 'you', [target.change.kind === 'preview' ? 'Undo applied assistant preview' : 'Undo assistant request'])
+      }
+      // After undoing a history change, the Redo history holds other edits, never this change.
+      const redoable = r.undone(target.change.id)
       if (target.change.kind === 'preview') ctx.assistant?.settlePreview?.('undone')
-      return { undone: true, version: ctx.getVersion() }
+      return { undone: true, redoable, version: ctx.getVersion(), ...(ctx.getHistory ? { history: ctx.getHistory() } : {}) }
     },
   } }
 }

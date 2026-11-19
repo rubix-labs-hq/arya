@@ -155,7 +155,8 @@ function snap(p, t, exclude, enabled = store.snapping) {
 
 function roundRect(ctx, x, y, w, hgt, r) {
   ctx.beginPath()
-  ctx.roundRect(x, y, Math.max(1, w), hgt, Math.min(r, w / 2))
+  // A sliver of a clip can be narrower than its border, and a negative radius throws.
+  ctx.roundRect(x, y, Math.max(1, w), hgt, Math.max(0, Math.min(r, w / 2)))
 }
 
 function drawClip(ctx, p, c, row, state) {
@@ -334,7 +335,7 @@ function drawRuler(ctx, p, state) {
   const steps = [1 / p.fps, 2 / p.fps, 5 / p.fps, 10 / p.fps, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600]
   const major = steps.find(s => s * store.zoom >= 90) ?? 600
   const minor = steps.filter(s => s < major).reverse().find(s => s * store.zoom >= 10 && Math.abs(major / s - Math.round(major / s)) < 1e-6)
-  ctx.font = '10px ui-monospace, Menlo, monospace'
+  ctx.font = '11px ui-monospace, Menlo, monospace'
   ctx.textBaseline = 'top'
   const t0 = Math.floor(store.scroll / (minor ?? major)) * (minor ?? major)
   for (let t = t0; tx(t) < state.width; t += minor ?? major) {
@@ -969,7 +970,7 @@ export function clipMenu(p, hit, t) {
     const unlockedIds = ids.filter(id => !p.tracks.some(tt => tt.locked && tt.clips.some(x => x.id === id)))
     items.push(
       ...(store.caps?.host === 'browser-local' ? [] : [{ label: 'Reference to Assistant', hint: '⌥-click', run: () => ids.forEach(id => { const cc = p.tracks.flatMap(tt => tt.clips).find(x => x.id === id); if (cc) addRef({ kind: 'clip', id, label: `${id} ${cc.label ?? cc.title?.text ?? mediaDisplayName(cc.src ?? cc.kind, p.assets?.[cc.src])}` }) }) },
-      { label: 'Ask the Assistant about this clip…', run: () => { addRef({ kind: 'clip', id: c.id, label: `${c.id}` }); set({ chatOpen: true }); setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50) } }]),
+      { label: 'Ask the Assistant about this clip…', run: () => { addRef({ kind: 'clip', id: c.id, label: `${c.id}` }); set({ chatOpen: true, chatCollapsed: false }); setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50) } }]),
       { sep: true },
       { label: 'Blade at playhead', hint: '⌘B', run: () => edit({ op: 'blade', at: time.t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: 'Blade here', run: () => edit({ op: 'blade', at: t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },

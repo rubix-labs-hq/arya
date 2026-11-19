@@ -44,8 +44,14 @@ test('a browser route event reports the requested model before execution is know
     const run = {}, updates = []
     receiveRoute({ routing }, run, value => updates.push(value))
     assert.equal(run.routing, routing)
-    assert.deepEqual(updates, [{ routing, phase: `Requested route: ${label}` }])
+    // The phase names the requested model and says the agent has not answered yet, so a long
+    // wait does not read as a route still being requested.
+    assert.deepEqual(updates, [{ routing, phase: `Requested ${label}. Waiting for its first step` }])
     assert.equal(routing.executedModel, undefined)
+    // Once a tool step has run, a late route event updates the routing and leaves the phase alone.
+    const later = { stepped: true }, quiet = []
+    receiveRoute({ routing }, later, value => quiet.push(value))
+    assert.deepEqual(quiet, [{ routing }])
   }
 })
 

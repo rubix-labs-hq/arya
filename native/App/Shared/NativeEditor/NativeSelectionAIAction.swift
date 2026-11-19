@@ -14,8 +14,8 @@ struct NativeSelectionAIAction: View {
             }
             context = selection
         } label: {
-            if compact { Image(systemName: "text.bubble") }
-            else { Label(title, systemImage: "text.bubble") }
+            if compact { Image(systemName: "sparkles") }
+            else { Label(title, systemImage: "sparkles") }
         }
         .accessibilityLabel(title).help(title)
         .disabled(model.selected == nil && model.composition == nil)
@@ -74,11 +74,11 @@ private struct NativeSelectionAIIntent: View {
                     }
                 }.nativePanelPadding()
             }
-            .navigationTitle("Ask AI")
+            .navigationTitle("Ask Arya")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Ask AI") {
+                    Button("Ask Arya") {
                         let prompt = intent.trimmingCharacters(in: .whitespacesAndNewlines)
                         do {
                             guard context.folder == model.folder?.standardizedFileURL.path else { reject("The project changed. Close this request and select a source in the open project."); return }

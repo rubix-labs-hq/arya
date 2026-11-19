@@ -16,7 +16,7 @@ A raw capture answers the second half only. A drawn mockup answers the first hal
 - **Evidence.** Each frame lists the words visible in its capture that back the headline. If the capture does not show it, the headline does not say it.
 - **Captures are untouched.** A capture is cropped or scaled down. It is never enlarged, retouched or redrawn, and nothing is drawn over it. A crop ends on a flat row or on a panel's own border, so it never cuts a control.
 - **Device outline.** A whole iPhone or iPad screen sits in a plain dark outline with the screen's corner radius. It is not a product photograph. Where an iPhone capture was saved without the Dynamic Island, the outline draws it, so every phone in a story looks the same. It covers only the empty middle of the status bar.
-- **No dated promises.** No headline names a price, a sign-in method, the assistant or another platform. "Ask AI", "Assistant" and "Support Arya" appear only where the captured interface shows them.
+- **No dated promises.** No headline names a price, a sign-in method, the assistant or another platform. "Ask AI", "Ask Arya", "Assistant" and "Support Arya" appear only where the captured interface shows them.
 - **Demo media is named.** The picture in the After the Tide sample project is one AI-generated still. Store text must not call it footage. A marketing image that shows it says so on the image.
 - **Builds are named.** The Mac captures of After the Tide come from the Mac App Store build of 1.1.0 (3). That build is submitted, not public. A Mac frame is not evidence that Arya is on the Mac App Store, and no frame says it is.
 

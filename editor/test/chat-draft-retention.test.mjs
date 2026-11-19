@@ -80,7 +80,7 @@ test('typed composer text survives closing and reopening without dispatch', t =>
 test('a selection suggestion survives closing and reopening', t => {
   const s = session(t)
   s.state.project = { ...s.state.project, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2, title: { text: 'Opening' } }] }] }
-  s.state.selection = ['c1']; s.render(); s.quick('Explain the selection')
+  s.state.selection = ['c1']; s.render(); s.quick('ExplainExplain the selection')
   const draft = s.draft()
   assert.match(draft, /Describe the selected clips as an editor would/)
   s.close(); s.mount()

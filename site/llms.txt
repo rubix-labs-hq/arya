@@ -1,6 +1,6 @@
 # Arya
 
-> Arya is an open-source video and motion editor. Projects remain editable; core editing and export are free. Optional tips support development.
+> Arya is an open-source video and motion editor. Projects remain editable. The Mac download and the browser editor are free. On iPhone and iPad, editing and 1080p export are free, and Arya Pro adds 4K, ProRes and HDR export. Optional website tips and Arya Pro support development. A built-in assistant in the native apps edits with the user's own AI account. The hosted browser editor has none.
 
 ## Official pages
 
@@ -9,7 +9,7 @@
 - [Installation and setup](https://editwitharya.app/install/): Installation, optional assistant connections, updates and rollback.
 - [Project status](https://editwitharya.app/project/): Supported features, limits and source links.
 - [Help](https://editwitharya.app/help/): Import, playback, backups, export and issue reporting.
-- [Support and tips](https://editwitharya.app/support/): Contact options and optional one-time support.
+- [Support and tips](https://editwitharya.app/support/): Contact options and optional one-time website tips. Arya Pro is bought in the iPhone and iPad apps, not on this page.
 - [Privacy](https://editwitharya.app/privacy/): Local storage, optional services and payment processing.
 
 ## Source

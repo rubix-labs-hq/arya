@@ -141,7 +141,8 @@ test('actual timeline toolbar: names, icons, pressed states in both directions a
 const viewerStubs = () => ({
   'preact/hooks': moduleURL('export const useEffect=()=>{};export const useRef=x=>({current:x===null?globalThis.__viewerVideo??null:x});export const useState=x=>{const o=globalThis.__viewerState,i=globalThis.__viewerStateIndex=(globalThis.__viewerStateIndex??0)+1;return[o&&i-1 in o?o[i-1]:x,()=>{}]};'),
   './engine-host.js': moduleURL(`export const canvas={},comp={size:[320,180]},media={titles:new Map()};export const player={seek:t=>globalThis.__viewerLog.push(['seek',t]),step:d=>globalThis.__viewerLog.push(['step',d]),toggle:()=>globalThis.__viewerLog.push(['toggle'])};`),
-  './store.js': moduleURL(`export const addRef=()=>{},toast=()=>{};export const useStore=()=>globalThis.__viewerStore;export const edit=v=>globalThis.__viewerLog.push(['edit',v]);export const set=v=>globalThis.__viewerLog.push(['set',v]);export const store=new Proxy({},{get:(_,k)=>globalThis.__viewerStore[k]});export const time={t:2};export const useTime=()=>2;export const viewProject=()=>globalThis.__viewerProject;`),
+  './store.js': moduleURL(`export const addRef=()=>{},toast=()=>{};export const useStore=()=>globalThis.__viewerStore;export const edit=v=>globalThis.__viewerLog.push(['edit',v]);export const set=v=>globalThis.__viewerLog.push(['set',v]);export const store=new Proxy({},{get:(_,k)=>globalThis.__viewerStore[k]});export const time={t:2};export const useTime=()=>2;export const viewProject=()=>globalThis.__viewerProject;export const drawnProject=()=>globalThis.__viewerDrawn??globalThis.__viewerProject;`),
+  './preview-banner.js': moduleURL('export const PreviewBanner=()=>null;'),
   '../engine/frame.js': moduleURL('export const titleAnim=()=>({});'),
   '../engine/media.js': moduleURL('export const mediaUrl=()=>"/media/source.mp4";'),
   '../engine/shapes.js': new URL('../web/engine/shapes.js', import.meta.url).href,
@@ -193,7 +194,43 @@ test('actual timeline transport: play, pause and shuttle label, icons, loop stat
       }
       assert.equal(named.get('Clear range').props.disabled, true, 'clear range is disabled without a range')
     }
+    // While the viewer shows an assistant preview, the range buttons are off; playback still works.
+    globalThis.__viewerStore = { playing: false, rate: 1, loop: false }
+    const { Transport } = await load('viewer.js', viewerStubs(), 'locked')
+    const locked = byName(expand(Transport({ p: { ...p, range: { in: 1, out: 2 } }, locked: true })))
+    for (const name of ['Mark in', 'Mark out', 'Clear range']) assert.equal(locked.get(name).props.disabled, true, name)
+    for (const name of ['Play', 'Go to start', 'Loop playback']) assert.ok(!locked.get(name).props.disabled, name)
   } finally { delete globalThis.__viewerLog; delete globalThis.__viewerStore; delete globalThis.__viewerProject; delete globalThis.__viewerStateIndex }
+})
+
+test('the viewer marks a shown preview, shows its banner and turns off on-canvas editing', async () => {
+  const p = transportProject()
+  globalThis.__viewerLog = []; globalThis.__viewerProject = p
+  const base = { project: p, playing: false, rate: 1, loop: false, viewerMode: 'timeline', overlays: {}, previewQuality: 'half' }
+  try {
+    const { Viewer, loaded } = await load('viewer.js', viewerStubs(), 'preview-root', 'export { PreviewBanner as loaded }')
+    // The tree as rendered, without calling the components inside it.
+    const all = node => Array.isArray(node) ? node.flatMap(all) : node && typeof node === 'object' ? [node, ...all(node.props?.children)] : []
+    const stage = tree => all(tree).find(n => n.props?.class === 'viewer-stage')
+    const kids = tree => all(tree).map(n => n.type)
+    globalThis.__viewerStore = base; globalThis.__viewerStateIndex = 0
+    const plain = Viewer({})
+    assert.doesNotMatch(plain.props.class, /showing-preview/)
+    assert.equal(typeof stage(plain).props.onPointerDown, 'function')
+    assert.ok(!kids(plain).includes(loaded))
+    assert.ok(kids(plain).some(type => type?.name === 'TransformOverlay'), 'transform handles show on the saved project')
+    assert.equal(all(plain).find(n => n.type?.name === 'Transport').props.p, p)
+    // The store's drawnProject() is the previewed project while one is shown; the viewer draws and times that one.
+    const drawn = { ...p, tracks: [] }
+    globalThis.__viewerDrawn = drawn
+    globalThis.__viewerStore = { ...base, previewShown: { id: 'p1' } }; globalThis.__viewerStateIndex = 0
+    const shown = Viewer({})
+    assert.equal(all(shown).find(n => n.type?.name === 'Transport').props.p, drawn, 'the transport follows the previewed project')
+    assert.match(shown.props.class, /showing-preview/)
+    assert.ok(kids(shown).includes(loaded), 'the banner with Apply and Discard renders')
+    assert.equal(stage(shown).props.onPointerDown, undefined, 'a click on the preview selects nothing')
+    assert.ok(!kids(shown).some(type => type?.name === 'TransformOverlay'), 'no transform handles on the preview')
+  } finally { delete globalThis.__viewerLog; delete globalThis.__viewerStore; delete globalThis.__viewerProject; delete globalThis.__viewerDrawn; delete globalThis.__viewerStateIndex }
 })
 
 test('actual source monitor transport: play and pause names and icons, and the toggle reaches the video', async () => {

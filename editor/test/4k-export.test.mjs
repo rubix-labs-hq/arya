@@ -9,7 +9,7 @@ import { captureExportSources, prepareExportCohort } from '../core/export-cohort
 const read = file => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
 const deliver = read('web/ui/deliver.js')
 const presets = deliver.slice(deliver.indexOf('const PRESETS ='), deliver.indexOf('// The tip card'))
-const dimensions = deliver.slice(deliver.indexOf('  const outW ='), deliver.indexOf('  const range ='))
+const dimensions = deliver.slice(deliver.indexOf('  const sizes = deliverSizes'), deliver.indexOf('  const range ='))
 function master(width, height) {
   return new Function('p', `${presets}; const choice = PRESETS.find(p => p.id === '4k'), width = null; ${dimensions}; return [outW, outH]`)({ width, height })
 }
@@ -17,7 +17,8 @@ for (const [w, h, expected] of [[1920, 1080, [3840, 2160]], [1080, 1920, [2160, 
   test(`4K master fits ${w}x${h} in the oriented UHD bounds`, () => assert.deepEqual(master(w, h), expected))
 }
 test('Deliver offers a 2160-wide vertical output', () => {
-  assert.match(deliver, /\[p\.width,[^\]]*\b2160\b/)
+  const sizes = new Function('p', `${presets}; return deliverSizes(p, PRESETS.find(p => p.id === '4k'))`)({ width: 1080, height: 1920 })
+  assert.deepEqual(sizes[0], { width: 2160, height: 3840 })
 })
 test('both new-project surfaces and both inspectors offer UHD and vertical 4K', () => {
   const app = read('web/ui/app.js'), workspace = read('web/browser-local/workspace.js'), inspector = read('web/ui/inspector.js')

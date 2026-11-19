@@ -31,14 +31,19 @@
   },
   "mobileRelease": {
     "ready": true,
-    "version": "1.1.1",
-    "build": "5",
+    "version": "1.2.0",
+    "build": "7",
     "appStoreURL": "https://apps.apple.com/us/app/arya-video-editor/id6826357116",
     "appId": "6826357116",
-    "pro": false,
+    "pro": true,
     "allowedHosts": [
       "apps.apple.com"
     ]
+  },
+  "macAppStoreRelease": {
+    "version": "1.1.1",
+    "build": "5",
+    "pro": false
   },
   "publicSourceURL": "https://github.com/rubix-labs-hq/arya",
   "requestAccessURL": null,

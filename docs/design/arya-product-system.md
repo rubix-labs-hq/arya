@@ -88,7 +88,7 @@ The PNG app icon is a branded concept export. Build the required macOS and mobil
 | Error | Error color, error icon and direct explanation | Preserve the user's input and the last valid project state |
 | Empty | Name the missing selection or content and provide the next real action | Do not show a decorative mock project or imply an operation succeeded |
 
-Use SF Symbols in native controls and the browser's established icon set. Do not mix icon libraries. Match stroke weight to the adjacent label. Use the cut A for product identity, not for every action. Replace decorative AI sparkles with a text bubble or selection-context icon where the icon needs to identify the assistant.
+Use SF Symbols in native controls and the browser's established icon set. Do not mix icon libraries. Match stroke weight to the adjacent label. Use the cut A for product identity, not for every action. Use a text bubble for the assistant itself and sparkles for Ask AI on a selection, so the two controls never share an icon.
 
 Most interaction changes need 120 to 180 milliseconds or no animation. A panel can transition over 180 to 220 milliseconds if it preserves context. Do not animate every frame of scrubbing, resizing or numerical editing. Respect reduced motion. Never add looping decorative animation behind the viewer.
 

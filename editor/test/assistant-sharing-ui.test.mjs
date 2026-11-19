@@ -211,7 +211,7 @@ test('strict contract rejects duplicate rows, extra fields, non-root paths and w
 function renderApp(state) {
   const source = readFileSync(new URL('../web/ui/app.js', import.meta.url), 'utf8').replace(/^import .*$/gm, '').replace('export async function mountApp', 'async function mountApp')
   const Settings = () => null, AssistantSharingReview = () => null
-  const tree = new Function('h', 'htm', 'useEffect', 'useStore', 'useLayout', 'layoutStyle', 'Divider', 'ChatPanel', 'Settings', 'AssistantSharingReview', `const host = { kind: "http" };\n${source}\nreturn App()`)(h, htm, () => {}, () => state, () => ({}), () => ({}), () => null, () => null, Settings, AssistantSharingReview)
+  const tree = new Function('h', 'htm', 'useEffect', 'useStore', 'useLayout', 'layoutStyle', 'Divider', 'ChatPanel', 'Settings', 'AssistantSharingReview', `const host = { kind: "http" }, onInspectorReveal = () => {};\n${source}\nreturn App()`)(h, htm, () => {}, () => state, () => ({}), () => ({}), () => null, () => null, Settings, AssistantSharingReview)
   return { tree, Settings, AssistantSharingReview }
 }
 

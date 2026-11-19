@@ -17,8 +17,52 @@ export const SHORTCUTS = [
   ['F', 'Match frame (open the source at this frame)'], ['E W D Q', 'Append / insert / overwrite / connect the source clip'],
   ['⌘C ⌘X ⌘V', 'Copy / cut / paste at playhead'], ['⌘D', 'Duplicate'], ['⌘A', 'Select all'], ['⌘Z ⇧⌘Z', 'Undo / redo'],
   ['⌘= ⌘-', 'Zoom timeline'], ['⇧Z', 'Zoom to fit'], ['⌘L', 'Loop playback'], ['⇧1 … ⇧6', 'Media, Edit, Motion, Color, Audio, Deliver pages'],
-  ['⌘E', 'Export'], ['⌘,', 'Settings'], ['/', 'Talk to the assistant'], ['⌥-click', 'Reference anything to the assistant'], ['?', 'This list'],
+  ['⌘E', 'Export'], ['⌘,', 'Settings'], ['F6 / ⇧F6', 'Next / previous panel'], ['/', 'Ask Arya'], ['⌥-click', 'Reference anything to the assistant'], ['?', 'This list'],
 ]
+
+// F6 and Shift+F6 walk the editor's regions in document order: top bar, media, viewer, inspector,
+// timeline and the assistant on the Edit page, and top bar, page and assistant elsewhere.
+export const LANDMARKS = '.topbar, .main > .page [role="region"][aria-label], .main > .page:not(:has([role="region"][aria-label])), #editor-assistant'
+const LANDMARK_FOCUS = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+
+// From no region the first step lands on the first one, and a step back on the last.
+export function landmarkStep(count, current, back = false) {
+  if (!(count > 0)) return -1
+  if (current < 0) return back ? count - 1 : 0
+  return (current + (back ? -1 : 1) + count) % count
+}
+
+// Laid out and not under visibility: hidden, as the body of the minimized phone assistant is.
+const landmarkShown = (el, doc) => el.getClientRects().length > 0 && (doc.defaultView ?? globalThis).getComputedStyle?.(el)?.visibility !== 'hidden'
+
+/** Moves focus to the next region, or the previous one. Returns the region, or null when focus did not move there. */
+export function cycleLandmark(back = false, doc = globalThis.document) {
+  // An open dialog keeps focus: its own Tab order is the way around it.
+  if ([...doc.querySelectorAll('[aria-modal="true"]')].some(el => el.getClientRects().length)) return null
+  const shown = [...doc.querySelectorAll(LANDMARKS)].filter(el => el.getClientRects().length)
+  // A labelled section inside a panel is part of that panel's stop, not a stop of its own.
+  const regions = shown.filter(el => !shown.some(other => other !== el && other.contains(el)))
+  const next = regions[landmarkStep(regions.length, regions.findIndex(el => el.contains(doc.activeElement)), back)]
+  if (!next) return null
+  // The assistant's stop is its text box. Minimized, that is hidden, and the stop is the first control still shown: Expand assistant.
+  const field = next.id === 'editor-assistant' ? next.querySelector('textarea:not(:disabled)') : null
+  const inside = (field && landmarkShown(field, doc) ? field : null) ?? [...next.querySelectorAll(LANDMARK_FOCUS)].find(el => landmarkShown(el, doc))
+  if (!inside && !next.hasAttribute('tabindex')) next.setAttribute('tabindex', '-1')
+  const target = inside ?? next
+  target.focus()
+  return doc.activeElement === target ? next : null
+}
+
+/**
+ * F6 for the whole document. A key an input method is composing with belongs to it, and the key
+ * is taken from the browser only once focus has moved. Returns whether it was.
+ */
+export function landmarkKey(e, doc = globalThis.document) {
+  if (e.key !== 'F6' || e.isComposing || e.keyCode === 229 || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || store.settingsOpen || store.showKeys || store.assistantSharingReviewOpen) return false
+  if (!cycleLandmark(e.shiftKey, doc)) return false
+  e.preventDefault()
+  return true
+}
 
 function sel() {
   return store.selection.filter(id => !id.startsWith('tr:'))
@@ -113,6 +157,24 @@ export function runEditorCommand(command) {
   return 'handled'
 }
 
+/**
+ * Undo or Redo through the server. With nothing to move it says so and sends nothing; a reply that
+ * moved nothing says so too, so a no-op never reads as success. The reply's depth keeps the
+ * buttons honest. A host that does not report a depth leaves both enabled.
+ */
+export function moveHistory(direction) {
+  const nothing = direction === 'undo' ? 'Nothing to undo.' : 'Nothing to redo.'
+  // A shown assistant preview keeps the project as it is; it ends on Apply, Discard or Back to project.
+  if (store.previewShown) { toast('Undo and Redo are off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.', 'error'); return Promise.resolve(null) }
+  if (store.history?.[direction] === 0) { toast(nothing); return Promise.resolve(null) }
+  return Promise.resolve().then(() => api(`/api/${direction}`, {})).then(r => {
+    const history = r?.history, counted = Number.isSafeInteger(history?.undo) && Number.isSafeInteger(history?.redo)
+    set({ project: r.project, version: r.version, ...(counted ? { history: { undo: history.undo, redo: history.redo } } : {}) })
+    if (r?.moved === false) toast(nothing)
+    return r
+  }, error => { toast(error.message, 'error'); return null })
+}
+
 export function installKeys() {
   window.addEventListener('keydown', e => {
     if (e.defaultPrevented) return
@@ -146,7 +208,7 @@ export function installKeys() {
     if (cmd) {
       switch (lower) {
         case 'z':
-          api(e.shiftKey ? '/api/redo' : '/api/undo', {}).then(r => set({ project: r.project, version: r.version }))
+          moveHistory(e.shiftKey ? 'redo' : 'undo')
           break
         case 'b': {
           runEditorCommand('split')
@@ -362,7 +424,7 @@ export function installKeys() {
           set({ selection: [], selMarker: null })
           break
         case '/':
-          set({ chatOpen: true })
+          set({ chatOpen: true, chatCollapsed: false })
           setTimeout(() => document.querySelector('.chat textarea')?.focus(), 30)
           break
         case '?':
@@ -374,6 +436,8 @@ export function installKeys() {
     }
     if (handled) e.preventDefault()
   })
+  // On capture, so the way between panels also works from a field that keeps its own keys.
+  globalThis.document?.addEventListener?.('keydown', e => { landmarkKey(e) }, true)
 }
 
 export { snapToFrame }

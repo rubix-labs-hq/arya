@@ -116,10 +116,8 @@ test('pending mobile release renders plain review status and provides no active 
   assert.equal(result.status, 0, result.stderr);
 
   const download = pages.download;
-  assert.ok(download.includes(`Version ${pending.mobileRelease.version} (build ${pending.mobileRelease.build}) is waiting for App Review, with no download yet. It will be released automatically as a free download worldwide after approval.`));
+  assert.ok(download.includes(`Version ${pending.mobileRelease.version} (build ${pending.mobileRelease.build}) is waiting for App Review. It will be free to download once approved.`));
   assert.ok(download.includes('waiting for App Review'));
-  assert.ok(download.includes('no download yet'));
-  assert.ok(/released automatically as a free download worldwide after approval/i.test(download));
 
   // Pending config must have no active App Store link
   assert.ok(!download.includes('https://apps.apple.com'));
@@ -147,8 +145,8 @@ test('validated live mobile release enables the conditional App Store CTA and up
   assert.ok(pages.home.includes('Download on the App Store'));
   assert.ok(!pages.home.includes('iPhone and iPad builds are coming later.'));
   const download = pages.download;
-  assert.ok(download.includes('Version 1.0.5 is available as a free download worldwide on the App Store.'));
-  assert.ok(download.includes('<div id="mobile-action"><a class="button " href="https://apps.apple.com/app/id6826357116">Download on the App Store</a></div>'));
+  assert.match(download, /App Store<\/h2>\s*<p class="edition-meta">iPhone and iPad · Version 1\.0\.5<\/p>\s*<p>Free to edit and export/);
+  assert.ok(download.includes('<div id="mobile-action"><a class="button secondary" href="https://apps.apple.com/app/id6826357116">Download on the App Store</a></div>'));
   assert.ok(!download.includes('is waiting for App Review'));
 
   // /project/ iPhone and iPad row reflects availability and does not claim builds are coming later
@@ -161,6 +159,13 @@ test('validated live mobile release enables the conditional App Store CTA and up
 
   // Mac release still preserved
   assert.ok(download.includes('Download Arya for Mac'));
+});
+
+test('an unversioned App Store configuration does not invent a release or offer a download', async () => {
+  const { result, pages } = await buildFixture({ ...pending, mobileRelease: { ...pending.mobileRelease, version: null } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(pages.download, /Public downloads are coming later\./);
+  assert.doesNotMatch(pages.download, /waiting for App Review|Download on the App Store/);
 });
 
 test('invalid mobile release readiness or malformed App Store URL fails build closed', async () => {

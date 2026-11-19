@@ -27,7 +27,7 @@ struct NativeGettingStartedView: View {
                 ])
                 #if os(macOS)
                 section("Choose the editor interface", [
-                    "The app starts with the native editor. View > Web Editor switches to the bundled web interface inside Arya. Both use the app's native project backend. Switching the interface does not install a server or expand the supported native export formats.",
+                    "The app starts with the native editor. Hold Option while opening the View menu to show Web Editor, which switches to the bundled web interface inside Arya. Both use the app's native project backend. Switching the interface does not install a server or expand the supported native export formats.",
                     "The separate browser development version uses a local server and a developer toolchain. Its setup and rendering requirements differ from this app. Use the native editor for the ordinary Mac installation journey."
                 ])
                 if NativeChatGPT.supported {
@@ -44,7 +44,7 @@ struct NativeGettingStartedView: View {
                 #else
                 if NativeChatGPT.supported {
                     section("Connect ChatGPT when you need it", [
-                        "Open the Assistant, or Settings then Assistant accounts, and choose Continue with ChatGPT. Sign in on the OpenAI page that opens. Arya uses eligible requests from your ChatGPT plan or credits balance, subject to your account's usage limits.",
+                        "Choose Ask Arya, or Settings then Assistant accounts, and choose Continue with ChatGPT. Sign in on the OpenAI page that opens. Arya uses eligible requests from your ChatGPT plan or credits balance, subject to your account's usage limits.",
                         "Choose an available model and review what you share before your first request. Nothing else needs to be installed. You can manage usage or sign out in the same settings."
                     ])
                 }

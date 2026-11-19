@@ -15,6 +15,7 @@ const ICONS = {
   assistant: ['M5 4.5h14a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-7l-4.5 3.5V17H5a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2z', 'M7.5 9.5h9M7.5 12.5h5.5'],
   attach: ['M8 8v9a4 4 0 0 0 8 0V6.5a2.5 2.5 0 0 0-5 0V17a1 1 0 0 0 2 0V8'],
   close: ['M6 6l12 12M18 6 6 18'],
+  settings: ['M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z', { circle: [12, 12, 3] }],
   export: ['M12 15V3.5', 'M7.5 8 12 3.5 16.5 8', 'M4.5 14.5v4a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-4'],
   select: ['M5.5 3.5 19 10l-6.2 2.1L10.5 18.5z'],
   trim: ['M10 4H6.5v16H10', 'M14 4h3.5v16H14', 'M12 9v6'],
@@ -43,10 +44,23 @@ const ICONS = {
   anchor: [{ circle: [12, 12, 3] }, 'M12 2.5v5M12 16.5v5M2.5 12h5M16.5 12h5'],
   track: [{ circle: [12, 12, 7.5] }, { circle: [12, 12, 1.75], fill: true }, 'M12 2v3M12 19v3M2 12h3M19 12h3'],
   'chevron-down': ['M6.5 9.5 12 15l5.5-5.5'],
+  'chevron-up': ['M6.5 14.5 12 9l5.5 5.5'],
+  send: ['M12 19V5.5', 'M6 11.5l6-6 6 6'],
+  stop: [{ rect: [7, 7, 10, 10, 2], fill: true }],
   'safe-area': [{ rect: [3, 5, 18, 14, 1.5] }, { rect: [6.5, 8, 11, 8, 1] }],
   grid: [{ rect: [3.5, 4.5, 17, 15, 1.5] }, 'M9.2 4.5v15M14.8 4.5v15M3.5 9.5h17M3.5 14.5h17'],
   ellipse: ['M3.5 12a8.5 6.5 0 1 0 17 0a8.5 6.5 0 1 0-17 0z'],
   polygon: ['M12 3.5l7.4 4.25v8.5L12 20.5l-7.4-4.25v-8.5z'],
+  alert: ['M12 4.5 3.5 19.5h17z', 'M12 10.5v4', 'M12 17.2v.1'],
+  check: ['M5 12.5l4.5 4.5L19 7.5'],
+  eye: ['M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z', { circle: [12, 12, 2.75] }],
+  layout: [{ rect: [3.5, 4.5, 17, 15, 2] }, 'M9.5 4.5v15M9.5 12h11'],
+  recovery: ['M4.5 12a7.5 7.5 0 1 0 2.4-5.5', 'M4.5 5v4h4', 'M12 8.5V12l2.5 1.5'],
+  render: [{ rect: [3.5, 5.5, 17, 13, 2] }, { path: 'M10 9.2v5.6l4.8-2.8z', fill: true }],
+  more: [{ circle: [6, 12, 1.2], fill: true }, { circle: [12, 12, 1.2], fill: true }, { circle: [18, 12, 1.2], fill: true }],
+  help: [{ circle: [12, 12, 8.5] }, 'M9.6 9.6a2.5 2.5 0 1 1 3.6 2.2c-.8.5-1.2 1-1.2 1.9', 'M12 16.9v.1'],
+  download: ['M12 4v11', 'M7.5 10.5 12 15l4.5-4.5', 'M4.5 19.5h15'],
+  camera: [{ rect: [3.5, 7, 17, 12, 2] }, 'M8.5 7l1.2-2.2h4.6L15.5 7', { circle: [12, 13, 3] }],
   star: ['M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.7L12 16.8l-5.1 2.7 1-5.7-4.1-4 5.7-.8z'],
 }
 
@@ -59,6 +73,11 @@ function part(p, i) {
   return html`<rect key=${i} x=${x} y=${y} width=${width} height=${height} rx=${rx} ...${solid} />`
 }
 
+/** A turning arc for work in progress. With reduced motion it stays still and the label carries the state. */
+export function Spinner({ size = 14 }) {
+  return html`<svg class="spinner" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5" opacity="0.28" /><path d="M20.5 12A8.5 8.5 0 0 0 12 3.5" /></svg>`
+}
+
 export function hasIcon(name) {
   return Object.hasOwn(ICONS, name)
 }
@@ -66,6 +85,7 @@ export function hasIcon(name) {
 // Returns null for an unknown name so a caller can fall back to its text label.
 export function Icon({ name, size = 16 }) {
   // Own-property check, so names such as `constructor` or `__proto__` fall back like any unknown name.
+  if (name === 'spinner') return Spinner({ size })
   if (!hasIcon(name)) return null
   const parts = ICONS[name]
   return html`<svg class="ico" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${parts.map(part)}</svg>`

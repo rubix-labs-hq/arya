@@ -1,38 +1,5 @@
-/* Assistant panel: context, suggestions and the text box first; input kind, model and tips in
-   one disclosure; a preview card before an assistant change applies; one-step undo after. */
-
-/* Keep the intro readable above the composer even when the panel must scroll. */
-.chat > .chat-list:has(> .chat-empty:only-child) { flex: 0 0 auto; }
-
-.chat .assistant-composer-card { min-height: 0; max-height: none; flex: 0 0 auto; }
-.chat .assistant-composer-content { flex: 0 1 auto; max-height: 40vh; min-height: 0; }
-.chat .assistant-composer-footer { min-height: 0; max-height: none; align-items: center; padding: 2px 8px 8px; overflow: visible; }
-
-.chat .assistant-suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 10px 6px; }
-.chat .assistant-suggestion { min-height: 32px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: 16px; background: transparent; color: var(--text); font-size: 12px; white-space: normal; text-align: left; }
-.chat .assistant-suggestion:hover:not(:disabled) { background: #ffffff0d; border-color: var(--muted); }
-.chat .assistant-suggestion:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Touch screens get 44px targets for the assistant's own buttons. */
-@media (pointer: coarse) { .chat .assistant-suggestion, .chat .chat-head button, .chat .assistant-send-reason button { min-height: 44px; } .chat .chat-head button { min-width: 44px; } }
-
-.chat .assistant-preview-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px; color: var(--text); font-size: 12px; cursor: pointer; }
-.chat .assistant-preview-toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
-.chat .assistant-preview-toggle:has(input:disabled) { opacity: .5; cursor: default; }
-
-.chat .assistant-options { min-width: 0; margin: 0 8px 8px; border-top: 1px solid var(--line); }
-.chat .assistant-options > summary { display: flex; align-items: center; min-height: 40px; padding: 0 2px; color: var(--muted); font-size: 11.5px; cursor: pointer; list-style: none; }
-.chat .assistant-options > summary::-webkit-details-marker { display: none; }
-.chat .assistant-options > summary::before { content: '›'; width: 12px; margin-right: 4px; }
-.chat .assistant-options[open] > summary::before { content: '⌄'; }
-.chat .assistant-options > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.chat .assistant-options .assistant-input-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 2px 8px; }
-.chat .assistant-options .assistant-controls { padding: 0 0 8px; border: 0; }
-.chat .assistant-options .assistant-input-help { padding: 0 2px 6px; }
-.chat .assistant-import-status { display: flex; align-items: center; gap: 8px; padding: 0 10px 8px; font-size: 11.5px; color: var(--muted); }
-.chat .assistant-input-kind-note { margin: 0 10px 8px; font-size: 11.5px; color: var(--muted); }
-
 /* The proposed change: what it touches, then Apply or Discard. Nothing has changed yet. */
-.chat > .assistant-preview { flex: 0 1 auto; min-height: 0; max-height: 45%; overflow: auto; margin: 8px 8px 0; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); }
+.chat .assistant-preview { padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); }
 .assistant-preview header { display: grid; gap: 2px; }
 .assistant-preview header b { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 .assistant-preview-note { margin: 6px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
@@ -41,22 +8,48 @@
 .assistant-preview-list li { padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--input); min-width: 0; }
 .assistant-preview-list li > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; min-width: 0; }
 .assistant-preview-list li > div b { font-weight: 500; font-size: 12px; overflow-wrap: anywhere; }
-.assistant-preview-list small { color: var(--muted); font-size: 10.5px; }
-.assistant-preview-status { font-size: 10.5px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line-2); color: var(--muted); }
+.assistant-preview-list small { color: var(--muted); font-size: var(--text-caption); }
+.assistant-preview-status { font-size: var(--text-caption); padding: 0 6px; border-radius: 8px; border: 1px solid var(--line-2); color: var(--muted); }
 .assistant-preview-status.added { color: var(--good); border-color: #b8c9ac66; }
 .assistant-preview-status.deleted { color: var(--danger); border-color: #f28b7a66; }
-.assistant-preview-list dl { display: grid; grid-template-columns: minmax(70px, auto) 1fr; gap: 2px 8px; margin: 5px 0 0; font-size: 11px; }
+.assistant-preview-list dl { display: grid; grid-template-columns: minmax(70px, 38%) 1fr; gap: 3px 10px; margin: 5px 0 0; font-size: 12px; }
 .assistant-preview-list dt { color: var(--muted); overflow-wrap: anywhere; }
-.assistant-preview-list dd { margin: 0; font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 10.5px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.assistant-preview-list dd { margin: 0; font-size: 12px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .assistant-preview-actions { display: flex; gap: 8px; margin-top: 10px; }
 .assistant-preview-actions button { min-height: 40px; padding: 6px 14px; }
 .assistant-preview-actions .assistant-apply { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .assistant-preview-actions .assistant-apply:hover:not(:disabled) { background: #f6ce8d; border-color: #f6ce8d; }
+.assistant-preview-show { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.assistant-preview-show button { min-height: 32px; }
+.assistant-preview-show button[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
 
-/* One-step undo of the latest assistant change. */
-.chat > .assistant-change { flex: none; display: flex; align-items: center; gap: 8px; margin: 8px 8px 0; padding: 4px 4px 4px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
-.chat > .assistant-change span { flex: 1; min-width: 0; }
-.chat > .assistant-change button { min-height: 40px; }
+/* "Show in viewer": the viewer draws the preview, so it says so above the picture. */
+.viewer.showing-preview { border-color: var(--accent); }
+.viewer-preview-banner { flex: none; padding: 6px 10px 8px; background: #2a2418; border-bottom: 1px solid var(--accent); font-size: 12px; min-width: 0; }
+.viewer-preview-banner p { margin: 0; overflow-wrap: anywhere; }
+.viewer-preview-banner b { color: var(--accent); font-weight: 600; margin-right: 4px; }
+.viewer-preview-banner .viewer-preview-steps { margin-top: 2px; color: var(--muted); }
+.viewer-preview-banner .assistant-preview-actions { margin-top: 6px; flex-wrap: wrap; }
+.viewer-preview-banner .assistant-preview-actions button { min-height: 32px; padding: 4px 12px; }
+@media (pointer: coarse) { .viewer-preview-banner .assistant-preview-actions button { min-height: 44px; } }
+/* On a phone the preview takes the viewer: a one-row banner, no viewer controls, and the frame at full width. */
+@media (max-width: 720px) and (min-width: 1px) {
+  .viewer-preview-banner { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; }
+  .viewer-preview-banner p { flex: 1; min-width: 0; }
+  .viewer-preview-banner :is(.viewer-preview-copy, .viewer-preview-steps) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .viewer-preview-banner .assistant-preview-actions { flex: none; flex-wrap: nowrap; margin: 0; }
+  .viewer-preview-banner .assistant-preview-actions button { min-height: 44px; }
+  .viewer-preview-banner .viewer-preview-back { display: none; }
+  .page.phone-edit .viewer.showing-preview :is(.viewer-bar, .viewer-info, .transport .buttons.right) { display: none; }
+}
+
+/* One-step undo of the latest assistant change. In the panel it sits inside the result card. */
+.chat .assistant-change { flex: none; display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+.chat .assistant-change span { flex: 1; min-width: 0; }
+.chat .assistant-change button { min-height: 40px; }
+.chat .assistant-result-card .assistant-change { display: contents; }
+/* On a result card Undo sits in a row with Select, so it takes the row's height. Touch layouts raise both. */
+.chat :where(.assistant-result-card) .assistant-change button { min-height: 32px; }
 
 /* Processing steps in a preview, and a preview being applied. */
 .assistant-preview-steps { margin: 8px 0 0; padding: 0 0 0 18px; display: grid; gap: 6px; font-size: 12px; }
@@ -64,7 +57,7 @@
 .assistant-preview-steps b { font-weight: 500; }
 .assistant-preview-steps p { margin: 2px 0 0; color: var(--muted); overflow-wrap: anywhere; }
 .assistant-preview-step-label { display: inline-block; min-width: 58px; color: var(--text); font-size: 11px; }
-.chat > .assistant-applying { flex: none; margin: 8px 8px 0; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); font-size: 12px; }
+.chat .assistant-applying { padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); font-size: 12px; }
 .assistant-applying header { display: grid; gap: 2px; }
 .assistant-applying header b { font-weight: 600; overflow-wrap: anywhere; }
 .assistant-applying p { margin: 6px 0 0; overflow-wrap: anywhere; }
@@ -74,8 +67,439 @@
 .assistant-preview-details > summary { cursor: pointer; padding: 8px 0; }
 .assistant-preview-details dd { margin: 0 0 6px; white-space: pre-wrap; }
 
-.claude-btn .assistant-setup-indicator { font-size: 10px; line-height: 1.2; color: var(--muted); }
+/* The request entry stays in the toolbar at every workspace width. */
+.topbar .assistant-entry {
+  display: flex; align-items: center; gap: 8px; min-height: 38px; min-width: 190px;
+  padding: 4px 9px; background: var(--input); color: var(--text); border-color: var(--line-2); border-radius: 8px;
+}
+.assistant-entry > .ico { flex: none; color: var(--accent); }
+.assistant-entry-label { font-weight: 600; white-space: nowrap; }
+.assistant-entry-hint { display: none; }
+.assistant-entry-state { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--muted); font-size: .85em; white-space: nowrap; }
+.assistant-entry-state i { flex: none; width: 6px; height: 6px; border-radius: 50%; border: 1px solid currentColor; }
+.assistant-entry[data-state="ready"] i { color: var(--good); background: currentColor; }
+.assistant-entry[data-state="working"] i { color: var(--accent); background: currentColor; }
+.assistant-entry[data-state="failed"] i { color: var(--danger); background: currentColor; }
+/* The hosted build has no assistant. Its entry is a quiet way to the Mac app, not a call to action. */
+.topbar .assistant-entry.hosted { min-width: 0; border-color: var(--line); background: transparent; color: var(--muted); }
+.topbar .assistant-entry.hosted > .ico { color: var(--muted); }
+.topbar .assistant-entry.hosted .assistant-entry-label { font-weight: 500; }
+.topbar .assistant-entry.hosted .assistant-entry-state i { display: none; }
+/* The word stays in the entry's name. It shows only where the panel header is not there to say it:
+   with the panel closed on a wide window. Below 1100px the entry is icon, label and dot. */
+.topbar .assistant-entry.on .assistant-entry-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 1099px) {
+  .topbar .assistant-entry { min-width: 0; }
+  .topbar .assistant-entry :is(.assistant-entry-hint, kbd) { display: none; }
+  .topbar .assistant-entry .assistant-entry-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .topbar .assistant-entry .assistant-entry-state { min-width: 0; }
+}
+.assistant-entry kbd { font-size: .85em; }
+.topbar .assistant-entry.on, .topbar .assistant-entry[data-state="working"] { border-color: #efbc6880; }
+.topbar .assistant-entry:hover:not(:disabled) { background: var(--selection-fill); border-color: var(--accent); }
+/* With room to spare, a ready entry reads as the start of a request. */
+@media (min-width: 1280px) {
+  .topbar .assistant-entry { flex: none; min-width: 240px; cursor: text; }
+  .assistant-entry-label { font-weight: 500; }
+  .assistant-entry[data-state="ready"]:not(.on) .assistant-entry-hint { display: block; margin-left: -3px; white-space: nowrap; color: var(--muted); }
+}
+
+/* The panel: a header, the conversation, and one field pinned at the bottom. */
+.chat.panel { position: relative; overflow: auto; }
+.chat-head { padding: 5px 8px 5px 12px; }
+.chat-title { display: flex; flex: 1 1 0; flex-wrap: wrap; align-items: center; gap: 0 6px; min-width: 0; }
+.chat-title > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-title > .muted { min-width: 0; font-size: 11px; overflow-wrap: break-word; }
+.chat-head button { min-height: 36px; min-width: 36px; }
+.chat-head .chat-collapse { display: none; }
+/* The list is the positioning root for its hidden speaker labels, so they cannot stretch the panel. */
+.chat-list { position: relative; padding: 12px; gap: 10px; min-height: min(4em, 12dvh); overscroll-behavior: contain; }
+.chat-list .sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.assistant-composer-card .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* The empty state and the status check sit just above the field, where the eye already is. */
+.chat-list .assistant-checking { margin-top: auto; }
+/* Before the first message the promise, what the assistant sees and the starters sit together, centred. */
+.chat-list .chat-empty { margin-top: auto; display: grid; gap: 6px; text-align: center; }
+.chat-list .chat-empty + .assistant-suggestions { margin-bottom: auto; }
+.chat-list .chat-empty:last-child { margin-bottom: auto; }
+.assistant-sees { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.chat-empty { padding: 0; }
+.chat-empty p { margin: 0; font-size: 15px; line-height: 1.4; color: var(--text); text-wrap: balance; }
+.assistant-checking { display: flex; align-items: center; gap: 7px; margin-bottom: 0; color: var(--muted); font-size: 12px; }
+.spinner { flex: none; animation: assistant-spin .9s linear infinite; transform-origin: center; }
+.assistant-run-symbol { display: inline-grid; place-items: center; }
+/* The history warning and the plugin session note are pinned between the header and the conversation. */
+.chat > :is(.assistant-route-preview, .assistant-plugin-note) { flex: none; margin: 0; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+.chat-list .assistant-setup { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line-2); border-radius: 10px; overflow-wrap: anywhere; }
+.chat-list .assistant-setup p { margin: 0; line-height: 1.5; }
+.chat-list .assistant-setup .assistant-setup-state { color: var(--text); }
+.chat-list .assistant-setup .assistant-setup-note { font-size: 11px; }
+.assistant-setup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+.assistant-setup-actions > :is(a, button) { min-height: 36px; margin: 0; text-wrap: wrap; }
+.assistant-setup-actions .settings-link { display: inline-flex; align-items: center; padding-inline: 7px; color: var(--text); }
+
+/* Messages first: the request is a small bubble, the reply is plain text at full width. */
+.chat-list .msg { overflow-wrap: anywhere; }
+.chat-list .msg.claude { max-width: 100%; padding: 2px 0; border: 0; background: transparent; line-height: 1.55; }
+.chat-list .msg.user { display: grid; justify-items: end; max-width: 88%; padding: 0; background: none; }
+.chat-list .msg.user .msg-body { padding: 7px 10px; border-radius: 10px 10px 3px 10px; background: var(--panel-2); }
+.chat-list .msg.user .assistant-edit-request { min-height: 24px; margin-top: 2px; padding: 2px 4px; color: var(--muted); font-size: .85em; }
+/* Edit request appears when its message is pointed at or focused. On touch only the last message keeps it. */
+@media (hover: hover) {
+  .chat-list .msg.user .assistant-edit-request { opacity: 0; }
+  .chat-list .msg.user:is(:hover, :focus-within) .assistant-edit-request { opacity: 1; }
+}
+@media (hover: none) { .chat-list .msg.user:not([data-last]) .assistant-edit-request { display: none; } }
+.assistant-stream .msg-body::after {
+  content: ''; display: inline-block; width: 6px; height: 1em; margin-left: 3px; border-radius: 1px;
+  vertical-align: text-bottom; background: var(--accent); animation: assistant-caret 1.1s ease-in-out infinite;
+}
+@keyframes assistant-caret { 50% { opacity: .2; } }
+/* Receipt values: a colour swatch beside its hex, and one line per keyframe. */
+.change-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border: 1px solid var(--line-2); border-radius: 2px; vertical-align: -1px; }
+.change-list .receipt-arrow { margin: 0 5px; color: var(--muted); }
+/* Label, old value, then the arrow with the new value. The arrow never ends a line on its own. */
+.change-list dd.change-pair { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 2px; }
+.change-list dd.change-pair > span:first-child { color: var(--muted); }
+.change-list .change-to { display: inline-flex; align-items: baseline; max-width: 100%; white-space: nowrap; }
+.change-list .change-to > span:last-child { white-space: normal; overflow-wrap: anywhere; }
+.change-keys { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.assistant-preview-list .change-keys li { padding: 0; border: 0; border-radius: 0; background: none; }
+/* A value and its timecode wrap as a unit, so "0.40 s · 00:00:00:12" never splits across lines. */
+.change-list dd > span { display: inline-block; max-width: 100%; }
+.change-key-time { color: var(--muted); }
+/* Reply text: links, short lists and small tables. A wide table scrolls inside itself. */
+.msg-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.msg-body :is(ul, ol) { margin: 4px 0; padding-left: 20px; }
+.msg-body li + li { margin-top: 2px; }
+.msg-body .msg-table { max-width: 100%; margin: 6px 0; overflow-x: auto; }
+.msg-body table { border-collapse: collapse; font-size: .92em; font-variant-numeric: tabular-nums; }
+.msg-body :is(th, td) { padding: 4px 8px; border: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: normal; }
+.msg-body th { background: var(--panel-2); font-weight: 600; }
+
+/* Each turn reads in order: the reply, one quiet run line, then one result card. */
+.chat-list .assistant-turn { display: contents; }
+.assistant-session-divider { display: flex; align-items: center; gap: 8px; margin: 4px 0; color: var(--muted); font-size: 11px; }
+.assistant-session-divider::before, .assistant-session-divider::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+.assistant-result-card { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 11px; border-left: 2px solid var(--sage); }
+.assistant-result-card > :is(.receipt-heading, .assistant-result-caption, .assistant-note, .change-receipt) { flex-basis: 100%; }
+.assistant-result-card.undone { border-left-color: var(--line-2); color: var(--muted); }
+.assistant-result-card.undone .receipt-heading b { font-weight: 500; text-decoration: line-through; text-decoration-color: var(--line-2); }
+.assistant-undone-tag { padding: 0 7px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 11px; }
+/* With no details to show (after a reload) the card is one line: what happened and its one action. */
+.assistant-result-card.compact { flex-wrap: nowrap; justify-content: space-between; padding-block: 5px; }
+.assistant-result-card.compact > .receipt-heading { flex: 1 1 auto; min-width: 0; }
+.assistant-result-card.compact > .receipt-actions { flex: none; }
+.receipt-json { margin-top: 6px; color: var(--muted); }
+.receipt-json > summary { cursor: pointer; padding-block: 4px; font-size: 11px; }
+.receipt-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; }
+.receipt-heading small { color: var(--muted); }
+.assistant-result-caption { margin: 0; color: var(--muted); font-size: 12px; }
+.assistant-result-card .change-receipt { margin: 0; }
+.assistant-result-card .receipt-actions { flex-direction: row; flex-wrap: wrap; gap: 6px; margin: 0; }
+.receipt-actions button { align-self: flex-start; }
+.change-receipt > summary { cursor: pointer; padding-block: 4px; }
+.assistant-note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+/* In the preview card the notes are plain blocks, so each one keeps a little space above it. */
+.assistant-preview .assistant-note { margin-top: 6px; }
+
+/* A run is one quiet line: label, stage and time. It opens to the tool updates. */
+.chat-list .assistant-run { min-width: 0; margin: 0; padding: 0 2px; border: 0; background: none; color: var(--muted); font-size: 12px; }
+.chat-list .assistant-run-heading { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12px; list-style: none; }
+.chat-list summary.assistant-run-heading { cursor: pointer; }
+.chat-list summary.assistant-run-heading::-webkit-details-marker { display: none; }
+.chat-list summary.assistant-run-heading::after { content: '▸'; flex: none; font-size: var(--text-caption); }
+.chat-list .assistant-run[open] > summary.assistant-run-heading::after { content: '▾'; }
+.chat-list .assistant-run-symbol { flex: none; width: 14px; font-size: 13px; text-align: center; }
+.chat-list .assistant-run-heading b { flex: none; font-weight: 500; color: var(--text); }
+.chat-list .assistant-run-stage { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* An opened run line shows its whole stage sentence. */
+.chat-list .assistant-run[open] .assistant-run-stage { white-space: normal; overflow: visible; }
+/* While a run works the line shows one label: the step it is on. The state word stays for screen readers. */
+.chat-list .assistant-run.active .assistant-run-heading:has(.assistant-run-stage) b { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.chat-list .assistant-run.active .assistant-run-stage { color: var(--text); font-weight: 500; }
+.chat-list .assistant-run-heading { align-items: center; }
+.chat-list .assistant-run .assistant-run-time { font-variant-numeric: tabular-nums; }
+.chat-list .assistant-run .assistant-run-time { margin-left: auto; }
+.chat-list .assistant-run p { margin: 4px 0 0 20px; overflow-wrap: anywhere; }
+.chat-list .assistant-run-updates { margin: 4px 0 0; padding-left: 34px; }
+.chat-list .assistant-run-updates li + li { margin-top: 3px; }
+.chat-list .change-receipt .assistant-run-updates { padding-left: 18px; }
+.chat-list .assistant-run.error :is(.assistant-run-symbol, b) { color: var(--danger); }
+.chat-list .assistant-route { margin: 4px 0 0 20px; padding: 0; border: 0; }
+.chat-list .assistant-failure { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--danger); border-radius: 8px; background: var(--panel-2); font-size: 12px; overflow-wrap: anywhere; }
+.assistant-failure-heading { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+.assistant-failure-heading .ico { flex: none; color: var(--danger); }
+.assistant-failure.stopped .assistant-failure-heading .ico { color: var(--muted); }
+.assistant-failure-message { color: var(--muted); }
+.assistant-failure-message > :first-child { margin-top: 0; } .assistant-failure-message > :last-child { margin-bottom: 0; }
+/* A stopped request is not an error. */
+.chat-list .assistant-failure.stopped { border-left-color: var(--line-2); }
+.assistant-failure :is(.assistant-plan-error, .assistant-saved) p { margin: 4px 0 0; }
+.assistant-saved ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); }
+.assistant-failure-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.chat-list .assistant-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Starters are full-width rows: the kind of job, then the request. They show only before the first message. */
+.chat-list .assistant-suggestions { flex-direction: column; flex-wrap: nowrap; gap: 4px; }
+.chat-list .assistant-suggestion {
+  display: grid; grid-template-columns: 9.5em 1fr; align-items: baseline; gap: 8px; width: 100%; min-height: 36px; padding: 6px 10px; background: transparent;
+  border: 1px solid var(--line); border-radius: 8px; color: var(--text); white-space: normal; text-align: left;
+}
+.chat-list .assistant-suggestion small { color: var(--muted); font-size: 11px; }
+.chat-list .assistant-suggestion:hover:not(:disabled) { background: var(--panel-2); border-color: var(--accent); }
+
+/* The composer is one bordered field: context, text, then input options and Send. */
+.chat .assistant-composer-card {
+  flex: 0 0 auto; max-height: none; min-height: 0; margin: 0; border: 0;
+  border-radius: 0; padding: 2px 10px 10px; background: transparent;
+}
+/* The border is lighter than --line-2 so the edge of the one field reads at 3:1 against the panel. */
+.chat .assistant-field { display: flex; flex-direction: column; min-width: 0; border: 1px solid #6f7a5f; border-radius: 12px; background: var(--input); }
+.chat .assistant-field:has(textarea:focus-visible) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.chat .assistant-field .composer textarea:focus-visible { outline: none; }
+/* Context chips flow as one run of inline items around the Preview changes switch, which takes the
+   right of the first line it fits on. Up to three lines show, then the region scrolls. */
+.chat .assistant-field-context { min-width: 0; padding: 7px 7px 0 8px; }
+.chat .assistant-composer-content { min-width: 0; max-height: 67px; overflow: auto; overscroll-behavior: contain; padding: 1px 1px 0; line-height: 1; scrollbar-width: thin; }
+.chat .assistant-field :is(.assistant-context-chips, .assistant-selection-chips, .refs) { display: inline; padding: 0; }
+.assistant-context-chips { font-variant-numeric: tabular-nums; }
+.chat .assistant-composer-content .chip { display: inline-flex; vertical-align: top; max-width: 100%; margin: 0 3px 4px 0; font-size: .82em; line-height: 1.5; overflow-wrap: anywhere; }
+.chat .assistant-composer-content:focus-visible { outline-offset: -1px; border-radius: 6px; }
+.chat .assistant-selection-chips .chip { flex-wrap: wrap; gap: 0 5px; padding: 0 7px; border-radius: 12px; }
+.chat .assistant-selection-chips small { color: var(--muted); opacity: 1; font-size: .9em; overflow-wrap: anywhere; }
+/* The remove button keeps a 24px target without making its chip taller than the others. */
+.chat .assistant-composer-card :is(.refs, .assistant-selection-chips) .chip button { min-width: 24px; min-height: 24px; margin-block: -4px; }
+.chat .assistant-preview-toggle { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 4px; cursor: pointer; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.chat .assistant-preview-toggle input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+.assistant-switch { flex: none; width: 24px; height: 14px; border-radius: 999px; background: var(--line-2); position: relative; transition: background-color var(--motion-fast); }
+.assistant-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text); transition: transform var(--motion-fast); }
+.assistant-preview-toggle input:checked + .assistant-switch { background: var(--accent); }
+.assistant-preview-toggle input:checked + .assistant-switch::after { transform: translateX(10px); background: var(--accent-ink); }
+.assistant-preview-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.assistant-preview-toggle:has(input:disabled) .assistant-switch { opacity: .5; }
+.chat .assistant-preview-toggle:has(input:checked) { color: var(--text); }
+.chat .assistant-preview-toggle:has(input:disabled) { color: var(--muted); cursor: default; }
+.chat .assistant-field > .composer { padding: 0; }
+.chat .assistant-field .composer textarea {
+  display: block; width: 100%; min-height: calc(2lh + 12px); max-height: min(12lh, 32dvh); padding: 6px 10px;
+  border: 0; border-radius: 0; background: transparent; line-height: 1.45; field-sizing: content;
+}
+.chat .composer textarea::placeholder { color: var(--muted); opacity: 1; }
+.chat .assistant-field-bar { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 0 5px 5px; }
+.chat .assistant-input-tools { flex: 1 1 auto; flex-wrap: nowrap; gap: 2px; min-width: 0; padding: 0; }
+.chat .assistant-input-tools > * { flex: 0 1 auto; min-width: 0; }
+/* The provider and model give way first, so Prompt and Import text stay readable. */
+.chat .assistant-input-tools > :is(.assistant-input-kind, .assistant-script-import, .assistant-input-help) { flex: none; margin: 0; }
+.chat .assistant-input-tools > .assistant-model-menu { flex: 0 1 auto; min-width: 0; margin: 0; }
+.chat .assistant-input-tools > :is(.assistant-script-import, .assistant-input-help) { min-width: 26px; }
+.chat .assistant-input-help summary { min-width: 26px; padding-inline: 4px; }
+.chat .assistant-model-menu > summary { max-width: 100%; }
+.chat .assistant-model-menu > summary > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat .assistant-input-tools > label { font-size: .88em; }
+.chat .assistant-input-tools > label > select, .chat .assistant-input-tools > .assistant-script-import, .chat .assistant-script-import span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat .assistant-input-kind { position: relative; }
+.chat .assistant-input-kind select { appearance: none; padding-inline: 8px 22px; field-sizing: content; }
+.chat .assistant-input-kind::after {
+  content: ''; position: absolute; top: calc(50% - 5px); right: 9px; width: 6px; height: 6px; pointer-events: none;
+  border: solid currentColor; border-width: 0 1px 1px 0; transform: rotate(45deg);
+}
+/* Only the bar's own controls are quiet. Controls inside a menu keep their normal look. */
+.chat .assistant-input-tools > .assistant-script-import, .chat .assistant-input-tools > label > select, .chat .assistant-input-tools > details > summary { min-height: 30px; border-color: transparent; background-color: transparent; color: var(--muted); }
+.chat .assistant-input-tools > .assistant-script-import:hover, .chat .assistant-input-tools > label > select:hover, .chat .assistant-input-tools > details > summary:hover, .chat .assistant-input-tools > [open] > summary { background-color: var(--panel-2); color: var(--text); }
+.chat .assistant-input-tools .assistant-script-import { display: inline-grid; place-items: center; min-width: 30px; padding: 0 7px; border-radius: 6px; }
+.chat .assistant-input-tools details { margin: 0; }
+.chat .assistant-input-tools > details > summary {
+  display: flex; align-items: center; gap: 5px; list-style: none; cursor: pointer; border: 1px solid transparent;
+  border-radius: 6px; padding: 0 8px; font-size: .88em;
+}
+.chat .assistant-input-tools > details > summary::-webkit-details-marker { display: none; }
+.chat .assistant-model-menu summary::after { content: '▾'; }
+.chat .assistant-input-help summary { justify-content: center; min-width: 30px; }
+.chat .assistant-input-help summary::before { content: none; }
+.chat .assistant-input-tools > [open] > summary { border-color: var(--accent); }
+.assistant-model-popover {
+  position: absolute; z-index: 2; bottom: 100%; inset-inline: 10px; max-height: min(46dvh, 16rem);
+  overflow: auto; overscroll-behavior: contain; padding: 8px; background: var(--panel); border: 1px solid var(--line-2);
+  border-radius: 10px; box-shadow: 0 8px 26px #0009;
+}
+.chat .assistant-controls { border: 0; padding: 0; }
+.assistant-model-popover .assistant-composer-hint { margin: 0 2px 6px; }
+.assistant-model-popover .assistant-composer-hint:last-child { margin-bottom: 0; }
+.chat .assistant-primary-action { display: flex; align-items: center; gap: 6px; flex: none; min-width: 0; margin-left: auto; position: static; align-self: center; }
+.chat .assistant-primary-action button { display: grid; place-items: center; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 10px; }
+.chat .assistant-primary-action .send { color: var(--accent-ink); }
+/* A send that cannot fire yet is a quiet well, not a dimmed gold button. */
+.chat .assistant-primary-action .send:disabled { background: var(--panel-2); color: var(--muted); opacity: 1; }
+/* The tools stay where they are while a run works; they are disabled, and Stop takes Send's place. */
+.chat .assistant-field-bar:has(.assistant-stop) .assistant-preview-toggle > span:last-child { display: none; }
+.chat .assistant-primary-action .assistant-stop { display: inline-flex; gap: 5px; width: auto; min-width: 86px; justify-content: center; padding: 0 10px 0 8px; color: var(--text); border: 1px solid var(--accent); background: var(--panel-2); font-size: 12px; }
+.chat .assistant-plan-note { display: block; padding: 5px 4px 0; }
+.chat .assistant-import-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 4px 0; color: var(--muted); font-size: 11px; }
+/* Menus open above the field. A window too short for that opens them under the header instead. */
+@media (min-height: 521px) {
+  .chat .assistant-composer-card { position: relative; container-type: inline-size; container-name: composer; }
+}
+/* A field too narrow for one row puts the input options above Preview first and Send, so the provider
+   and model name is never cut to a letter. A short window keeps the one row so Send stays on screen. */
+@container composer (max-width: 409px) {
+  .chat .assistant-field-bar { flex-wrap: wrap; row-gap: 2px; }
+  .chat .assistant-input-tools { flex: 1 1 100%; }
+  .chat .assistant-primary-action { flex: 1 1 100%; justify-content: flex-end; margin-left: 0; padding-left: 4px; }
+  .chat .assistant-primary-action > .assistant-preview-toggle { margin-right: auto; }
+}
+@media (max-height: 520px) {
+  .assistant-model-popover { top: 46px; bottom: auto; }
+}
+/* A short window keeps the field to one context row and one text row so Send stays on screen. */
+@media (max-height: 520px) {
+  .chat-head { padding-block: 0; }
+  .chat > :is(.assistant-route-preview, .assistant-plugin-note) { padding-block: 2px; font-size: 11px; line-height: 1.25; }
+  .chat .assistant-composer-content { display: flex; align-items: center; gap: 4px; max-height: none; overflow: auto hidden; padding: 0; scrollbar-width: none; }
+  .chat .assistant-field :is(.assistant-context-chips, .assistant-selection-chips, .refs) { display: contents; }
+  .chat .assistant-composer-content .chip { flex: none; flex-wrap: nowrap; max-width: none; margin: 0; white-space: nowrap; }
+  .chat .assistant-context-chips .chip { order: 1; }
+  .chat .assistant-field .composer textarea { min-height: calc(1lh + 10px); max-height: 3lh; padding-block: 5px; }
+  .chat .assistant-composer-card { padding-bottom: 6px; }
+  .chat .assistant-preview-first, .chat .assistant-input-tools > .assistant-input-help { display: none; }
+}
+/* Between 901 and 1439px the assistant takes the inspector's column on the Edit page, at 320px, and a
+   two-tab strip switches the column between them. Media, viewer and timeline keep their places.
+   The page carries side-assistant or side-inspector only while it shares the column, so a landscape
+   phone and the hosted build, which lay out differently at these widths, show no tabs. */
+.side-tabs { display: none; }
+@media (min-width: 901px) and (max-width: 1439px) {
+  .main:has(> .page.edit.side-assistant) > .chat.panel { width: 320px; }
+  .main:has(> .page.edit.side-assistant) > .workspace-divider.divider-chat { display: none; }
+  .main:has(> .page.edit.side-assistant) > .chat .side-tabs, .page.edit.side-inspector .side-tabs { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 6px 6px 0; padding: 2px; background: var(--input); border: 1px solid var(--line); border-radius: 8px; }
+  .side-tabs button { min-height: 28px; border-color: transparent; background: transparent; color: var(--muted); font-weight: 500; }
+  .side-tabs button.on { background: var(--selection-fill); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
+  .page.edit.side-inspector .edit-inspector-pane { flex-direction: column; gap: 6px; }
+  .page.edit.side-inspector .edit-inspector-pane .side-tabs { margin: 0; }
+  /* The assistant stays mounted behind the Inspector tab, so a run, the draft and the scroll position carry on. */
+  .main:has(> .page.edit.side-inspector) > :is(.chat, .workspace-divider.divider-chat) { display: none; }
+  /* The timeline toolbar keeps to one row beside the assistant: the tool name gives way and the zoom slider shortens. */
+  .app.chat-open .page.edit.customizable .tl-toolbar { flex-wrap: nowrap; }
+  .app.chat-open .page.edit.customizable .tl-toolbar .tool-readout { display: none; }
+  .app.chat-open .page.edit.customizable .tl-toolbar input[type=range] { width: 72px; }
+}
+/* Under 1100px the column leaves less room for the timeline toolbar: the zoom slider gives way to its
+   buttons, and under 1000px the zoom controls take a second row instead of scrolling out of sight. */
+@media (min-width: 901px) and (max-width: 1099px) {
+  .app.chat-open .page.edit.customizable .tl-toolbar .tl-zoom input[type=range] { display: none; }
+}
+@media (min-width: 901px) and (max-width: 999px) {
+  .app.chat-open .page.edit.customizable .tl-toolbar { flex-wrap: wrap; }
+}
+@media (max-width: 900px) {
+  .main > .chat.panel { position: fixed; width: min(var(--chat-width, 360px), max(38vw, 320px)); }
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .topbar .assistant-entry { min-height: 44px; min-width: 0; }
+  .chat :is(.chat-head button, .assistant-setup-actions > *, .assistant-suggestion, .assistant-input-tools :is(select, summary, .assistant-script-import), .assistant-primary-action button, .assistant-preview-toggle, .receipt-actions button, .assistant-preview-actions button, .assistant-change button) { min-height: 44px; }
+  .chat .chat-head button { min-width: 44px; }
+  .chat .assistant-input-help summary { min-width: 44px; }
+  .chat .assistant-primary-action button { width: 44px; min-width: 44px; height: 44px; }
+  .chat .assistant-field-context { padding-top: 0; }
+  .chat .assistant-composer-card :is(.refs, .assistant-selection-chips) .chip button { min-width: 44px; min-height: 44px; margin-block: -14px; }
+  /* The link keeps a 44px target while its row stays one line tall. */
+  .chat-list .msg.user .assistant-edit-request { min-height: 44px; margin-block: -8px -10px; }
+  .chat :is(.change-receipt > summary, .receipt-json > summary, .assistant-preview-details > summary) { padding-block: 15px; }
+  .chat .chat-list summary.assistant-run-heading { min-height: 44px; align-items: center; }
+}
+@media (max-width: 720px) {
+  .assistant-entry kbd { display: none; }
+  /* Ready and Working take the same width, so the entry does not move when a run starts or ends. */
+  .assistant-entry-state { min-width: min(8.2ch, 16vw); }
+  .main > .chat.panel {
+    top: auto; right: 0; bottom: 0; left: 0; width: 100%; min-width: 0;
+    height: min(62dvh, calc(100dvh - var(--topbar-height) - 6px)); margin: 0;
+    padding-bottom: env(safe-area-inset-bottom); border-radius: 14px 14px 0 0; box-shadow: 0 -10px 32px #0009;
+  }
+  /* The sheet is 62dvh. Larger text can grow it up to the top bar, so Send stays on screen. */
+  .main > .chat.panel:not(.assistant-unavailable) { height: auto; min-height: min(62dvh, calc(100dvh - var(--topbar-height) - 6px)); max-height: calc(100dvh - var(--topbar-height) - 6px); }
+  .main > .chat.assistant-unavailable { height: auto; max-height: calc(100dvh - var(--topbar-height) - 6px); }
+  .assistant-unavailable .chat-list { flex: 0 1 auto; }
+  .chat .composer textarea { font-size: max(16px, 1em); }
+  .chat .assistant-composer-content { display: flex; align-items: center; gap: 4px; max-height: none; overflow: auto hidden; padding: 0; scrollbar-width: none; }
+  .chat .assistant-field :is(.assistant-context-chips, .assistant-selection-chips, .refs) { display: contents; }
+  .chat .assistant-composer-content .chip { flex: none; flex-wrap: nowrap; max-width: none; margin: 0; white-space: nowrap; }
+  .chat .assistant-context-chips .chip { order: 1; }
+  @supports (field-sizing: content) { .chat .assistant-field .composer textarea { min-height: calc(1lh + 12px); } }
+  .app.chat-open:not(.chat-collapsed):has(.assistant-composer-card) .page.phone-edit .edit-viewer { height: clamp(110px, calc(38dvh - var(--topbar-height) - 12px), 320px); }
+  .app.chat-open:not(.chat-collapsed):has(.assistant-composer-card) .page.phone-edit :is(.viewer-bar, .viewer-info, .transport .buttons.right) { display: none; }
+}
+/* The narrowest phones and the 320px landscape side panel tighten the bar so Model, the input kind, Import text and Send fit on one line. */
+@media (max-width: 379px), (max-height: 500px) and (max-width: 1000px) and (orientation: landscape) {
+  .chat .assistant-field-bar { padding-inline: 2px 4px; }
+  .chat .assistant-input-tools { gap: 0; font-size: .92em; }
+  .chat .assistant-input-tools > details > summary, .chat .assistant-input-tools .assistant-script-import { padding-inline: 5px; }
+  .chat .assistant-input-kind select { padding-inline: 5px 18px; }
+  .chat .assistant-input-kind::after { right: 6px; }
+}
+@media (max-width: 359px) {
+  .topbar .assistant-entry { gap: 4px; padding-inline: 7px; }
+  .assistant-entry-state { overflow-wrap: anywhere; }
+  .app.chat-open:not(.chat-collapsed):has(.assistant-composer-card) .page.phone-edit .timeline-transport .buttons:not(.right) > :is(:first-child, :last-child) { display: none; }
+}
+/* The phone sheet has a second detent: it slides down to a one-line bar so the timeline is reachable.
+   The sheet keeps its size and its contents stay mounted, so the draft and the scroll position survive. */
+@media (max-width: 720px) and (orientation: portrait), (max-width: 720px) and (min-height: 501px) {
+  .chat-head .chat-collapse { display: inline-grid; place-items: center; }
+  .main > .chat.panel { transition: transform var(--motion-base) ease-out; }
+  .main > .chat.panel.collapsed { overflow: hidden; transform: translateY(calc(100% - 54px - env(safe-area-inset-bottom))); }
+  .chat.collapsed > :not(.chat-head), .chat.collapsed .chat-settings { visibility: hidden; }
+  /* The bar is 54px at any text size, so Expand and Close stay on screen. Its one line clips. */
+  .chat.collapsed .chat-head { box-sizing: border-box; height: 54px; overflow: hidden; border-bottom-color: transparent; }
+  .chat.collapsed .chat-title { flex-wrap: nowrap; align-self: stretch; overflow: hidden; white-space: nowrap; cursor: pointer; }
+  .chat.collapsed .chat-title > :not(.claude-dot) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .app.chat-collapsed .main { padding-bottom: calc(54px + env(safe-area-inset-bottom)); }
+}
 @media (max-width: 480px) {
-  .topbar-actions .claude-btn:has(.assistant-setup-indicator:not([hidden])) { flex-direction: column; gap: 2px; padding: 3px 6px; }
-  .topbar-actions .claude-btn .assistant-setup-indicator { font-size: 10px; }
+  .topbar .assistant-entry { gap: 6px; }
+  /* Larger text wraps the state under itself before the entry can run off the screen. */
+  .assistant-entry-state { flex: 0 1 auto; line-height: 1.12; white-space: normal; }
+  /* On a phone the entry is a 44px icon button. The dot sits on its corner and the name stays for screen readers. */
+  .topbar .assistant-entry { position: relative; justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; }
+  .topbar .assistant-entry .assistant-entry-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .topbar .assistant-entry .assistant-entry-state { position: absolute; top: 7px; right: 7px; min-width: 0; margin: 0; }
+  /* The button fills the first row of the phone top bar, so it draws no frame against the page tabs under it.
+     Open or working, it shows a fill set 4px inside the 44px target instead. */
+  .topbar .assistant-entry, .topbar .assistant-entry.on, .topbar .assistant-entry[data-state="working"], .topbar .assistant-entry:hover:not(:disabled) { border-color: transparent; background: transparent; isolation: isolate; }
+  .topbar .assistant-entry:is(.on, [data-state="working"])::before { content: ''; position: absolute; z-index: -1; inset: 4px; border-radius: 8px; background: var(--selection-fill); }
+}
+@media (max-width: 720px) and (max-height: 580px) and (orientation: portrait) {
+  .main > .chat.panel:not(.assistant-unavailable) { height: calc(100dvh - var(--topbar-height) - 6px); }
+}
+@media (max-height: 500px) and (max-width: 1000px) and (orientation: landscape) {
+  .main > .chat.panel { position: fixed; top: calc(var(--topbar-height) + 6px); right: 6px; bottom: 6px; left: auto; width: min(max(46vw, 320px), var(--chat-width, 360px)); height: auto; border-radius: var(--radius); }
+  .main > .chat.panel:not(.assistant-unavailable) { min-height: 0; max-height: none; }
+  /* The list here is about two lines tall, so the suggestion row gives its space to the conversation. */
+  .workspace-divider.divider-chat { display: none; }
+  .app.chat-open:has(.assistant-composer-card) .page.phone-edit .edit-viewer { height: auto; }
+  .app.chat-open:has(.assistant-composer-card) .page.phone-edit .viewer-bar { display: flex; }
+  .app.chat-open:has(.assistant-composer-card) .page.phone-edit .viewer.compact .transport .buttons.right { display: flex; }
+}
+/* On a phone a long draft scrolls inside four lines, so the conversation keeps most of the sheet. */
+@media (max-width: 720px) and (min-height: 521px) {
+  .chat .assistant-field .composer textarea { max-height: min(4lh, 20dvh); }
+}
+/* The empty field is a full touch target. */
+@media (pointer: coarse) and (min-height: 521px) {
+  .chat .assistant-field .composer textarea { min-height: 44px; }
+}
+/* A very short window with a mouse (a zoomed desktop) does not need touch-sized controls. The lines go to the conversation. */
+@media (max-height: 400px) and (pointer: fine) {
+  .chat :is(.chat-head button, .assistant-setup-actions > *, .assistant-input-tools :is(select, summary, .assistant-script-import), .assistant-primary-action button, .assistant-preview-toggle, .assistant-preview-actions button, .assistant-change button) { min-height: 30px; }
+  .chat .chat-head button { min-width: 32px; }
+  .chat .assistant-input-help summary { min-width: 30px; }
+  .chat .assistant-primary-action button { width: 32px; min-width: 32px; height: 32px; }
+  .chat .composer textarea { font-size: 1em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat .claude-dot.busy { animation: none; }
+  .assistant-stream .msg-body::after, .spinner { animation: none; }
+  .assistant-switch, .assistant-switch::after { transition: none; }
+  .main > .chat.panel { transition: none; }
 }

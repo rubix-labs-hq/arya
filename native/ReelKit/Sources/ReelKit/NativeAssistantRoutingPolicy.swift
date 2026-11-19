@@ -14,6 +14,12 @@ public enum NativeAssistantRoutingPolicy {
         value == "quick" ? "Speed" : value == "quality" ? "Quality" : "Balanced"
     }
 
+    /// The model menu's label where a full model name would be cut short, as on a phone: Auto, or
+    /// the provider's short name. The menu itself and the accessibility label still name the model.
+    public static func compactRoutingLabel(mode: String, provider: String) -> String {
+        mode == "auto" ? "Auto" : ["claude-code": "Claude", "codex": "Codex", "antigravity": "Antigravity", "gemini-cli": "Gemini", "custom": "Custom", "anthropic": "Anthropic", "chatgpt": "ChatGPT"][provider] ?? provider
+    }
+
     private static func validModelID(_ value: String) -> Bool {
         value.range(of: "^[a-zA-Z0-9][a-zA-Z0-9._:/@+\\[\\]-]{0,127}$", options: .regularExpression) == (value.startIndex..<value.endIndex)
     }

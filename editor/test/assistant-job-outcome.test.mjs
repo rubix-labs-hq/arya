@@ -13,20 +13,23 @@ assert.ok(driveSource.startsWith('  const drive = async') && driveSource.endsWit
 
 // Execute the actual polling and completion function. Its requests and job facts
 // are injected, so no companion, provider, server or external process starts.
-async function complete(receipts, { version = 5, initialVersion = 5, event = 'done', callback = true, outcomes = helper.createToolOutcomes() } = {}) {
+async function complete(receipts, { version = 5, initialVersion = 5, event = 'done', callback = true, failure = false, outcomes = helper.createToolOutcomes() } = {}) {
   const jobs = new Map(receipts.map((receipt, index) => [`j${index}`, receipt]))
-  const run = { id: 'fixture', jobs: new Map([...jobs.keys()].map(id => [id, { id, path: '/api/jobs/cancel' }])), initialVersion, outcomes }
+  const run = { id: 'fixture', jobs: new Map([...jobs.keys()].map(id => [id, { id, path: '/api/jobs/cancel' }])), initialVersion, outcomes, commits: [] }
   const states = [], replies = [], calls = [], state = {}
   const options = {
     jobState: job => jobs.get(job.id)?.state,
     ...(callback ? { jobOutcome: job => jobs.get(job.id) } : {}),
+    ...(failure ? { jobFailure: job => { const { kind, name, error } = jobs.get(job.id); return { kind, name, error } } } : {}),
     getOutline: () => ({ version }), onReply: (...value) => replies.push(value),
   }
   const injected = { options, assertRun: () => {}, request: async () => ({ events: [{ seq: 1, type: event, text: 'Render finished.' }] }),
-    state, publish: next => { Object.assign(state, next); states.push(next) }, redact: text => text, unresolvedToolOutcome: helper.unresolvedToolOutcome,
-    recordCompletedJobOutcome: helper.recordCompletedJobOutcome, cancelJobs: async () => calls.push('cancelJobs'),
+    state, publish: next => { Object.assign(state, next); states.push(next) }, redact: text => text, unresolvedToolOutcome: helper.unresolvedToolOutcome, editedOutcome: helper.editedOutcome,
+    recordCompletedJobOutcome: helper.recordCompletedJobOutcome, unfinishedJobsOutcome: helper.unfinishedJobsOutcome, cancelJobs: async () => calls.push('cancelJobs'),
     cancelRemote: async () => calls.push('cancelRemote'), tool: () => { throw new Error('Unexpected fixture tool') }, names: {},
-    sleep: () => { throw new Error('Unexpected fixture wait') }, run }
+    sleep: () => { throw new Error('Unexpected fixture wait') }, run,
+    // What a failed turn reports: the real summary, the version as the host reads it, and no event-loop timer.
+    savedSummary: helper.savedSummary, projectVersion: () => options.getOutline().version, watchLoopDelay: () => {}, loopDelayReport: () => 'event-loop delay not measured', executedRouting: value => value.routing }
   const drive = new Function(...Object.keys(injected), `let active = run, closed = false; ${driveSource}\nreturn drive`)(...Object.values(injected))
   await drive({ token: 'fixture-redaction-only' }, run)
   assert.equal(states.length, 1)
@@ -59,7 +62,7 @@ test('saved-only and successful done jobs do not invent application failure', as
   for (const receipt of [{ state: 'done' }, { state: 'done', applied: true }, { state: 'done', applied: 0 }, { state: 'done', applied: 6 }, { state: 'done', applyError: '' }, { state: 'done', applyError: '  ' }]) {
     const result = await complete([receipt], { version: 6 })
     assert.equal(result.state, 'done')
-    assert.equal(result.outcome, 'The project changed during this request. Review edits in the timeline.')
+    assert.equal(result.outcome, '1 edit was saved while this request ran. Review it in the timeline.')
   }
 })
 
@@ -72,6 +75,43 @@ test('no-op completion and hosts without the optional callback retain their prio
 test('failed and cancelled jobs keep their failure count', async () => {
   const result = await complete([{ state: 'failed' }, { state: 'cancelled' }])
   assert.equal(result.outcome, '2 processing jobs did not finish. Review any committed edits.')
+})
+
+test('a failed job says what it was and why, and a cancelled one says it was cancelled', async () => {
+  const closed = 'The render worker closed while this export was running. Export again.'
+  const one = await complete([{ state: 'failed', kind: 'export', name: 'check-loudness.wav', error: closed }], { failure: true })
+  assert.equal(one.outcome, `1 processing job did not finish. The export check-loudness.wav failed: ${closed} Review any committed edits.`)
+  // The server marks a stopped render job failed with the error "cancelled".
+  const two = await complete([{ state: 'failed', kind: 'frame', error: 'cancelled' }, { state: 'cancelled', kind: 'denoise', error: 'aborted' }], { failure: true })
+  assert.equal(two.outcome, '2 processing jobs did not finish. The frame render was cancelled. The denoise job was cancelled. Review any committed edits.')
+  const lost = 'The render worker closed while the mix was being measured. Measure again.'
+  const three = await complete([{ state: 'failed', kind: 'measure-mix', error: lost }], { failure: true })
+  assert.equal(three.outcome, `1 processing job did not finish. The mix measurement failed: ${lost} Review any committed edits.`)
+})
+
+test('the reasons are short: two jobs at most, 160 characters each, one line', async () => {
+  const long = `ffmpeg exited with code 1:\n${'x'.repeat(400)}`
+  const result = await complete([{ state: 'failed', kind: 'export', name: 'a.mp4', error: long }, { state: 'failed', kind: 'export', name: 'b.mp4', error: 'disk full' }, { state: 'failed', kind: 'export', name: 'c.mp4', error: 'disk full' }, { state: 'failed' }], { failure: true })
+  const [count, first, second, more, last] = result.outcome.split(/(?<=[.]) (?=[A-Z0-9])/)
+  assert.equal(count, '4 processing jobs did not finish.')
+  assert.equal(first.length, 'The export a.mp4 failed: '.length + 160); assert.ok(first.endsWith('...')); assert.ok(!first.includes('\n'))
+  assert.equal(second, 'The export b.mp4 failed: disk full.')
+  assert.equal(more, '1 more is not listed here.')
+  assert.equal(last, 'Review any committed edits.')
+})
+
+test('the actual server reports a failed job by kind, export file name and error only', () => {
+  const match = server.match(/  jobFailure: ([\s\S]*?),\n  jobOutcome:/)
+  assert.ok(match, 'The server must wire the failure callback.')
+  const core = { id: 'core', kind: 'export', state: 'failed', error: 'disk full', spec: { out: '/private/project/renders/check.mp4', src: 'private-source' }, ffmpeg: 'private-process' }
+  const done = { id: 'done', kind: 'export', state: 'done', spec: { out: '/private/project/renders/done.mp4' } }
+  const analysis = { id: 'analysis', kind: 'loudness', state: 'cancelled', error: 'Processing cancelled', spec: { src: 'private-source', out: 'private-output' } }
+  const jobs = new Map([['core', core], ['done', done]]), routes = { 'GET /api/analysis/jobs': () => ({ jobs: [analysis] }) }
+  const failure = new Function('jobs', 'routes', `return (${match[1]})`)(jobs, routes)
+  assert.deepEqual(failure({ id: 'core', path: '/api/jobs/cancel' }), { kind: 'export', name: 'check.mp4', error: 'disk full' })
+  assert.deepEqual(failure({ id: 'analysis', path: '/api/analysis/jobs/cancel' }), { kind: 'loudness', error: 'Processing cancelled' })
+  assert.equal(failure({ id: 'done', path: '/api/jobs/cancel' }), undefined, 'a finished job has no failure')
+  assert.equal(failure({ id: 'missing', path: '/api/jobs/cancel' }), undefined)
 })
 
 test('queued and running jobs keep the unfinished error and cancellation path', async () => {
@@ -205,4 +245,10 @@ test('a later confirmed result or resolved music placement cannot clear unknown 
   helper.recordToolOutcome(outcomes, { method: 'POST', path: '/api/audio/compose/place', body: { path, track: 'A3' } }, { state: 'complete', path, asset })
   assert.equal(outcomes.musicPlacements.size, 0)
   assert.equal(helper.unresolvedToolOutcome(outcomes), 'A processing result was not applied. Review the result before retrying.')
+})
+
+test('a finished request counts its edits as the result card does', () => {
+  assert.equal(helper.editedOutcome(3, 3), 'This request made 3 edits. Review them in the timeline.')
+  assert.equal(helper.editedOutcome(1, 1), 'This request made 1 edit. Review it in the timeline.')
+  assert.equal(helper.editedOutcome(2, 1), '2 edits were saved while this request ran. Review them in the timeline.', 'a processing job or another editor may account for the rest')
 })

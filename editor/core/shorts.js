@@ -51,11 +51,13 @@ export function captionItems(project, src, inputWords, options = {}) {
     return true
   })
   if (options.id && !uses.length) throw new Error(`Clip ${options.id} does not play ${src}`)
-  const items = []
+  const items = [], kept = new Set()
   const maxChars = Math.min(options.maxChars ?? 42, Math.max(8, Math.floor(view.width * 1080 / view.height * 0.9 / Math.max(1, style.size * 0.62))))
   for (const c of uses) {
     const speed = c.speed ?? 1, from = c.in ?? 0, to = from + c.dur * speed
-    const mapped = words.filter(w => (w.t + w.end) / 2 >= from && (w.t + w.end) / 2 < to).map(w => ({
+    const inside = words.filter(w => (w.t + w.end) / 2 >= from && (w.t + w.end) / 2 < to)
+    for (const w of inside) kept.add(w)
+    const mapped = inside.map(w => ({
       ...w, sourceT: w.t, sourceEnd: w.end,
       t: round(c.start + (Math.max(w.t, from) - from) / speed, 4),
       end: round(c.start + (Math.min(w.end, to) - from) / speed, 4),
@@ -63,7 +65,13 @@ export function captionItems(project, src, inputWords, options = {}) {
     for (const cue of groupWords(mapped, { ...options, maxChars, style })) items.push({ ...cue, end: Math.min(cue.end, c.start + c.dur), source: { src, clip: c.id } })
   }
   items.sort((a, b) => a.t - b.t)
-  return { items, placed: uses.length > 0, clips: uses.map(c => c.id), comp: scope, style, warnings }
+  // Words between the first and last source second the timeline plays, in a part that was cut.
+  // No caption shows them, and the caller is told which. Words before the first second played or
+  // after the last are outside the edit, as when a clip uses part of a source, and are not listed.
+  const first = Math.min(...uses.map(c => c.in ?? 0)), last = Math.max(...uses.map(c => (c.in ?? 0) + c.dur * (c.speed ?? 1)))
+  const dropped = words.filter(w => !kept.has(w) && (w.t + w.end) / 2 >= first && (w.t + w.end) / 2 < last).map(w => ({ t: w.t, end: w.end, text: w.text }))
+  if (dropped.length) warnings.push(`${dropped.length} transcript word${dropped.length === 1 ? ' is' : 's are'} in source time the timeline cuts out, so no caption shows ${dropped.length === 1 ? 'it' : 'them'}: ${dropped.slice(0, 12).map(w => `"${w.text.slice(0, 40)}" at ${round(w.t, 2)}s`).join(', ')}${dropped.length > 12 ? ` and ${dropped.length - 12} more` : ''}.`)
+  return { items, placed: uses.length > 0, clips: uses.map(c => c.id), comp: scope, style, warnings, ...(dropped.length ? { dropped: dropped.slice(0, 200), droppedCount: dropped.length } : {}) }
 }
 
 export function proposeShorts(inputWords, options = {}) {

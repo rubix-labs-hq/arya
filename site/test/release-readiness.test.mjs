@@ -54,9 +54,9 @@ test('configured release, contact, source and social metadata survive static gen
   // A ready release sends every primary action to the download, not to the beta access form.
   for (const [name, html] of Object.entries(pages)) {
     assert.ok(!html.includes('href="/download/#access"'), `${name} still links to beta access`);
-    assert.ok(html.includes('<a class="button small" href="/download/#mac">Download for Mac</a>'), `${name} header action`);
+    assert.match(html, /class="button small header-download" href="\/download\/"[^>]*>Downloads<\/a>/, `${name} header action`);
   }
-  assert.equal([...pages.home.matchAll(/<a class="button " href="\/download\/#mac">Download for Mac<\/a>/g)].length, 2);
+  assert.match(pages.home, /href="https:\/\/example\.com\/Arya\.dmg" data-direct-download>Download Arya for Mac/);
   assert.ok(!pages.download.includes('id="access-form"'));
 });
 
@@ -141,7 +141,7 @@ class ImageElement extends Element {
 }
 
 async function browserFixture(config, load, initialImage = {}) {
-  const selectors = Object.fromEntries(['.menu-button', '#site-nav', '#release-state', '#release-heading', '#release-description', '#release-action', '#workspace-image', '#workspace-caption', '#workspace-full', '#contribution-form', '#custom-amount', '#contribution-state'].map(key => [key, new Element()]));
+  const selectors = Object.fromEntries(['.menu-button', '#site-nav', '#release-state', '#release-description', '#release-action', '#workspace-image', '#workspace-caption', '#workspace-full', '#contribution-form', '#custom-amount', '#contribution-state'].map(key => [key, new Element()]));
   const navigationLinks = [new Element()];
   selectors['#site-nav'].querySelectorAll = () => navigationLinks;
   const galleries = ['edit', 'motion', 'color', 'audio'].map(id => new Element({ dataset: { src: `/assets/product/${id}.jpg`, alt: `${id} workspace`, caption: `${id} caption` } }));
@@ -189,7 +189,7 @@ test('runtime navigation, gallery and withdrawal use their real event handlers',
   withdrawn.selectors['#release-action'].children.push(new Element({ href: ready.release.macURL }));
   await withdrawn.configLoaded;
   assert.equal(withdrawn.selectors['#release-action'].children.length, 0);
-  assert.equal(withdrawn.selectors['#release-heading'].textContent, 'The public installer is not ready.');
+  assert.equal(withdrawn.selectors['#release-description'].textContent, 'The public installer is not ready.');
 });
 
 test('gallery failures announce the missing capture and recover after another capture loads', async () => {
@@ -291,6 +291,49 @@ test('static pages offer gallery links and keep forms inert until handlers exist
   assert.ok(pages.support.includes('<input disabled id="custom-amount"'));
   assert.ok(pages.support.includes('type="submit" disabled'));
   const css = await readFile(join(root, 'assets/site.css'), 'utf8');
-  assert.ok(css.includes('.menu-button{display:none}.nav{display:flex;position:static;'));
+  assert.match(css, /\.menu-button\{display:none/);
+  assert.match(css, /html:not\(\.has-navigation\) \.site-header\{position:static\}/);
   assert.ok(css.includes('.has-navigation .nav{display:none;position:absolute}'));
+});
+
+test('with no Mac release and a live App Store release, pages say only the Mac download is missing', async () => {
+  const live = { ...defaults, mobileRelease: { ...shipped.mobileRelease, ready: true, version: '1.2.0', build: '7', appStoreURL: 'https://apps.apple.com/us/app/arya-video-editor/id6826357116', allowedHosts: ['apps.apple.com'] } };
+  const { result, pages } = await buildFixture(live);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(pages.download.includes('Download on the App Store'), 'this fixture has a live App Store release');
+  for (const [name, html] of Object.entries(pages)) {
+    assert.ok(html.includes('Mac app in private beta by invitation. No public Mac download yet.'), `${name} footer`);
+    assert.ok(!html.includes('No public download yet.'), `${name} says Arya has no download`);
+  }
+  assert.ok(pages.home.includes('Private beta for Mac, by invitation. The public Mac download is not available yet.'));
+  assert.ok(pages.home.includes(`Not for Mac yet. The Mac app is in a private beta by invitation. It needs final interface checks, a signed package and Apple notarization before a public download. Beta requests open when the form on the download page is connected. Arya 1.2.0 is available on the App Store for iPhone and iPad.`));
+  assert.ok(pages.project.includes('<li>Mac release in preparation</li><li>iPhone and iPad on the App Store</li>'));
+  assert.ok(pages.project.includes('<a class="text-link" href="/download/">Release status<'));
+  assert.ok(!pages.project.includes('Get Arya for Mac'));
+  assert.ok(pages.install.includes('The download page will list the version and SHA-256 checksum when the installer ships. The DMG is planned for Apple silicon and Intel Macs.'));
+  assert.ok(pages.install.includes('When a public installer ships, download the new DMG from the download page, verify its SHA-256 checksum'));
+  assert.doesNotMatch(pages.install, /GitHub Releases|lists the current version/);
+
+  const none = await buildFixture({ ...live, mobileRelease: { ...live.mobileRelease, ready: false } });
+  assert.equal(none.result.status, 0, none.result.stderr);
+  assert.ok(none.pages.home.includes('Not yet. Arya is in a private beta by invitation. The Mac app needs final interface checks'));
+  assert.ok(none.pages.project.includes('<li>Mac release in preparation</li><li>iPhone and iPad coming later</li>'));
+});
+
+test('a build without a version or a size prints no missing value, and a not-ready download page offers no Mac download', async () => {
+  const visible = html => html.replace(/<script[\s\S]*?<\/script>/g, ' ');
+  const unreleased = await buildFixture(defaults);
+  assert.equal(unreleased.result.status, 0, unreleased.result.stderr);
+  for (const [name, html] of Object.entries(unreleased.pages)) {
+    assert.doesNotMatch(visible(html), /\bnull\b|\bundefined\b/, `${name} prints a missing value`);
+    assert.doesNotMatch(html, /\.dmg"|releases\/download/, `${name} links an installer`);
+  }
+  assert.ok(unreleased.pages.download.includes('<h1>Arya editions and beta access</h1><p class="lead">See which editions are available.</p>'));
+  const unsized = await buildFixture({ ...publicConfig, release: { ...publicConfig.release, size: null } });
+  assert.equal(unsized.result.status, 0, unsized.result.stderr);
+  for (const [name, html] of Object.entries(unsized.pages)) assert.doesNotMatch(visible(html), /\bnull\b|\bundefined\b/, `${name} prints a missing value`);
+  assert.ok(unsized.pages.home.includes('Arya 0.3.0, a notarized universal DMG for'));
+  assert.ok(unsized.pages.home.includes('Arya 0.3.0 for Mac is a notarized universal DMG for'));
+  assert.ok(unsized.pages.download.includes('<h1>Download Arya</h1>'));
+  assert.ok(unsized.pages.privacy.includes('Sign in with ChatGPT is available in the direct Mac app'));
 });

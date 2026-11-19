@@ -53,6 +53,19 @@
   .strip { min-width: 108px; }
 }
 
+/* Phone widths: every field and button in a panel is a 44px target, a checkbox or radio is hit through its
+   whole label, and field text is 16px so the keyboard does not zoom the page. */
+@media (max-width: 720px) {
+  .page :is(.inspector, .browser, .field) :is(select, textarea, input:not([type=checkbox], [type=radio], [type=range], [type=color])) { min-height: 44px; font-size: 16px; }
+  .page :is(.inspector, .browser) button { min-height: 44px; min-width: 44px; }
+  /* The same floor outside the panels: the viewer bar, the Audio tools and mixer strips, the Deliver settings and files,
+     the transcript editor and the timeline's toolbar and add-track buttons. */
+  .page :is(.viewer-bar, .audio-tools, .mixer .strip, .phone-switch, .deliver-settings, .deliver-queue, .deliver-viewer-tools, .transcript-panel, .th-add, .tl-toolbar) :is(button, select, summary, input:not([type=checkbox], [type=radio], [type=range], [type=color])) { min-height: 44px; }
+  .page :is(.viewer-bar, .deliver-viewer-tools, .deliver-queue) > button { min-width: 44px; }
+  .page .transcript-panel summary { display: flex; align-items: center; }
+  .page :is(.inspector, .browser, .field) label:has(> input:is([type=checkbox], [type=radio])) { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
+}
+
 /* Wrapper visibility also covers the existing compact tablet layout. */
 .page.edit.compact-edit .upper > :is(.edit-pane, .edit-viewer) { min-width: 0; }
 .page.edit.compact-edit .upper > .edit-viewer:not([hidden]) > .viewer { display: flex; }
@@ -73,7 +86,9 @@
 @media (max-width: 480px) {
   /* <picture> in the top bar switches to the cut-A mark here. */
   .topbar .brand img { width: 24px; height: 24px; }
-  .topbar-actions .claude-btn { font-size: 0; gap: 0; min-width: 40px; justify-content: center; }
-  .topbar-actions .claude-btn .ico { width: 18px; height: 18px; }
-  .topbar-actions .claude-btn .count { font-size: 11px; margin-left: 4px; }
 }
+
+/* A single swipeable tool row leaves more height for clips on the phone timeline. */
+.page.phone-edit .tl-toolbar { flex-wrap: nowrap; gap: 6px; padding-bottom: 5px; padding-right: 48px; scrollbar-width: thin; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+.page.phone-edit .tl-toolbar > button { min-width: 44px; min-height: 44px; }
+.page.phone-edit .tl-toolbar .grow { flex: none; width: 0; }

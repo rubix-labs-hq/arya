@@ -12,6 +12,7 @@ import { Divider } from './layout.js'
 import { addRef, api, edit, set, store, time, toast, useStore, useTime, viewProject } from './store.js'
 import { Viewer } from './viewer.js'
 import { Icon } from './icons.js'
+import { clipIdTitle, shownClipName } from './clip-name.js'
 import { graphOf, nodeNumbers, nodeTitle, TYPE_LABEL } from './color/graph.js'
 import { NodeEditor, nodeActions } from './color/node-editor.js'
 import { GalleryPanel, NodePanel, PresetsPanel, QualifierPanel, WindowPanel } from './color/panels.js'
@@ -487,8 +488,8 @@ function Palettes({ clip }) {
 
   return html`
     <div class="color-head">
-      <b>${clip.id}</b>
-      <span class="muted">${(store.project?.assets?.[clip.src]?.name?.trim() || String(clip.src ?? clip.kind).split('/').pop())} · ${s.selection.length ? 'selected clip' : 'clip under the playhead'}</span>
+      <b title=${clipIdTitle(clip)}>${shownClipName(viewProject(), clip)}</b>
+      <span class="muted">${s.selection.length ? 'Selected clip' : 'Clip under the playhead'}</span>
       ${node ? html`<span class=${`node-chip ${node.enabled === false ? 'off' : ''}`} title="The grade controls edit this node">${num ? `${num} ` : ''}${nodeTitle(node)}${node.label ? ` (${TYPE_LABEL[node.type]})` : ''}${node.enabled === false ? ' · bypassed' : ''}</span>` : null}
       <span class="grow"></span>
       <div class="palette-tabs">${PALETTES.map(([k, l]) => html`<button class=${tab === k ? 'on' : ''} disabled=${!usable[k]} title=${usable[k] ? '' : 'Add a corrector with + Serial for this palette'} onClick=${() => set({ colorTab: k })}>${l}</button>`)}</div>

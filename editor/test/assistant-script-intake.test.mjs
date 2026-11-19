@@ -74,7 +74,8 @@ test('explicit Screenplay survives file staging, close/reopen and an explicit co
   assert.deepEqual(reopened.calls.map(call => call.route), ['/api/assistant/sharing', '/api/bridge/send'])
   assert.deepEqual(reopened.calls[1].body, { type: 'prompt', text: 'INT. STUDIO - DAY\nA title appears.', inputKind: 'screenplay', ids: ['c1'], comp: null, playhead: 12.25, refs: [], sharing, review: true })
   assert.equal(reopened.state.assistantDraft.text, '')
-  assert.equal(reopened.state.assistantDraft.inputKind, 'screenplay')
+  assert.equal(reopened.state.assistantDraft.inputKind, 'prompt', 'the next message after a screenplay send is a prompt')
+  assert.equal(mode(reopened.draw()).props.value, 'prompt')
 })
 
 test('ordinary three-argument Prompt payload stays compatible; explicit modes are validated', () => {

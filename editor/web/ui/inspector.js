@@ -5,6 +5,8 @@ import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
 import { BLEND_MODES, clipEnd, EASES, EFFECTS, findClip, sortedKeys, timecode, TITLE_ANIMS, TRANSITIONS, valueAt, ease as easeFn } from '/core/project.js'
+// One font list for the title inspector, GET /api/caps and the note an edit returns for an unknown family.
+import { SYSTEM_FONTS as FONTS } from '/core/fonts.js'
 import { openMenu } from './menu.js'
 import { player } from './engine-host.js'
 import { addRef, edit, set, store, time, toast, useStore, useTime, viewProject } from './store.js'
@@ -14,8 +16,6 @@ import { ShapeAppearance } from './shape-appearance.js'
 import { Icon } from './icons.js'
 
 const html = htm.bind(h)
-
-const FONTS = ['Avenir Next', 'Helvetica Neue', 'SF Pro Display', 'Futura', 'Gill Sans', 'Optima', 'Didot', 'Georgia', 'Baskerville', 'Times New Roman', 'Menlo', 'Courier New', 'Impact', 'Arial Black', 'Copperplate', 'Marker Felt', 'Chalkboard', 'American Typewriter', 'Rockwell', 'Bodoni 72']
 
 /** A number you can type or drag horizontally on the label to scrub. */
 export function Num({ label, value, step = 1, min, max, unit = '', digits = 2, onChange, onCommit, keyframe, refId }) {
@@ -443,11 +443,14 @@ function InfoTab({ clip, track }) {
   `
 }
 
+// The name the timeline draws on a clip. Chrome shows this and the clip's place, never the stored id.
+const clipName = clip => clip.label ?? (clip.kind === 'title' ? clip.title?.text?.split('\n')[0] : (store.project?.assets?.[clip.src]?.name?.trim() || String(clip.src ?? clip.kind).split('/').pop()))
+
 function TransitionInspector({ clip }) {
   const tr = clip.transitionIn
 
   return html`
-    <div class="inspector-head"><b>Transition</b><span class="muted"> into ${clip.id}</span></div>
+    <div class="inspector-head"><b>Transition</b><span class="muted" title=${`Clip id ${clip.id}`}> into ${clipName(clip)}</span></div>
     <div class="section-body">
       <div class="field"><label>Type</label><select value=${tr.type} onChange=${e => edit({ op: 'transition', id: clip.id, type: e.target.value, dur: tr.dur })}>${TRANSITIONS.map(t => html`<option value=${t}>${t}</option>`)}</select></div>
       <${Num} label="Duration" value=${tr.dur} step=${1 / viewProject().fps} min=${0.05} unit="s" onCommit=${v => edit({ op: 'transition', id: clip.id, type: tr.type, dur: v })} />
@@ -532,8 +535,9 @@ export function Inspector() {
   return html`
     <div class="panel inspector">
       <div class="inspector-head">
-        <b>${clip.label ?? (clip.kind === 'title' ? clip.title?.text?.split('\n')[0] : (store.project?.assets?.[clip.src]?.name?.trim() || String(clip.src ?? clip.kind).split('/').pop()))}</b>
-        <span class="muted">${clip.id}${s.selection.length > 1 ? ` +${s.selection.length - 1}` : ''}</span>
+        <b title=${s.selection.length > 1 ? `Showing ${clipName(clip)}` : undefined}>${s.selection.length > 1 ? `${s.selection.length} clips selected` : clipName(clip)}</b>
+        ${/* Where the clip is, not its stored id. The id is on the Info tab. */ null}
+        <span class="muted" title=${`Clip id ${clip.id}`}>${s.selection.length > 1 ? clipName(clip) : `${track.id} at ${timecode(clip.start, p.fps)}`}</span>
         <span class="grow"></span>
         <button class="ghost tiny inspector-ref" title="Reference this clip to the Assistant (⌥-click works anywhere)" aria-label="Reference this clip to the Assistant" onClick=${() => addRef({ kind: 'clip', id: clip.id, label: `${clip.id} ${clip.label ?? clip.title?.text ?? String(clip.src ?? clip.kind).split('/').pop()}` })}><${Icon} name="attach" /></button>
       </div>
@@ -560,7 +564,7 @@ function MarkerInspector({ m }) {
   }
 
   return html`
-    <div class="inspector-head"><b>Marker</b><span class="muted"> ${m.id}</span></div>
+    <div class="inspector-head"><b>Marker</b><span class="muted" title=${`Marker id ${m.id}`}> at ${timecode(m.t, p.fps)}</span></div>
     <div class="section-body">
       <div class="field"><label>Label</label><input value=${m.label} onKeyDown=${e => e.stopPropagation()} onChange=${e => update({ label: e.target.value })} /></div>
       <div class="kv"><span>Time</span><b>${timecode(m.t, p.fps)}</b></div>

@@ -203,7 +203,7 @@ async function workerFixture({ renderError = false, postError = false, audioErro
     export function createRenderQueue(run,failed){globalThis.__workerFixture.run=run;return ()=>{}}`)
   globalThis.document = { body: element(), createElement: () => ({ toBlob: done => done({}) }) }
   globalThis.EventSource = class { addEventListener(name, fn) { events[name] = fn } }
-  globalThis.fetch = async (url, options) => { requests.push(url); if (postError) throw Error('transport fixture failed'); return { ok: true } }
+  globalThis.fetch = async (url, options) => { requests.push(url); if (postError) throw Error('transport fixture failed'); return { ok: true, arrayBuffer: async () => new ArrayBuffer(0) } }
   const source = (await read('worker.js')).replace(/^import .* from .*$/gm, line => line.replace(/from .*$/, `from ${JSON.stringify(mock)}`))
   const { startWorker } = await import(moduleURL(source)); startWorker()
   return { f, events, requests, released, lut, texture }

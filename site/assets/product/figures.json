@@ -32,6 +32,6 @@
     "width": 712,
     "height": 1024,
     "alt": "Arya assistant panel. The editing context lists one selected clip, Celia close, with the playhead at 12.60 seconds. Prompt suggestions offer Refine, Review, Tighten, Grade and Mix selection. A typed request asks to grade the close-up to match the over-the-shoulder shot.",
-    "caption": "The assistant panel with one selected clip as context and a request to match the close-up grade to the over-the-shoulder shot."
+    "caption": "One clip is selected. The typed request asks for a matching grade. It has not been sent."
   }
 }

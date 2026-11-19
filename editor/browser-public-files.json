@@ -40,12 +40,20 @@
     "target": "core/describe.js"
   },
   {
+    "source": "core/edit-notes.js",
+    "target": "core/edit-notes.js"
+  },
+  {
     "source": "core/expr.js",
     "target": "core/expr.js"
   },
   {
     "source": "core/figma.js",
     "target": "core/figma.js"
+  },
+  {
+    "source": "core/fonts.js",
+    "target": "core/fonts.js"
   },
   {
     "source": "core/interchange.js",
@@ -70,6 +78,10 @@
   {
     "source": "core/project.js",
     "target": "core/project.js"
+  },
+  {
+    "source": "core/proposal-ops.js",
+    "target": "core/proposal-ops.js"
   },
   {
     "source": "core/support-prompt.js",
@@ -336,8 +348,16 @@
     "target": "editor/ui/change-receipt.js"
   },
   {
+    "source": "web/ui/change-values.js",
+    "target": "editor/ui/change-values.js"
+  },
+  {
     "source": "web/ui/chat.js",
     "target": "editor/ui/chat.js"
+  },
+  {
+    "source": "web/ui/clip-name.js",
+    "target": "editor/ui/clip-name.js"
   },
   {
     "source": "web/ui/color.js",
@@ -396,6 +416,10 @@
     "target": "editor/ui/delivery-preview.js"
   },
   {
+    "source": "web/ui/dialog-focus.js",
+    "target": "editor/ui/dialog-focus.js"
+  },
+  {
     "source": "web/ui/engine-host.js",
     "target": "editor/ui/engine-host.js"
   },
@@ -446,6 +470,10 @@
   {
     "source": "web/ui/menu.js",
     "target": "editor/ui/menu.js"
+  },
+  {
+    "source": "web/ui/message-text.js",
+    "target": "editor/ui/message-text.js"
   },
   {
     "source": "web/ui/mixer.js",
@@ -582,6 +610,10 @@
   {
     "source": "web/ui/plugins/video-processing.js",
     "target": "editor/ui/plugins/video-processing.js"
+  },
+  {
+    "source": "web/ui/preview-banner.js",
+    "target": "editor/ui/preview-banner.js"
   },
   {
     "source": "web/ui/processing-workflows.js",

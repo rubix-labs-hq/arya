@@ -29,7 +29,7 @@ export class BrowserBackend {
   emit(name, value) { for (const handlers of this.listeners) handlers[name]?.(copy(value)) }
   queue(operation) { const result = this.serial.then(operation); this.serial = result.catch(() => {}); return result }
   root() { return this.record ? `browser:${this.record.id}` : 'browser:no-project' }
-  snapshot() { return { project: copy(this.record?.project ?? null), version: this.record?.version ?? 0, root: this.root(), chat: [], activity: [], jobs: [...this.jobs.values()].map(job => this.publicJob(job)), claude: { state: 'unavailable', reason: unsupported } } }
+  snapshot() { return { project: copy(this.record?.project ?? null), version: this.record?.version ?? 0, root: this.root(), chat: [], activity: [], jobs: [...this.jobs.values()].map(job => this.publicJob(job)), claude: { state: 'unavailable', reason: unsupported }, ...(this.record ? { history: { undo: this.record.past?.length ?? 0, redo: this.record.future?.length ?? 0 } } : {}) } }
   async refreshSnapshot(context) {
     this.assert(context)
     if (!this.record) return this.snapshot()
@@ -356,9 +356,10 @@ export class BrowserBackend {
       if (route === '/api/undo' || route === '/api/redo') {
         if (!this.record) throw new Error('Create a project first.')
         const previous = this.record, undo = route.endsWith('undo'), from = undo ? previous.past : previous.future
-        if (!from.length) return this.snapshot()
+        // moved and history are what the local server returns for the same routes.
+        if (!from.length) return { ...this.snapshot(), moved: false, history: { undo: previous.past.length, redo: previous.future.length } }
         const record = { ...copy(previous), version: previous.version + 1, project: copy(from.at(-1)), past: undo ? from.slice(0, -1) : [...previous.past, previous.project], future: undo ? [...previous.future, previous.project] : from.slice(0, -1), updated: Date.now() }
-        await this.storage.commit(record, previous.version); this.assert(context); this.record = record; this.emit('project', this.snapshot()); return this.snapshot()
+        await this.storage.commit(record, previous.version); this.assert(context); this.record = record; this.emit('project', this.snapshot()); return { ...this.snapshot(), moved: true, history: { undo: record.past.length, redo: record.future.length } }
       }
       if (route === '/api/forget') {
         const project = copy(this.record.project)

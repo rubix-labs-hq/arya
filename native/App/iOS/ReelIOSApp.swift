@@ -134,6 +134,11 @@ struct ReelIOSApp: App {
                     NativeMobileExport.shared.attach(session)
                     #if DEBUG
                     Automation.start(session) {}
+                    switch Automation.value("--present") {
+                    case "pro": presentation.presentSheet(.support)
+                    case "assistantSettings": presentation.presentSheet(.assistantSettings)
+                    default: break
+                    }
                     NativeEditorSmoke.start(session) {}
                     #endif
                 }
@@ -166,6 +171,7 @@ struct ReelIOSApp: App {
                                 .navigationTitle("Assistant")
                                 .toolbar { Button("Done") { presentation.dismissSheet(route) } }
                         }
+                        .tint(NativeEditorStyle.accent)
                         .id(route.id)
                     case .gettingStarted:
                         NativeGettingStartedSheet(onDismiss: { presentation.dismissSheet(route) })
@@ -175,6 +181,7 @@ struct ReelIOSApp: App {
                             NativeProView(store: .shared)
                                 .toolbar { Button("Done") { presentation.dismissSheet(route) } }
                         }
+                        .tint(NativeEditorStyle.accent)
                         .id(route.id)
                     }
                 }

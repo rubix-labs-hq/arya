@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
-import { createDeliverRequest } from '../web/ui/deliver-request.js'
+import { createDeliverRequest, deliverOutputName, deliverRangeMode } from '../web/ui/deliver-request.js'
+import { exportFileName } from '../core/processing-export.js'
 
 function fixture() {
   let scope = { root: '/synthetic/project', version: 4, project: { name: 'Original', width: 64, height: 64, fps: 1, tracks: [] }, comp: null }
@@ -71,7 +72,7 @@ function component({ hostKind = 'browser', caps = {} } = {}) {
   let index = 0, resolve, reject
   const response = new Promise((yes, no) => { resolve = yes; reject = no })
   const state = { root: '/synthetic/project', version: 4, project: { name: 'Timeline', width: 64, height: 64, fps: 1, tracks: [] }, openComp: null, jobs: [], caps }
-  const context = vm.createContext({ createDeliverRequest, host: { kind: hostKind }, useStore: () => state,
+  const context = vm.createContext({ createDeliverRequest, deliverOutputName, deliverRangeMode, host: { kind: hostKind }, useStore: () => state,
     useState(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = initial; return [hooks[slot], value => { hooks[slot] = typeof value === 'function' ? value(hooks[slot]) : value }] },
     useRef(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = { current: initial }; return hooks[slot] },
     useEffect(effect) { const slot = index++; if (!(slot in hooks)) { hooks[slot] = true; const cleanup = effect(); if (cleanup) cleanups.push(cleanup) } },
@@ -89,7 +90,7 @@ function component({ hostKind = 'browser', caps = {} } = {}) {
   }
   const button = rendered => {
     const row = find(rendered, 'aria-busy=')
-    const offset = row.strings.findIndex(text => text.includes('button class="primary" disabled='))
+    const offset = row.strings.findIndex(text => text.includes('button class="primary deliver-render" disabled='))
     return { disabled: row.values[offset], busy: row.values[offset + 1], click: row.values[offset + 2], label: row.values[offset + 3] }
   }
   return { render, find, button, resolve, reject, calls, state, toasts, cleanups }
@@ -157,7 +158,7 @@ test('failed queue rows retry the exact spec this tab requested, including the c
   ]
   const rows = f.render().values.flat(Infinity).filter(value => value?.strings?.join('').includes('job-name'))
   const ours = rows.find(value => JSON.stringify(value).includes('intro.mp4')), theirs = rows.find(value => JSON.stringify(value).includes('other.mp4'))
-  assert.ok(ours.values.includes('The render could not start. Try again.'))
+  assert.ok(ours.values.includes('the render worker did not start'), 'a failed job shows its own error')
   assert.ok(theirs.values.includes('Encoder ran out of memory'))
   assert.ok(f.find(ours, '>Retry</button>'), 'a job this tab started can be retried')
   assert.equal(f.find(theirs, '>Retry</button>'), null, 'a job from elsewhere has no spec to retry')
@@ -170,8 +171,46 @@ test('failed queue rows retry the exact spec this tab requested, including the c
 })
 
 
-test('Render has a plain accessible label and hides its decorative arrow', () => {
+test('Render has a plain accessible label and a drawn icon that is hidden from it', () => {
   const f = component(), rendered = f.render()
   assert.equal(f.button(rendered).label, 'Render')
-  assert.match(f.find(rendered, 'deliver-actions').strings.join(''), /<span aria-hidden="true">⇪<\/span>/)
+  const actions = f.find(rendered, 'deliver-actions').strings.join('')
+  assert.match(actions, /<button class="primary deliver-render"[^>]*><svg class="ico"[^>]*aria-hidden="true">/)
+  assert.doesNotMatch(actions, /⇪/)
+  // The range summary sits above the one full-width primary, and Save still frame lives with the viewer.
+  assert.ok(actions.indexOf('deliver-range-note') < actions.indexOf('deliver-render'))
+  const source = fs.readFileSync(new URL('../web/ui/deliver.js', import.meta.url), 'utf8'), css = fs.readFileSync(new URL('../web/styles.css', import.meta.url), 'utf8')
+  assert.match(source, /<div class="deliver-center"><div class="deliver-viewer-tools"><button class="ghost tiny"[^\n]*Save still frame<\/button><\/div>/)
+  assert.match(css, /\.deliver-actions \.deliver-render \{[^}]*width: 100%;/); assert.match(css, /\.deliver-actions \{ position: sticky;/)
+})
+
+test('an export name has no dash or dot left at either end, and the page shows the name the server writes', () => {
+  assert.equal(exportFileName('Opening!'), 'Opening')
+  assert.equal(exportFileName('  Sample cut, final?  '), 'Sample-cut-final')
+  assert.equal(exportFileName('...hidden'), 'hidden')
+  assert.equal(exportFileName('v1.2 draft.'), 'v1.2-draft')
+  assert.equal(exportFileName('?!'), 'reel')
+  assert.equal(exportFileName(undefined), 'reel')
+  const deliver = fs.readFileSync(new URL('../web/ui/deliver.js', import.meta.url), 'utf8')
+  const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
+  assert.match(deliver, /renders\/\$\{deliverOutputName\(name, host\.kind\)\}/)
+  assert.match(server, /const base = exportFileName\(spec\.name \?\? selected\.name\)/)
+  // The editor server trims; the Mac app's Web Editor still writes the untrimmed name, so Deliver shows that.
+  for (const name of ['Opening!', '  Sample cut, final?  ', '...hidden', '?!', undefined]) assert.equal(deliverOutputName(name, 'http'), exportFileName(name))
+  assert.equal(deliverOutputName('Opening!', 'native'), 'Opening-')
+  assert.equal(deliverOutputName('  Sample cut, final?  ', 'native'), '-Sample-cut-final-')
+  assert.equal(deliverOutputName('', 'native'), 'reel')
+  const swift = fs.readFileSync(new URL('../../native/ReelKit/Sources/ReelKit/ReelBackend.swift', import.meta.url), 'utf8')
+  assert.match(swift, /let base = raw\.replacingOccurrences\(of: "\[\^\\\\w\.-\]\+", with: "-", options: \.regularExpression\)\.isEmpty \? "reel"/,
+    'when the Mac app trims too, show exportFileName on every host')
+})
+
+test('Deliver keeps an explicit range choice per timeline and otherwise follows In and Out', () => {
+  const range = { in: 1, out: 3 }, here = { root: '/synthetic/a', comp: null }
+  assert.equal(deliverRangeMode(null, { ...here, range: null }), 'all')
+  assert.equal(deliverRangeMode(null, { ...here, range }), 'range', 'In and Out set while Deliver is open are used')
+  assert.equal(deliverRangeMode({ ...here, mode: 'all' }, { ...here, range }), 'all', 'Entire timeline stays chosen after a preset click or a remount')
+  assert.equal(deliverRangeMode({ ...here, mode: 'range' }, { ...here, range: null }), 'all', 'a cleared range falls back to the whole timeline')
+  assert.equal(deliverRangeMode({ ...here, mode: 'all' }, { root: '/synthetic/a', comp: 'k1', range }), 'range', 'a choice for Main does not apply to a composition')
+  assert.equal(deliverRangeMode({ ...here, mode: 'all' }, { root: '/synthetic/b', comp: null, range }), 'range', 'nor to another project')
 })

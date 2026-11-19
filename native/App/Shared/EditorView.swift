@@ -62,7 +62,13 @@ struct ContentView: View {
             NativeProjectRecoverySheet(session: session, request: request)
         }
         .alert("Arya", isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })) {
-            Button("OK") { session.error = nil }
+            // A failed open keeps its folder, so the way on is in the alert that reports it.
+            if session.canRetryFailedOpen {
+                Button("Try again") { session.retryFailedOpen() }
+                Button("Cancel", role: .cancel) { session.error = nil }
+            } else {
+                Button("OK") { session.error = nil }
+            }
         } message: {
             Text(session.error ?? "")
         }
@@ -313,6 +319,10 @@ struct StartView: View {
                                 .frame(minHeight: 44)
                                 .contentShape(Rectangle())
                         }
+                        #if os(macOS)
+                        // A gold text link, as on iPad and iPhone, so it does not compete with New Project.
+                        .buttonStyle(.borderless).foregroundStyle(NativeEditorStyle.accent)
+                        #endif
                         .accessibilityIdentifier("welcome.gettingStarted")
                         #if os(iOS)
                         if let openAssistantSettings {

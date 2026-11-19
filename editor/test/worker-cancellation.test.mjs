@@ -16,7 +16,7 @@ async function until(check) { for (let i = 0; i < 100; i++) { if (check()) retur
 function element() { return { style: {}, src: '', paused: true, appendChild() {}, addEventListener() {}, removeEventListener() {}, removeAttribute() { this.src = '' }, pause() {}, load() {}, remove() {} } }
 
 async function fixture(options = {}) {
-  const f = globalThis.__workerCancelFixture = { events: {}, requests: [], paints: [], resizes: [], errors: [], resetCount: 0, closedFrames: 0, audioObjects: [], ...options }
+  const f = globalThis.__workerCancelFixture = { events: {}, requests: [], answersRead: [], paints: [], resizes: [], errors: [], resetCount: 0, closedFrames: 0, audioObjects: [], ...options }
   console.error = error => f.errors.push(String(error))
   globalThis.FontFace = class { async load() { return this } }
   globalThis.Image = class { constructor() { Object.assign(this, element()) } }
@@ -75,7 +75,8 @@ async function fixture(options = {}) {
         releaseLock() { f.lutReaderReleases = (f.lutReaderReleases ?? 0) + 1 },
       } } } })
     }
-    return Promise.resolve({ ok: true })
+    // Every answer counts how often its body was read: an unread answer keeps its upload alive in Chrome.
+    return Promise.resolve({ ok: true, arrayBuffer: async () => { f.answersRead.push(url); return new ArrayBuffer(0) } })
   }
   const workerSource = (await fs.readFile(process.env.ARYA_CANCEL_WORKER_FILE ?? new URL('../web/engine/worker.js', import.meta.url), 'utf8')).replace(/^import .* from .*$/gm, line => line.replace(/from .*$/, `from ${JSON.stringify(mock)}`))
   const { startWorker } = await import(unique(workerSource)); startWorker()
@@ -167,6 +168,8 @@ test('the actual worker sends setup heartbeats during pending audio, then a setu
     noteWorkerActivity(pending, now, 'heartbeat')
     assert.deepEqual(stalledWorkerJobs([pending], now), [], 'slow, responsive audio is allowed')
   }
+  // Each heartbeat names the setup step the page is on, so a hang can say where it stopped.
+  assert.deepEqual([...new Set(f.requests.filter(item => item.url === '/api/job/first/alive').map(item => item.request.body))], ['audio'])
   const deadline = workerSetupLimit(pending)
   noteWorkerActivity(pending, deadline, 'heartbeat')
   assert.deepEqual(stalledWorkerJobs([pending], deadline), [pending], 'heartbeats cannot hide an endless audio render')
@@ -375,4 +378,23 @@ test('a failing render sibling advances the queue but cannot claim another decod
   videoGate.resolve({ close() { f.closedFrames++ } })
   await until(() => urls(f).includes('/api/job/first/drained'))
   assert.equal(f.closedFrames, 1)
+})
+
+// Chrome keeps a request and its upload body while a no-store answer is unread. An export posts
+// 25 MB per batch at 1080x1920, and the page died after about 8.4 GB of unread answers.
+test('an export reads the answer to every upload, so Chrome can release each uploaded body', async () => {
+  const f = await fixture()
+  f.enqueue(job('first', {}, 'export', { preset: 'h264-high', range: { in: 0, out: 0.5 } }))
+  await until(() => urls(f).includes('/api/job/first/drained'))
+  assert.ok(!urls(f).includes('/api/job/first/fail'), String(f.errors))
+  const uploads = urls(f).filter(url => /^\/api\/job\/first\/(audio|start|frames|done)/.test(url))
+  assert.deepEqual(uploads.map(url => url.replace(/\?.*/, '')), ['/api/job/first/audio', '/api/job/first/start', '/api/job/first/frames', '/api/job/first/frames', '/api/job/first/frames', '/api/job/first/frames', '/api/job/first/done'])
+  for (const url of uploads) assert.equal(f.answersRead.filter(read => read === url).length, 1, `${url} answer was read once`)
+  assert.equal(f.answersRead.filter(url => /\/(alive|drained)$/.test(url)).length, urls(f).filter(url => /\/(alive|drained)$/.test(url)).length, 'notifications are read too')
+})
+
+test('a frame job reads the answer to its image upload', async () => {
+  const f = await fixture(); f.enqueue(job())
+  await until(() => urls(f).includes('/api/job/first/drained'))
+  assert.deepEqual(f.answersRead.filter(url => url === '/api/job/first/frame'), ['/api/job/first/frame'])
 })

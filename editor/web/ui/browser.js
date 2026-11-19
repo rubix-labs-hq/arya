@@ -166,12 +166,29 @@ function silenceTimelineRanges(project, src, silences) {
   return merged.reverse()
 }
 
+// A filmstrip the local server refuses while it is busy (HTTP 429), or that the network drops, is
+// asked for again after 1, 2, 4 and 8 s: five tries in all. It stops as soon as its card is gone.
+// The Mac app waits for a processing slot instead of refusing, and its errors carry no status.
+const STRIP_RETRY_MS = [1000, 2000, 4000, 8000]
+async function requestStrip(url, alive, { request = api, wait = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+  for (let attempt = 0; alive(); attempt++) {
+    try { return await request(url) }
+    catch (error) {
+      // Only the local server's busy answer (429) or a request that never arrived (fetch's TypeError)
+      // is tried again. Any other error, with or without a status, is final.
+      if (!(error?.status === 429 || error instanceof TypeError) || attempt >= STRIP_RETRY_MS.length) return null
+      await wait(STRIP_RETRY_MS[attempt])
+    }
+  }
+  return null
+}
+
 function MediaCard({ p, src, asset }) {
   const [strip, setStrip] = useState(null)
   useEffect(() => {
     let active = true
     setStrip(null)
-    if (asset.hasVideo) api(`/api/strip?quality=high&src=${encodeURIComponent(src)}`).then(d => active && !d.error && setStrip(d)).catch(() => {})
+    if (asset.hasVideo) requestStrip(`/api/strip?quality=high&src=${encodeURIComponent(src)}`, () => active).then(d => { if (active && d && !d.error) setStrip(d) })
     return () => { active = false }
   }, [src, asset.proxy, store.root])
   const kind = !asset.hasVideo ? 'audio' : asset.duration ? 'video' : 'image'
@@ -300,13 +317,13 @@ function MediaTab({ p }) {
         <input ref=${fileInput} type="file" multiple accept="video/*,audio/*,image/*" hidden onChange=${e => { const files = [...(e.target.files ?? [])]; e.target.value = ''; return uploadFiles(files) }} />
         <button class="ghost" onClick=${() => host.kind === 'browser-local' ? folderInput.current?.click() : setPicker(true)}>From folder…</button>
         ${host.kind === 'browser-local' ? html`<input ref=${folderInput} type="file" multiple webkitdirectory=${true} hidden onChange=${e => { const files = [...(e.target.files ?? [])]; e.target.value = ''; return uploadFiles(files) }} />` : null}
-        <button type="button" class="ghost" style=${{ minHeight: '44px' }} disabled=${!store.connected || host.kind === 'browser-local'} title=${host.kind === 'browser-local' ? 'Music generation requires the native app or a local Arya connection.' : undefined} onClick=${() => showMusicDetails()}>Create music…</button>
+        ${/* The hosted build cannot make music, so it says where that works instead of showing a dead button. */ host.kind === 'browser-local' ? html`<p class="muted small hosted-note">Create music is available in Arya for Mac.</p>` : html`<button type="button" class="ghost" style=${{ minHeight: '44px' }} disabled=${!store.connected} onClick=${() => showMusicDetails()}>Create music…</button>`}
       </div>
       <div class="row gap">
         <input class="search" placeholder="Search media" value=${q} onInput=${e => setQ(e.target.value)} />
-        <select value=${kind} onChange=${e => setKind(e.target.value)}><option value="all">All</option><option value="video">Video</option><option value="audio">Audio</option><option value="image">Stills</option></select>
+        <select aria-label="Media type" value=${kind} onChange=${e => setKind(e.target.value)}><option value="all">All</option><option value="video">Video</option><option value="audio">Audio</option><option value="image">Stills</option></select>
       </div>
-      ${entries.length === 0 ? html`<div class="empty-hint">${host.kind === 'browser-local' ? 'Drop your video, audio or images here, or choose Import or From folder. Music generation needs a supported native or local connection.' : 'Drop video, audio or images anywhere in this window, use Import, or create music.'}</div>` : null}
+      ${entries.length === 0 ? html`<div class="empty-hint">${host.kind === 'browser-local' ? 'Drop your video, audio or images here, or choose Import or From folder.' : 'Drop video, audio or images anywhere in this window, use Import, or create music.'}</div>` : null}
       ${empty && folderMedia?.count > 0 ? html`<div class="empty-hint"><p>${folderMedia.count} media ${folderMedia.count === 1 ? 'file' : 'files'} in this folder</p><button class="primary" onClick=${() => importFolder([folderMedia.dir], folderMedia.count)}>Import all media here (${folderMedia.count})</button></div>` : null}
       <div class="media-grid">
         ${entries.map(([src, asset]) => html`<${MediaCard} key=${src} p=${p} src=${src} asset=${asset} />`)}

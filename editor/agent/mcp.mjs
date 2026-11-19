@@ -31,8 +31,9 @@ async function tool(name, args) {
         if (!['image/png', 'image/jpeg', 'image/webp'].includes(mediaType) || typeof data !== 'string' || data.length > 5592408 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw new Error('Invalid Arya frame result')
         return { content: [{ type: 'image', data, mimeType: mediaType }] }
       }
-      const result = value.result ?? {}
-      return { content: [{ type: 'text', text: JSON.stringify(result) }], ...(result && typeof result === 'object' && !Array.isArray(result) ? { structuredContent: result } : {}) }
+      // One copy, as text. A second copy in structuredContent doubled every result, and a client
+      // that counts both refuses a large read that would have fit.
+      return { content: [{ type: 'text', text: JSON.stringify(value.result ?? {}) }] }
     }
     await new Promise(resolve => setTimeout(resolve, 100))
   }

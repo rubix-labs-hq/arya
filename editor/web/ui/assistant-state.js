@@ -31,8 +31,10 @@ export function assistantState(status, provider = status?.provider ?? 'claude-co
     : detail?.available === true && status?.manualPreview?.recovery === 'refresh-model-efforts' && expired)
   const refreshing = refreshRequired && status?.loading === true
   const label = retired ? 'Retired connection' : refreshRequired ? refreshing ? 'Refreshing model availability…' : 'Model availability needs a refresh' : auto ? ready ? 'Auto ready' : status?.reason ?? 'Choose Auto models' : !status ? 'Status unavailable' : planOff ? 'ChatGPT plan usage is off' : needsLogin ? 'Sign-in needed' : detail?.available === false ? 'Unavailable' : ready ? 'Ready' : !selected && detail?.authenticated === true ? 'Signed in, not selected' : detail?.installed === false ? 'Not installed' : detail?.authenticated === false ? 'Sign-in needed' : 'Setup needed'
-  if (refreshRequired) return { detail, ready, label, refreshRequired: true, refreshing, reason: 'The saved model catalog has expired. Arya will recheck the account and exact model before sending.' }
-  return { detail, ready, label, refreshRequired: false, refreshing: false, reason: (selected && !ready ? status?.reason : '') || detail?.reason || (selected ? status?.reason : '') || 'Refresh status to check this provider.' }
+  // Before the first account check answers, nothing is known yet. That is not the same as "not set up".
+  const checking = !ready && !refreshRequired && (!status || status.loading === true && status.checkedAt === null) && !['waiting', 'exchanging'].includes(status?.chatgpt?.attempt?.state)
+  if (refreshRequired) return { detail, ready, checking, label, refreshRequired: true, refreshing, reason: 'The saved model catalog has expired. Arya will recheck the account and exact model before sending.' }
+  return { detail, ready, checking, label, refreshRequired: false, refreshing: false, reason: (selected && !ready ? status?.reason : '') || detail?.reason || (selected ? status?.reason : '') || 'Refresh status to check this provider.' }
 }
 
 export function assistantPrompt(text, state, playhead, inputKind) {

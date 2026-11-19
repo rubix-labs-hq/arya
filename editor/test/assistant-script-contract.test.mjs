@@ -9,7 +9,7 @@ const editor = process.env.ARYA_SCRIPT_EDITOR ?? fileURLToPath(new URL('../', im
 const source = fs.readFileSync(path.join(editor, 'agent/browser-assistant.mjs'), 'utf8')
 const sendSource = source.slice(source.indexOf('  const send = async body =>'), source.indexOf('  const cancel = async () =>'))
 const { taskFit } = await import(pathToFileURL(path.join(editor, 'core/assistant-routing.mjs')))
-const { normalizeSharingEnvelope, sharingScopeForRoute, sameSharingScope } = await import(pathToFileURL(path.join(editor, 'core/assistant-sharing.mjs')))
+const { normalizeSharingEnvelope, sharingScopeForRoute, sameSharingScope, sameSharingRecipients, SHARING_VERSION } = await import(pathToFileURL(path.join(editor, 'core/assistant-sharing.mjs')))
 assert.ok(sendSource.startsWith('  const send = async body =>') && sendSource.endsWith('  }\n'))
 
 function fixture() {
@@ -27,6 +27,8 @@ function fixture() {
     approvedScope: () => true, credentialBinding: () => ({ credentialDigest: 'fixture-digest', chatgptIdentity: null }), root: '/owned/project',
     request: async (...value) => { requests.push(value); return {} }, drive: async () => {}, cancelRemote: async () => {}, cancelJobs: async () => {}, state,
     redact: value => value,
+    // This server already holds the permission, so nothing stored from an earlier server is read.
+    sameSharingRecipients, SHARING_VERSION, needsAdoption: () => false, readAccounts: async () => { throw new Error('Unexpected fixture account read') }, adoptSavedGrant: () => { throw new Error('Unexpected fixture adoption') },
   }
   const send = new Function(...Object.keys(injected), `let active = null, sharingGeneration = 0, closed = false; ${sendSource}\nreturn send`)(...Object.values(injected))
   return { send, requests, calls, states, sharing }

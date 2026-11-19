@@ -10,7 +10,7 @@ const moduleURL = source => 'data:text/javascript;base64,' + Buffer.from(source)
 const key = Symbol.for('arya.shape-appearance.test')
 const hostURL = moduleURL(`export const host={events:()=>()=>{},kind:'browser'};export const api=(...args)=>globalThis[Symbol.for('arya.shape-appearance.test')].api(...args);`)
 let text = await fs.readFile(new URL('../web/ui/store.js', import.meta.url), 'utf8')
-for (const [from, to] of [['preact/hooks', import.meta.resolve('preact/hooks')], ['/core/project.js', coreURL], ['../host.js', hostURL], ['./change-receipt.js', new URL('../web/ui/change-receipt.js', import.meta.url).href]]) text = text.replaceAll("'" + from + "'", JSON.stringify(to))
+for (const [from, to] of [['preact/hooks', import.meta.resolve('preact/hooks')], ['/core/project.js', coreURL], ['/core/proposal-ops.js', new URL('../core/proposal-ops.js', import.meta.url).href], ['../host.js', hostURL], ['./change-receipt.js', new URL('../web/ui/change-receipt.js', import.meta.url).href]]) text = text.replaceAll("'" + from + "'", JSON.stringify(to))
 const oldWidth = globalThis.innerWidth; globalThis.innerWidth = 1440
 const storeURL = moduleURL(text), { set, store, viewProject } = await import(storeURL)
 if (oldWidth === undefined) delete globalThis.innerWidth; else globalThis.innerWidth = oldWidth
@@ -25,7 +25,7 @@ async function load(relative, mappings) {
 const common = { preact:import.meta.resolve('preact'), 'preact/hooks':hooks, htm:import.meta.resolve('htm'), './store.js':facade }
 const shapeURL=await load('shape-appearance.js',common)
 const { ShapeAppearance, captureShapeAppearance, shapeAppearanceMatches, shapeAppearanceOps, shapeColor } = await import(shapeURL)
-const inspectorURL=await load('inspector.js',{...common,'/core/project.js':coreURL,'./shape-appearance.js':shapeURL,'./menu.js':nulls,'./engine-host.js':nulls,'./registry.js':nulls,'./scroll-tabs.js':nulls,'./icons.js':new URL('../web/ui/icons.js',import.meta.url).href})
+const inspectorURL=await load('inspector.js',{...common,'/core/project.js':coreURL,'/core/fonts.js':new URL('../core/fonts.js',import.meta.url).href,'./shape-appearance.js':shapeURL,'./menu.js':nulls,'./engine-host.js':nulls,'./registry.js':nulls,'./scroll-tabs.js':nulls,'./icons.js':new URL('../web/ui/icons.js',import.meta.url).href})
 const { Inspector } = await import(inspectorURL)
 const nodes = value => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value,...nodes(value.props?.children)] : []
 const control=(tree,label)=>nodes(tree).find(node=>node.type==='input'&&node.props['aria-label']===label)

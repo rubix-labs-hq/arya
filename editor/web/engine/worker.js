@@ -157,10 +157,16 @@ export function startWorker() {
     return result
   }
 
-  const post = (scope, url, body, type = 'application/octet-stream') => scope.wait(() => fetch(url, { method: 'POST', body, headers: { 'content-type': type }, signal: scope.controller.signal })).then(r => {
-    if (!r.ok) throw new Error(`${url} → ${r.status}`)
-
-    return r
+  // Every server answer is no-store, and Chrome keeps a request with its upload body until that
+  // answer has been read. Unread answers held about two copies of each 25 MB frame batch, and the
+  // page died after 8.4 GB of uploads (frame 1014 of a 1080x1920 export). Read every answer.
+  const post = (scope, url, body, type = 'application/octet-stream') => scope.wait(async () => {
+    const r = await fetch(url, { method: 'POST', body, headers: { 'content-type': type }, signal: scope.controller.signal })
+    if (!r.ok) {
+      try { await r.arrayBuffer?.() } catch {}
+      throw new Error(`${url} → ${r.status}`)
+    }
+    await r.arrayBuffer()
   })
 
   function retire(scope) {
@@ -204,8 +210,13 @@ export function startWorker() {
     const controller = new AbortController()
     let timer
     const timeout = new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('Worker notification timed out')) }, 2000) })
-    try { return await Promise.race([fetch(url, { method: 'POST', body, signal: controller.signal }), timeout]) }
-    catch { return null }
+    try {
+      return await Promise.race([(async () => {
+        const r = await fetch(url, { method: 'POST', body, signal: controller.signal })
+        await r.arrayBuffer?.()
+        return r
+      })(), timeout])
+    } catch { return null }
     finally { clearTimeout(timer) }
   }
 
@@ -222,7 +233,9 @@ export function startWorker() {
     active = scope
     // While this job prepares or renders, tell the server the page is alive; the server only
     // trusts this before the first frame batch, so a stuck render still counts as stalled.
-    const heartbeat = setInterval(() => { void notify(`/api/job/${job.id}/alive`) }, 5000)
+    // The body names the setup step, so the server can say where a setup that hangs stopped.
+    let step = 'luts'
+    const heartbeat = setInterval(() => { void notify(`/api/job/${job.id}/alive`, step) }, 5000)
     try {
       if (cancelled.has(job.id)) scope.abort('cancelled')
       scope.controller.signal.throwIfAborted()
@@ -248,17 +261,21 @@ export function startWorker() {
       const audioOnly = preset.startsWith('audio')
       const noAudio = preset === 'gif' || preset === 'png-seq'
       if (!noAudio) {
+        step = 'audio'
         const wav = await scope.wait(() => scope.audio.renderWav(p, range.in, range.out, { signal: scope.controller.signal, processingJob: job.id }))
+        step = 'upload'
         await post(scope, `${base}/audio`, wav, 'audio/wav')
       }
       await post(scope, `${base}/start`, '')
       if (!audioOnly) {
+        step = 'plans'
         const plans = await scope.wait(() => buildDecoderPlans(spec, p, neededVideos, frameCenter, { check: () => scope.controller.signal.throwIfAborted() }))
         await scope.wait(() => media.planDecoders(plans))
         const frameBytes = width * height * 4
         const batch = Math.max(1, Math.min(4, Math.floor(32e6 / frameBytes)))
         let buf = new Uint8Array(frameBytes * batch)
         let n = 0
+        step = 'first'
         for (let i = 0; i < frames; i++) {
           scope.controller.signal.throwIfAborted()
           await scope.wait(() => player.renderExact(range.in + (i + 0.0001) / fps))
@@ -292,7 +309,10 @@ export function startWorker() {
     if (scope) void drained(scope)
   })
 
-  const es = new EventSource('/api/events?role=worker')
+  // The server starts this page with ?worker=1&id=TOKEN and accepts only its current worker's token,
+  // so a page left over from a replaced browser cannot take the new worker's jobs.
+  const workerID = new URLSearchParams(globalThis.location?.search ?? '').get('id')
+  const es = new EventSource(`/api/events?role=worker${workerID ? `&worker=${encodeURIComponent(workerID)}` : ''}`)
   es.addEventListener('render', e => {
     const data = JSON.parse(e.data)
     enqueue(data)

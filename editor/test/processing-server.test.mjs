@@ -17,10 +17,11 @@ function child() { const value = new EventEmitter(); value.stderr = new EventEmi
 
 // The real server routes run against a temporary project and port 0. Only process,
 // provider, persistence-helper and lifetime hooks are replaced; no media tool runs.
-async function fixture(t) {
+async function fixture(t, { sources = 0 } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reel-server-admission-'))
   const project = newProject('Fixture'); project.tracks[0].clips.push({ id: 'c1', kind: 'video', src: 'media/source.mp4', start: 0, dur: 10, in: 0 }); project.assets['media/source.mp4'] = { hasVideo: true, hasAudio: false, duration: 10, codec: 'h264', width: 1920, height: 1080, fps: 30 }
   fs.mkdirSync(path.join(root, 'media')); fs.writeFileSync(path.join(root, 'media', 'source.mp4'), 'source')
+  for (let index = 0; index < sources; index++) { project.assets[`media/import-${index}.mp4`] = { ...project.assets['media/source.mp4'] }; fs.writeFileSync(path.join(root, 'media', `import-${index}.mp4`), `import ${index}`) }
   const file = path.join(root, 'reel.project.json'); fs.writeFileSync(file, JSON.stringify(project))
   const children = [], workers = [], fixtureKey = '__reelAdmissionServerFixture'
   globalThis[fixtureKey] = { spawn(command, args) { const value = child(); value.argv = args; if (command === 'ffmpeg') children.push(value); else { assert.equal(command, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'); workers.push(value) } return value }, process(command, args, options) { return runProcessingProcess(command, args, { ...options, spawn: this.spawn }) }, root }
@@ -51,7 +52,7 @@ async function fixture(t) {
     await until(() => workers.length > 0)
     const events = []; const request = http.get({ hostname: '127.0.0.1', port, path: '/api/events?role=worker', headers: { host: '127.0.0.1:0' } }); const [response] = await once(request, 'response'); let text = ''; response.on('data', bytes => { text += bytes; let end; while ((end = text.indexOf('\n\n')) >= 0) { const event = text.slice(0, end); text = text.slice(end + 2); const match = /event: (\S+)\ndata: ([\s\S]*)/.exec(event); if (match) events.push({ type: match[1], data: JSON.parse(match[2]) }) } }); t.after(() => request.destroy()); await turn(); return { request, events }
   }
-  return { root, file, project, children, api, worker }
+  return { root, file, project, children, workers, api, worker, port }
 }
 
 test('server refuses invalid allocations, bounds queue, replays admitted snapshot and holds Stop until drained plus encoder close', async t => {
@@ -109,6 +110,12 @@ test('the job routes record worker progress for the stall watchdog', async t => 
   assert.equal((await f.api(`/api/job/${job.id}/alive`, {})).status, 200)
   const setup = await read()
   assert.ok(setup.lastWorkerActivity > dispatched.lastWorkerActivity, 'a heartbeat during setup counts')
+  // The heartbeat body names the setup step; anything else is ignored.
+  assert.equal(setup.workerStep, undefined)
+  assert.equal((await f.api(`/api/job/${job.id}/alive`, Buffer.from('audio'), true)).status, 200)
+  assert.equal((await read()).workerStep, 'audio')
+  assert.equal((await f.api(`/api/job/${job.id}/alive`, Buffer.from('x'.repeat(200)), true)).status, 200)
+  assert.equal((await read()).workerStep, 'audio', 'an oversized or unknown body changes nothing')
   assert.equal((await f.api(`/api/job/${job.id}/start`, {})).status, 200)
   const started = await read()
   assert.ok(Number.isFinite(started.workerStartedAt))
@@ -120,6 +127,121 @@ test('the job routes record worker progress for the stall watchdog', async t => 
   assert.equal((await read()).lastWorkerActivity, rendering.lastWorkerActivity, 'heartbeats stop counting once frames flow')
   await f.api('/api/jobs/cancel', { id: job.id }); await f.api(`/api/job/${job.id}/drained`, {})
   for (const child of f.children) child.emit('close', null)
+})
+
+test('a worker page that closes mid-export fails the job within seconds and the next export gets a new worker', { timeout: 30000 }, async t => {
+  const f = await fixture(t)
+  const job = (await f.api('/api/export', { preset: 'png-seq', name: 'closed', range: { in: 0, out: 1 } })).body
+  const connection = await f.worker()
+  await until(() => connection.events.some(event => event.type === 'render'))
+  assert.equal((await f.api(`/api/job/${job.id}/start`, {})).status, 200)
+  assert.equal((await f.api('/api/state')).body.worker, true)
+  // The page dies: its event stream closes and nothing reconnects.
+  connection.request.destroy()
+  const read = async id => (await f.api('/api/jobs')).body.jobs.find(j => j.id === id)
+  await new Promise(resolve => setTimeout(resolve, 3000))
+  assert.equal((await read(job.id)).state, 'running', 'the page gets 5 s to reconnect')
+  const deadline = Date.now() + 8000
+  while ((await read(job.id)).state !== 'failed') { assert.ok(Date.now() < deadline, 'the job must fail soon after the grace period'); await new Promise(resolve => setTimeout(resolve, 100)) }
+  assert.equal((await read(job.id)).error, 'The render worker closed while this export was running. Export again.')
+  assert.deepEqual(f.workers[0].kills.slice(0, 1), ['SIGTERM'], 'the browser without a page is stopped')
+  for (const child of f.children) child.emit('close', null)
+  // The next export does not wait behind the dead worker: a new browser is started for it.
+  const next = (await f.api('/api/export', { preset: 'png-seq', name: 'after', range: { in: 0, out: 1 } })).body
+  await until(() => f.workers.length === 2)
+  const replacement = await f.worker()
+  await until(() => replacement.events.some(event => event.type === 'render' && event.data.job.id === next.id))
+  assert.match(f.workers[1].argv.at(-1), /\?worker=1&id=[0-9a-f-]{36}$/)
+  assert.notEqual(f.workers[1].argv.at(-1), f.workers[0].argv.at(-1), 'each browser gets its own token')
+  await f.api('/api/jobs/cancel', { id: next.id }); await f.api(`/api/job/${next.id}/drained`, {})
+})
+
+test('a page that presents a replaced worker\'s token is refused', { timeout: 15000 }, async t => {
+  const f = await fixture(t)
+  const job = (await f.api('/api/export', { preset: 'png-seq', name: 'token', range: { in: 0, out: 1 } })).body
+  await until(() => f.workers.length === 1)
+  const token = new URL(f.workers[0].argv.at(-1)).searchParams.get('id')
+  const stale = await f.api('/api/events?role=worker&worker=00000000-0000-4000-8000-000000000000')
+  assert.equal(stale.status, 204, 'an EventSource stops reconnecting on 204')
+  assert.equal((await f.api('/api/state')).body.worker, false)
+  const request = http.get({ hostname: '127.0.0.1', port: f.port, path: `/api/events?role=worker&worker=${token}`, headers: { host: '127.0.0.1:0' } })
+  const [response] = await once(request, 'response'); t.after(() => request.destroy())
+  assert.equal(response.statusCode, 200)
+  await until(() => true); assert.equal((await f.api('/api/state')).body.worker, true)
+  await f.api('/api/jobs/cancel', { id: job.id }); await f.api(`/api/job/${job.id}/drained`, {})
+})
+
+test('a job that has not reached the worker says why it is waiting', { timeout: 30000 }, async t => {
+  const f = await fixture(t)
+  const first = (await f.api('/api/export', { preset: 'png-seq', name: 'first', range: { in: 0, out: 1 } })).body
+  const second = (await f.api('/api/export', { preset: 'png-seq', name: 'second', range: { in: 0, out: 1 } })).body
+  const read = async id => (await f.api('/api/jobs')).body.jobs.find(j => j.id === id)
+  // No worker page is connected yet: the first job has the queue and waits for the worker.
+  const deadline = Date.now() + 10000
+  while ((await read(first.id)).waiting?.reason !== 'worker-starting') { assert.ok(Date.now() < deadline, 'the first job must report the worker start'); await new Promise(resolve => setTimeout(resolve, 20)) }
+  const behind = (await read(second.id)).waiting
+  assert.equal(behind.reason, 'behind-job'); assert.equal(behind.job, first.id); assert.ok(Number.isFinite(behind.since))
+  assert.ok(Number.isFinite((await read(first.id)).sourceCopyMs), 'the source copy time is recorded')
+  const connection = await f.worker()
+  await until(() => connection.events.some(event => event.type === 'render'))
+  assert.equal('waiting' in connection.events.find(event => event.type === 'render').data.job, false, 'the dispatched job waits for nothing')
+  assert.equal((await read(first.id)).waiting, undefined)
+  assert.equal((await read(second.id)).waiting.job, first.id)
+  await f.api('/api/jobs/cancel', { id: first.id }); await f.api(`/api/job/${first.id}/drained`, {})
+  await until(() => connection.events.filter(event => event.type === 'render').length === 2)
+  assert.equal((await read(second.id)).waiting, undefined)
+  await f.api('/api/jobs/cancel', { id: second.id }); await f.api(`/api/job/${second.id}/drained`, {})
+})
+
+test('a second export of the same media reuses the audio the first one decoded', { timeout: 30000 }, async t => {
+  const f = await fixture(t)
+  const connection = await (async () => { const pending = f.api('/api/export', { preset: 'png-seq', name: 'one', range: { in: 0, out: 1 } }); const value = await f.worker(); value.first = (await pending).body; return value })()
+  await until(() => connection.events.some(event => event.type === 'render'))
+  const copyOf = id => connection.events.find(event => event.type === 'render' && event.data.job.id === id).data.project.tracks[0].clips[0].src
+  const first = connection.first, firstCopy = copyOf(first.id)
+  const decoded = f.api(`/api/audio?src=${encodeURIComponent(firstCopy)}&in=0&dur=1&processingJob=${first.id}`)
+  await until(() => f.children.length === 1)
+  fs.writeFileSync(f.children[0].argv.at(-1), 'decoded once'); f.children[0].emit('close', 0)
+  assert.equal((await decoded).status, 200)
+  await f.api('/api/jobs/cancel', { id: first.id }); await f.api(`/api/job/${first.id}/drained`, {})
+  const second = (await f.api('/api/export', { preset: 'png-seq', name: 'two', range: { in: 0, out: 1 } })).body
+  await until(() => connection.events.some(event => event.type === 'render' && event.data.job.id === second.id))
+  const secondCopy = copyOf(second.id)
+  assert.notEqual(secondCopy, firstCopy, 'every export reads its own copy of the source')
+  const reused = await f.api(`/api/audio?src=${encodeURIComponent(secondCopy)}&in=0&dur=1&processingJob=${second.id}`)
+  assert.equal(reused.status, 200); assert.equal(reused.body.toString(), 'decoded once')
+  assert.equal(f.children.length, 1, 'the second export must not decode the same bytes again')
+  assert.equal(fs.readdirSync(path.join(f.root, '.reel', 'cache', 'audio')).filter(name => name.endsWith('.wav')).length, 1, 'and it must not add a cache file')
+  await f.api('/api/jobs/cancel', { id: second.id }); await f.api(`/api/job/${second.id}/drained`, {})
+})
+
+test('16 filmstrips asked for at once all arrive, an export still gets a slot, and a cached strip needs none', { timeout: 30000 }, async t => {
+  const f = await fixture(t, { sources: 16 })
+  const strip = index => f.api(`/api/strip?src=${encodeURIComponent(`media/import-${index}.mp4`)}&quality=high`)
+  const pending = Array.from({ length: 16 }, (_, index) => strip(index))
+  await until(() => f.children.length === 1)
+  // The import is still in progress: 1 strip runs, 3 wait in the processing queue, 12 wait in front of it.
+  const during = (await f.api('/api/state')).body.processing
+  assert.equal(during.active + during.queued, 4)
+  const exported = await f.api('/api/export', { preset: 'png-seq', name: 'during-import', range: { in: 0, out: 1 } })
+  assert.equal(exported.status, 200, 'an export started during the import is admitted')
+  await f.api('/api/jobs/cancel', { id: exported.body.id })
+  // Each ffmpeg run writes its filmstrip and exits.
+  let served = 0
+  const serve = setInterval(() => { for (; served < f.children.length; served++) { const child = f.children[served]; fs.writeFileSync(child.argv.at(-1), `strip ${served}`); child.emit('close', 0) } }, 5)
+  t.after(() => clearInterval(serve))
+  const answers = await Promise.all(pending)
+  assert.deepEqual(answers.map(answer => answer.status), Array(16).fill(200))
+  assert.equal(new Set(answers.map(answer => answer.body.url)).size, 16)
+  assert.equal(f.children.length, 16)
+  clearInterval(serve)
+  // An export now holds the queue (it waits for a worker page). A strip that is cached still answers.
+  const holding = (await f.api('/api/export', { preset: 'png-seq', name: 'holding', range: { in: 0, out: 1 } })).body
+  await until(() => f.workers.length === 1)
+  const cached = await strip(3)
+  assert.equal(cached.status, 200); assert.equal(cached.body.url, answers[3].body.url)
+  assert.equal(f.children.length, 16, 'and it starts no ffmpeg')
+  await f.api('/api/jobs/cancel', { id: holding.id })
 })
 
 test('stopping worker connections cannot advertise replacement readiness', () => {

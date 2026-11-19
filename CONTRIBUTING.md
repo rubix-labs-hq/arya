@@ -46,6 +46,8 @@ Run the checks that fit your change.
 | Release tooling | `python3 native/scripts/test-release.py` |
 | Claude Code plugin | `claude plugin validate .` and `claude plugin test .` |
 
+Some editor tests cut a route or function out of `editor/server.mjs` as text and run it with `new Function`, passing each name it uses by hand. Examples are `library-lut-resources.test.mjs` (the `POST /api/ops` route), `export-server-source.test.mjs`, `music-compose-admission.test.mjs` and `processing-output-reuse.test.mjs`. When you make such code in `server.mjs` call a new import or helper, add that name to the test's parameter list or values map, as these tests pass `editNotes` and `parseLoudness`. Otherwise the test fails with a `ReferenceError` when that line runs.
+
 Focused native checks live in `native/scripts/` as `test-*.py` and `test-*.sh`. `python3 native/scripts/verify-arya-local.py --list` shows the phases of the full local verifier.
 
 If you change the renderer on purpose, update golden frames with `npm run --prefix editor golden:update` and explain the change in the pull request. If you change shader equations in `editor/web/engine/compositor.js`, regenerate the Metal source with `node native/scripts/build-metal-shaders.mjs` and review the diff.

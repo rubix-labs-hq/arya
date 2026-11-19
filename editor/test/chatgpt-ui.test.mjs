@@ -76,7 +76,7 @@ test('hosts without Sign in with ChatGPT show no ChatGPT option and honest app l
   assert.equal(nodes(tree).some(node => node.type === 'option' && node.props.value === 'chatgpt'), false)
   const chat = panel(baseStatus())
   assert.doesNotMatch(all(chat.tree), /ChatGPT/)
-  assert.match(all(chat.tree), /Connect your editing assistant/)
+  assert.match(all(chat.tree), /Set up the assistant/)
 })
 
 test('signed out: Continue with ChatGPT is first and installed apps move under Other ways to connect', async () => {
@@ -229,19 +229,22 @@ test('native sign-out cleanup remains available while the session is signed out'
 })
 
 
-test('selected provider failures and recovery come before the ChatGPT alternative', async () => {
+test('selected provider failures keep refresh first and the ChatGPT alternative in one setup card', async () => {
   for (const provider of ['codex', 'claude-code']) {
     const reason = 'The selected account session expired. Sign in again.'
     const status = baseStatus({ provider, reason, chatgpt: account(),
       providers: [{ id: provider, installed: true, authenticated: false, available: false, reason }] })
-    const { tree, state } = panel(status)
+    const { tree, state, calls } = panel(status)
     const cards = nodes(tree).filter(node => node.props?.class === 'assistant-setup')
-    assert.equal(cards.length, 2)
+    assert.equal(cards.length, 1)
     assert.match(text(cards[0]), /session expired/)
-    assert.ok(button(cards[0], 'Refresh status'))
-    button(cards[0], 'Assistant settings').props.onClick()
+    assert.deepEqual(nodes(cards[0]).filter(node => node.type === 'button').map(text), ['Refresh status', 'Continue with ChatGPT', 'Other ways to connect'])
+    assert.equal(button(cards[0], 'Refresh status').props.class, 'primary')
+    assert.notEqual(button(cards[0], 'Continue with ChatGPT').props.class, 'primary')
+    await button(cards[0], 'Continue with ChatGPT').props.onClick()
+    assert.deepEqual(calls, [{ start: {} }])
+    button(cards[0], 'Other ways to connect').props.onClick()
     assert.equal(state.settingsOpen, true)
-    assert.match(text(cards[1]), /Or use ChatGPT/)
-    assert.ok(button(cards[1], 'Continue with ChatGPT'))
+    assert.equal(state.settingsOtherWays, true)
   }
 })

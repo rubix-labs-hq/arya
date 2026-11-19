@@ -38,10 +38,10 @@ const CSS = `
 .fig .card[aria-pressed=true] { border-color: var(--accent); background: #f5b94210; }
 .fig .thumb { aspect-ratio: 16/9; border-radius: 5px; background: repeating-conic-gradient(#16161b 0% 25%, #111115 0% 50%) 50% / 12px 12px; position: relative; display: grid; place-items: center; overflow: hidden; }
 .fig .thumb img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-.fig .thumb .kind { position: absolute; left: 4px; top: 3px; background: #000b; color: var(--muted); font-size: 9.5px; padding: 0 4px; border-radius: 3px; letter-spacing: 0.03em; }
+.fig .thumb .kind { position: absolute; left: 4px; top: 3px; background: #000b; color: var(--muted); font-size: 11px; padding: 0 4px; border-radius: 3px; letter-spacing: 0.03em; }
 .fig .thumb .pick { position: absolute; right: 4px; top: 4px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font: 700 11px/18px -apple-system, sans-serif; text-align: center; }
 .fig .card .name { font-size: 11.5px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fig .card .size { font: 10px ui-monospace, Menlo, monospace; color: var(--muted); }
+.fig .card .size { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); }
 .fig .opts { display: grid; grid-template-columns: auto 1fr; gap: 5px 8px; align-items: center; font-size: 12px; color: var(--muted); }
 .fig .opts input[type=number] { width: 64px; }
 .fig .opts select { justify-self: start; }
@@ -54,7 +54,7 @@ const CSS = `
 .fig .comp:hover { background: #ffffff08; }
 .fig .comp .meta { flex: 1; min-width: 0; }
 .fig .comp .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fig .comp .sub { font: 10.5px ui-monospace, Menlo, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fig .comp .sub { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fig .comp-actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 140px; }
 .fig .comp-actions button { min-height: 40px; }
 .fig .waiting { font-size: 11.5px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }

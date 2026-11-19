@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import test from 'node:test'
 import { h } from 'preact'
 import htm from 'htm'
+import { BUNDLED_FONTS, SYSTEM_FONTS } from '../core/fonts.js'
 
 const source = fs.readFileSync(new URL('../web/ui/inspector.js', import.meta.url), 'utf8')
 const conformSource = source.match(/\nfunction Conform\(\{ clip, ids, p \}\) \{[\s\S]*?\n\}\n/)[0]
@@ -16,9 +17,8 @@ const buttons = tree => Object.fromEntries(walk(tree).filter(n => n.type === 'bu
 
 function titleFontControl(clip, edit) {
   const titleSource = source.match(/\nfunction TitleTab\(\{ clip \}\) \{[\s\S]*?\n\}\n/)[0]
-  const fontSource = source.match(/^const FONTS = .*$/m)[0]
-  const TitleTab = new Function('html', 'useState', 'Section', 'Field', 'TITLE_ANIMS', 'edit', `${fontSource}\n${titleSource}\nreturn TitleTab`)(
-    htm.bind(h), initial => [initial, () => {}], () => null, () => null, ['none'], edit)
+  const TitleTab = new Function('html', 'useState', 'Section', 'Field', 'TITLE_ANIMS', 'edit', 'FONTS', `${titleSource}\nreturn TitleTab`)(
+    htm.bind(h), initial => [initial, () => {}], () => null, () => null, ['none'], edit, SYSTEM_FONTS)
   return walk(TitleTab({ clip })).find(node => node.type === 'select')
 }
 
@@ -123,4 +123,16 @@ test('Transform holds properties and Conform; keyframe presets sit in their own 
   assert.match(presets, /title="Animation presets" open=\$\{false\}/)
   for (const name of ['Ken Burns', 'Slide in', 'Shake']) assert.ok(presets.includes(`>${name}</button>`), `${name} is a preset`)
   assert.match(presets, /writes keyframes across this clip/)
+})
+
+test('the title font menu offers the shared system font list and keeps no copy of its own', () => {
+  assert.match(source, /^import \{ SYSTEM_FONTS as FONTS \} from '\/core\/fonts\.js'$/m)
+  assert.doesNotMatch(source, /^const FONTS = /m)
+  assert.doesNotMatch(source, /'Helvetica Neue'/, 'no family is listed in the inspector itself')
+  const control = titleFontControl({ id: 'c1', kind: 'title', title: { text: 'Sample title' } }, () => {})
+  assert.deepEqual(walk(control).filter(node => node.type === 'option').map(option => option.props.value), SYSTEM_FONTS)
+  // The offered list is unchanged by the move: the bundled faces stay out of the menu.
+  for (const family of BUNDLED_FONTS) assert.equal(SYSTEM_FONTS.includes(family), false)
+  const files = JSON.parse(fs.readFileSync(new URL('../browser-public-files.json', import.meta.url), 'utf8'))
+  assert.ok(files.some(row => row.source === 'core/fonts.js' && row.target === 'core/fonts.js'), 'the hosted editor ships the font list')
 })

@@ -3,6 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import test from 'node:test'
+import { transcriptNotes, transcriptionSetup } from '../web/ui/transcript-jobs.js'
+import { dialogControls, dialogKey } from '../web/ui/dialog-focus.js'
 
 const require = createRequire(path.join(process.cwd(), 'editor/package.json'))
 const html = require('htm').bind(require('preact').h)
@@ -28,7 +30,7 @@ async function fixture(t, configure) {
     return { items: [{ t: .2, end: .8, text: 'Saved' }], clips: ['a1'], warnings: [], version: c.s.version, sourceFingerprint: body.expectedSourceFingerprint, transcriptRevision: body.expectedTranscriptRevision }
   }
   c.Confirm = function CaptionsConfirm() {}
-  const Dialog = new Function('html', 'useStore', 'viewProject', 'store', 'useState', 'useRef', 'useMemo', 'useEffect', 'api', 'runTranscriptJob', 'toast', 'set', 'CaptionsConfirm', 'Num', `${component}; return TranscriptDialog;`)(html, () => c.s, () => c.s.project, c.s, state, ref, memo, effect, api, async () => { throw new Error('Unexpected transcription') }, value => c.notes.push(value), value => { c.updates.push(value); Object.assign(c.s, value) }, c.Confirm, function Num() {})
+  const Dialog = new Function('html', 'useStore', 'viewProject', 'store', 'useState', 'useRef', 'useMemo', 'useEffect', 'api', 'runTranscriptJob', 'toast', 'set', 'CaptionsConfirm', 'Num', 'transcriptNotes', 'transcriptionSetup', 'dialogControls', 'dialogKey', `${component}; return TranscriptDialog;`)(html, () => c.s, () => c.s.project, c.s, state, ref, memo, effect, api, async (...args) => { if (c.transcribe) return c.transcribe(...args); throw new Error('Unexpected transcription') }, value => c.notes.push(value), value => { c.updates.push(value); Object.assign(c.s, value) }, c.Confirm, function Num() {}, transcriptNotes, transcriptionSetup, dialogControls, dialogKey)
   const render = (effects = true) => { c.index = 0; const tree = Dialog({ onClose: () => c.closed++ }); if (effects) c.pending.splice(0).forEach(fn => fn()); return tree }
   const nodes = () => walk(render())
   const button = label => nodes().find(node => node.type === 'button' && text(node) === label)
@@ -109,4 +111,95 @@ test('dialog refuses a preview response bound to another transcript revision', a
   await f.preview()
   assert.equal(f.confirm(), undefined)
   assert.match(f.c.notes[0], /changed during caption preview/)
+})
+
+const strings = node => { const out = []; const visit = value => { if (typeof value === 'string') out.push(value); else if (Array.isArray(value)) value.forEach(visit); else if (value && typeof value === 'object') visit(value.props?.children) }; visit(node); return out.join('') }
+
+test('dialog says that a finished transcript holds no words, with its warnings, and can run again', async t => {
+  const silent = 'Invented warning: the sample source holds no speech.'
+  const f = await fixture(t, c => { c.saved = { ...c.saved, words: [], status: 'missing', revision: 0 }; c.s.transcript = null })
+  let jobs = 0
+  f.c.transcribe = async () => { jobs++; f.c.saved = { ...f.c.saved, status: 'complete', revision: 1, words: [], warnings: [silent] } }
+  await f.button('Preview captions').props.onClick(); await f.settle()
+  assert.equal(f.confirm(), undefined)
+  assert.equal(f.c.notes.length, 0, 'the reason stays in the dialog and is not a toast')
+  const shown = strings(f.render())
+  assert.ok(shown.includes(silent) && shown.includes('No words were recognized.'))
+  assert.equal(f.c.calls.filter(call => call.route === '/api/captions/from-transcript').length, 0)
+  assert.equal(f.button('Preview captions').props.disabled, false)
+  await f.button('Preview captions').props.onClick(); await f.settle()
+  assert.equal(jobs, 2, 'the dialog is not left holding the finished request')
+})
+
+test('dialog shows the warning a preview carries when a cut removes words', async t => {
+  const dropped = '2 transcript words are in source time the timeline cuts out, so no caption shows them: "sample" at 1.2s, "words" at 1.6s'
+  const f = await fixture(t)
+  f.c.handler = (route, body) => route === '/api/captions/from-transcript' && !body.apply ? { items: [{ t: .2, end: .8, text: 'Saved' }], clips: ['a1'], warnings: [dropped], version: f.c.s.version, sourceFingerprint: body.expectedSourceFingerprint, transcriptRevision: body.expectedTranscriptRevision } : undefined
+  const preview = await f.preview()
+  assert.deepEqual(preview.props.warnings, [dropped])
+  assert.ok(!preview.props.note.includes('transcript words'))
+  const confirm = source.slice(source.indexOf('function CaptionsConfirm('), source.indexOf('// ---------------------------------------------------------------- captions from a transcript'))
+  assert.match(confirm, /\(warnings \?\? \[\]\)\.map\(warning => html`<div class="cap-warn" role="status">\$\{warning\}<\/div>`\)/)
+})
+
+test('the caption preview is a second step of the same modal dialog: one focus trap, focus moved in, Escape still closes', async t => {
+  const f = await fixture(t)
+  const shell = () => f.nodes().find(node => node.props?.role === 'dialog')
+  const first = shell()
+  assert.equal(first.props['aria-modal'], 'true'); assert.equal(first.props['aria-labelledby'], 'cap-transcript-title')
+  // The element the dialog's ref holds, with the controls it has on each step.
+  const focused = [], control = name => ({ name, matches: () => false, getClientRects: () => [1], focus() { focused.push(name) } })
+  let controls = [control('Media')]
+  const element = { querySelectorAll: () => controls, getClientRects: () => [1], contains: other => controls.includes(other), focus() { focused.push('dialog') } }
+  first.ref.current = element
+  controls = [control('Caption track'), control('Cancel'), control('Add 1 caption')]
+  const confirm = await f.preview()
+  assert.ok(confirm, 'the preview is shown')
+  const second = shell()
+  assert.ok(second, 'the dialog is still the modal shell'); assert.equal(second.ref, first.ref, 'the same element, so the same focus trap')
+  assert.equal(second.props['aria-modal'], 'true', 'F6 keeps standing down behind it')
+  assert.equal(second.props['aria-labelledby'], 'cap-confirm-title'); assert.equal(confirm.props.titleId, 'cap-confirm-title'); assert.equal(confirm.props.bare, true)
+  assert.equal(walk(second).filter(node => node.type === f.c.Confirm).length, 1, 'the confirmation is inside the dialog'); assert.equal(f.button('Preview captions'), undefined)
+  assert.deepEqual(focused, ['Caption track'], 'focus moves into the confirmation once')
+  // The keys the dialog listens for still reach the same element: Tab wraps inside it and Escape closes it.
+  const doc = { activeElement: controls.at(-1) }
+  const tab = { key: 'Tab', shiftKey: false, prevented: false, preventDefault() { this.prevented = true }, stopPropagation() {} }
+  assert.equal(dialogKey(tab, second.ref.current, () => {}, doc), true); assert.equal(tab.prevented, true); assert.deepEqual(focused, ['Caption track', 'Caption track'])
+  // Clicking the backdrop or Cancel in the confirmation closes the whole dialog.
+  confirm.props.onClose(); assert.equal(f.c.closed, 1)
+})
+
+test('Media, Style and Caption track are labels of their selects', async t => {
+  const f = await fixture(t)
+  const labelled = (tree, name) => { const all = walk(tree), label = all.find(node => node.type === 'label' && text(node) === name); assert.ok(label?.props.for, name); return all.filter(node => node.type === 'select' && node.props.id === label.props.for).length }
+  const tree = f.render()
+  assert.equal(labelled(tree, 'Media'), 1); assert.equal(labelled(tree, 'Style'), 1)
+  const confirmSource = source.slice(source.indexOf('function CaptionsConfirm('), source.indexOf('// ---------------------------------------------------------------- captions from a transcript'))
+  const project = { fps: 30, tracks: [{ id: 'C1', kind: 'caption', clips: [] }] }
+  const Confirm = new Function('html', 'useStore', 'viewProject', 'store', 'useState', 'tc', 'edit', 'toast', 'set', `${confirmSource}; return CaptionsConfirm;`)(html, () => ({ version: 1 }), () => project, { project }, value => [value, () => {}], t => String(t), async () => ({}), () => {}, () => {})
+  const props = { title: 'Captions from the transcript', items: [{ t: 0, end: 1, text: 'Hello' }], tracks: project.tracks, onClose() {} }
+  const standalone = Confirm(props)
+  assert.equal(labelled(standalone, 'Caption track'), 1); assert.equal(standalone.props.class, 'modal-back', 'on its own it still opens its own dialog')
+  const bare = Confirm({ ...props, bare: true, titleId: 'cap-confirm-title' })
+  assert.equal(labelled(bare, 'Caption track'), 1)
+  assert.equal(walk(bare).some(node => /\bmodal(-back)?( |$)/.test(node.props?.class ?? '')), false, 'inside the transcript dialog it adds no second shell')
+  assert.equal(walk(bare).find(node => node.type === 'h3').props.id, 'cap-confirm-title')
+})
+
+test('the dialog buttons are full touch targets on a touch screen', () => {
+  assert.match(source, /@media \(pointer: coarse\) \{ \.cap-dialog \.modal-actions button \{ min-height: 44px; \} \}/)
+  assert.match(source, /\.cap-dialog \{ overflow-y: auto; \}/, 'a short screen scrolls the dialog instead of pushing its buttons outside it')
+})
+
+test('dialog says transcription is not installed with the server next step', async t => {
+  const f = await fixture(t, c => { c.s.transcript = null; c.s.caps = { whisper: false, transcription: { available: false, provider: 'whisper.cpp', reason: 'Install whisper.cpp to transcribe locally.', install: ['brew install whisper-cpp'] } } })
+  const shown = strings(f.render())
+  assert.ok(shown.includes('Transcription is not installed on this computer. Install whisper.cpp to transcribe locally. You can also import a timed transcript.'))
+  assert.ok(shown.includes('brew install whisper-cpp'))
+  // The Media page opens the dialog after the Transcript panel loaded an empty record for this source.
+  const empty = await fixture(t, c => { c.s.transcript = { src: 'synthetic.wav', status: 'missing', words: [], ownerRoot: 'synthetic-project' }; c.s.caps = { whisper: false, transcription: { available: false, provider: 'whisper.cpp', reason: 'Install whisper.cpp to transcribe locally.', install: ['brew install whisper-cpp'] } } })
+  assert.ok(strings(empty.render()).includes('Transcription is not installed on this computer. Install whisper.cpp to transcribe locally. You can also import a timed transcript.'))
+  assert.ok(strings(empty.render()).includes('brew install whisper-cpp'))
+  const native = await fixture(t, c => { c.s.transcript = null; c.s.caps = { host: 'native' } })
+  assert.ok(strings(native.render()).includes('Apple Speech is unavailable on this device.'))
 })

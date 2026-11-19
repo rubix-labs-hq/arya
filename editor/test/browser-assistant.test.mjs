@@ -123,22 +123,35 @@ test('an actual stdio CLI builds native editable layers, selection context, fram
   const root = temporary(t), fixture = path.join(here, 'fixtures', 'agent-cli.mjs'), mcp = path.join(here, '../agent/mcp.mjs')
   fs.copyFileSync(path.join(here, 'golden', 'basics-1.png'), path.join(root, 'frame.png'))
   let project = newProject('Browser subscription fixture', { width: 160, height: 90 }), version = 1
-  const past = [], replies = [], frames = [], states = []
+  const past = [], replies = [], frames = [], frameRuns = [], states = [], previewAsks = []
   const service = createBrowserAssistant(options(root, { custom: { executable: process.execPath, args: [fixture, mcp] },
+    // The second frame stands for one drawn from the request's pending preview.
+    framePreview: (runId, option) => { previewAsks.push([runId, option]); return frames.length === 1 },
     getOutline: () => ({ outline: outline(project), version }),
     dispatch: async (call, assertCurrent) => {
       assertCurrent()
       if (call.method === 'GET') return call.path === '/api/caps' ? { host: 'browser', editable: true } : { outline: outline(project), version }
       if (call.path === '/api/ops') { past.push(project); const result = applyOps(project, call.body.ops); project = result.project; return { version: ++version, created: result.created } }
       throw new Error('Unexpected fixture route')
-    }, renderFrame: async frame => { frames.push(frame); return { path: path.join(root, 'frame.png') } }, onReply: reply => replies.push(reply), onState: state => states.push(state),
+    }, renderFrame: async (frame, _assertCurrent, _registerJob, run) => { frames.push(frame); frameRuns.push(run); return { path: path.join(root, 'frame.png') } }, onReply: reply => replies.push(reply), onState: state => states.push(state),
   }))
   t.after(() => service.close())
   await service.configure({ provider: 'claude-code' }); await approveFixture(service)
   const run = await service.send({ text: 'Build a three-second scene.', refs: [], ids: [], comp: null, playhead: 0 })
   assert.match(run.runId, /^[0-9a-f-]{36}$/)
   await waitFor(() => service.snapshot().state === 'done')
-  assert.ok(states.some(value => value.state === 'working' && value.phase === 'Inspecting a rendered frame'))
+  // Each tool step is named from its call, and the wait after it names the step it follows.
+  const phases = states.map(value => value.phase).filter((phase, index, all) => phase && phase !== all[index - 1])
+  assert.deepEqual(phases, [
+    'Connecting to your agent', 'Thinking about your request', 'Requested Claude Code. Waiting for its first step',
+    'Checking what this editor can do', 'Waiting for the agent’s next step after it checked what this editor can do',
+    'Reading the project outline', 'Waiting for the agent’s next step after it read the project outline',
+    'Applying 9 edits', 'Waiting for the agent’s next step after it applied 9 edits',
+    'Rendering a frame at 0s', 'Waiting for the agent’s next step after it rendered a frame at 0s',
+    'Rendering a frame of the preview at 1s', 'Waiting for the agent’s next step after it rendered a frame of the preview at 1s',
+  ])
+  assert.ok(states.some(value => value.state === 'working' && value.phase === 'Rendering a frame of the preview at 1s'))
+  assert.deepEqual(previewAsks, [[run.runId, { strict: false }], [run.runId, { strict: false }]], 'only frames ask, for this run')
   const started=states.find(value => value.runId === run.runId), finished=service.snapshot()
   assert.ok(Number.isFinite(started.startedAt));assert.equal(finished.startedAt,started.startedAt)
   assert.ok(finished.finishedAt >= finished.startedAt);assert.equal(finished.updatedAt,finished.finishedAt)
@@ -146,6 +159,9 @@ test('an actual stdio CLI builds native editable layers, selection context, fram
   assert.equal(title.title.text, 'EDITABLE SCENE')
   assert.equal(project.comps.k1.tracks.find(track => track.kind === 'audio').clips[0].volume, 0.5)
   assert.equal(frames.length, 2); assert.match(replies[0], /editable scene/)
+  // The frame renderer is told which request asks, so it can draw that request's own preview.
+  assert.ok(frameRuns.every(run => typeof run.runId === 'string' && run.runId && run.review === false), JSON.stringify(frameRuns))
+  assert.equal(new Set(frameRuns.map(run => run.runId)).size, 1)
   const shape = JSON.stringify(project.comps.k1.tracks.flatMap(track => track.clips).find(clip => clip.shape))
   await service.send({ text: 'Change the selected title.', ids: [title.id], comp: 'k1', playhead: 1.25, refs: [] })
   await waitFor(() => service.snapshot().state === 'done')

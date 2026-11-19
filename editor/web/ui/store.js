@@ -3,6 +3,7 @@
 
 import { useEffect, useReducer } from 'preact/hooks'
 import { applyOps, compView } from '/core/project.js'
+import { proposalOps } from '/core/proposal-ops.js'
 import { api, host } from '../host.js'
 import { changeReceipt } from './change-receipt.js'
 
@@ -29,6 +30,8 @@ export const store = {
   claude: { state: 'idle', text: '' },
   activity: [],
   receipts: [],
+  history: null, // { undo, redo } depth from the server; null when the host does not report it
+  session: null, // { id, startedAt } of the server this editor is connected to
   jobs: [],
   toasts: [],
   playing: false,
@@ -46,9 +49,12 @@ export const store = {
   caps: {},
   settingsOpen: false,
   settingsOtherWays: false, // the assistant panel's "Other ways to connect" opens that Settings section expanded
+  chatCollapsed: false, // the phone sheet reduced to a one-line bar; kept in memory only
+  sideTab: 'assistant', // between 901 and 1439px the assistant takes the inspector's column and this picks which one shows
   assistantStatus: null,
   assistantStatusError: '',
   assistantReview: null, // { proposal, change } from the server: the pending preview and the latest assistant change
+  previewShown: null, // { id, base, version, root }: the proposal the viewer draws ("Show in viewer"); see previewProject()
   assistantPreview: (() => { try { return globalThis.localStorage?.getItem('arya.assistant.preview') !== 'off' } catch { return true } })(), // preview assistant edits before they apply
   clipboard: null,
   highlight: new Map(), // clip id → time it was last touched by Claude
@@ -69,6 +75,50 @@ export function viewProject() {
   return cachedView.view
 }
 
+// "Show in viewer" on a preview card: the viewer and playback draw the project with the
+// pending proposal applied. set({ previewShown: { id } }) shows one and { previewShown: null }
+// stops; set() records the project it was shown over and forgets it once it no longer applies,
+// so store.previewShown is set exactly while a preview is drawn. The previewed project lives in
+// memory, is never saved and is never edited.
+let cachedPreview = { base: null, id: null, project: null }
+let cachedDrawn = { project: null, comp: null, view: null }
+
+/** The project with the shown proposal applied, or null when nothing is shown or it no longer applies. */
+export function previewProject() {
+  const shown = store.previewShown, proposal = store.assistantReview?.proposal
+  // Apply, Discard, any version change and a new proposal (a new id) all end the preview here.
+  if (!shown || !proposal || proposal.id !== shown.id || proposal.stale || proposal.baseVersion !== store.version || shown.version !== store.version || shown.root !== store.root || !proposal.ops?.length) return null
+  if (cachedPreview.base !== shown.base || cachedPreview.id !== shown.id) {
+    let project = null
+    try { project = applyOps(shown.base, proposalOps(shown.base, proposal)).project } catch { /* The card says why it cannot apply. */ }
+    cachedPreview = { base: shown.base, id: shown.id, project }
+  }
+  return cachedPreview.project
+}
+
+/** True while the viewer shows a preview; editing is off until it ends. */
+export function previewing() { return previewProject() != null }
+
+/** What the viewer and playback draw: the previewed project while one is shown, else the timeline being edited. */
+export function drawnProject() {
+  const p = previewProject()
+  if (!p) return viewProject()
+  const comp = store.openComp && p.comps?.[store.openComp] ? store.openComp : null
+  if (cachedDrawn.project !== p || cachedDrawn.comp !== comp) cachedDrawn = { project: p, comp, view: comp ? compView(p, comp) : p }
+  return cachedDrawn.view
+}
+
+const PREVIEW_LOCKED = 'Editing is off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.'
+
+/** Refuses a change while a preview is shown, and puts back any local copy a control already drew. */
+export function refusePreviewEdit() {
+  if (!previewing()) return false
+  const base = store.previewShown.base
+  if (store.project !== base) set({ project: base })
+  toast(PREVIEW_LOCKED, 'error')
+  return true
+}
+
 /** Ops from the UI act inside the open composition unless they name a clip (which scopes itself). */
 function scoped(ops) {
   if (!store.openComp) return ops
@@ -78,6 +128,11 @@ function scoped(ops) {
 }
 
 // History metadata is display-only. It cannot restore a run, route or sharing grant.
+/** The server's undo and redo depth, or null when the host does not report one. */
+export function historyDepth(value) {
+  return Number.isSafeInteger(value?.undo) && value.undo >= 0 && Number.isSafeInteger(value?.redo) && value.redo >= 0 ? { undo: value.undo, redo: value.redo } : null
+}
+
 export function chatHistoryStatus(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return { restored: Number.isSafeInteger(value.restored) && value.restored >= 0 && value.restored <= 200 ? value.restored : null,
@@ -85,10 +140,47 @@ export function chatHistoryStatus(value) {
     savingAvailable: typeof value.savingAvailable === 'boolean' ? value.savingAvailable : null }
 }
 
+/**
+ * The breadcrumb parents that still hold in `project`: each composition and the one it was opened
+ * from must exist, and that one must still contain it. A dropped entry reads as opened from Main.
+ */
+export function compParentsIn(project, parents) {
+  const comps = project?.comps ?? {}
+  const contains = (parent, id) => (comps[parent]?.tracks ?? []).some(track => (track.clips ?? []).some(clip => clip.kind === 'comp' && clip.comp === id))
+  return Object.fromEntries(Object.entries(parents ?? {}).filter(([id, parent]) => Object.hasOwn(comps, id) && (parent == null || Object.hasOwn(comps, parent) && contains(parent, id))))
+}
+
+/**
+ * Names each receipt for the assistant change whose versions hold it, once and only within the
+ * server session that made it, so a card keeps its title after later changes.
+ */
+export function stampedReceipts(receipts, changes, session) {
+  if (!Array.isArray(changes) || !changes.length) return receipts
+  let stamped = false
+  const next = receipts.map(receipt => {
+    if (receipt.changeId != null || (receipt.session ?? null) !== (session ?? null)) return receipt
+    const change = changes.find(item => receipt.version > item.beforeVersion && receipt.version <= item.afterVersion)
+    if (!change) return receipt
+    stamped = true
+    return { ...receipt, changeId: change.id, changeKind: change.kind, changeLabel: change.label }
+  })
+  return stamped ? next : receipts
+}
+
 export function set(patch) {
-  const next = typeof patch === 'function' ? patch(store) : patch
+  let next = typeof patch === 'function' ? patch(store) : patch
+  // Showing a preview starts from the saved project; while an edit is still saving there is none.
+  if (next.previewShown && !next.previewShown.base) next = { ...next, previewShown: pending > 0 ? null : { id: next.previewShown.id, base: store.project, version: store.version, root: store.root } }
   const changedComp = Object.hasOwn(next, 'openComp') && next.openComp !== store.openComp
+  const changedProject = Object.hasOwn(next, 'project') && next.project !== store.project
   Object.assign(store, next, changedComp ? { selMarker: null } : {})
+  // Opening or calling the assistant brings its tab forward again.
+  if (next.chatOpen === true && !Object.hasOwn(next, 'sideTab')) store.sideTab = 'assistant'
+  // Undo, Redo or another edit can remove the open composition. The editor then returns to Main.
+  if (changedProject && store.compParents) store.compParents = compParentsIn(store.project, store.compParents)
+  if (changedProject && store.openComp != null && !Object.hasOwn(store.project?.comps ?? {}, store.openComp)) Object.assign(store, { openComp: null, selection: [], selMarker: null })
+  // A shown preview that ended (applied, discarded, replaced or out of date) is forgotten for good.
+  if (store.previewShown && !previewProject()) store.previewShown = null
   for (const l of listeners) l()
 }
 
@@ -177,6 +269,7 @@ export async function retryEditRecovery() {
 /** Applies ops now and on the server. Returns the server's log and created ids. */
 export async function edit(ops, summary, options = {}) {
   if (!store.project) return null
+  if (store.previewShown) { refusePreviewEdit(); return null }
   const expectedVersion = options?.expectedVersion
   if (expectedVersion !== undefined && (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0 || expectedVersion !== store.version || pending > 0)) {
     toast('This form is out of date. Wait for pending edits, then reopen it before applying changes.', 'error')
@@ -218,17 +311,24 @@ export async function edit(ops, summary, options = {}) {
 
 export function connect(onProject) {
   return host.events({
-    hello: () => set({ connected: true }),
+    // The local server says how deep the undo history is and which server session this is.
+    hello: d => set({ connected: true, ...(historyDepth(d?.history) ? { history: historyDepth(d.history) } : {}), ...(d?.session?.id ? { session: d.session } : {}) }),
     error: () => set({ connected: false }),
     project: d => {
       if (d.version < store.version) return
+      // An event without a depth (the hosted editor) clears a stale one, so Undo and Redo stay enabled.
+      const history = historyDepth(d.history)
       if (d.who === 'you' && pending > 0) {
-        set({ version: d.version })
+        set({ version: d.version, history })
 
         return
       }
       const highlight = new Map(store.highlight)
-      const receipt = changeReceipt(store.project, d.project, { version: d.version, who: d.who, at: d.at })
+      const made = changeReceipt(store.project, d.project, { version: d.version, who: d.who, at: d.at })
+      // The plain sentences the server returns with an assistant edit travel with its receipt.
+      const notes = Array.isArray(d.notes) ? d.notes.filter(note => typeof note === 'string' && note.trim()).slice(0, 10).map(note => note.slice(0, 700)) : []
+      // The server session tags the receipt, because versions start again with each one.
+      const receipt = made && { ...made, ...(notes.length ? { notes } : {}), session: store.session?.id ?? null }
       let receipts = store.receipts
       if (receipt) {
         receipts = [...receipts, { ...receipt, displayBytes: JSON.stringify(receipt).length }].slice(-30)
@@ -239,14 +339,14 @@ export function connect(onProject) {
         // Include changed layers in nested compositions.
         if (receipt) for (const clip of receipt.clips) if (clip.status !== 'deleted') highlight.set(clip.id, performance.now())
       }
-      set({ ...(host.kind === 'browser-local' && d.root && d.root !== store.root ? { root: d.root, source: null, selection: [], selMarker: null, selTrack: null, openComp: null, viewerMode: 'timeline', jobs: d.jobs ?? [] } : {}), project: d.project, version: d.version, highlight, receipts })
+      set({ ...(host.kind === 'browser-local' && d.root && d.root !== store.root ? { root: d.root, source: null, selection: [], selMarker: null, selTrack: null, openComp: null, viewerMode: 'timeline', jobs: d.jobs ?? [] } : {}), project: d.project, version: d.version, highlight, receipts, history })
       onProject?.(d)
     },
     activity: a => set(s => ({ activity: [...s.activity, a].slice(-60) })),
     chat: c => set({ chat: c }),
     chatHistory: value => set({ chatHistory: chatHistoryStatus(value) }),
     claude: c => set({ claude: c }),
-    assistantReview: value => set({ assistantReview: value }),
+    assistantReview: value => set(s => ({ assistantReview: value, receipts: stampedReceipts(s.receipts, value?.changes, s.session?.id) })),
     // The assistant shows the user a moment or layers; engine-host seeks on seekRequest.
     uiShow: value => set({
       ...(value.comp !== undefined ? { openComp: value.comp } : {}),
@@ -269,6 +369,6 @@ export function selectedClips() {
 
 export function addRef(ref) {
   const captured = ref.kind === 'marker' ? { ...ref, comp: Object.hasOwn(ref, 'comp') ? ref.comp : store.openComp ?? null, context: ref.context ?? { projectRoot: store.root, projectVersion: store.version } } : ref
-  set(s => ({ refs: [...s.refs.filter(r => !(r.kind === captured.kind && r.id === captured.id && (r.kind !== 'marker' || r.comp === captured.comp))), captured].slice(-16), chatOpen: true }))
+  set(s => ({ refs: [...s.refs.filter(r => !(r.kind === captured.kind && r.id === captured.id && (r.kind !== 'marker' || r.comp === captured.comp))), captured].slice(-16), chatOpen: true, chatCollapsed: false }))
   toast(`${ref.label} added to the Assistant context`)
 }

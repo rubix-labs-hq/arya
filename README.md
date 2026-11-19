@@ -23,7 +23,7 @@
 
 Arya is an open-source video and motion editor. Cut, grade, animate, mix and make shorts in one project. Edit by hand on a timeline, or tell an AI assistant what should change. The assistant edits the same project you do, so every change is an ordinary edit you can see, adjust and undo.
 
-Arya runs as a native SwiftUI and Metal app for Mac, and as a browser editor. You can run the browser editor from source with a local media server and a Claude Code plugin, or try a hosted version with fewer features. All of them use the same project format and editing operations. iPad and iPhone versions are coming later.
+Arya runs as a native SwiftUI and Metal app for Mac, iPhone and iPad, and as a browser editor. You can run the browser editor from source with a local media server and a Claude Code plugin, or try a hosted version with fewer features. All of them use the same project format and editing operations.
 
 <p align="center">
   <img src="site/assets/product/edit-workspace.webp" alt="Arya Edit page with a scene from Tears of Steel: a viewer with a selected title, and a timeline with seven picture clips, linked dialogue, a location card and markers." width="900">
@@ -88,7 +88,8 @@ Arya runs as a native SwiftUI and Metal app for Mac, and as a browser editor. Yo
 **AI assistant**
 - Select clips, a title or a range and say what should change.
 - The assistant reads the project, can look at rendered frames and edits through the same operations as the timeline. Undo reverses its edits.
-- Connect your own Claude Code, Codex or Google Antigravity account through the provider's official sign-in. Arya includes no AI credits.
+- In the local browser editor, each request also carries your first request and the latest messages of the conversation, and the assistant can read older saved messages when it needs them.
+- Sign in with ChatGPT to use your own ChatGPT plan, or connect your own Claude Code, Codex or Google Antigravity account through the provider's official sign-in. Arya includes no AI credits.
 - Optional. Editing and export never need an assistant.
 
 ### Where each feature runs
@@ -115,7 +116,7 @@ The Mac app and the local browser editor share the same project format and editi
 | --- | --- |
 | **Mac app** | Download the notarized DMG from [GitHub Releases](https://github.com/rubix-labs-hq/arya/releases/latest). Requires macOS 14 or newer, Apple silicon or Intel. Free. |
 | **Browser editor** | Try the hosted editor at [editwitharya.app/editor](https://editwitharya.app/editor/) in current Chrome or Edge. It has no assistant, transcription, captions, Figma or interchange (see [Where each feature runs](#where-each-feature-runs)). For everything, run it locally (see below). |
-| **iPhone, iPad and Mac App Store** | On the [App Store](https://apps.apple.com/us/app/arya-video-editor/id6826357116) for iPhone and iPad. The Mac App Store edition shares the same App Store record, so one purchase covers all three. See [Pricing](#pricing). |
+| **iPhone, iPad and Mac App Store** | On the [App Store](https://apps.apple.com/us/app/arya-video-editor/id6826357116) for iPhone and iPad. The Mac App Store edition shares the same App Store record. From version 1.2.0, one Arya Pro purchase covers all three. See [Pricing](#pricing). |
 | **Build from source** | See [Quick start for developers](#quick-start-for-developers). |
 
 ## Pricing
@@ -140,7 +141,12 @@ The official website is https://editwitharya.app. Browser projects are stored pe
 - Google Chrome (headless Chrome renders browser exports and frame snapshots)
 - Xcode Command Line Tools (`xcode-select --install`) to build the local persistence helper
 - Xcode 26.4.1 or newer for the native app
-- Optional: whisper.cpp for browser transcription (`brew install whisper-cpp`, model in `~/.reel/models/ggml-base.en.bin`)
+- Optional: whisper.cpp and its English base model for browser transcription. The editor looks for both on every request, so you can install them while it runs, with no restart:
+
+  ```bash
+  brew install whisper-cpp
+  mkdir -p ~/.reel/models && curl -L -o ~/.reel/models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+  ```
 
 ### Install
 

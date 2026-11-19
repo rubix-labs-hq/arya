@@ -390,7 +390,9 @@ console.log('Passed post-import production editBatch request through shared appl
 '''
         controls = (editor / 'NativeControls.swift').read_text()
         style = block(controls, 'enum NativeEditorStyle {') + '\n' + block(controls, 'enum NativeType {') + '\n' + block(controls, 'enum NativeRadius {')
-        toolbar = block(controls, 'struct NativeToolbarButtonStyle: ButtonStyle {')
+        toolbar = '\n'.join(block(controls, marker) for marker in [
+            'struct NativeToolbarButtonStyle: ButtonStyle {', 'struct NativePrimaryButtonStyle: ButtonStyle {',
+            'struct NativeSecondaryButtonStyle: ButtonStyle {', 'private struct NativeActionButton: View {', 'struct NativeInputField: ViewModifier {'])
         number_row = block(controls, 'struct NativeNumberRow: View {')
         padding = block(controls, 'extension View {')
         ui_source = 'import Foundation\nimport CryptoKit\nimport Darwin\nimport SwiftUI\nimport UniformTypeIdentifiers\n' + json_source + '\n' + folder + '\n' + projections + '\n' + dictionary + '\n' + selection + '\n' + ui_fixture + '\n' + implementation + '\n' + style + '\n' + toolbar + '\nfunc nativeTimecode(_ time: Double, fps: Double) -> String { String(time) }\n' + block(deliver, 'struct NativeInterchangeImportSheet: View {') + '\n' + number_row + '\n' + padding + '\n' + mobile_fixture + '\n' + block(deliver, 'enum NativeExportDimensions {') + '\n' + block(deliver, 'struct NativeInterchangeSheetDestination: Identifiable {') + '\n' + block(deliver, 'private struct NativeDeliveryHistoryView: View {') + '\n' + block(deliver, 'struct NativeExportRepeatGuard {') + '\n' + block(deliver, 'struct NativeDeliverPanel: View {')

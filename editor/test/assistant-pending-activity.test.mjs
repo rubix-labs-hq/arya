@@ -34,7 +34,7 @@ const tick = async () => { for (let i = 0; i < 6; i++) await Promise.resolve() }
 test('pending presentation over aged idle metadata has no old elapsed time or stale stage', () => {
   const stored = Object.freeze({ state: 'idle', startedAt: null, updatedAt: 0, phase: '' })
   const result = assistantActivity(stored, { pending: true, now: 164000 })
-  assert.equal(result.state, 'sending'); assert.equal(result.label, 'Sending request')
+  assert.equal(result.state, 'sending'); assert.equal(result.label, 'Working'); assert.equal(result.stage, 'Preparing your request')
   assert.equal(result.detail, 'Preparing your request.'); assert.equal(result.elapsed, '')
   assert.equal(result.active, true); assert.equal(result.canStop, false)
   assert.deepEqual(stored, { state: 'idle', startedAt: null, updatedAt: 0, phase: '' })
@@ -67,9 +67,9 @@ test('real stopping, stop uncertainty and disconnected status keep their existin
   assert.equal(stopping.state, 'cancelling'); assert.equal(stopping.elapsed, '1m 01s')
   assert.equal(stopping.detail, 'Waiting for the agent and its processing to stop.'); assert.equal(stopping.canStop, false)
   const unconfirmed = assistantActivity({ ...run, state: 'error', stopUnconfirmed: true }, { pending: true, now: 62000 })
-  assert.equal(unconfirmed.label, 'Stop unconfirmed'); assert.match(unconfirmed.detail, /Stopping could not be confirmed/)
+  assert.equal(unconfirmed.label, 'Failed'); assert.equal(unconfirmed.stage, 'Stopping could not be confirmed'); assert.match(unconfirmed.detail, /Stopping could not be confirmed/)
   const unconfirmedStop = assistantActivity({ ...run, stopUnconfirmed: true }, { pending: true, stopping: true, now: 62000 })
-  assert.equal(unconfirmedStop.elapsed, '1m 01s'); assert.equal(unconfirmedStop.label, 'Stop unconfirmed')
+  assert.equal(unconfirmedStop.elapsed, '1m 01s'); assert.equal(unconfirmedStop.label, 'Stopping…'); assert.equal(unconfirmedStop.stage, 'Stopping could not be confirmed')
   const disconnected = assistantActivity(run, { pending: true, connected: false, now: 62000 })
   assert.equal(disconnected.label, 'Reconnecting'); assert.match(disconnected.detail, /request may still be running/)
 })
@@ -115,11 +115,11 @@ for (const stored of [
   assert.equal(f.draft(), 'Keep and resend this draft'); assert.equal(f.state.claude, run)
   assert.equal(f.state.refs, f.originalRefs); assert.equal(f.state.receipts, f.originalReceipts)
   const afterDecline = f.render()
-  if (run.state === 'done') { assert.match(text(card(afterDecline)), /Response finished/); assert.match(text(card(afterDecline)), /Previous outcome/); assert.match(text(card(afterDecline)), /4s/) }
+  if (run.state === 'done') { assert.match(text(card(afterDecline)), /Done/); assert.match(text(card(afterDecline)), /Previous outcome/); assert.match(text(card(afterDecline)), /4s/) }
   const resend = nodes(afterDecline).find(node => node.props?.['aria-label'] === 'Send message').props.onClick()
   await tick()
   const pendingTree = f.render(), pendingCard = card(pendingTree)
-  assert.ok(pendingCard); assert.match(text(pendingCard), /Sending request/); assert.match(text(pendingCard), /Preparing your request\./)
+  assert.ok(pendingCard); assert.match(text(pendingCard), /Working/); assert.match(text(pendingCard), /Preparing your request/)
   assert.doesNotMatch(text(pendingCard), /No update|Last confirmed stage|Previous stored stage|Previous outcome/)
   assert.equal(nodes(pendingCard).some(node => node.props?.class === 'assistant-run-time'), false)
   assert.equal(f.state.claude, run); assert.equal(f.state.receipts, f.originalReceipts)
@@ -129,7 +129,7 @@ for (const stored of [
   assert.equal(f.calls.at(-1).url, '/api/bridge/send'); assert.equal(f.calls.at(-1).body.text, f.draft())
   f.state.claude = { state: 'working', startedAt: 160000, updatedAt: 164000, phase: 'Inspecting current frame' }
   const active = card(f.render())
-  assert.match(text(active), /Using tools/); assert.match(text(active), /Inspecting current frame/); assert.match(text(active), /4s/)
+  assert.match(text(active), /Working/); assert.match(text(active), /Inspecting current frame/); assert.match(text(active), /4s/)
   assert.doesNotMatch(text(active), /Preparing your request/)
   f.submission.resolve({ queued: 'offline-run' }); await resend
   assert.equal(f.draft(), '')
@@ -149,7 +149,7 @@ test('Stop cancels a submitted request before the first run status event arrives
   await tick()
   assert.equal(f.calls.at(-1).url, '/api/bridge/send')
   assert.equal(f.state.claude.state, 'idle', 'the stream has not confirmed admission yet')
-  const stop = nodes(f.render()).find(node => node.type === 'button' && text(node) === 'Stop request')
+  const stop = nodes(f.render()).find(node => node.type === 'button' && node.props['aria-label'] === 'Stop request')
   assert.equal(stop.props.disabled, false)
   await stop.props.onClick()
   assert.equal(f.calls.at(-1).url, '/api/assistant/cancel')

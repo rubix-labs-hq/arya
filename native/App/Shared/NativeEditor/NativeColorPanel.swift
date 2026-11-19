@@ -206,7 +206,7 @@ struct NativeColorPanel: View {
     private func scopeControls(width: Double) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("SCOPES").font(.system(size: 10, weight: .semibold)).foregroundStyle(NativeEditorStyle.muted)
+                Text("Scopes").font(.system(size: 10, weight: .semibold)).foregroundStyle(NativeEditorStyle.muted)
                 Spacer()
                 Menu {
                     ForEach(["Waveform", "Parade", "Histogram", "Vectorscope"], id: \.self) { mode in Button(mode) { scope = mode } }

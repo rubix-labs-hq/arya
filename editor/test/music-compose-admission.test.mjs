@@ -9,6 +9,7 @@ import { createProcessingAdmission, captureProcessingIdentity, processingCancell
 import { applyOps, newProject } from '../core/project.js'
 import { ProjectRecovery, recoveryProject } from '../core/project-recovery.mjs'
 import { prepareLibraryOps, verifyLibraryInputs } from '../core/library-resources.js'
+import { editNotes } from '../core/edit-notes.js'
 import { musicAssetRecord, validateMusicScore } from '../core/music-score.js'
 import { renderMusicWAV } from '../music/render-score.mjs'
 import { confinedFile } from '../agent/browser-assistant.mjs'
@@ -52,12 +53,12 @@ function fixture(t, { held = false, assistant = true, afterImport } = {}) {
   assert.match(wrapper[0], /compose\/place' \? \(\.\.\.args\) => admit\(/)
   const projectRoute = server.match(/^  'GET \/api\/project': .*$/m)
   assert.ok(projectRoute)
-  const make = new Function('AsyncLocalStorage', 'createProcessingAdmission', 'captureProcessingIdentity', 'processingCancelled', 'applyOps', 'newProject', 'ProjectRecovery', 'recoveryProject', 'recoveryDouble', 'prepareLibraryOps', 'verifyLibraryInputs', 'musicAssetRecord', 'confinedFile', 'musicRoutes', 'fs', 'path', 'ROOT', 'initial', 'controls', `
+  const make = new Function('AsyncLocalStorage', 'createProcessingAdmission', 'captureProcessingIdentity', 'processingCancelled', 'applyOps', 'newProject', 'ProjectRecovery', 'recoveryProject', 'recoveryDouble', 'prepareLibraryOps', 'verifyLibraryInputs', 'musicAssetRecord', 'confinedFile', 'musicRoutes', 'fs', 'path', 'ROOT', 'initial', 'controls', 'editNotes', `
     const FILE = path.join(ROOT, 'reel.project.json'), DOT = path.join(ROOT, '.reel'), CACHE = path.join(DOT, 'cache'), HERE = ROOT, CHROME = '/missing-fixture-chrome';
     let project = initial, version = 7, projectEpoch = 2, lastText = JSON.stringify(initial), recoveryState = {status:'valid'};
     const assistantCalls = new AsyncLocalStorage(), processing = createProcessingAdmission(), musicCompositions = new WeakMap(), assistantReview = { commitBy() {} };
     const past = [], future = [], activity = [], chat = [], jobs = new Map(), writes = [], calls = [], origins = [], scopes = [];
-    const chatHistory = {status:()=>({})}, claude = {}, transcriptService = {}, assistantService = {};
+    const chatHistory = {status:()=>({})}, claude = {}, transcriptService = {}, assistantService = {}, session = {id:'fixture-session',startedAt:0};
     const broadcast = () => {}, pushActivity = () => {}, log = () => {}, once = (_key, fn) => fn(), jobPublic = job => job;
     const readBody = () => {}, readJson = () => {}, send = () => {}, serveFile = () => {};
     const cacheKey = () => {throw new Error('Music must not create video proxies')}, ensureProxy = async () => {};
@@ -107,7 +108,7 @@ function fixture(t, { held = false, assistant = true, afterImport } = {}) {
       close:()=>processing.close()
     };
   `)
-  const f = make(AsyncLocalStorage, createProcessingAdmission, captureProcessingIdentity, processingCancelled, applyOps, newProject, ProjectRecovery, recoveryProject, recoveryDouble, prepareLibraryOps, verifyLibraryInputs, musicAssetRecord, confinedFile, musicRoutes, fs, path, root, initial, controls)
+  const f = make(AsyncLocalStorage, createProcessingAdmission, captureProcessingIdentity, processingCancelled, applyOps, newProject, ProjectRecovery, recoveryProject, recoveryDouble, prepareLibraryOps, verifyLibraryInputs, musicAssetRecord, confinedFile, musicRoutes, fs, path, root, initial, controls, editNotes)
   const invoke = f.invoke
   f.invoke = (...args) => { const promise = Promise.resolve().then(() => invoke(...args)); pending.add(promise); promise.finally(() => pending.delete(promise)).catch(() => {}); return promise }
   f.compose = body => f.invoke('POST /api/audio/compose', body ?? request, assistant)

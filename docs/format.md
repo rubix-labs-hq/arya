@@ -61,7 +61,7 @@ Transform (visual kinds). Position is where the anchor point sits in the parent'
 | `fadeIn`, `fadeOut` | seconds |
 | `parent` | id of a clip in the same composition; its transform applies on top (opacity is not inherited) |
 
-Video, image and comp sources are fit inside the frame (contain) before `scale` applies. Titles size in 1080p pixels scaled to the frame height. Shapes size in layer pixels.
+Video, image and comp sources are fit inside the frame (contain) before `scale` applies. A title's `size`, `stroke.width` and `shadow` blur and offsets are in units of 1/1080 of the frame height. Its `x` and `y` are in the timeline's own frame, like every layer. A title shadow draws only when `shadow` is an object; missing values default to color `#000000aa`, blur 12, x 0 and y 4. `GET /api/describe` prints those shadow values, names the 1/1080 unit and gives a position as `x N of W` and `y N of H`. Shapes size in layer pixels.
 
 Audio fields: `volume` (dB), `pan` (-1…1), `eq` `{ low, mid, high }` dB, `mute` (silences the clip; before 2026-10-09 the browser editor ignored `mute` on audio clips, so a saved project with a muted audio clip now plays quieter than it did then), `role` (`dialogue`, `music` or `effects`; optional, also allowed on a track). Without a role, a track named Music, Score or Dialogue decides, then picture sound counts as dialogue and audio-only files as music.
 
@@ -141,10 +141,10 @@ Both backends (the Node server and the native app) implement the same paths. The
 
 | Method and path | Body or query | Answer |
 | --- | --- | --- |
-| `GET /api/project` | | `{ project, version, root, activity, chat, claude, jobs }` |
+| `GET /api/project` | | `{ project, version, history, session, root, activity, chat, claude, jobs }`; `history` is `{ undo, redo }`, the number of steps each way, and `session` is `{ id, startedAt }` for the running server |
 | `GET /api/outline` | | `{ outline, opsDoc, uiState, version }` |
-| `POST /api/ops` | `{ ops, who, summary, returnProject }` | `{ version, log, created, project? }`; unknown media in ops is probed first |
-| `POST /api/undo`, `POST /api/redo` | | `{ version, project }` |
+| `POST /api/ops` | `{ ops, who, summary, returnProject }` | `{ version, log, created, notes?, project? }`; unknown media in ops is probed first; `notes` is present only when there is something to note (edit notes, below) |
+| `POST /api/undo`, `POST /api/redo` | | `{ version, project, moved, history: { undo, redo } }`; `moved` is false when there was nothing to undo or redo |
 | `POST /api/new` | `{ name, width, height, fps }` | `{ version, project }` |
 | `POST /api/import` | `{ paths }` (files or folders, project-relative) | `{ assets, version }` |
 | `POST /api/forget` | `{ paths }` | `{ version }` |
@@ -152,14 +152,18 @@ Both backends (the Node server and the native app) implement the same paths. The
 | `GET /api/strip?src=` | | `{ url, interval, count, w, h }` (one sprite of thumbnails) |
 | `GET /api/peaks?src=` | | `{ perSec, peaks: [0…255] }` |
 | `GET /api/audio?src=&in=&dur=` | | WAV, 48 kHz stereo, of that source range |
-| `POST /api/analyze` | `{ src, kind: scenes|silence|beats|loudness|transcript, … }` | per kind: `{ times }`, `{ ranges }`, `{ times, bpm }`, `{ lufs, lra }`, `{ words }` |
-| `GET /api/caps` | | `{ whisper, chrome, presets }` |
+| `POST /api/analyze` | `{ src, kind: scenes|silence|beats|loudness|transcript, in?, dur?, … }` | per kind: `{ times }`, `{ ranges }`, `{ times, bpm }`, `{ lufs, lra, truePeak }`, `{ words }`; loudness returns `silent: true` and no `truePeak` when that part has no sound |
+| `POST /api/audio/measure-mix` | `{ from?, to?, comp? }` | a job of kind `measure-mix` (below) |
+| `POST /api/transcript/import` | `{ src, locale?, format: srt|vtt|json, text, revision? }` | `{ saved, src, locale, revision, status, provider, replaced, format, wordCount, from, to, warnings }` |
+| `GET /api/assistant/history` | `?offset=&limit=&chars=`, or `?at=&role=&from=&chars=` | a page of the saved assistant conversation, or the rest of one long message |
+| `GET /api/caps` | | `{ whisper, chrome, presets, transcription, fonts, analysisHelp, … }` |
 | `GET /api/luts` | | `{ luts }` |
 | `POST /api/ui-state` | `{ playhead, selection, page, … }` | `{ ok }` |
 | `POST /api/export` | `{ preset, name, width, height, fps, range }` | the job |
-| `POST /api/frame` | `{ at, width }` | `{ path, at }` (PNG) |
+| `POST /api/frame` | `{ at, width, comp? }` | `{ path, at }` (PNG) |
 | `GET /api/jobs`, `GET /api/jobs/wait?id=&timeout=` | | `{ jobs }`, the job when it ends or times out |
 | `POST /api/jobs/cancel` | `{ id }` | `{ ok }` |
+| `POST /api/assistant/propose` | `{ ops, steps?, summary, reset? }` | `{ previewed, applied: false, proposal, baseVersion, ops, steps, log, created, notes?, outline, note }`; checks the ops and stores them as a preview without saving them |
 | `POST /api/bridge/send` | `{ type: prompt, text, refs }` | `{ queued }` (editor → Claude) |
 | `GET /api/bridge/poll` | | `{ items, uiState, version, editors }` (Claude Code plugin only) |
 | `POST /api/bridge/claude` | `{ state, text, reply? }` | `{ ok }` (plugin → editor) |
@@ -169,7 +173,27 @@ Both backends (the Node server and the native app) implement the same paths. The
 | `GET /cache/…` | | generated thumbnails |
 | `GET /core/…`, `GET /vendor/…`, `GET /ui/plugins-index.js` | | shared code, vendored libraries, the UI plugin index |
 
-Pushes (Server-Sent Events at `GET /api/events?role=ui|worker` on the Node server; `window.__reelEvent(name, data)` in the native app): `hello`, `project { project, version, who }`, `activity { who, text, at }`, `chat [messages]`, `claude { state, text }`, `job {…}`, `media { src, proxy }`, and for the render worker `render { job, project, version }`, `cancel { id }`.
+The native app does not answer `POST /api/transcript/import` or `GET /api/assistant/history` yet. Its replies have no `notes`, `moved`, `history`, `session`, `fonts`, `analysisHelp` or job `waiting` fields. Its loudness analysis measures the whole file and returns `{ lufs, lra, lraAvailable, tp }`, and its `POST /api/audio/measure-mix` returns its own result fields. The rules below describe the Node server.
+
+Jobs. A render job that has not reached the render worker says why in `waiting: { reason, since, job? }`. `reason` is `behind-job` (`job` is the id of the render job that has the worker), `behind-processing` (a proxy, an analysis or other processing has the queue), `copying-sources` (the job's media is being copied and hashed) or `worker-starting` (the render worker has not connected yet). `since` is when that reason began, in milliseconds. The field is removed once the worker has the job. `sourceCopyMs` is how long the media copy took. `workerStep` is the last setup step the worker reported before its first frames: `luts`, `audio`, `upload`, `plans` or `first`.
+
+Frames. A frame may wait 5 minutes behind other processing before it fails. Once the worker has it, the frame has 30 s to render. If the render worker goes away during a frame, the frame is rendered once more on a new worker. A second loss fails with "The preview renderer restarted. Try again." A frame the assistant asks for waits at most 85 s, so its answer arrives inside the 120 s limit of an assistant tool call.
+
+Filmstrips and waveforms. `GET /api/strip` and `GET /api/peaks` answer from the cache without waiting. Otherwise the request waits for a processing slot. At most 4 of these requests sit in the processing queue at a time, so an export started during an import still gets a slot. The answer is HTTP 429 only when 256 requests already wait, or when a request has waited 120 s.
+
+Analysis ranges. For `loudness` and `silence`, `in` and `dur` are source seconds and limit the measurement to that part of the file. The reply repeats them. Silence ranges are in source seconds. `scenes` and `beats` refuse `in` and `dur`. A range past the end of the file is refused with "No sound was measured: that part is past the end of the file, or the file has no sound." `truePeak` is in dBTP. `analysisHelp` in `GET /api/caps` holds plain sentences under `loudness`, `silence`, `clip` (how source seconds map to timeline seconds) and `mix`. `fonts` is `{ bundled, system, note }`: bundled families draw the same on every machine, system families are the names the title inspector offers and are not checked, and any other family draws only on a machine that has it. Without it the text falls back to a system sans, with no error.
+
+Mix measurement. `POST /api/audio/measure-mix` measures the loudness of the timeline mix, with its volumes and effects, and leaves no file. `from` and `to` are timeline seconds. With neither, it measures what an export with no range would render: the timeline range, or the whole timeline. Wait with `GET /api/jobs/wait?id=` and read `result`: `{ lufs, lra, truePeak, from, to, dur }`, or `silent: true` and no `truePeak`. The render worker mixes the range into `.reel/<job>.wav`, and that file is removed when the job ends, fails or is cancelled. Nothing is written to `renders/` or the delivery record. It measures the saved project, not an assistant preview.
+
+Edit notes. Notes are sentences about facts the log does not state: text that is probably wider than the frame (estimated from character counts), a clip hidden under another on the same track or captions that overlap on theirs, for more than half a frame, what a speed change did to length and pitch, text that lost time in a cut, caption style keys that draw nothing, a `highlightColor` that shows only with the karaoke preset, fonts that may fall back, new captions without word timings, text left for 2 frames or less, titles shorter than their reading time (about 0.6 s plus 0.1 s a word), video zoomed more than 10% past the scale that fills a frame of another shape, and where a title sits. Each note has two forms (`editNotes` in `core/edit-notes.js`, with `audience` `agent` or `person`). The agent's form names clip ids and property paths and says what to send to fix it. `notes` in the replies of `POST /api/ops` and `POST /api/assistant/propose` hold that form. The person's form is a short sentence that names clips as the timeline does, and the `project` push after a `POST /api/ops` commit carries it. Where a title sits has no person form. There are at most 10 of each, and each is at most 700 characters. They are never written to the project, the activity list or an undo summary. The propose reply has the notes for every op the preview holds.
+
+Transcripts. `POST /api/transcript/import` saves word timings the person supplies. `text` is a whole SRT file, a WebVTT file, or timed JSON (an array, or `{ words }`, of `{ t, end, text }` in source seconds). Every word needs text and an end after its start, inside the source duration, or nothing is saved. SRT and WebVTT words are spread evenly across their cue, and the reply has a warning that says so. An import replaces the saved transcript for that source and locale and has no undo. When one is saved, the import is refused until `revision` names its current revision. During an assistant request with Preview changes on, a first import is saved and a replacement is refused. When whisper.cpp recognizes a source, a word that ends after the file is cut at its end, and a word that starts at or after the end is left out with a warning that counts them. A word timed inside a pause (below -32 dBFS, or 26 dB below the recording's peak when that is lower, for at least 0.45 s) moves into the speech beside it, and a word that runs into a pause is cut at the edge of the speech. Order and text never change. A source whose sound never reaches -60 dBFS is saved with no words and a warning, and whisper.cpp is not run. Words saved later for that source clear the warning. `POST /api/captions/from-transcript` may also return `dropped` and `droppedCount`, with a warning, for words that sit in a part of the source the timeline cuts out, between the first and last source second it plays.
+
+Assistant. `GET /api/assistant/history` is read only, and agents may call it. Without `at` it returns a page of saved messages, oldest first, with `nextOffset` when more follow. Without `offset` the page holds the newest messages. With `at` (a message's `at` value), an optional `role` (`user` or `assistant`) and `from` (a character offset), it returns the rest of that message. The `claude` push and `assistant` in `GET /api/state` carry the run state. It has `committed`, a list of `{ version, summary }` for each edit the run saved, and `retryable`, which is true only when the connection between Arya and the agent failed. Arya sends such a request twice more before the turn fails. During a request that has a pending preview, the assistant's frames show the project with that preview's ops applied in memory, and the frame job has `preview: true`. With Preview changes on, a frame of a preview made before the project changed is refused with status 409. `GET /api/outline` and `GET /api/describe` still show the saved project.
+
+Pushes (Server-Sent Events at `GET /api/events?role=ui|worker` on the Node server; `window.__reelEvent(name, data)` in the native app): `hello { version, role, session, history }`, `project { project, version, who, history, notes? }`, `activity { who, text, at }`, `chat [messages]`, `claude { state, text }`, `job {…}`, `media { src, proxy }`, and for the render worker `render { job, project, version }`, `cancel { id }`. The server opens the render worker at `/?worker=1&id=TOKEN`, and its page connects with `role=worker&worker=TOKEN`. A page whose token belongs to a worker the server has replaced gets HTTP 204 and stops reconnecting. A page without a token is accepted.
+
+`history` is `{ undo, redo }`, the number of steps each way, as in `GET /api/project`. The editor keeps the `session` and `history` from `hello`. Each `project` push replaces `history`, and one without it clears the stored depth, so Undo and Redo stay enabled. `notes` is present only after a `POST /api/ops` commit that has person notes (edit notes, above). The editor shows them on the assistant's result card for an edit by the agent. The hosted beta editor keeps the project in the browser. Its `hello` has no `session` or `history`, and its `project` snapshots carry `history` once a project is open.
 
 Native message protocol (`window.webkit.messageHandlers.reel.postMessage`, answered through WKScriptMessageHandlerWithReply): `{ type: "request", path, method, body }` → the same JSON as the HTTP route; `{ type: "subscribe", role }`; `{ type: "upload", name, base64 }` → `{ path }`.
 
@@ -178,6 +202,8 @@ Security: the Node server listens on 127.0.0.1, refuses writes whose `Origin` is
 ## 4. Ops
 
 `OPS_DOC` in `core/project.js` is the authoritative list (Claude reads it through `reel_get`). Ops naming a clip act in the composition that holds it; ops that create clips act in `comp` when given, else the main timeline. v3 adds: `add_comp`, `update_comp {target, set}`, `delete_comp {target}`, `comp_clip {target, track, start, dur}`, `precompose {ids, name}`, `add_shape {shape, track, start, dur}`, `add_null`, `add_mask {id, mask}`, `update_mask {id, mask, set}`, `delete_mask {id, mask}`, `matte {id, matte|null}`, `parent {id, parent|null}`, `expression {id|ids, prop, expr|null}`, `node_add {id, node, after?, parallel?}`, `node_update {id, node, set}`, `node_delete {id, node}`, `node_link {id, from, to, input}`, `node_unlink {id, to, input}`, `nodes_reset {id}`, `make_multicam {srcs, offsets?, labels?, track, start}`, `multicam_cut {id, at, angle, local?}`, `add_caption {text, start, dur, track?}`, `captions {items: [{t, end, text}], track?, replace?}`.
+
+`delete_range {from, to, tracks?, ripple?}` snaps both edges to the frame. On each track, an edge that falls less than half a frame inside a clip moves onto that clip's edge, and a part of a clip shorter than half a frame is not kept. So a range that starts on a clip's first frame leaves no sliver of that clip and no hole beside it.
 
 ## 5. Extension points
 

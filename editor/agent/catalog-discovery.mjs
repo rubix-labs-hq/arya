@@ -18,6 +18,31 @@ export async function readCodexCatalog({ executable, env, cwd = os.tmpdir(), tim
     signedIn = /logged in using chatgpt/i.test(`${result.stdout}\n${result.stderr}`)
   } catch {}
   if (!signedIn) throw message('Codex must report a ChatGPT subscription sign-in before model discovery.')
+  return appServer({ executable, env, cwd, timeoutMs, methods: ['initialize', 'model/list'] }, async request => {
+    const records = [], cursors = new Set()
+    let cursor = null
+    for (let page = 0; page < 8; page++) {
+      const result = await request('model/list', { limit: 100, includeHidden: false, ...(cursor ? { cursor } : {}) })
+      if (!Array.isArray(result.data) || records.length + result.data.length > 256) throw message('The provider catalog exceeded its model limit or returned an invalid page.')
+      records.push(...result.data)
+      cursor = result.nextCursor ?? null
+      if (cursor === null) return normalizeCatalog({ provider: 'codex', records, checkedAt: Date.now(), source: { kind: 'provider-cli', label: 'Codex App Server model/list' } })
+      if (typeof cursor !== 'string' || !cursor || cursor.length > 4096 || cursors.has(cursor)) throw message('The provider returned an invalid or repeated model cursor.')
+      cursors.add(cursor)
+    }
+    throw message('The provider catalog exceeded its page limit. No partial catalog was enabled.')
+  })
+}
+
+// Who is signed in to Codex, for binding a saved sharing permission to that account. The answer
+// holds account identifiers and no credential. This client can only initialize and read the account.
+export async function readCodexAccount({ executable, env, cwd = os.tmpdir(), timeoutMs = 8000 } = {}) {
+  if (typeof executable !== 'string' || !executable || !env || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) throw message('Reading the account needs an installed CLI and a bounded timeout.')
+  return appServer({ executable, env, cwd, timeoutMs, methods: ['initialize', 'account/read'] }, request => request('account/read', { refreshToken: false }))
+}
+
+/** One App Server process for one read. `work` gets a request function limited to `methods`. */
+async function appServer({ executable, env, cwd, timeoutMs, methods }, work) {
   const child = spawn(executable, ['app-server', '--stdio'], { env, cwd, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
   let sequence = 0, bytes = 0, partial = '', terminal = false, stderr = ''
   const decoder = new StringDecoder('utf8')
@@ -47,7 +72,7 @@ export async function readCodexCatalog({ executable, env, cwd = os.tmpdir(), tim
   })
   const send = value => child.stdin.write(`${JSON.stringify(value)}\n`)
   const request = (method, params) => {
-    if (!['initialize', 'model/list'].includes(method)) throw message('This client accepts metadata methods only.')
+    if (!methods.includes(method)) throw message('This client accepts metadata methods only.')
     if (terminal) return Promise.reject(message('The catalog connection is no longer active.'))
     const id = ++sequence
     return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); send({ id, method, params }) })
@@ -55,18 +80,7 @@ export async function readCodexCatalog({ executable, env, cwd = os.tmpdir(), tim
   try {
     await request('initialize', { clientInfo: { name: 'arya_model_catalog', title: 'Arya model catalog', version: '0.1.0' } })
     send({ method: 'initialized', params: {} })
-    const records = [], cursors = new Set()
-    let cursor = null
-    for (let page = 0; page < 8; page++) {
-      const result = await request('model/list', { limit: 100, includeHidden: false, ...(cursor ? { cursor } : {}) })
-      if (!Array.isArray(result.data) || records.length + result.data.length > 256) throw message('The provider catalog exceeded its model limit or returned an invalid page.')
-      records.push(...result.data)
-      cursor = result.nextCursor ?? null
-      if (cursor === null) return normalizeCatalog({ provider: 'codex', records, checkedAt: Date.now(), source: { kind: 'provider-cli', label: 'Codex App Server model/list' } })
-      if (typeof cursor !== 'string' || !cursor || cursor.length > 4096 || cursors.has(cursor)) throw message('The provider returned an invalid or repeated model cursor.')
-      cursors.add(cursor)
-    }
-    throw message('The provider catalog exceeded its page limit. No partial catalog was enabled.')
+    return await work(request)
   } finally {
     clearTimeout(timeout)
     stopPending(message('Model discovery ended.'))

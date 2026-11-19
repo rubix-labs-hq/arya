@@ -156,6 +156,98 @@ const exists = async file => { try { return await fs.readFile(file, 'utf8') } ca
 // process.kill(0, 0) signals our own process group and always succeeds, so refuse a non-PID.
 const alive = pid => { const id = Number(pid); assert.ok(Number.isInteger(id) && id > 0, `Expected a process ID, got ${JSON.stringify(pid)}`); try { process.kill(id, 0); return true } catch { return false } }
 
+test('whole assistant messages join as paragraphs and streamed text stays as sent', async () => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-agent-join-'))
+  const message = text => JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text } })
+  const delta = text => JSON.stringify({ type: 'stream_event', event: { delta: { type: 'text_delta', text } } })
+  const outputs = {
+    'whole messages': [message('I trimmed the opening.'), JSON.stringify({ type: 'item.completed', item: { type: 'command_execution' } }), message('The cut now lands on the beat.'), message('Nothing else changed.')],
+    'empty first message': [message(''), message('Only this.')],
+    'streamed deltas': [delta('Hel'), delta('lo'), JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'Hello' }] } })],
+    'text records': [JSON.stringify({ type: 'text', text: 'One' }), JSON.stringify({ type: 'text', text: 'Two' })],
+    'a failure': [message('I started.'), JSON.stringify({ type: 'error', message: 'The usage limit was reached.' })],
+  }
+  const bridge = await startBridge({ prepareAdapter: async request => ({ command: process.execPath, args: ['-e', `for (const line of ${JSON.stringify(outputs[request.text])}) console.log(line)`], cwd: folder, env: { PATH: process.env.PATH }, prompt: '', cleanup: async () => {} }) })
+  const run = async text => {
+    const id = randomUUID(), events = []
+    assert.equal((await request(bridge, 'POST', '/v1/runs', { id, provider: 'claude-code', text })).status, 201)
+    for (let i = 0, cursor = 0; i < 400; i++) {
+      const batch = (await request(bridge, 'GET', `/v1/runs/${id}/events?after=${cursor}`)).body.events
+      for (const event of batch) { cursor = event.seq; events.push(event) }
+      if (events.some(event => event.type === 'done' || event.type === 'error')) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert.ok(events.every(event => !('wholeMessage' in event)), 'the whole-message marker stays inside the bridge')
+    return events
+  }
+  const texts = async text => {
+    const events = await run(text)
+    assert.equal(events.at(-1)?.type, 'done', JSON.stringify(events.at(-1)))
+    return events.filter(event => event.type === 'text').map(event => event.text)
+  }
+  try {
+    assert.deepEqual(outputEvent('codex', message('Hi')), { type: 'text', text: 'Hi', wholeMessage: true })
+    assert.deepEqual(await texts('whole messages'), ['I trimmed the opening.', '\n\nThe cut now lands on the beat.', '\n\nNothing else changed.'])
+    assert.equal((await texts('empty first message')).join(''), 'Only this.', 'an empty message opens no paragraph')
+    assert.deepEqual(await texts('streamed deltas'), ['Hel', 'lo'], 'deltas are not separated and the repeated whole message is still dropped')
+    assert.deepEqual(await texts('text records'), ['One', 'Two'])
+    const failure = (await run('a failure')).at(-1)
+    assert.equal(failure.type, 'error')
+    assert.equal(failure.message, 'The usage limit was reached.', 'removing the marker leaves an error its message')
+  } finally { await bridge.close(); await fs.rm(folder, { recursive: true, force: true }) }
+})
+
+test('adapters report each started block once and the model the CLI ran', () => {
+  const stream = event => JSON.stringify({ type: 'stream_event', event })
+  const secret = 'Invented request text that must stay out of labels.'
+  assert.deepEqual(outputEvent('claude-code', JSON.stringify({ type: 'system', subtype: 'init', model: 'claude-sample-1', tools: [] })), { type: 'model', model: 'claude-sample-1' })
+  assert.equal(outputEvent('claude-code', JSON.stringify({ type: 'system', subtype: 'init' })), null)
+  assert.deepEqual(outputEvent('claude-code', stream({ type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } })), { type: 'progress', label: 'Thinking' })
+  assert.deepEqual(outputEvent('claude-code', stream({ type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 't1', name: 'mcp__reel__reel_api', input: {} } })), { type: 'progress', label: 'Using the editor' })
+  assert.deepEqual(outputEvent('claude-code', stream({ type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 't1', name: `odd name ${secret}` } })), { type: 'progress', label: 'Using a tool' })
+  // Deltas carry no progress: neither thinking text nor tool input becomes a label.
+  assert.equal(outputEvent('claude-code', stream({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: secret } })), null)
+  assert.equal(outputEvent('claude-code', stream({ type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: secret } })), null)
+  assert.equal(outputEvent('claude-code', stream({ type: 'content_block_start', index: 2, content_block: { type: 'text', text: '' } })), null)
+  assert.deepEqual(outputEvent('claude-code', stream({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hi' } })), { type: 'text', text: 'Hi' })
+  assert.deepEqual(outputEvent('codex', JSON.stringify({ type: 'item.started', item: { id: 'i0', type: 'reasoning', text: secret } })), { type: 'progress', label: 'Thinking' })
+  assert.deepEqual(outputEvent('codex', JSON.stringify({ type: 'item.started', item: { id: 'i1', type: 'mcp_tool_call', server: 'reel', tool: 'reel_frame', arguments: { note: secret } } })), { type: 'progress', label: 'Looking at a frame' })
+  // Internal tool names never reach the run line.
+  assert.deepEqual(outputEvent('codex', JSON.stringify({ type: 'item.started', item: { id: 'i2', type: 'mcp_tool_call', server: 'reel', tool: 'sample_tool' } })), { type: 'progress', label: 'Using a tool' })
+  assert.equal(outputEvent('codex', JSON.stringify({ type: 'item.completed', item: { id: 'i0', type: 'reasoning', text: secret } })), null)
+  assert.equal(outputEvent('codex', JSON.stringify({ type: 'item.updated', item: { id: 'i1', type: 'mcp_tool_call', tool: 'reel_api' } })), null)
+  // Another provider's records are not read as Claude Code or Codex activity.
+  assert.equal(outputEvent('custom', JSON.stringify({ type: 'system', subtype: 'init', model: 'x' })), null)
+  for (const line of ['null', '7', '"text"']) assert.equal(outputEvent('codex', line), null)
+})
+
+test('the bridge passes progress and model events only to a host that asks for them', async () => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-agent-activity-'))
+  const lines = [
+    JSON.stringify({ type: 'system', subtype: 'init', model: 'claude-sample-1' }),
+    JSON.stringify({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', name: 'mcp__reel__reel_api' } } }),
+    JSON.stringify({ type: 'stream_event', event: { delta: { type: 'text_delta', text: 'Done.' } } }),
+  ]
+  const adapter = async () => ({ command: process.execPath, args: ['-e', `for (const line of ${JSON.stringify(lines)}) console.log(line)`], cwd: folder, env: { PATH: process.env.PATH }, prompt: '', cleanup: async () => {} })
+  const kinds = async options => {
+    const bridge = await startBridge({ prepareAdapter: adapter, ...options })
+    try {
+      const id = randomUUID(), events = []
+      assert.equal((await request(bridge, 'POST', '/v1/runs', { id, provider: 'claude-code', text: 'sample' })).status, 201)
+      for (let i = 0, cursor = 0; i < 400 && !events.some(event => ['done', 'error'].includes(event.type)); i++) {
+        for (const event of (await request(bridge, 'GET', `/v1/runs/${id}/events?after=${cursor}`)).body.events) { cursor = event.seq; events.push(event) }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      return events.map(event => event.type === 'progress' ? `progress:${event.label}` : event.type === 'model' ? `model:${event.model}` : event.type)
+    } finally { await bridge.close() }
+  }
+  try {
+    // The Mac app's companion runs the bridge without the option, and its decoder refuses unknown kinds.
+    assert.deepEqual(await kinds({}), ['route', 'text', 'done'])
+    assert.deepEqual(await kinds({ activityEvents: true }), ['route', 'model:claude-sample-1', 'progress:Using the editor', 'text', 'done'])
+  } finally { await fs.rm(folder, { recursive: true, force: true }) }
+})
+
 test('oversized output finalizes within bounds and keeps the companion responsive', async () => {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-agent-limit-')), marker = path.join(folder, 'pid')
   const bridge = await externalBridge('flood', marker), id = randomUUID()

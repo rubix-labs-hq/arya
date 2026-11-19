@@ -75,8 +75,8 @@ test('the toolbar names the active tool and its shortcut, and groups edit tools 
       assert.equal(walk([readout]).find(node => node.type === 'kbd') ? text(walk([readout]).find(node => node.type === 'kbd')) : null, key)
       assert.equal(walk([readout]).find(node => hasClass(node, 'tool-where')) ? text(walk([readout]).find(node => hasClass(node, 'tool-where'))) : null, where)
       const groups = tree.filter(node => node.props?.role === 'group')
-      assert.deepEqual(groups.map(group => group.props['aria-label']), ['Edit tools', 'Drawing and tracking tools'])
-      assert.deepEqual(walk([groups[0]]).filter(node => node.type === 'button').map(button => button.props['aria-label']), ['Select', 'Trim: ripple edges, roll edit points, slip bodies, ⌥ slide', 'Blade', 'Slip', 'Slide', 'Hand'])
+      assert.deepEqual(groups.map(group => group.props['aria-label']), ['Timeline tools', 'Edit tools', 'Drawing and tracking tools'])
+      assert.deepEqual(walk([groups[1]]).filter(node => node.type === 'button').map(button => button.props['aria-label']), ['Select', 'Trim: ripple edges, roll edit points, slip bodies, ⌥ slide', 'Blade', 'Slip', 'Slide', 'Hand'])
       const pressed = tree.filter(node => node.type === 'button' && node.props['aria-pressed'] === true && node.props.title)
       assert.equal(pressed.filter(button => !['Snapping', 'Linked selection'].includes(button.props['aria-label'])).length, 1, 'one tool is pressed')
     }

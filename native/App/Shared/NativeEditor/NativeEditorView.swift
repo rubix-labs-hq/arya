@@ -8,6 +8,9 @@ import AVFoundation
 #elseif os(macOS)
 import AppKit
 #endif
+#if targetEnvironment(macCatalyst)
+import GameController
+#endif
 
 #if os(iOS)
 private struct NativeContextInteractionsEnabledKey: EnvironmentKey {
@@ -128,6 +131,18 @@ enum NativeWorkspaceLayout {
     }
     static func sideBySide(width: Double, height: Double) -> Bool {
         width >= 600 && height < 400
+    }
+
+    /// The width of the assistant when a compact layout docks it as a trailing column, or 0
+    /// when it opens as a sheet. A phone on its side gives it about 45 percent beside the
+    /// viewer, where a sheet would cover the picture. An iPad at least 900 points wide gives
+    /// it a column at any height, so a short window between the two rules still docks it.
+    /// Accessibility text keeps the sheet, which has the whole width.
+    static func compactAssistantDock(width: Double, height: Double, accessibilityText: Bool) -> Double {
+        guard width.isFinite, height.isFinite, !accessibilityText else { return 0 }
+        if width >= 600 && height < 500 { return min(420, max(280, (width * 0.45).rounded())) }
+        if width >= 900 { return min(400, max(320, (width * 0.34).rounded())) }
+        return 0
     }
 
     static func scrollingStack(width: Double, height: Double) -> Bool {
@@ -314,6 +329,11 @@ struct NativeEditorView: View {
     @AppStorage("editor.layout.timelineVisible") private var timelineVisible = true
     @State private var libraryVisible = false
     @State private var settingsVisible = false
+    /// Set by the Ask Arya entry so the opened assistant focuses its draft once.
+    @State private var assistantFocusRequest = false
+    /// The compact assistant came from the wide layout's open pane, not from a request made in
+    /// the compact layout, so it is shown only while there is a column for it.
+    @State private var assistantCarried = false
     @State private var lastEditingPanel: NativePanel = .edit
     @State private var compactToolsExpanded = false
     @State private var compactControlsDetailed = false
@@ -322,12 +342,27 @@ struct NativeEditorView: View {
     var body: some View {
         GeometryReader { geometry in
             let compact = usesCompactLayout(size: geometry.size)
+            let assistantDock = compact ? NativeWorkspaceLayout.compactAssistantDock(width: geometry.size.width, height: geometry.size.height, accessibilityText: dynamicTypeSize.isAccessibilitySize) : 0
             let status = session.projectReadOnlyReason.map { "Project is read-only. \($0)" } ?? model.status
             VStack(spacing: 0) {
                 header(compact: compact, width: geometry.size.width)
                 Rectangle().fill(NativeEditorStyle.line).frame(height: 1)
                 #if os(iOS)
-                mobileWorkspace(compact: compact)
+                HStack(spacing: 0) {
+                    mobileWorkspace(compact: compact)
+                    // Where there is room the assistant sits beside the picture, not over it. A docked
+                    // column has no navigation bar, so it draws its own header: name, status, settings, close.
+                    if assistantDock > 0, model.mobilePanel == .assistant {
+                        Rectangle().fill(NativeEditorStyle.line).frame(width: 1)
+                        NativeAssistantPanel(assistant: session.assistant, model: model, openSettings: { settingsVisible = true },
+                                             close: closeCompactAssistant)
+                            .frame(width: assistantDock)
+                            .background(NativeEditorStyle.panel)
+                            .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
+                            .accessibilityIdentifier("editor.assistant.docked")
+                    }
+                }
+                .animation(reduceMotion ? nil : NativeMotion.panel, value: model.mobilePanel == .assistant)
                 #else
                 if compact {
                     compactWorkspace
@@ -335,7 +370,18 @@ struct NativeEditorView: View {
                     desktopWorkspace
                 }
                 #endif
-                if !status.isEmpty {
+                // The desktop keeps this line's height, so a message arriving never moves the panes.
+                // An unseen copy of the closed line always takes that room, drawn the same way.
+                if !status.isEmpty || !compact {
+                    ZStack(alignment: .topLeading) {
+                    if !compact {
+                        DisclosureGroup(isExpanded: .constant(false)) { EmptyView() } label: {
+                            HStack(spacing: 8) { Image(systemName: "info.circle"); Text("Status").lineLimit(1) }
+                        }
+                        .font(.system(size: 11)).padding(.horizontal, 12).padding(.vertical, 6)
+                        .hidden().accessibilityHidden(true)
+                    }
+                    if !status.isEmpty {
                     DisclosureGroup {
                         Text(status).font(compact ? .caption : .system(size: 11)).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
@@ -349,9 +395,14 @@ struct NativeEditorView: View {
                     }
                     .font(compact ? .caption : .system(size: 11)).foregroundStyle(NativeEditorStyle.muted)
                     .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(NativeEditorStyle.panel)
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Editor status. \(status)")
+                    .transition(.opacity)
+                    }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(NativeEditorStyle.panel)
+                    .animation(NativeMotion.content, value: status.isEmpty)
                 }
             }
             // Before the inset so the card sits above the compact workflow bar.
@@ -371,14 +422,23 @@ struct NativeEditorView: View {
                     }
                 }
             }
-            .sheet(item: compactTaskBinding()) { panel in
+            .sheet(item: compactTaskBinding(assistantDocked: assistantDock > 0)) { panel in
                 NavigationStack {
-                    NativePanelView(panel: panel, model: model, session: session)
-                        .navigationTitle(panel.name)
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { model.mobilePanel = nil } } }
+                    NativePanelView(panel: panel, model: model, session: session, inSheet: true)
+                        .navigationTitle(panel == .assistant ? "Arya" : panel.name)
+                        #if os(iOS)
+                        // Every panel sheet uses the inline title, so the picker under it is not repeated.
+                        .navigationBarTitleDisplayMode(.inline)
+                        #endif
+                        // The assistant's sheet closes. "Done" there read as finishing the draft.
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(panel == .assistant ? "Close" : "Done") { if panel == .assistant { closeCompactAssistant() } else { model.mobilePanel = nil } } } }
+                        .modifier(NativeSheetSurface())
                 }
                 .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
-                .presentationDetents([.medium, .large])
+                .presentationBackground(NativeEditorStyle.panel)
+                // At accessibility text sizes the assistant's chips, draft and actions leave the medium
+                // sheet one line of history, so it opens at full height. Standard sizes keep the viewer visible.
+                .presentationDetents(panel == .assistant && dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .background { mediaImportPresentation(panel: panel) }
@@ -388,8 +448,10 @@ struct NativeEditorView: View {
                     NativeLibraryPanel(model: model)
                         .navigationTitle("Project library")
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { libraryVisible = false } } }
+                        .modifier(NativeSheetSurface())
                 }
                 .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+                .presentationBackground(NativeEditorStyle.panel)
                 #if os(macOS)
                 .frame(minWidth: 320, idealWidth: 480, minHeight: 440)
                 #endif
@@ -400,6 +462,9 @@ struct NativeEditorView: View {
                     .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
             }
             .onChange(of: model.mobilePanel) { _, next in
+                // Other panels open and replace the compact assistant directly, so the carried
+                // mark is dropped wherever the panel stops being the assistant.
+                if next != .assistant { assistantCarried = false }
                 // A nested picker belongs to the panel that presented it. Never queue it
                 // behind a dismissed panel or migrate it across a layout/project switch.
                 if let request = model.mediaImportRequest, request.panelID != next?.rawValue {
@@ -447,15 +512,29 @@ struct NativeEditorView: View {
             .onChange(of: compact) { _, next in
                 if next {
                     if !NativeCompactWorkspaceRouting.inlineWorkspaces.contains(model.panel) { model.mobilePanel = model.panel; model.panel = compactEditingPanel }
+                    // An open assistant stays open across the change where the compact layout
+                    // has a column for it. Where it would be a sheet over the picture it waits,
+                    // still marked open, for the window to widen or for an explicit close.
+                    if NativeAssistantVisibility.opensCompact(wideVisible: assistantVisible, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = .assistant; assistantCarried = true }
                 } else {
                     let tool = model.mobilePanel
                     // Bounded tasks keep their sheet identity and unsaved form state
                     // when an iPad window widens into the multi-pane workspace.
                     if tool == .media || tool == .deliver { return }
                     model.mobilePanel = nil
+                    // Closing the compact assistant cleared the saved flag, so only an assistant
+                    // still open, or one the compact layout never showed, comes back here.
                     if tool == .assistant || model.panel == .assistant { assistantVisible = true; model.panel = lastEditingPanel }
                     else if let tool, NativePanel.tools.contains(tool) { model.panel = tool }
                 }
+            }
+            // A compact window can lose or gain the column while it stays compact, as when an
+            // iPad or Mac window is dragged through 900 points. A carried assistant leaves with
+            // the column, still marked open, and returns with it. It never turns into a sheet.
+            .onChange(of: assistantDock > 0) { _, docked in
+                guard compact else { return }
+                if NativeAssistantVisibility.hidesWithoutDock(carried: assistantCarried, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = nil }
+                else if docked, NativeAssistantVisibility.opensCompact(wideVisible: assistantVisible, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = .assistant; assistantCarried = true }
             }
         }
         .background(NativeEditorStyle.background)
@@ -482,6 +561,11 @@ struct NativeEditorView: View {
         }
         #endif
         .background { mediaImportPresentation() }
+        #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: Automation.presentNotification)) { note in
+            if note.object as? String == "settings" { settingsVisible = true }
+        }
+        #endif
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.requestFrame() } else { model.releasePreview() } }
         .onChange(of: session.projectReadOnlyReason) { old, next in if old != nil && next == nil { model.projectWritable() } }
         .onDisappear { model.discardRenderPreview(); model.pause(); model.pauseSource() }
@@ -556,18 +640,29 @@ struct NativeEditorView: View {
         )
     }
 
-    private func compactTaskBinding() -> Binding<NativePanel?> {
+    private func compactTaskBinding(assistantDocked: Bool = false) -> Binding<NativePanel?> {
         let presented = model.mobilePanel
         return Binding(
             get: {
                 guard let panel = model.mobilePanel, !NativeCompactWorkspaceRouting.inlineWorkspaces.contains(panel) else { return nil }
+                // A docked assistant is a column in the workspace, so no sheet presents it.
+                // A carried one whose column just ended is about to be hidden, so it gets none either.
+                if (assistantDocked || assistantCarried) && panel == .assistant { return nil }
                 return panel
             },
             set: { next in
                 guard next == nil, model.mobilePanel == presented else { return }
-                model.mobilePanel = nil
+                // Swiping the assistant's sheet away closes it, as its Close button does.
+                if presented == .assistant { closeCompactAssistant() } else { model.mobilePanel = nil }
             }
         )
+    }
+
+    /// Closes the compact assistant, docked or in its sheet, and forgets that it was open, so a
+    /// wider layout does not bring back a pane the person closed.
+    private func closeCompactAssistant() {
+        model.mobilePanel = nil
+        assistantVisible = NativeAssistantVisibility.afterCompactClose
     }
 
     private func usesCompactLayout(size: CGSize) -> Bool {
@@ -612,7 +707,8 @@ struct NativeEditorView: View {
             .frame(width: layout.editingWidth, height: max(0, size.height - 12)).padding(6)
             if layout.showAssistant {
                 NativeResizeDivider(value: $assistantWidth, range: 290...layout.assistantMaximum, vertical: true, reversed: true, label: "Assistant width")
-                NativeAssistantPanel(assistant: session.assistant, model: model, openSettings: { settingsVisible = true }, close: { assistantVisible = false })
+                NativeAssistantPanel(assistant: session.assistant, model: model, openSettings: { settingsVisible = true }, close: { assistantVisible = false },
+                                     focusRequest: $assistantFocusRequest)
                     .frame(width: layout.assistantWidth, height: size.height, alignment: .topLeading)
                     .background(NativeEditorStyle.panel)
             }
@@ -739,7 +835,7 @@ struct NativeEditorView: View {
                 .accessibilityElement(children: .combine).accessibilityLabel("\(compactEditingPanel.name) controls")
                 .accessibilityValue(model.chosenClipCount > 1 ? "\(model.chosenClipCount) selected clips" : model.selected?.name ?? "No selected clip")
             if model.selected != nil {
-                NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask AI",
+                NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask Arya",
                                         compact: dynamicTypeSize.isAccessibilitySize)
                     .buttonStyle(NativeToolbarButtonStyle())
                     .frame(minWidth: 44, minHeight: 44)
@@ -793,7 +889,8 @@ struct NativeEditorView: View {
             if desktop.showAssistant {
                 NativeResizeDivider(value: $assistantWidth, range: 290...desktop.assistantMaximum, vertical: true, reversed: true, label: "Assistant width")
                     .frame(width: divider, height: size.height).offset(x: size.width - desktop.assistantWidth - divider)
-                NativeAssistantPanel(assistant: session.assistant, model: model, openSettings: { settingsVisible = true }, close: { assistantVisible = false })
+                NativeAssistantPanel(assistant: session.assistant, model: model, openSettings: { settingsVisible = true }, close: { assistantVisible = false },
+                                     focusRequest: $assistantFocusRequest)
                     .frame(width: desktop.assistantWidth, height: size.height, alignment: .topLeading)
                     .background(NativeEditorStyle.panel).offset(x: size.width - desktop.assistantWidth)
             }
@@ -1067,7 +1164,7 @@ struct NativeEditorView: View {
             Button { libraryVisible = true } label: { Image(systemName: "books.vertical") }
                 .help("Project library").accessibilityLabel("Project library")
             if model.selected != nil || model.composition != nil {
-                NativeSelectionAIAction(model: model, assistant: session.assistant, compact: true)
+                NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask Arya about selection", compact: true)
             }
             Menu {
                 Toggle("Show media", isOn: mediaToggle).keyboardShortcut("1", modifiers: [.command, .option])
@@ -1087,14 +1184,9 @@ struct NativeEditorView: View {
             Button { settingsVisible = true } label: { Image(systemName: "gearshape") }
                 .keyboardShortcut(",", modifiers: [.command])
                 .help("Settings (⌘,)").accessibilityLabel("Settings")
-            Button { assistantVisible.toggle() } label: {
-                if width >= 1180 { Label("Assistant", systemImage: "text.bubble") }
-                else { Image(systemName: "text.bubble") }
-            }
-                .buttonStyle(NativeDesktopChromeButtonStyle(selected: assistantVisible))
+            NativeAssistantEntry(assistant: session.assistant, open: assistantVisible, action: toggleAssistant)
                 .keyboardShortcut("a", modifiers: [.command, .option])
-                .help("Show Assistant beside the edit (⌥⌘A)").accessibilityLabel("Assistant")
-                .accessibilityValue(assistantVisible ? "Open" : "Closed")
+                .padding(.horizontal, 4)
             workspaceMenu(compact: false)
         }.buttonStyle(NativeDesktopChromeButtonStyle())
     }
@@ -1118,11 +1210,12 @@ struct NativeEditorView: View {
                 #if os(macOS)
                 // A borderless Mac menu keeps one text label and draws its own indicator,
                 // so a second chevron or a stacked label renders as "⌄ Name ⌄".
-                Text(model.composition == nil ? model.project?.name ?? "Opening project"
-                     : "\(model.project?.name ?? "Opening project") · \(desktopCompositionName)")
+                Text(model.composition == nil ? model.project?.name ?? model.pendingProjectName
+                     : "\(model.project?.name ?? model.pendingProjectName) · \(desktopCompositionName)")
                     .font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 #else
-                Text(model.project?.compositions.first { $0.id == model.composition }?.name ?? model.project?.name ?? "Opening project")
+                // One short word while the project loads, so a phone title never truncates.
+                Text(model.project?.compositions.first { $0.id == model.composition }?.name ?? model.project?.name ?? (model.projectMissing ? "No project" : model.projectLoadFailed ? "Not opened" : "Opening"))
                     .font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(NativeEditorStyle.muted)
                 #endif
@@ -1135,33 +1228,43 @@ struct NativeEditorView: View {
         }
         #if os(macOS)
         .menuStyle(.borderlessButton)
-        .help("Project: \(model.project?.name ?? "Opening project")\nTimeline: \(desktopCompositionName)")
+        .help("Project: \(model.project?.name ?? model.pendingProjectName)\nTimeline: \(desktopCompositionName)")
         .accessibilityLabel("Project and timeline or composition")
-        .accessibilityValue("\(model.project?.name ?? "Opening project"), \(desktopCompositionName)")
+        .accessibilityValue("\(model.project?.name ?? model.pendingProjectName), \(desktopCompositionName)")
         #else
         .help("Switch timeline or composition")
         .accessibilityLabel("Timeline or composition")
-        .accessibilityValue(model.project?.compositions.first { $0.id == model.composition }?.name ?? model.project?.name ?? "Opening project")
+        .accessibilityValue(model.project?.compositions.first { $0.id == model.composition }?.name ?? model.project?.name ?? model.pendingProjectName)
         #endif
         .accessibilityIdentifier("editor.composition")
     }
 
+    /// The workflow tabs as one group, as wide as its names and centred. A header too narrow
+    /// for all six scrolls the same group.
     private var workflowPages: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
-                ForEach(NativePanel.workflow) { panel in
-                    Button { select(panel) } label: { Text(panel.name).lineLimit(1).fixedSize(horizontal: true, vertical: false).padding(.horizontal, 1) }
-                        .buttonStyle(NativeToolbarButtonStyle(selected: model.panel == panel))
-                        .keyboardShortcut(KeyEquivalent(Character(String((NativePanel.workflow.firstIndex(of: panel) ?? 0) + 1))), modifiers: [.shift])
-                        .accessibilityLabel("\(panel.name) workflow")
-                        .accessibilityAddTraits(model.panel == panel ? [.isSelected] : [])
-                }
-            }.padding(3)
+        ViewThatFits(in: .horizontal) {
+            workflowTabs.fixedSize()
+                .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 7))
+                .overlay { RoundedRectangle(cornerRadius: 7).stroke(NativeEditorStyle.line) }
+            ScrollView(.horizontal, showsIndicators: false) { workflowTabs }
+                .frame(maxWidth: .infinity).fixedSize(horizontal: false, vertical: true)
+                .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 7))
+                .overlay { RoundedRectangle(cornerRadius: 7).stroke(NativeEditorStyle.line) }
         }
-        .frame(maxWidth: .infinity).fixedSize(horizontal: false, vertical: true)
-        .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 7))
-        .overlay { RoundedRectangle(cornerRadius: 7).stroke(NativeEditorStyle.line) }
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain).accessibilityLabel("Workflow")
+    }
+
+    private var workflowTabs: some View {
+        HStack(spacing: 2) {
+            ForEach(NativePanel.workflow) { panel in
+                Button { select(panel) } label: { Text(panel.name).lineLimit(1).fixedSize(horizontal: true, vertical: false).padding(.horizontal, 1) }
+                    .buttonStyle(NativeToolbarButtonStyle(selected: model.panel == panel))
+                    .keyboardShortcut(KeyEquivalent(Character(String((NativePanel.workflow.firstIndex(of: panel) ?? 0) + 1))), modifiers: [.shift])
+                    .accessibilityLabel("\(panel.name) workflow")
+                    .accessibilityAddTraits(model.panel == panel ? [.isSelected] : [])
+            }
+        }.padding(3)
     }
 
     private func headerActions(compact: Bool, width: Double) -> some View {
@@ -1178,7 +1281,7 @@ struct NativeEditorView: View {
                         Button { libraryVisible = true } label: { Image(systemName: "books.vertical") }
                             .help("Project titles, transitions, effects and motion").accessibilityLabel("Project library")
                         if model.selected != nil || model.composition != nil {
-                            NativeSelectionAIAction(model: model, assistant: session.assistant, compact: true)
+                            NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask Arya about selection", compact: true)
                         }
                     }
                 }.fixedSize(horizontal: true, vertical: false)
@@ -1207,22 +1310,17 @@ struct NativeEditorView: View {
                 if compact {
                     Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                         .help("Undo latest edit").accessibilityLabel("Undo")
-                    // On a phone the assistant is one tap away, not inside Tools.
-                    Button { select(.assistant, compact: true) } label: { Image(systemName: "text.bubble") }
-                        .buttonStyle(NativeToolbarButtonStyle(selected: model.mobilePanel == .assistant))
-                        .help("Ask the assistant to edit or explain").accessibilityLabel("Assistant")
+                    // On a phone the assistant is one tap away, not inside Tools. Its sheet stops
+                    // at a medium detent so the viewer stays visible.
+                    NativeAssistantEntry(assistant: session.assistant, open: model.mobilePanel == .assistant, phone: true) {
+                        select(.assistant, compact: true)
+                    }
                         .accessibilityIdentifier("editor.compactAssistant")
+                        .keyboardShortcut("a", modifiers: [.command, .option])
                 } else {
-                Button {
-                    assistantVisible.toggle()
-                } label: {
-                    if iconActions { Image(systemName: "text.bubble") }
-                    else { Label("Assistant", systemImage: "text.bubble").labelStyle(.titleAndIcon) }
-                }
-                    .buttonStyle(NativeToolbarButtonStyle(selected: compact ? model.mobilePanel == .assistant : assistantVisible))
-                    .accessibilityLabel("Assistant")
-                    .accessibilityValue((compact ? model.mobilePanel == .assistant : assistantVisible) ? "Open" : "Closed")
-                    .help("Show Assistant beside the edit")
+                NativeAssistantEntry(assistant: session.assistant, open: assistantVisible, action: toggleAssistant)
+                    .keyboardShortcut("a", modifiers: [.command, .option])
+                    .padding(.horizontal, 4)
                 }
                 workspaceMenu(compact: compact)
             }.fixedSize(horizontal: true, vertical: false).layoutPriority(2)
@@ -1275,10 +1373,8 @@ struct NativeEditorView: View {
                     Button("Reset layout") { resetLayout() }
                 }
             }
-            Section {
-                Toggle("Web editor", isOn: $session.useWebEditor)
-                Button("Reload editor") { session.reloadEditor() }
-            }
+            // The browser editor is a development aid, under the same rule as the Mac's View menu.
+            NativeDeveloperMenuItems(session: session, optionKey: NativeOptionKey.shared)
         }
         return Menu {
             if compact {
@@ -1333,7 +1429,6 @@ struct NativeEditorView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(selected == panel ? NativeEditorStyle.accent : NativeEditorStyle.muted)
                 .background(selected == panel ? NativeEditorStyle.selectionFill : .clear, in: RoundedRectangle(cornerRadius: 6))
-                .overlay { RoundedRectangle(cornerRadius: 6).stroke(selected == panel ? NativeEditorStyle.accent.opacity(0.38) : .clear) }
                 .keyboardShortcut(KeyEquivalent(Character(String((NativePanel.workflow.firstIndex(of: panel) ?? 0) + 1))), modifiers: [.shift])
                 .accessibilityLabel("\(panel.name) workflow")
                 .accessibilityAddTraits(selected == panel ? [.isSelected] : [])
@@ -1353,6 +1448,13 @@ struct NativeEditorView: View {
         select(panel, compact: compact)
     }
 
+    /// Ask Arya opens the assistant beside the edit with its draft focused, or closes it.
+    private func toggleAssistant() {
+        if assistantVisible { assistantVisible = false; return }
+        assistantFocusRequest = true
+        assistantVisible = true
+    }
+
     private func select(_ panel: NativePanel, compact: Bool = false) {
         if panel == .assistant && !compact {
             assistantVisible = true
@@ -1367,6 +1469,9 @@ struct NativeEditorView: View {
             } else {
                 // Task presentation never changes the active editing workspace.
                 dismissCompactKeyboard()
+                // Another tool chosen over the open assistant replaces it, so a wider layout
+                // does not bring the assistant back.
+                if NativeAssistantVisibility.replacedByTool(compactPanel: model.mobilePanel?.rawValue, next: panel.rawValue) { assistantVisible = NativeAssistantVisibility.afterCompactClose }
                 model.mobilePanel = panel
             }
             return
@@ -1417,9 +1522,9 @@ private struct NativeDesktopChromeButtonStyle: ButtonStyle {
                 .font(.system(size: 12, weight: selected ? .semibold : .medium))
                 .foregroundStyle(selected ? NativeEditorStyle.accent : NativeEditorStyle.text)
                 .padding(.horizontal, 8).frame(minWidth: 30, minHeight: 30)
-                .background(selected ? NativeEditorStyle.selectionFill : hovered ? NativeEditorStyle.panelRaised : .clear)
+                .background(selected || hovered ? NativeEditorStyle.panelRaised : .clear)
                 .clipShape(RoundedRectangle(cornerRadius: 5))
-                .overlay { RoundedRectangle(cornerRadius: 5).stroke(selected ? NativeEditorStyle.accent.opacity(0.38) : hovered ? NativeEditorStyle.line : .clear) }
+                .overlay { RoundedRectangle(cornerRadius: 5).stroke(hovered && !selected ? NativeEditorStyle.line : .clear) }
                 .opacity(enabled ? 1 : 0.4)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
                 .contentShape(Rectangle()).onHover { hovered = $0 }
@@ -1476,6 +1581,159 @@ private struct NativeResizeDivider: View {
     }
 }
 
+/// The settings category as Arya's own segmented control. Three segments do not fit a phone,
+/// where "Assistant accounts" was cut short, so there the category is a menu with the whole name.
+private struct NativeSettingsCategoryControl: View {
+    @Binding var section: String
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    private var options: [(value: String, title: String)] {
+        var all = [(value: "assistant", title: "Assistant accounts"), (value: "figma", title: "Figma")]
+        #if os(iOS)
+        all.append((value: "interaction", title: "Interaction"))
+        #endif
+        return all
+    }
+
+    var body: some View {
+        #if os(iOS)
+        if horizontalSizeClass == .compact {
+            Picker("Settings category", selection: $section) {
+                ForEach(options, id: \.value) { Text($0.title).tag($0.value) }
+            }.pickerStyle(.menu).labelsHidden().frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        } else {
+            NativeSegmentedControl(label: "Settings category", selection: $section, options: options, fill: true)
+        }
+        #else
+        NativeSegmentedControl(label: "Settings category", selection: $section, options: options, fill: true)
+        #endif
+    }
+}
+
+/// One rule for the developer entries, Web Editor and Reload Editor, in the Mac's View menu and
+/// in the workspace menu: shown with Option held, with the "editor.developerMenu" default set,
+/// or while the web editor is in use, so there is always a way back from it.
+enum NativeDeveloperOptions {
+    static func visible(optionHeld: Bool, webEditorInUse: Bool, developerDefault: Bool = UserDefaults.standard.bool(forKey: "editor.developerMenu")) -> Bool {
+        optionHeld || webEditorInUse || developerDefault
+    }
+}
+
+/// Whether the assistant is open, carried between the wide layout's saved flag and the compact
+/// layout's panel.
+enum NativeAssistantVisibility {
+    /// The saved flag after the compact assistant is closed on purpose.
+    static let afterCompactClose = false
+    /// Going compact, an assistant open in the wide layout takes the docked column when there
+    /// is one and nothing else is presented.
+    static func opensCompact(wideVisible: Bool, compactPanel: String?, dock: Double) -> Bool {
+        wideVisible && compactPanel == nil && dock > 0
+    }
+    /// While the layout stays compact, an assistant carried from the wide layout leaves when
+    /// its column does. One opened in the compact layout keeps its sheet.
+    static func hidesWithoutDock(carried: Bool, compactPanel: String?, dock: Double) -> Bool {
+        carried && compactPanel == "assistant" && !(dock > 0)
+    }
+    /// Choosing another tool over the open compact assistant closes the assistant.
+    static func replacedByTool(compactPanel: String?, next: String) -> Bool {
+        compactPanel == "assistant" && next != "assistant"
+    }
+}
+
+/// Whether Option is held, published when it changes so a menu that depends on it is rebuilt
+/// before it opens. The Mac reads its own modifier events. Mac Catalyst has no such events, so
+/// it reads the keyboard itself. The iPhone and iPad have no Option-revealed menus.
+@MainActor
+final class NativeOptionKey: ObservableObject {
+    static let shared = NativeOptionKey()
+    @Published private(set) var held = false
+    private var observers: [Any] = []
+
+    private func set(_ next: Bool) { if next != held { held = next } }
+
+    private init() {
+        #if os(macOS)
+        held = NSEvent.modifierFlags.contains(.option)
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged, handler: { event in
+            let option = event.modifierFlags.contains(.option)
+            MainActor.assumeIsolated { NativeOptionKey.shared.set(option) }
+            return event
+        }) { observers.append(monitor) }
+        let center = NotificationCenter.default
+        // A release while another app is in front is never delivered, so each activation reads it again.
+        observers.append(center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { NativeOptionKey.shared.set(NSEvent.modifierFlags.contains(.option)) }
+        })
+        observers.append(center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { NativeOptionKey.shared.set(false) }
+        })
+        #elseif targetEnvironment(macCatalyst)
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: .GCKeyboardDidConnect, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { NativeOptionKey.shared.watchKeyboard() }
+        })
+        observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { NativeOptionKey.shared.watchKeyboard() }
+        })
+        observers.append(center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { NativeOptionKey.shared.set(false) }
+        })
+        watchKeyboard()
+        #endif
+    }
+
+    #if targetEnvironment(macCatalyst)
+    /// Reads both Option keys now and again whenever either changes.
+    private func watchKeyboard() {
+        guard let input = GCKeyboard.coalesced?.keyboardInput else { return }
+        let read = { [weak input] in
+            input?.button(forKeyCode: .leftAlt)?.isPressed == true || input?.button(forKeyCode: .rightAlt)?.isPressed == true
+        }
+        input.keyChangedHandler = { _, _, code, _ in
+            guard code == .leftAlt || code == .rightAlt else { return }
+            let option = read()
+            DispatchQueue.main.async { MainActor.assumeIsolated { NativeOptionKey.shared.set(option) } }
+        }
+        set(read())
+    }
+    #endif
+}
+
+/// Web editor and Reload editor in the workspace menu. Its own view, so a change of the Option
+/// key rebuilds these two entries and not the editor around them.
+struct NativeDeveloperMenuItems: View {
+    @ObservedObject var session: EditorSession
+    @ObservedObject var optionKey: NativeOptionKey
+
+    var body: some View {
+        if NativeDeveloperOptions.visible(optionHeld: optionKey.held, webEditorInUse: session.useWebEditor) {
+            Section {
+                Toggle("Web editor", isOn: $session.useWebEditor)
+                Button("Reload editor") { session.reloadEditor() }
+            }
+        }
+    }
+}
+
+/// A sheet over the editor is an opaque panel with a hairline top edge, so the viewer and
+/// timeline never show through its content.
+struct NativeSheetSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(NativeEditorStyle.panel)
+            .overlay(alignment: .top) {
+                Rectangle().fill(NativeEditorStyle.controlLine).frame(height: 1).ignoresSafeArea(edges: .horizontal)
+                    .allowsHitTesting(false).accessibilityHidden(true)
+            }
+            #if os(iOS)
+            .toolbarBackground(NativeEditorStyle.panel, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            #endif
+    }
+}
+
 private struct NativeEditorPreferences: View {
     @ObservedObject var session: EditorSession
     @Environment(\.dismiss) private var dismiss
@@ -1493,18 +1751,18 @@ private struct NativeEditorPreferences: View {
                 Spacer()
                 Button("Done") { dismiss() }.buttonStyle(NativeToolbarButtonStyle())
             }.padding(.horizontal, 18).padding(.top, 8)
-            Picker("Settings category", selection: $section) {
-                Text("Assistant accounts").tag("assistant")
-                Text("Figma").tag("figma")
-                #if os(iOS)
-                Text("Interaction").tag("interaction")
-                #endif
-            }.pickerStyle(.segmented).padding(.horizontal, 18).padding(.vertical, 12)
+            NativeSettingsCategoryControl(section: $section).padding(.horizontal, 18).padding(.vertical, 12)
+            // Plain rows with a chevron read as places to go, not as a selected list item.
             Button { gettingStartedVisible = true } label: {
-                Text("Getting started")
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
+                HStack {
+                    Label("Getting started", systemImage: "questionmark.circle")
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(NativeEditorStyle.muted)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .padding(.horizontal, 18)
             .accessibilityIdentifier("settings.gettingStarted")
             #if os(iOS)
@@ -1513,10 +1771,12 @@ private struct NativeEditorPreferences: View {
                     Label("Arya Pro", systemImage: "sparkles")
                     Spacer()
                     Text(proStore.access.summary).font(.footnote).foregroundStyle(NativeEditorStyle.muted)
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(NativeEditorStyle.muted)
                 }
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .padding(.horizontal, 18)
             .accessibilityHint("4K, ProRes and HDR export. Editing and 1080p export stay free.")
             .accessibilityIdentifier("settings.pro")
@@ -1569,6 +1829,8 @@ struct NativePanelView: View {
     @ObservedObject var model: NativeEditorModel
     @ObservedObject var session: EditorSession
     var sharedContextHeader = false
+    /// The phone task sheet, whose navigation bar replaces the assistant's own header.
+    var inSheet = false
 
     var body: some View {
         switch panel {
@@ -1588,7 +1850,7 @@ struct NativePanelView: View {
             NativeMotionPanel(model: model, sharedContextHeader: sharedContextHeader)
             #endif
         case .deliver: NativeDeliverPanel(model: model, session: session)
-        case .assistant: NativeAssistantPanel(assistant: session.assistant, model: model)
+        case .assistant: NativeAssistantPanel(assistant: session.assistant, model: model, inSheet: inSheet)
         case .figma: NativeFigmaPanel(session: session, model: model)
         case .transcript: NativeTranscriptPanel(model: model, session: session)
         }
@@ -1644,7 +1906,7 @@ extension NativeEditorModel {
     /// What an AI request about the selection sends, including linked audio or video.
     var aiSelectionLabel: String {
         let linked = selectedIDs.count > chosenClipCount
-        if chosenClipCount > 1 { return linked ? "Ask AI about selected clips and their linked clips" : "Ask AI about selected clips" }
-        return linked ? "Ask AI about selected clip and its linked clip" : "Ask AI about selected clip"
+        if chosenClipCount > 1 { return linked ? "Ask Arya about selected clips and their linked clips" : "Ask Arya about selected clips" }
+        return linked ? "Ask Arya about selected clip and its linked clip" : "Ask Arya about selected clip"
     }
 }

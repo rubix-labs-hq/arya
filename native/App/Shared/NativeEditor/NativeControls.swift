@@ -33,6 +33,19 @@ enum NativeEditorStyle {
     #else
     static let minimumControlHeight: CGFloat = 40
     #endif
+    // Touch sizes are for the phone and iPad. The Mac Catalyst app is a pointer app, so the
+    // shared action, menu, segmented and input styles keep the Mac's compact rows there.
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    static let touchControls = true
+    /// A small row control, such as a size choice: still a full touch target.
+    static let compactControlHeight: CGFloat = 44
+    /// The default height of a primary or secondary action.
+    static let actionHeight: CGFloat = 44
+    #else
+    static let touchControls = false
+    static let compactControlHeight: CGFloat = 26
+    static let actionHeight: CGFloat = 40
+    #endif
 
     /// Keeps a toggle's on state amber inside a container whose tint is neutral.
     /// `Toggle(configuration)` draws the platform style that was in effect outside this one.
@@ -96,13 +109,184 @@ struct NativeToolbarButtonStyle: ButtonStyle {
                 .frame(minWidth: NativeEditorStyle.minimumControlHeight, minHeight: NativeEditorStyle.minimumControlHeight)
                 .background(selected ? NativeEditorStyle.selectionFill : hovered ? NativeEditorStyle.panelRaised : .clear)
                 .clipShape(RoundedRectangle(cornerRadius: NativeRadius.control))
-                .overlay { RoundedRectangle(cornerRadius: NativeRadius.control).stroke(selected ? NativeEditorStyle.accent.opacity(0.38) : hovered ? NativeEditorStyle.line : .clear) }
+                // Selection is a fill and amber text. An outline is kept for hover, so state never reads as an action.
+                .overlay { RoundedRectangle(cornerRadius: NativeRadius.control).stroke(hovered && !selected ? NativeEditorStyle.line : .clear) }
                 .opacity(enabled ? 1 : 0.4)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
                 .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 1), value: configuration.isPressed)
                 .contentShape(Rectangle())
                 .onHover { hovered = $0 }
         }
+    }
+}
+
+/// The one solid amber action in a panel or card (docs/design/arya-product-system.md).
+/// Every other action beside it uses `NativeSecondaryButtonStyle` or the toolbar style.
+struct NativePrimaryButtonStyle: ButtonStyle {
+    /// Overrides the platform control height, for a row that sets its own.
+    var height: CGFloat?
+    var fill = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        NativeActionButton(configuration: configuration, primary: true, height: height, fill: fill)
+    }
+}
+
+/// A neutral outlined action: Undo, Discard, Check again.
+struct NativeSecondaryButtonStyle: ButtonStyle {
+    var height: CGFloat?
+    var fill = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        NativeActionButton(configuration: configuration, primary: false, height: height, fill: fill)
+    }
+}
+
+private struct NativeActionButton: View {
+    let configuration: ButtonStyleConfiguration
+    let primary: Bool
+    let height: CGFloat?
+    let fill: Bool
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovered = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: NativeRadius.control)
+        configuration.label
+            #if os(iOS) && !targetEnvironment(macCatalyst)
+            .font(.subheadline.weight(primary ? .semibold : .medium))
+            #else
+            .font(primary ? NativeType.controlEmphasis : NativeType.control)
+            #endif
+            .lineLimit(1)
+            .foregroundStyle(!enabled ? NativeEditorStyle.muted : primary ? NativeEditorStyle.accentInk : NativeEditorStyle.text)
+            .padding(.horizontal, 12)
+            .frame(minWidth: height ?? NativeEditorStyle.actionHeight, maxWidth: fill ? .infinity : nil,
+                   minHeight: height ?? NativeEditorStyle.actionHeight)
+            .background(primary && enabled ? NativeEditorStyle.accent.opacity(hovered ? 0.9 : 1)
+                        : hovered && enabled ? NativeEditorStyle.selectionFill : NativeEditorStyle.panelRaised, in: shape)
+            .overlay { shape.stroke(primary && enabled ? Color.clear : NativeEditorStyle.controlLine.opacity(enabled ? 1 : 0.5)) }
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 1), value: configuration.isPressed)
+            .contentShape(Rectangle())
+            .onHover { hovered = $0 }
+    }
+}
+
+/// A pop-up drawn as an Arya control, not the brighter system bezel: raised panel, control line.
+struct NativeMenuButtonStyle: MenuStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Menu(configuration)
+            #if os(macOS)
+            .menuStyle(.borderlessButton)
+            .font(NativeType.control)
+            .padding(.horizontal, 7).frame(minHeight: 26)
+            #elseif targetEnvironment(macCatalyst)
+            .font(NativeType.control)
+            .padding(.horizontal, 7).frame(minHeight: 26)
+            #else
+            .font(.subheadline)
+            .padding(.horizontal, 10).frame(minHeight: 44)
+            #endif
+            .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: NativeRadius.control))
+            .overlay { RoundedRectangle(cornerRadius: NativeRadius.control).stroke(NativeEditorStyle.controlLine) }
+    }
+}
+
+/// A pop-up picker over a short list of names, with the menu style above.
+struct NativeMenuPicker: View {
+    let label: String
+    @Binding var selection: String
+    let options: [String]
+
+    var body: some View {
+        Menu {
+            Picker(label, selection: $selection) { ForEach(options, id: \.self) { Text($0).tag($0) } }
+                .pickerStyle(.inline).labelsHidden()
+        } label: { Text(selection).lineLimit(1) }
+            .menuStyle(NativeMenuButtonStyle())
+            .accessibilityLabel(label).accessibilityValue(selection)
+    }
+}
+
+/// Two to four exclusive choices in one input well. The chosen one is a raised chip with amber
+/// text, as the workflow tabs are; it has no outline, so it never reads as a button to press.
+struct NativeSegmentedControl<Value: Hashable>: View {
+    let label: String
+    @Binding var selection: Value
+    let options: [(value: Value, title: String)]
+    /// Segments share the width evenly, for a control that spans its row.
+    var fill = false
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                let selected = option.value == selection
+                Button { selection = option.value } label: {
+                    Text(option.title).lineLimit(1)
+                        #if os(iOS) && !targetEnvironment(macCatalyst)
+                        .font(.subheadline.weight(selected ? .semibold : .regular))
+                        .frame(maxWidth: fill ? .infinity : nil, minHeight: 36)
+                        #else
+                        .font(selected ? NativeType.controlEmphasis : NativeType.control)
+                        .frame(maxWidth: fill ? .infinity : nil, minHeight: 22)
+                        #endif
+                        .padding(.horizontal, 10)
+                        .foregroundStyle(selected ? NativeEditorStyle.accent : NativeEditorStyle.text)
+                        .background(selected ? NativeEditorStyle.panelRaised : Color.clear, in: RoundedRectangle(cornerRadius: NativeRadius.chip))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
+            }
+        }
+        .padding(2)
+        .background(NativeEditorStyle.input, in: RoundedRectangle(cornerRadius: NativeRadius.control))
+        .overlay { RoundedRectangle(cornerRadius: NativeRadius.control).stroke(NativeEditorStyle.controlLine) }
+        .accessibilityElement(children: .contain).accessibilityLabel(label)
+    }
+}
+
+/// A text field as an Arya input: the input well, a control line and the control radius, not a
+/// black or system-bezel field.
+struct NativeInputField: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            #if os(iOS) && !targetEnvironment(macCatalyst)
+            .padding(.horizontal, 10).frame(minHeight: 44)
+            #else
+            .font(NativeType.control).padding(.horizontal, 7).frame(minHeight: 26)
+            #endif
+            .background(NativeEditorStyle.input, in: RoundedRectangle(cornerRadius: NativeRadius.control))
+            .overlay { RoundedRectangle(cornerRadius: NativeRadius.control).stroke(NativeEditorStyle.controlLine) }
+    }
+}
+
+/// Fades the last points of a scrolling or clipped region, so cut content reads as "more below".
+struct NativeBottomFade: ViewModifier {
+    var height: CGFloat = 18
+    var color = NativeEditorStyle.panel
+    var visible = true
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottom) {
+            LinearGradient(colors: [color.opacity(0), color], startPoint: .top, endPoint: .bottom)
+                .frame(height: height).allowsHitTesting(false).opacity(visible ? 1 : 0)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// Motion for the assistant and status surfaces: 160 ms for content, 180 ms for a panel.
+/// Reduce Motion keeps the fade and drops the movement.
+enum NativeMotion {
+    static let content = Animation.easeOut(duration: 0.16)
+    static let panel = Animation.easeOut(duration: 0.18)
+
+    /// A new message or card fades in and rises 6 points.
+    static func rise(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 6))
     }
 }
 

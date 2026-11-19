@@ -103,3 +103,42 @@ test('a caption range deletion leaves accurate text and words on each side of th
   assert.equal(framePlan(q, 11.5).captions.length, 0)
   assert.deepEqual(framePlan(q, 12.4).captions[0].title.highlight, { start: 0, end: 5, color: '#ffe600' })
 })
+
+const saved = () => applyOps(newProject('Saved'), [{ op: 'captions', track: 'C1', items: [{ t: 9, end: 11, text: 'we already saved for later.', words: [
+  { t: 9, end: 9.2, text: 'we' }, { t: 9.2, end: 9.6, text: 'already' }, { t: 9.6, end: 9.9, text: 'saved' }, { t: 9.9, end: 10.05, text: 'for' }, { t: 10.05, end: 11, text: 'later.' },
+] }] }]).project
+
+test('a cut that leaves a sliver of a word removes that word from the caption', () => {
+  // The cut asks for 10.05 and frame snapping at 30 fps lands it at 10.0667, half a frame into "later.".
+  const sliver = captions(applyOps(saved(), [{ op: 'delete_range', from: 10.05, to: 11 }]).project)[0]
+  assert.equal(sliver.dur, 1.0667)
+  assert.equal(sliver.text, 'we already saved for')
+  assert.deepEqual(sliver.words.map(word => word.text), ['we', 'already', 'saved', 'for'])
+  // The same sliver left at the head of a caption, and by a right trim.
+  const head = captions(applyOps(saved(), [{ op: 'delete_range', from: 9, to: 9.18 }]).project)[0]
+  assert.equal(head.text, 'already saved for later.')
+  const trimmed = captions(applyOps(saved(), [{ op: 'trim', id: captions(saved())[0].id, edge: 'right', to: 10.0667 }]).project)[0]
+  assert.equal(trimmed.text, 'we already saved for')
+})
+
+test('a word with a frame and a half or more left stays, and a short word split in two is never lost', () => {
+  const kept = captions(applyOps(saved(), [{ op: 'delete_range', from: 10.1, to: 11 }]).project)[0]
+  assert.equal(kept.text, 'we already saved for later.', '0.05 s of the word is a frame and a half at 30 fps')
+  assert.equal(kept.words.at(-1).end, kept.dur)
+  // "for" lasts 0.15 s. A split two frames in leaves 0.0667 s and 0.0833 s: both sides keep it, as before.
+  const split = captions(applyOps(saved(), [{ op: 'split', at: 9.9667 }]).project)
+  assert.deepEqual(split.map(clip => clip.text), ['we already saved for', 'for later.'])
+  // A word two frames long, split in the middle, has one frame on each side and stays on both.
+  const short = applyOps(newProject('Short'), [{ op: 'captions', items: [{ t: 0, end: 1, text: 'a to b', words: [{ t: 0, end: 0.4, text: 'a' }, { t: 0.4, end: 0.4667, text: 'to' }, { t: 0.4667, end: 1, text: 'b' }] }] }]).project
+  assert.deepEqual(captions(applyOps(short, [{ op: 'split', at: 0.4333 }]).project).map(clip => clip.text), ['a to', 'to b'])
+  // Split a frame into a three-frame word: the side with two frames keeps it, the side with one does not.
+  const three = applyOps(newProject('Three'), [{ op: 'captions', items: [{ t: 0, end: 1, text: 'a the b', words: [{ t: 0, end: 0.4, text: 'a' }, { t: 0.4, end: 0.5, text: 'the' }, { t: 0.5, end: 1, text: 'b' }] }] }]).project
+  assert.deepEqual(captions(applyOps(three, [{ op: 'split', at: 0.4333 }]).project).map(clip => clip.text), ['a', 'the b'])
+})
+
+test('the sliver rule uses the frame rate of the composition the caption is in', () => {
+  const p = applyOps(newProject('Comp'), [{ op: 'add_comp', name: 'Slow', fps: 10, duration: 4 }, { op: 'captions', comp: 'k1', items: [{ t: 0, end: 2, text: 'one two', words: [{ t: 0, end: 1, text: 'one' }, { t: 1, end: 2, text: 'two' }] }] }]).project
+  // At 10 fps a frame and a half is 0.15 s, so 0.1 s of "two" is a sliver here and would not be at 30 fps.
+  const cut = applyOps(p, [{ op: 'delete_range', comp: 'k1', from: 1.1, to: 2 }]).project
+  assert.equal(cut.comps.k1.tracks.find(track => track.kind === 'caption').clips[0].text, 'one')
+})

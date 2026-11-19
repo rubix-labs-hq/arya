@@ -6,10 +6,12 @@ import htm from 'htm'
 import { duration } from '/core/project.js'
 import { Browser, installDropImport } from './browser.js'
 import { ChatPanel } from './chat.js'
+import { assistantActivity } from './assistant-activity.js'
+import { assistantState } from './assistant-state.js'
 import { player } from './engine-host.js'
 import { Inspector } from './inspector.js'
-import { installKeys, SHORTCUTS } from './keys.js'
-import { api, chatHistoryStatus, connect, set, store, toast, useStore } from './store.js'
+import { installKeys, moveHistory, SHORTCUTS } from './keys.js'
+import { api, chatHistoryStatus, connect, historyDepth, set, store, toast, useStore } from './store.js'
 import { Timeline } from './timeline.js'
 import { Toolbar } from './timeline-toolbar.js'
 import { Viewer } from './viewer.js'
@@ -18,7 +20,7 @@ import { AudioPage } from './mixer.js'
 import { DeliverPage } from './deliver.js'
 import { MediaPage } from './media-page.js'
 import { registry } from './registry.js'
-import { Divider, LayoutMenu, editGridColumns, editPaneSizes, layoutStyle, useCompactEditPanel, useLayout, useWorkspaceWidth } from './layout.js'
+import { Divider, LayoutMenu, editGridColumns, editPaneSizes, layoutStyle, onInspectorReveal, useCompactEditPanel, useLayout, useWorkspaceWidth } from './layout.js'
 import { Settings, refreshAssistantStatus } from './settings.js'
 import { ScrollTabs } from './scroll-tabs.js'
 import { Icon } from './icons.js'
@@ -65,10 +67,30 @@ function TopBar() {
     if (actionsOpen) closeActions()
     return action()
   }
-  const running = s.jobs.filter(j => j.state === 'running' || j.state === 'queued' || host.kind === 'browser-local' && ['cancelling', 'committing'].includes(j.state))
+  const hosted = host.kind === 'browser-local'
+  // The same rule as the panel: only the native host carries its status in the capabilities.
+  const assistant = assistantState(s.assistantStatus ?? (s.caps?.host === 'native' ? s.caps.assistant : null))
+  const working = assistantActivity(s.claude, { pending: s.assistantSharingReviewOpen === true }).active
+  // Until the first status answer arrives the entry says so. "Not set up" is only for a status that says it.
+  const checking = assistant.checking && !s.assistantStatusError
+  // The same word the panel header shows, in the order the Mac, iPad and iPhone apps use.
+  const assistantLabel = assistantActivity.statusWord({ hosted, connected: s.connected, run: s.claude, pending: s.assistantSharingReviewOpen === true, ready: assistant.ready, checking, proposal: s.caps?.host !== 'native' && Boolean(s.assistantReview?.proposal) })
+  // The entry opens the conversation and focuses the field. It never closes it, so it carries no aria-expanded; Close is in the panel.
+  const openAssistant = () => {
+    if (store.assistantSharingReviewOpen) return
+    const focus = () => globalThis.document?.querySelector('#editor-assistant :is(textarea, .assistant-setup a.primary)')?.focus()
+    // Behind the Inspector tab the panel is open but not shown, so it is brought forward first.
+    if (s.chatOpen && !s.chatCollapsed && store.sideTab !== 'inspector') focus()
+    else {
+      set({ chatOpen: true, chatCollapsed: false })
+      queueMicrotask(focus)
+    }
+  }
+  // Only exports are deliveries. A still frame or a loudness measurement is a job too, and is not shown here.
+  const running = s.jobs.filter(j => j.kind === 'export' && (j.state === 'running' || j.state === 'queued' || host.kind === 'browser-local' && ['cancelling', 'committing'].includes(j.state)))
 
   return html`
-    <div class="topbar">
+    <div class="topbar" role="banner" aria-label="Top bar">
       <div class="topbar-project"><div class="brand"><picture><source media="(max-width: 480px)" srcset="/assets/brand/mark.svg" /><img src="/assets/brand/wordmark.svg" alt="Arya" width="166" height="77" /></picture></div>
       ${p ? html`<div class="proj" title=${p.name ?? 'Untitled'}><span class="proj-name" title=${p.name ?? 'Untitled'}>${p.name ?? 'Untitled'}</span><span class="muted proj-format">${`${p.width}×${p.height} · ${p.fps}fps`}</span></div>` : null}</div>
       <div class="workflow-pages" hidden=${!p}><${ScrollTabs} tabs=${[...PAGES, ...registry.pages.map(pg => [pg.id, pg.label, pg.key ?? '', pg.order ?? 100])].sort((a, b) => a[3] - b[3])} value=${s.page} onChange=${page => set({ page })} label="Workflow" /></div>
@@ -78,27 +100,39 @@ function TopBar() {
       <div id="editor-action-list" class=${`topbar-action-list ${actionsOpen ? 'open' : ''}`} role="group" aria-label="Editor actions">
       ${running.length ? html`<button type="button" class="job-pill" aria-label=${`Open delivery progress, ${Math.round((running[0].progress ?? 0) * 100)}%`} onClick=${() => set({ page: 'deliver' })}><${Icon} name="export" size=${14} /> ${Math.round((running[0].progress ?? 0) * 100)}%</button>` : null}
       ${p ? html`<div class="topbar-history" role="group" aria-label="History">
-        <button class="ghost topbar-undo" aria-label="Undo" title="Undo latest edit (⌘Z)" onClick=${() => api('/api/undo', {}).then(r => set({ project: r.project, version: r.version }))}><${Icon} name="undo" /><span class="action-label">Undo</span></button>
-        <button class="ghost topbar-undo" aria-label="Redo" title="Redo (⇧⌘Z)" onClick=${() => api('/api/redo', {}).then(r => set({ project: r.project, version: r.version }))}><${Icon} name="redo" /><span class="action-label">Redo</span></button>
+        <button class="ghost topbar-undo" aria-label="Undo" title=${s.history?.undo === 0 ? 'Nothing to undo' : 'Undo latest edit (⌘Z)'} disabled=${s.history?.undo === 0} onClick=${() => moveHistory('undo')}><${Icon} name="undo" /><span class="action-label">Undo</span></button>
+        <button class="ghost topbar-undo" aria-label="Redo" title=${s.history?.redo === 0 ? 'Nothing to redo' : 'Redo (⇧⌘Z)'} disabled=${s.history?.redo === 0} onClick=${() => moveHistory('redo')}><${Icon} name="redo" /><span class="action-label">Redo</span></button>
       </div>
       <span class="topbar-sep" aria-hidden="true"></span>
       <div class="topbar-utility"><${LayoutMenu} /></div>` : null}
-      ${host.kind === 'http' ? html`<button class="ghost recovery-entry" aria-haspopup="dialog" disabled=${s.assistantSharingReviewOpen === true} title=${s.recovery?.warning ?? 'Review verified saved project copies'} onClick=${() => openActionDialog(showRecovery)}>Recovery</button>` : null}
-      <button class="ghost topbar-utility" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" onClick=${() => set({ showKeys: !s.showKeys })}><${Icon} name="keyboard" /><span class="action-label">Shortcuts</span></button>
+      ${host.kind === 'http' ? html`<button class="ghost recovery-entry" aria-label="Recovery" aria-haspopup="dialog" disabled=${s.assistantSharingReviewOpen === true} title=${s.recovery?.warning ?? 'Review verified saved project copies'} onClick=${() => openActionDialog(showRecovery)}><${Icon} name="recovery" /><span class="entry-text">Recovery</span></button>` : null}
+      <button class="ghost topbar-utility" aria-label="Keyboard shortcuts" aria-haspopup="dialog" title="Keyboard shortcuts (?)" onClick=${() => openActionDialog(() => set({ showKeys: !s.showKeys }))}><${Icon} name="keyboard" /><span class="action-label">Shortcuts</span></button>
       <button class="ghost settings-entry" aria-haspopup="dialog" title="Settings (⌘,)" disabled=${s.assistantSharingReviewOpen === true} onClick=${() => openActionDialog(() => set({ settingsOpen: true }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"/><circle cx="12" cy="12" r="3"/></svg><span class="action-label">Settings</span></button>
       <button type="button" class="ghost compact-actions-done" onClick=${closeActions}>Close actions</button>
       </div></div>
       <span class="topbar-sep before-assistant" aria-hidden="true"></span>
-      <button class=${`claude-btn ${s.chatOpen ? 'on' : ''} ${['thinking', 'working', 'running', 'queued', 'cancelling'].includes(s.claude.state) ? 'busy' : ''}`} aria-label=${!(s.assistantStatus ?? s.caps?.assistant)?.configured && !(s.assistantStatus ?? s.caps?.assistant)?.chatgpt?.signedIn && !(s.assistantStatus ?? s.caps?.assistant)?.providers?.some(provider => provider.authenticated) ? 'Assistant, not set up' : 'Assistant'} aria-expanded=${s.chatOpen} onClick=${() => set({ chatOpen: !s.chatOpen })}><${Icon} name="assistant" />Assistant<span class="assistant-setup-indicator" hidden=${!(!(s.assistantStatus ?? s.caps?.assistant)?.configured && !(s.assistantStatus ?? s.caps?.assistant)?.chatgpt?.signedIn && !(s.assistantStatus ?? s.caps?.assistant)?.providers?.some(provider => provider.authenticated))}>Not set up</span>${s.refs.length ? html` <span class="count">${s.refs.length}</span>` : ''}</button>
+      <button type="button" id="ask-arya" class=${`assistant-entry ${s.chatOpen ? 'on' : ''}${hosted ? ' hosted' : ''}`} data-state=${!hosted && s.connected && working ? 'working' : !hosted && assistantLabel === 'Failed' ? 'failed' : !hosted && s.connected && assistant.ready ? 'ready' : 'idle'} aria-controls=${s.chatOpen ? 'editor-assistant' : undefined} disabled=${s.assistantSharingReviewOpen === true} onClick=${openAssistant}>
+        <${Icon} name="assistant" /><span class="assistant-entry-label">${hosted ? 'Assistant' : 'Ask Arya'}</span>${hosted ? null : html`<span class="assistant-entry-hint" aria-hidden="true">to edit or explain</span>`}<span class="assistant-entry-state"><i aria-hidden="true"></i><span class="assistant-entry-word">${assistantLabel}${s.refs.length ? ` · ${s.refs.length} attached` : ''}</span></span>${hosted ? null : html`<kbd aria-hidden="true">/</kbd>`}
+      </button>
       ${/* Shown only when the editor loses its server, so a dot beside Assistant never reads as AI status. */ s.connected ? null : html`<span class="conn" role="status" aria-label="Disconnected from the Arya server" title="Disconnected from the Arya server"></span>`}
       </div>
     </div>
   `
 }
 
+// Between 901 and 1439px an open assistant takes the inspector's column, so media, viewer and
+// timeline keep their places. These two tabs switch that column between the two.
+const sideColumnShared = (chatOpen, width = globalThis.innerWidth) => chatOpen === true && typeof width === 'number' && width >= 901 && width <= 1439
+// An action that reveals the inspector, such as Denoise or reframe, also selects its tab in the shared column.
+onInspectorReveal(() => { if (sideColumnShared(store.chatOpen)) set({ sideTab: 'inspector' }) })
+
+function SideTabs({ tab }) {
+  return html`<div class="side-tabs" role="tablist" aria-label="Side panel">${[['assistant', 'Assistant'], ['inspector', 'Inspector']].map(([id, label]) => html`<button type="button" role="tab" aria-selected=${tab === id} class=${tab === id ? 'on' : ''} onClick=${() => set({ sideTab: id })}>${label}</button>`)}</div>`
+}
+
 function EditPage() {
   const s = useStore()
-  const l = useLayout()
+  const saved = useLayout()
   const workspace = useWorkspaceWidth()
   const [compactPanel, choosePanel] = useCompactEditPanel()
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -121,7 +155,12 @@ function EditPage() {
       document.removeEventListener('focusin', update)
     }
   }, [phone])
-  const compact = !phone && Number.isFinite(workspace.width) && workspace.width < 900
+  // The hosted build's assistant panel is a short pitch with no tabs, so it sits beside the inspector as before.
+  const shared = !phone && host.kind !== 'browser-local' && sideColumnShared(s.chatOpen)
+  const sideTab = shared ? (s.sideTab === 'inspector' ? 'inspector' : 'assistant') : null
+  // The Inspector tab always shows the inspector, even when the saved layout hides it, so there is a way back.
+  const l = sideTab ? { ...saved, showInspector: sideTab === 'inspector' } : saved
+  const compact = !phone && !shared && Number.isFinite(workspace.width) && workspace.width < 900
   // A resize or the Assistant opening can make the workspace compact while an Inspector field
   // is focused. On that transition only, keep the Inspector shown so the field is not hidden and
   // blurred, then record the choice. Later panel choices while compact are never overridden.
@@ -141,8 +180,8 @@ function EditPage() {
   const paneProps = name => ({
     hidden: phone || compact ? panel !== name : !visible(name),
     style: phone || compact ? undefined : { gridColumn: column(name), gridRow: 1 },
-    id: `edit-panel-${name}`, role: phone ? 'tabpanel' : undefined,
-    'aria-labelledby': phone ? `phone-tab-${name}` : undefined,
+    id: `edit-panel-${name}`, role: phone ? 'tabpanel' : 'region',
+    'aria-labelledby': phone ? `phone-tab-${name}` : undefined, 'aria-label': phone ? undefined : name === 'media' ? 'Media browser' : 'Inspector',
   })
   const setPhonePanel = name => {
     const mapped = phonePanelToCompact(name)
@@ -151,7 +190,7 @@ function EditPage() {
 
   // Keep these keyed panes mounted so resizing does not discard an input draft.
   return html`
-    <div class=${`page edit ${phone ? 'phone-edit' : compact ? 'customizable compact-edit' : 'customizable'} ${phone && compactPanel === 'inspector' ? 'phone-inspector-focus' : ''} ${previewOpen ? 'phone-preview-open' : ''} ${s.chatOpen ? 'with-chat' : ''} ${showTimeline ? '' : 'timeline-hidden'}`} data-compact-panel=${compactPanel}>
+    <div class=${`page edit ${phone ? 'phone-edit' : compact ? 'customizable compact-edit' : 'customizable'} ${phone && compactPanel === 'inspector' ? 'phone-inspector-focus' : ''} ${previewOpen ? 'phone-preview-open' : ''} ${s.chatOpen ? 'with-chat' : ''} ${sideTab ? `side-${sideTab}` : ''} ${showTimeline ? '' : 'timeline-hidden'}`} data-compact-panel=${compactPanel}>
       <${PhonePanelControls} panel=${compactPanelToPhone(compactPanel)} setPanel=${setPhonePanel} previewOpen=${previewOpen} setPreviewOpen=${setPreviewOpen} />
       <div class="compact-edit-access">
         <div class="compact-panel-picker" role="group" aria-label="Edit panels">${[['viewer', 'Viewer'], ['media', 'Media'], ['inspector', 'Inspector']].map(([name, label]) => html`<button type="button" class=${panel === name ? 'on' : 'ghost'} aria-pressed=${panel === name} aria-controls="edit-upper" onClick=${() => choosePanel(name)}>${label}</button>`)}</div>
@@ -160,12 +199,12 @@ function EditPage() {
       <div id="edit-upper" class="upper" ref=${workspace.ref} style=${phone ? undefined : { gridTemplateColumns: compact ? 'minmax(0, 1fr)' : editGridColumns(l, workspace.width) }}>
         <div key="media" class="edit-pane edit-media-pane" ...${paneProps('media')}><${Browser} key="media" /></div>
         ${!phone && !compact && visible(left) ? html`<${Divider} key="left-divider" field=${left} size=${sizes[left]} label=${`Resize ${left} panel`} />` : null}
-        <div key="viewer" id="edit-viewer" class="edit-viewer" hidden=${compact && panel !== 'viewer'} style=${phone || compact ? undefined : { gridColumn: visible(left) ? 3 : 1, gridRow: 1 }}><${Viewer} key="viewer" compact=${phone} /></div>
+        <div key="viewer" id="edit-viewer" class="edit-viewer" role="region" aria-label="Viewer" hidden=${compact && panel !== 'viewer'} style=${phone || compact ? undefined : { gridColumn: visible(left) ? 3 : 1, gridRow: 1 }}><${Viewer} key="viewer" compact=${phone} /></div>
         ${!phone && !compact && visible(right) ? html`<${Divider} key="right-divider" field=${right} size=${sizes[right]} label=${`Resize ${right} panel`} reverse=${true} />` : null}
-        <div key="inspector" class="edit-pane edit-inspector-pane" ...${paneProps('inspector')}><${Inspector} key="inspector" /></div>
+        <div key="inspector" class="edit-pane edit-inspector-pane" ...${paneProps('inspector')}>${sideTab === 'inspector' ? html`<${SideTabs} key="side-tabs" tab="inspector" />` : null}<${Inspector} key="inspector" /></div>
       </div>
       ${!phone && !compact && showTimeline ? html`<${Divider} field="upper" axis="vertical" label="Resize viewer and timeline" />` : null}
-      <div class="lower" id="edit-panel-timeline" hidden=${phone ? compactPanel !== 'viewer' : !showTimeline} role=${phone ? 'tabpanel' : undefined} aria-labelledby=${phone ? 'phone-tab-timeline' : undefined}>
+      <div class="lower" id="edit-panel-timeline" hidden=${phone ? compactPanel !== 'viewer' : !showTimeline} role=${phone ? 'tabpanel' : 'region'} aria-label=${phone ? undefined : 'Timeline'} aria-labelledby=${phone ? 'phone-tab-timeline' : undefined}>
         <${Toolbar} /><${Timeline} />
       </div>
     </div>
@@ -194,11 +233,12 @@ function Welcome() {
     <div class="welcome">
       <div class="welcome-card">
         <div class="brand big"><img src="/assets/brand/wordmark.svg" alt="Arya" width="166" height="77" /></div>
-        <p>${host.kind === 'browser-local' ? 'Create a project, import your own footage, edit it and download the finished export. Projects and media stay in this browser. The AI assistant, Figma import and transcription need the Mac app or the local editor.' : 'A video editor you can direct.'}${host.kind === 'browser-local' ? '' : (s.assistantStatus ?? s.caps?.assistant)?.configured ? ' Edit by hand on the timeline, or ask your connected assistant to work with the current selection and references. Review its changes with undo.' : ' Edit by hand on the timeline, or connect an assistant (optional) to work with the current selection and references. Review its changes with undo.'}</p>
+        <h1>Start a project</h1>
+        <p>${host.kind === 'browser-local' ? 'Choose a format. Your project and media stay in this browser.' : 'Choose a format, then add footage to your timeline.'}</p>
         ${needsRecovery ? html`<p role="alert">The project file could not be opened. Preserve its original and choose a verified recovery copy, or repair the file and refresh recovery.</p>` : missing ? html`<p>The project file is missing. You can recover a saved copy or create a new project.</p>` : null}
-        ${host.kind === 'http' && !fresh ? html`<button class="ghost" aria-haspopup="dialog" disabled=${s.assistantSharingReviewOpen === true} onClick=${showRecovery}>Choose a recovery copy</button>` : null}
+        ${host.kind === 'http' && !fresh ? html`<button class="ghost welcome-recovery" aria-haspopup="dialog" disabled=${s.assistantSharingReviewOpen === true} onClick=${showRecovery}>Choose a recovery copy</button>` : null}
         ${s.recovery?.warning ? html`<p role="status">${s.recovery.warning}</p>` : null}
-        <div class="row gap">
+        <div class="welcome-formats" role="group" aria-label="Project format">
           <button class="primary" disabled=${busy || needsRecovery} onClick=${() => start({ name: 'Untitled' })}>New 1080p project</button>
           <button class="ghost" disabled=${busy || needsRecovery} onClick=${() => start({ name: 'Vertical', width: 1080, height: 1920 })}>New 9:16 project</button>
           <button class="ghost" disabled=${busy || needsRecovery} onClick=${() => start({ name: '4K UHD', width: 3840, height: 2160 })}>New 4K UHD project</button>
@@ -211,20 +251,36 @@ function Welcome() {
 }
 
 function KeysSheet() {
+  const close = useRef(null), list = useRef(null)
+  useEffect(() => {
+    const opener = document.activeElement
+    close.current?.focus()
+    return () => { if (opener?.getClientRects().length) opener.focus() }
+  }, [])
+  const keyboard = event => {
+    if (event.key === 'Escape' || event.key === '?') return
+    event.stopPropagation()
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      if (document.activeElement === close.current) list.current?.focus()
+      else close.current?.focus()
+    }
+  }
   return html`
     <div class="modal-back" onClick=${() => set({ showKeys: false })}>
-      <div class="modal keys" onClick=${e => e.stopPropagation()}>
-        <h3>Keyboard</h3>
-        <div class="keys-grid">${SHORTCUTS.map(([k, d]) => html`<kbd>${k}</kbd><span>${d}</span>`)}</div>
-      </div>
+      <section class="modal keys" role="dialog" aria-modal="true" aria-labelledby="keyboard-title" onClick=${e => e.stopPropagation()} onKeyDown=${keyboard}>
+        <header><h3 id="keyboard-title">Keyboard shortcuts</h3><button ref=${close} class="ghost" aria-label="Close keyboard shortcuts" onClick=${() => set({ showKeys: false })}><${Icon} name="close" /></button></header>
+        <ul class="keys-grid" tabIndex="0" aria-label="Shortcut list" ref=${list}>${SHORTCUTS.map(([key, description]) => html`<li><kbd>${key}</kbd><span>${description}</span></li>`)}</ul>
+      </section>
     </div>
   `
 }
 
 function Toasts() {
   const s = useStore()
-
-  return html`<div class="toasts">${s.toasts.map(t => html`<div class=${`toast ${t.kind}`} key=${t.id}>${t.text}</div>`)}</div>`
+  return html`<div class="toasts" aria-live="polite">${s.toasts.map(t => html`<div class=${`toast ${t.kind}`} key=${t.id}>
+    <span class="toast-symbol" aria-hidden="true">${t.kind === 'error' ? '!' : '•'}</span><span>${t.text}</span>
+  </div>`)}</div>`
 }
 
 function App() {
@@ -233,12 +289,20 @@ function App() {
   useEffect(() => {
     document.body.dataset.page = s.page
   }, [s.page])
+  // Ask again sooner while the first account check is still running, so "Checking" ends when the check does.
+  const checkingAssistant = !s.assistantStatusError && s.assistantStatus?.loading === true && s.assistantStatus.checkedAt === null
   useEffect(() => {
-    const poll = () => refreshAssistantStatus().catch(() => {})
+    // One poll at a time. A newer request makes refreshAssistantStatus drop the older answer, so overlapping polls would never hear a slow server.
+    let waiting = false
+    const poll = () => {
+      if (waiting) return
+      waiting = true
+      refreshAssistantStatus().catch(() => {}).finally(() => { waiting = false })
+    }
     poll()
-    const interval = setInterval(poll, 4000)
+    const interval = setInterval(poll, checkingAssistant ? 1000 : 4000)
     return () => clearInterval(interval)
-  }, [])
+  }, [checkingAssistant])
   const page = !s.project ? html`<${Welcome} />` :
     s.page === 'edit' ? html`<${EditPage} />` :
     s.page === 'color' ? html`<${ColorPage} />` :
@@ -248,7 +312,7 @@ function App() {
     html`<${MediaPage} />`
 
   return html`
-    <div class=${`app ${s.chatOpen ? 'chat-open' : ''}`} style=${layoutStyle(l)}>
+    <div class=${`app ${s.chatOpen ? 'chat-open' : ''}${s.chatOpen && s.chatCollapsed ? ' chat-collapsed' : ''}`} style=${layoutStyle(l)}>
       <${TopBar} />
       ${host.kind === 'browser-local' ? html`<${BrowserWorkspace} />` : null}
       <div class="main">
@@ -265,7 +329,7 @@ function App() {
 
 export async function mountApp(el) {
   const res = await api('/api/project')
-  set({ project: res.project, version: res.version, root: res.root, recovery: res.recovery ?? null, chat: res.chat ?? [], chatHistory: chatHistoryStatus(res.chatHistory), claude: res.claude ?? { state: 'idle' }, activity: res.activity ?? [], jobs: res.jobs ?? [] })
+  set({ project: res.project, version: res.version, history: historyDepth(res.history), session: res.session ?? null, root: res.root, recovery: res.recovery ?? null, chat: res.chat ?? [], chatHistory: chatHistoryStatus(res.chatHistory), claude: res.claude ?? { state: 'idle' }, activity: res.activity ?? [], jobs: res.jobs ?? [] })
   api('/api/caps').then(caps => set({ caps })).catch(() => {})
   connect(() => { if (host.kind === 'http') refreshOpenProjectRecovery() })
   installKeys()

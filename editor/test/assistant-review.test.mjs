@@ -62,6 +62,88 @@ test('user edits, project replacement or no edits during a request leave nothing
   assert.equal(review.active(), false)
 })
 
+test('a request whose own commits were only Undo moves is a history change, undoable only while Redo leads back', () => {
+  const state = { version: 4, epoch: 1, project: newProject('Current'), depth: 0, events: [] }
+  const review = createAssistantReview({ getVersion: () => state.version, getEpoch: () => state.epoch, getProject: () => state.project, redoDepth: project => project === before ? state.depth : 0, onChange: value => state.events.push(value) })
+  const before = state.project
+  review.observe({ state: 'thinking', runId: 'r1' }, before)
+  for (const name of ['One back', 'Two back']) { state.project = newProject(name); state.version++; review.commitBy({ runId: 'r1' }, 'undo') }
+  state.depth = 2
+  review.observe({ state: 'done', runId: 'r1' }, state.project)
+  const change = review.snapshot().change
+  assert.equal(change.kind, 'history'); assert.equal(change.label, 'Undid 2 edits'); assert.equal(change.undoable, true)
+  assert.equal(review.undoTarget(change.id).change.moves.undo, 2)
+  // Toolbar Redo once: one more Redo is the way back, and the card says so.
+  const behind = state.project
+  state.depth = 1; state.project = newProject('One back again'); state.version++; review.commitBy(undefined, 'redo')
+  assert.equal(review.snapshot().change.undoable, false)
+  assert.equal(review.snapshot().change.reason, 'Use Redo in the toolbar to bring back the edits the assistant undid.')
+  assert.equal(state.events.at(-1).change.reason, review.snapshot().change.reason, 'and the page hears it')
+  state.depth = 2; state.project = behind; state.version++; review.commitBy(undefined, 'undo')
+  assert.equal(review.snapshot().change.undoable, true)
+  // A forward edit empties the redo history.
+  state.depth = 0; state.project = newProject('Forward'); state.version++; review.commitBy(undefined)
+  assert.match(review.snapshot().change.reason, /changed after this assistant change/)
+  // A run that also made an edit is an ordinary request; one that redid is history without a card undo.
+  review.observe({ state: 'thinking', runId: 'r2' }, state.project)
+  state.version++; review.commitBy({ runId: 'r2' }, 'undo'); state.version++; review.commitBy({ runId: 'r2' })
+  review.observe({ state: 'done', runId: 'r2' }, state.project)
+  assert.equal(review.snapshot().change.kind, 'request')
+  review.observe({ state: 'thinking', runId: 'r3' }, state.project)
+  state.version++; review.commitBy({ runId: 'r3' }, 'redo')
+  review.observe({ state: 'done', runId: 'r3' }, state.project)
+  assert.equal(review.snapshot().change.label, 'Redid 1 edit'); assert.equal(review.snapshot().change.undoable, false)
+  assert.deepEqual(review.snapshot().changes.map(item => item.kind), ['history', 'request', 'history'])
+  // A run that edits and then undoes past its start is a history change too.
+  review.observe({ state: 'thinking', runId: 'r4' }, before)
+  state.depth = 0; state.project = newProject('Edited'); state.version++; review.commitBy({ runId: 'r4' })
+  state.project = newProject('Undone'); state.version++; review.commitBy({ runId: 'r4' }, 'undo'); state.project = newProject('Twice'); state.version++; review.commitBy({ runId: 'r4' }, 'undo')
+  state.depth = 1
+  review.observe({ state: 'done', runId: 'r4' }, state.project)
+  assert.equal(review.snapshot().change.kind, 'history'); assert.equal(review.snapshot().change.label, 'Undid 1 edit')
+  assert.equal(review.undoTarget(review.snapshot().change.id).change.moves.undo, 1)
+  assert.equal(state.events.at(-1).change.undoable, true)
+  state.depth = 0; state.project = newProject('Later'); state.version++; review.commitBy(undefined)
+  assert.equal(state.events.at(-1).change.undoable, false)
+  // An edit the run undid again left the project as it was: undoing that would only empty Redo.
+  const same = state.project
+  review.observe({ state: 'thinking', runId: 'r5' }, same)
+  state.project = newProject('Briefly'); state.version++; review.commitBy({ runId: 'r5' }); state.project = same; state.version++; review.commitBy({ runId: 'r5' }, 'undo')
+  review.observe({ state: 'done', runId: 'r5' }, same)
+  assert.equal(review.snapshot().change.kind, 'request'); assert.equal(review.snapshot().change.undoable, false)
+  assert.equal(review.snapshot().change.reason, 'This change left the project as it was before.')
+})
+
+test('a change reads undone while the project is the one before it, whoever moved there, and applied again after Redo', () => {
+  const state = { version: 1, epoch: 1, project: newProject('Start'), events: [] }
+  const review = createAssistantReview({ getVersion: () => state.version, getEpoch: () => state.epoch, getProject: () => state.project, onChange: value => state.events.push(value) })
+  const move = (project, call, kind) => { state.project = project; state.version++; review.commitBy(call, kind) }
+  const start = state.project, edited = newProject('Edited')
+  // Run 1 edits. Run 2 calls Undo, which takes the project back to before run 1.
+  review.observe({ state: 'thinking', runId: 'r1' }, start)
+  move(edited, { runId: 'r1' })
+  review.observe({ state: 'done', runId: 'r1' }, edited)
+  review.observe({ state: 'thinking', runId: 'r2' }, edited)
+  move(start, { runId: 'r2' }, 'undo')
+  review.observe({ state: 'done', runId: 'r2' }, start)
+  const listed = () => review.snapshot().changes.map(item => [item.runId, item.undone])
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+  assert.deepEqual(state.events.at(-1).changes.map(item => item.undone), [true, false], 'the page hears it')
+  // Toolbar Redo brings run 1's edit back and reverses run 2.
+  move(edited, undefined, 'redo')
+  assert.deepEqual(listed(), [['r1', false], ['r2', true]])
+  assert.deepEqual(state.events.at(-1).changes.map(item => item.undone), [false, true])
+  // Toolbar Undo of a plain request marks it undone too, and a later edit elsewhere leaves that alone.
+  move(start, undefined, 'undo')
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+  move(newProject('Elsewhere'), undefined)
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+  // A replaced project keeps every state for good, even if the same objects come back.
+  state.epoch++; move(edited, undefined)
+  state.epoch--; move(edited, undefined)
+  assert.deepEqual(listed(), [['r1', true], ['r2', false]])
+})
+
 test('previews accumulate within one request, reset on request and refuse unsafe ops', () => {
   const { state, review } = tracker()
   review.observe({ state: 'thinking', runId: 'r1' }, newProject('A'))
@@ -69,6 +151,9 @@ test('previews accumulate within one request, reset on request and refuse unsafe
   const second = review.stage(review.propose({ runId: 'r1', ops: [{ op: 'update', id: 'c1', set: { opacity: 0.5 } }], summary: 'Fade it' }))
   assert.notEqual(first.id, second.id)
   assert.equal(second.ops.length, 2); assert.equal(second.summary, 'Add a title; Fade it'); assert.equal(second.stale, false)
+  // Each revision often resends the same title; the user reads it once.
+  const third = review.stage(review.propose({ runId: 'r1', ops: [{ op: 'update', id: 'c1', set: { opacity: 0.4 } }], summary: ' Fade it ' }))
+  assert.equal(third.ops.length, 3); assert.equal(third.summary, 'Add a title; Fade it')
   const reset = review.stage(review.propose({ runId: 'r1', ops: [{ op: 'add_color', color: '#000' }], reset: true }))
   assert.equal(reset.ops.length, 1); assert.equal(reset.summary, '')
   for (const op of ['replace', 'import', 'library_apply']) assert.throws(() => review.propose({ runId: 'r1', ops: [{ op }] }), /cannot be previewed/)
@@ -78,6 +163,53 @@ test('previews accumulate within one request, reset on request and refuse unsafe
   assert.equal(review.snapshot().proposal.stale, true)
   assert.throws(() => review.propose({ runId: 'r1', ops: [{ op: 'add_color', color: '#fff' }] }), /Send the complete edit again with reset:true/, 'a stale preview is never silently extended or dropped')
   assert.equal(review.propose({ runId: 'r2', ops: [{ op: 'add_color', color: '#fff' }] }).ops.length, 1, 'another request starts its own preview')
+})
+
+test('the run that made a preview gets the project it would make, and nobody else does', () => {
+  const { state, review } = tracker(), saved = state.project
+  assert.equal(review.trial('r1', applyOps), null, 'nothing is proposed yet, so a frame shows the saved project')
+  review.stage(review.propose({ runId: 'r1', ops: [{ op: 'add_title', track: 'V2', start: 0, dur: 2, title: { text: 'PREVIEWED' } }], summary: 'Add a title' }))
+  const trial = review.trial('r1', applyOps)
+  assert.deepEqual(trial.tracks.flatMap(track => track.clips).map(clip => clip.title?.text), ['PREVIEWED'])
+  assert.equal(state.project, saved); assert.equal(saved.tracks.flatMap(track => track.clips).length, 0, 'the saved project is not changed')
+  assert.equal(review.trial('r2', applyOps), null, 'another request never sees this preview')
+  assert.equal(review.trial(null, applyOps), null); assert.equal(review.trial(undefined, applyOps), null)
+  // A second propose adds to the preview, and the trial holds both.
+  review.stage(review.propose({ runId: 'r1', ops: [{ op: 'add_title', track: 'V2', start: 2, dur: 2, title: { text: 'SECOND' } }] }))
+  assert.deepEqual(review.trial('r1', applyOps).tracks.flatMap(track => track.clips).map(clip => clip.title?.text), ['PREVIEWED', 'SECOND'])
+  // The project moved on: a Preview changes request is told so, and any other request gets the saved project.
+  state.version = 5
+  assert.throws(() => review.trial('r1', applyOps), error => error.status === 409 && /The project changed after this preview was made, so a frame of the preview cannot be drawn\. Read the outline, propose again, then ask for the frame\./.test(error.message))
+  assert.equal(review.trial('r1', applyOps, { strict: false }), null)
+})
+
+test('previewing says, without throwing, whether a frame draws the run’s own preview', () => {
+  const { state, review } = tracker()
+  assert.equal(review.previewing('r1'), false, 'nothing proposed')
+  review.stage(review.propose({ runId: 'r1', ops: [{ op: 'add_title', track: 'V2', start: 0, dur: 2, title: { text: 'Sample' } }] }))
+  assert.equal(review.previewing('r1'), true)
+  assert.equal(review.previewing('r2'), false, 'another run’s preview is never drawn')
+  assert.equal(review.previewing(null), false)
+  state.version = 5
+  assert.equal(review.previewing('r1'), true, 'a Preview changes request is refused a frame of its stale preview, which is still a frame of the preview')
+  assert.equal(review.previewing('r1', { strict: false }), false, 'any other request draws the saved project')
+  state.version = 4
+  review.discard(review.snapshot().proposal.id)
+  assert.equal(review.previewing('r1'), false, 'after discard the saved project is drawn')
+  review.stage({ ...review.propose({ runId: 'r1', steps: [{ path: '/api/audio/clean', body: { id: 'c1' } }] }), steps: [{ path: '/api/audio/clean', body: { id: 'c1' } }] })
+  assert.equal(review.previewing('r1'), false, 'steps alone draw nothing new')
+})
+
+test('a preview of steps alone, or one that imports media, draws what its ops would make', () => {
+  const { state, review } = tracker()
+  review.stage({ ...review.propose({ runId: 'r1', steps: [{ path: '/api/audio/clean', body: { id: 'c1' } }] }), steps: [] })
+  assert.equal(review.trial('r1', applyOps), null, 'steps have not run, so there is nothing to draw but the saved project')
+  const asset = { duration: 5, width: 1920, height: 1080, fps: 30, hasVideo: true, hasAudio: false }
+  review.stage({ ...review.propose({ runId: 'r1', ops: [{ op: 'append', src: 'media/new.mp4', track: 'V1', dur: 2 }], reset: true }), assets: { 'media/new.mp4': asset } })
+  const trial = review.trial('r1', applyOps)
+  assert.deepEqual(trial.assets['media/new.mp4'], asset, 'media the preview would import is in the drawn project')
+  assert.equal(trial.tracks.find(track => track.id === 'V1').clips[0].src, 'media/new.mp4')
+  assert.equal(Object.hasOwn(state.project.assets ?? {}, 'media/new.mp4'), false)
 })
 
 test('an applied preview becomes one undoable change and discard needs the current preview', () => {
@@ -306,8 +438,10 @@ test('actual server preview mode refuses direct edits, shows the proposal and ap
   assert.equal(undone.status, 200, JSON.stringify(undone))
   assert.equal((await server.api('GET', '/api/state')).body.assistant.outcome, 'You undid the applied preview.')
   assert.deepEqual((await server.api('GET', '/api/project')).body.project, before.project)
-  const redone = (await server.api('POST', '/api/undo', {})).body
-  assert.equal(redone.project.tracks.find(track => track.id === 'V3').clips[0].title.text, 'Previewed title', 'the one-step undo is itself undoable')
+  // "Undo this change" is a step back in the history, so Redo reverses it. Undo has nothing older to go to.
+  assert.equal((await server.api('POST', '/api/undo', {})).body.moved, false)
+  const redone = (await server.api('POST', '/api/redo', {})).body
+  assert.equal(redone.project.tracks.find(track => track.id === 'V3').clips[0].title.text, 'Previewed title', 'Redo brings the whole change back')
 })
 
 test('actual server direct mode undoes a multi-edit request in one step, and refuses after a later edit', async t => {

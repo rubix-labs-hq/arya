@@ -318,6 +318,9 @@ final class EditorSession: ObservableObject {
     @Published private(set) var folder: URL?
     @Published private(set) var recents: [ProjectBookmarks.Recent] = []
     @Published var error: String?
+    /// The folder whose open failed with no recovery copy, and the alert that reported it, so
+    /// that alert can offer the same open again.
+    @Published private(set) var failedOpen: (folder: URL, message: String)?
     @Published var projectRecoveryRequest: NativeProjectRecoveryRequest? {
         didSet {
             if oldValue?.id != projectRecoveryRequest?.id {
@@ -434,6 +437,7 @@ final class EditorSession: ObservableObject {
     func open(_ url: URL, completion: ((Result<Void, Error>) -> Void)?,
               prepare: ((ReelBackend) async throws -> Void)? = nil) {
         close()
+        failedOpen = nil
         let generation = backendID
         let previousPageDrain = pageWorkerDrainTask
         let scoped = url.startAccessingSecurityScopedResource()
@@ -468,7 +472,11 @@ final class EditorSession: ObservableObject {
             admission.close(); documentAdmission = nil; projectReadOnlyReason = nil
             #endif
             if let completion { completion(.failure(error)) }
-            else { self.error = "Could not open \(url.lastPathComponent): \(error.localizedDescription)" }
+            else {
+                let message = "Could not open \(url.lastPathComponent): \(error.localizedDescription)"
+                self.error = message
+                if prepare == nil { failedOpen = (folder: url, message: message) }
+            }
             return
         }
         self.backend = backend
@@ -515,6 +523,8 @@ final class EditorSession: ObservableObject {
                 }
                 self.close()
                 if completion == nil { self.error = "Could not open \(url.lastPathComponent): \(error.localizedDescription)" }
+                // A plain Open has nothing to rerun but itself, so its alert can try the folder again.
+                if completion == nil, prepare == nil, let message = self.error { self.failedOpen = (folder: url, message: message) }
                 completion?(.failure(error))
                 return
             }
@@ -583,6 +593,15 @@ final class EditorSession: ObservableObject {
                 recoveringProject = false; projectRecoveryError = error.localizedDescription
             }
         }
+    }
+
+    /// Whether the alert on screen is the failed open that can be tried again.
+    var canRetryFailedOpen: Bool { failedOpen != nil && failedOpen?.message == error }
+    /// Repeats the open that failed, from the start: access, backend and project read.
+    func retryFailedOpen() {
+        guard canRetryFailedOpen, let failed = failedOpen else { return }
+        error = nil
+        open(failed.folder)
     }
 
     func open(recent: ProjectBookmarks.Recent) {
