@@ -816,8 +816,9 @@ struct NativeAssistantPanel: View {
         } else if changed.count > 1 {
             Menu {
                 ForEach(changed) { clip in Button("\(clip.name) · \(clip.compositionName)") { model.selectReceiptClip(clip) } }
-            } label: { Text("Select changed layers") }
-                .menuStyle(NativeMenuButtonStyle()).fixedSize()
+            } label: { Label("Select changed layers", systemImage: "chevron.down").labelStyle(NativeAssistantTrailingIconStyle()) }
+                // A button menu takes the card's secondary style, so it matches Undo beside it.
+                .menuStyle(.button).menuIndicator(.hidden).fixedSize()
         }
     }
 
@@ -1536,6 +1537,13 @@ struct NativeAssistantQuietButtonStyle: ButtonStyle {
             .frame(minHeight: NativeAssistantCardMetrics.touch ? 44 : 28)
             .background(configuration.isPressed ? NativeEditorStyle.selectionFill : Color.clear, in: RoundedRectangle(cornerRadius: NativeRadius.control))
             .contentShape(Rectangle())
+    }
+}
+
+/// A title with its icon after it, for a menu drawn as a button.
+struct NativeAssistantTrailingIconStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) { configuration.title; configuration.icon.font(.caption2.weight(.semibold)) }
     }
 }
 
