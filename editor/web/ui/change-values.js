@@ -129,6 +129,19 @@ function side(parsed, property, fps, exact = false) {
   return { text: plain(value, 0, exact) }
 }
 
+// A list holds the same items in another order only when every item is on both sides whole. A
+// marker that was renamed or moved keeps the count and is a change, as is a list cut short.
+const itemKeys = parsed => Array.isArray(parsed.value) ? parsed.value.map(item => JSON.stringify(item)).sort() : null
+function reordered(before, after) {
+  const old = itemKeys(before), next = itemKeys(after)
+  return Boolean(old && next) && old.length === next.length && old.every((item, index) => item === next[index])
+}
+function changedItems(before, after, noun) {
+  const old = itemKeys(before), next = itemKeys(after)
+  if (!old || !next) return 'Changed'
+  return `${plural(Math.max(1, next.filter(item => !old.includes(item)).length), noun)} changed`
+}
+
 /**
  * One receipt change as display text. `property` is the receipt path; `fps` is the frame rate of the
  * layer's own timeline. A whole layer, track or composition added or removed reads as one word.
@@ -146,7 +159,7 @@ export function readableChange(change, { fps = 30 } = {}) {
   }
   const rate = Number.isFinite(fps) && fps > 0 ? fps : 30
   let old = side(before, property, rate), next = side(after, property, rate)
-  if (old.text === next.text && ORDERS[property]) return { property, label: propertyLabel(property), only: 'Reordered' }
+  if (old.text === next.text && ORDERS[property]) return { property, label: propertyLabel(property), only: reordered(before, after) ? 'Reordered' : changedItems(before, after, ORDERS[property]) }
   if (old.text === next.text) { old = side(before, property, rate, true); next = side(after, property, rate, true) }
   return { property, label: propertyLabel(property), before: old.text, after: next.text, swatches: old.swatch || next.swatch ? [old.swatch ?? null, next.swatch ?? null] : null }
 }
@@ -219,6 +232,8 @@ export function changeKinds(receipts = []) {
       if (found.has('trim')) found.delete('move')
       for (const kind of found) add(kind)
     }
+    // A receipt keeps a limited number of layer rows. Its recorded total counts the rest.
+    if (Number.isSafeInteger(receipt.total)) count += Math.max(0, receipt.total - (receipt.clips ?? []).length)
     for (const scope of receipt.scopes ?? []) {
       const changes = (scope.changes ?? []).filter(change => change.property !== 'Object order')
       // A timeline that only got longer or shorter follows from the clips already counted.
