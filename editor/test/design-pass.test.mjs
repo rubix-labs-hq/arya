@@ -81,7 +81,8 @@ test('a narrow composer puts the input options above Preview first and Send, so 
   const block = narrow.slice(0, narrow.indexOf('\n}\n'))
   assert.match(block, /\.chat \.assistant-field-bar \{ flex-wrap: wrap;/)
   assert.match(block, /\.chat \.assistant-input-tools \{ flex: 1 1 100%; \}/)
-  assert.match(block, /\.chat \.assistant-primary-action \{ flex: 1 1 100%; justify-content: space-between;/)
+  assert.match(block, /\.chat \.assistant-primary-action \{ flex: 1 1 100%; justify-content: flex-end;/)
+  assert.match(block, /\.chat \.assistant-primary-action > \.assistant-preview-toggle \{ margin-right: auto; \}/)
   // Nothing hides the word or the tips button to make room any more, except in a window too short for two rows.
   assert.doesNotMatch(assistantCSS, /\.assistant-model-menu \{ min-width: 34px; \}/)
   assert.doesNotMatch(mediaBlock(assistantCSS, '(min-width: 901px) and (max-width: 1439px)'), /assistant-preview-first|assistant-input-help/)
@@ -236,6 +237,6 @@ test('a dialog keeps Tab inside it, takes focus back from outside and closes on 
   assert.equal(dialogKey({ key: 'Escape' }, null, () => { closed++ }, doc), false); assert.equal(closed, 1)
   const captions = read('ui/plugins/captions.js')
   assert.match(captions, /if \(element\) \(dialogControls\(element\)\[0\] \?\? element\)\.focus\(\)/, 'focus moves into the dialog when it opens')
-  assert.match(captions, /document\.addEventListener\('keydown', key, true\)/)
+  assert.match(captions, /doc\.addEventListener\('keydown', key, true\)/)
   assert.match(captions, /if \(opener\?\.isConnected\) opener\.focus\?\.\(\)/, 'and returns to what opened it')
 })

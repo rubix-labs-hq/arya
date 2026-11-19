@@ -345,7 +345,8 @@
 @container composer (max-width: 409px) {
   .chat .assistant-field-bar { flex-wrap: wrap; row-gap: 2px; }
   .chat .assistant-input-tools { flex: 1 1 100%; }
-  .chat .assistant-primary-action { flex: 1 1 100%; justify-content: space-between; margin-left: 0; padding-left: 4px; }
+  .chat .assistant-primary-action { flex: 1 1 100%; justify-content: flex-end; margin-left: 0; padding-left: 4px; }
+  .chat .assistant-primary-action > .assistant-preview-toggle { margin-right: auto; }
 }
 @media (max-height: 520px) {
   .assistant-model-popover { top: 46px; bottom: auto; }
