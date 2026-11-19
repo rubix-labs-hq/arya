@@ -24,6 +24,14 @@ enum NativeAssistantLayout {
         return actionHeight * (stacked ? 2 : 1) + (stacked ? 8 : 0) + 20
     }
 
+    /// One line of the draft's body text before scaling. Every iOS build, Mac Catalyst
+    /// included, sets body text at the larger iOS size; the Mac app sets it at 13 points.
+    #if os(iOS)
+    static let draftLineHeight = 22.0
+    #else
+    static let draftLineHeight = 17.0
+    #endif
+
     /// The draft grows with its lines, from two lines to about seven, then scrolls.
     /// A pane with little height, such as a phone on its side, starts at one line.
     static func preferredEditorHeight(text: String, width: Double, lineHeight: Double, minimumLines: Double = 2) -> Double {
@@ -181,7 +189,8 @@ struct NativeAssistantPanel: View {
     private var actionHeight: Double { max(44, scaledActionLine + 14) }
     @ScaledMetric(relativeTo: .caption) private var activityFontSize = 11.0
     @ScaledMetric(relativeTo: .caption) private var scaledChipHeight = 26.0
-    @ScaledMetric(relativeTo: .body) private var editorLineHeight = Self.touch ? 22.0 : 17.0
+    /// A text measure, not a target size: Mac Catalyst draws the draft at the iPad's body size.
+    @ScaledMetric(relativeTo: .body) private var editorLineHeight = NativeAssistantLayout.draftLineHeight
     @State private var reviewingSharing = false
     @State private var settings = false
     @State private var scriptImportContext: NativeScriptImportContext?
