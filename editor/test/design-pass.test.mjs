@@ -216,3 +216,26 @@ test('the Color page names the clip, with its id in a tooltip', async () => {
   // No Color header or hint prints the stored id as its text.
   for (const [name, source] of [['color.js', color], ['node-editor.js', editor], ['workflow-panel.js', workflow]]) assert.doesNotMatch(source, />\$\{clip\.id\}|`\$\{clip\.id\} · /, name)
 })
+
+test('a dialog keeps Tab inside it, takes focus back from outside and closes on Escape', async () => {
+  const { dialogControls, dialogKey } = await import('../web/ui/dialog-focus.js')
+  const control = (name, { disabled = false, shown = true } = {}) => ({ name, matches: () => disabled, getClientRects: () => shown ? [{}] : [], focus() { doc.activeElement = this } })
+  const first = control('Media'), hidden = control('Hidden', { shown: false }), off = control('Off', { disabled: true }), last = control('Preview captions')
+  const element = { querySelectorAll: () => [first, hidden, off, last], contains: node => [first, hidden, off, last].includes(node), focus() { doc.activeElement = element } }
+  const doc = { activeElement: null }
+  const press = (key, shiftKey = false) => { const event = { key, shiftKey, prevented: false, preventDefault() { this.prevented = true }, stopPropagation() {} }; return [dialogKey(event, element, () => { closed++ }, doc), event.prevented] }
+  let closed = 0
+  assert.deepEqual(dialogControls(element), [first, last], 'hidden and disabled controls are skipped')
+  doc.activeElement = { name: 'page behind' }
+  assert.deepEqual(press('Tab'), [true, true]); assert.equal(doc.activeElement, first, 'Tab from outside lands on the first control')
+  doc.activeElement = last; press('Tab'); assert.equal(doc.activeElement, first, 'Tab wraps from the last control')
+  press('Tab', true); assert.equal(doc.activeElement, last, 'Shift+Tab wraps from the first control')
+  doc.activeElement = first; assert.deepEqual(press('Tab'), [false, false], 'between controls the browser moves focus')
+  assert.deepEqual(press('a'), [false, false])
+  assert.deepEqual(press('Escape'), [true, true]); assert.equal(closed, 1)
+  assert.equal(dialogKey({ key: 'Escape' }, null, () => { closed++ }, doc), false); assert.equal(closed, 1)
+  const captions = read('ui/plugins/captions.js')
+  assert.match(captions, /if \(element\) \(dialogControls\(element\)\[0\] \?\? element\)\.focus\(\)/, 'focus moves into the dialog when it opens')
+  assert.match(captions, /document\.addEventListener\('keydown', key, true\)/)
+  assert.match(captions, /if \(opener\?\.isConnected\) opener\.focus\?\.\(\)/, 'and returns to what opened it')
+})

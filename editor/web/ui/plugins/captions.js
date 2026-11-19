@@ -10,6 +10,7 @@
 import { h, render } from 'preact'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
+import { dialogControls, dialogKey } from '../dialog-focus.js'
 import { CAPTION_STYLES } from '/core/shorts.js'
 import { player } from '../engine-host.js'
 import { Num } from '../inspector.js'
@@ -285,6 +286,19 @@ function TranscriptDialog({ onClose }) {
     setBusy(false); setJob(null); setResult(null); setRequestBody(null)
   }, [identity])
   useEffect(() => () => { active.current = false; request.current?.ctrl.abort() }, [])
+  // Focus moves into the dialog when it opens and goes back to what opened it when it closes.
+  // Escape and Tab are heard on the document, so they still work when focus has been left outside.
+  const dialog = useRef(null)
+  const dismiss = useRef(null)
+  dismiss.current = () => { request.current?.ctrl.abort(); onClose() }
+  useEffect(() => {
+    const opener = document.activeElement
+    const element = dialog.current
+    if (element) (dialogControls(element)[0] ?? element).focus()
+    const key = event => { if (dialog.current?.getClientRects().length) dialogKey(event, dialog.current, () => dismiss.current()) }
+    document.addEventListener('keydown', key, true)
+    return () => { document.removeEventListener('keydown', key, true); if (opener?.isConnected) opener.focus?.() }
+  }, [])
   const run = async () => {
     if (request.current || !src || renderIdentity.current !== identity || store.root !== identity.root || store.project !== identity.project || store.version !== identity.version || (store.openComp ?? null) !== identity.comp) return
     const owned = { identity, ctrl: new AbortController(), applying: false }
@@ -336,7 +350,7 @@ function TranscriptDialog({ onClose }) {
 
   return html`
     <div class="modal-back" onClick=${() => { request.current?.ctrl.abort(); onClose() }}>
-      <div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby="cap-transcript-title" onClick=${e => e.stopPropagation()}>
+      <div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby="cap-transcript-title" tabIndex="-1" ref=${dialog} onClick=${e => e.stopPropagation()}>
         <header><div><h3 id="cap-transcript-title">Captions from a transcript</h3><p class="dialog-subtitle">Pick a clip and a style, then preview the captions before they are added.</p></div></header>
         ${sources.length ? html`
           <div class="field"><label>Media</label><select disabled=${busy} value=${src} onChange=${e => (setSrc(e.target.value), setResult(null), setNotes([]))}>${sources.map(x => html`<option value=${x}>${x.split('/').pop()}</option>`)}</select></div>

@@ -416,6 +416,10 @@
     "target": "editor/ui/delivery-preview.js"
   },
   {
+    "source": "web/ui/dialog-focus.js",
+    "target": "editor/ui/dialog-focus.js"
+  },
+  {
     "source": "web/ui/engine-host.js",
     "target": "editor/ui/engine-host.js"
   },
