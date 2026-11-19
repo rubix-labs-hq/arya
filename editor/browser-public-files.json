@@ -356,6 +356,10 @@
     "target": "editor/ui/chat.js"
   },
   {
+    "source": "web/ui/clip-name.js",
+    "target": "editor/ui/clip-name.js"
+  },
+  {
     "source": "web/ui/color.js",
     "target": "editor/ui/color.js"
   },

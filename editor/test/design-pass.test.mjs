@@ -200,3 +200,19 @@ test('the hosted project picker has one primary, Create project, and ghost backu
   assert.match(picker, /<button class="ghost" disabled=\$\{blocked \|\| !state\.project\}[^\n]*>Download project and media backup<\/button>/)
   assert.match(picker, /<h2 id="browser-project-title">Your browser projects<\/h2><p class="dialog-subtitle">Saved on this device, not uploaded\.<\/p>/)
 })
+
+test('the Color page names the clip, with its id in a tooltip', async () => {
+  const { shownClipName, clipIdTitle } = await import('../web/ui/clip-name.js')
+  const project = { assets: {}, comps: { k1: { name: 'Lower third' } } }
+  assert.equal(shownClipName(project, { id: 'c5', kind: 'title', title: { text: 'Meet the team\nSeason two' } }), 'Meet the team', 'the first line of a title')
+  assert.equal(shownClipName(project, { id: 'c1', kind: 'video', src: 'media/interview-wide.mp4' }), 'interview-wide.mp4')
+  assert.equal(shownClipName(project, { id: 'c2', kind: 'video', src: 'media/a.mp4', label: 'Opening' }), 'Opening')
+  assert.equal(shownClipName(project, { id: 'c3', kind: 'comp', comp: 'k1' }), 'Lower third')
+  assert.equal(shownClipName(null, { id: 'c4', kind: 'adjustment' }), 'Adjustment layer')
+  assert.equal(clipIdTitle({ id: 'c6' }), 'Clip id c6')
+  const color = read('ui/color.js'), editor = read('ui/color/node-editor.js'), workflow = read('ui/color/workflow-panel.js')
+  assert.match(color, /<b title=\$\{clipIdTitle\(clip\)\}>\$\{shownClipName\(viewProject\(\), clip\)\}<\/b>/)
+  assert.match(editor, /<span class="muted" title=\$\{clipIdTitle\(clip\)\}>\$\{shownClipName\(viewProject\(\), clip\)\}/)
+  // No Color header or hint prints the stored id as its text.
+  for (const [name, source] of [['color.js', color], ['node-editor.js', editor], ['workflow-panel.js', workflow]]) assert.doesNotMatch(source, />\$\{clip\.id\}|`\$\{clip\.id\} · /, name)
+})
