@@ -89,9 +89,10 @@
 .chat-head .chat-collapse { display: none; }
 /* The list is the positioning root for its hidden speaker labels, so they cannot stretch the panel. */
 .chat-list { position: relative; padding: 12px; gap: 10px; min-height: min(4em, 12dvh); overscroll-behavior: contain; }
-.chat-list .sr-only, .assistant-composer-card .sr-only {
+.chat-list .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
+.assistant-composer-card .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* The empty state and the status check sit just above the field, where the eye already is. */
 .chat-list .assistant-checking { margin-top: auto; }
 /* Before the first message the promise, what the assistant sees and the starters sit together, centred. */
@@ -265,7 +266,7 @@
 .chat .assistant-input-tools > * { flex: 0 1 auto; min-width: 0; }
 /* The provider and model give way first, so Prompt and Import text stay readable. */
 .chat .assistant-input-tools > :is(.assistant-input-kind, .assistant-script-import, .assistant-input-help) { flex: none; margin: 0; }
-.chat .assistant-input-tools > .assistant-model-menu { flex: 0 1 auto; min-width: 84px; margin: 0; }
+.chat .assistant-input-tools > .assistant-model-menu { flex: 0 1 auto; min-width: 0; margin: 0; }
 .chat .assistant-input-tools > :is(.assistant-script-import, .assistant-input-help) { min-width: 26px; }
 .chat .assistant-input-help summary { min-width: 26px; padding-inline: 4px; }
 .chat .assistant-model-menu > summary { max-width: 100%; }
