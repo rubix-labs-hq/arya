@@ -8,8 +8,8 @@
 .assistant-preview-list li { padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--input); min-width: 0; }
 .assistant-preview-list li > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; min-width: 0; }
 .assistant-preview-list li > div b { font-weight: 500; font-size: 12px; overflow-wrap: anywhere; }
-.assistant-preview-list small { color: var(--muted); font-size: 10.5px; }
-.assistant-preview-status { font-size: 10.5px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line-2); color: var(--muted); }
+.assistant-preview-list small { color: var(--muted); font-size: var(--text-caption); }
+.assistant-preview-status { font-size: var(--text-caption); padding: 0 6px; border-radius: 8px; border: 1px solid var(--line-2); color: var(--muted); }
 .assistant-preview-status.added { color: var(--good); border-color: #b8c9ac66; }
 .assistant-preview-status.deleted { color: var(--danger); border-color: #f28b7a66; }
 .assistant-preview-list dl { display: grid; grid-template-columns: minmax(70px, 38%) 1fr; gap: 3px 10px; margin: 5px 0 0; font-size: 12px; }
@@ -205,7 +205,7 @@
 .chat-list .assistant-run-heading { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12px; list-style: none; }
 .chat-list summary.assistant-run-heading { cursor: pointer; }
 .chat-list summary.assistant-run-heading::-webkit-details-marker { display: none; }
-.chat-list summary.assistant-run-heading::after { content: '▸'; flex: none; font-size: 10px; }
+.chat-list summary.assistant-run-heading::after { content: '▸'; flex: none; font-size: var(--text-caption); }
 .chat-list .assistant-run[open] > summary.assistant-run-heading::after { content: '▾'; }
 .chat-list .assistant-run-symbol { flex: none; width: 14px; font-size: 13px; text-align: center; }
 .chat-list .assistant-run-heading b { flex: none; font-weight: 500; color: var(--text); }
@@ -267,8 +267,8 @@
 .chat .assistant-composer-card .refs .chip button { min-width: 24px; min-height: 24px; margin-block: -4px; }
 .chat .assistant-preview-toggle { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 4px; cursor: pointer; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .chat .assistant-preview-toggle input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
-.assistant-switch { flex: none; width: 24px; height: 14px; border-radius: 999px; background: var(--line-2); position: relative; transition: background-color .12s; }
-.assistant-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text); transition: transform .12s; }
+.assistant-switch { flex: none; width: 24px; height: 14px; border-radius: 999px; background: var(--line-2); position: relative; transition: background-color var(--motion-fast); }
+.assistant-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text); transition: transform var(--motion-fast); }
 .assistant-preview-toggle input:checked + .assistant-switch { background: var(--accent); }
 .assistant-preview-toggle input:checked + .assistant-switch::after { transform: translateX(10px); background: var(--accent-ink); }
 .assistant-preview-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
@@ -426,7 +426,7 @@
    The sheet keeps its size and its contents stay mounted, so the draft and the scroll position survive. */
 @media (max-width: 720px) and (orientation: portrait), (max-width: 720px) and (min-height: 501px) {
   .chat-head .chat-collapse { display: inline-grid; place-items: center; }
-  .main > .chat.panel { transition: transform .18s ease-out; }
+  .main > .chat.panel { transition: transform var(--motion-base) ease-out; }
   .main > .chat.panel.collapsed { overflow: hidden; transform: translateY(calc(100% - 54px - env(safe-area-inset-bottom))); }
   .chat.collapsed > :not(.chat-head), .chat.collapsed .chat-settings { visibility: hidden; }
   /* The bar is 54px at any text size, so Expand and Close stay on screen. Its one line clips. */

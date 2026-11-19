@@ -67,3 +67,19 @@ test('between 1100 and 1439px an open assistant takes the inspector column and t
   assert.match(mid, /\.tl-toolbar \{ flex-wrap: nowrap; \}/, 'the timeline toolbar keeps to one row')
   assert.match(assistantCSS, /\n\.side-tabs \{ display: none; \}/)
 })
+
+test('type, focus, motion and disabled text come from root tokens, and nothing is set below 11px', () => {
+  for (const token of ['--text-caption: 11px', '--text-label: 12px', '--text-body: 13px', '--text-title: 15px', '--text-dialog: 18px', '--text-display: 21px', '--mono-small: 11px', '--mono: 12px', '--focus-ring: 2px solid var(--accent)', '--focus-offset: 2px', '--focus-inset: -2px', '--motion-fast: 120ms', '--motion-base: 180ms', '--disabled-text: #8a8e83']) assert.ok(styles.includes(`  ${token};`), token)
+  for (const [name, css] of [['styles.css', styles], ['assistant.css', assistantCSS], ['phone.css', read('ui/phone.css')], ['icons.css', read('ui/icons.css')]]) {
+    for (const [rule, size] of css.matchAll(/font(?:-size)?:\s*(\d+(?:\.\d+)?)px/g)) assert.ok(Number(size) >= 11, `${name}: ${rule}`)
+  }
+  // Inputs keep the browser ring until the shared one replaces it: no blanket outline: none.
+  assert.doesNotMatch(styles, /\nselect, input[^{]*\{[^}]*outline: none/)
+  assert.match(styles, /select:focus-visible, input:focus-visible, textarea:focus-visible \{ outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\); \}/)
+  assert.match(styles, /button:focus-visible, a:focus-visible, \[tabindex\]:focus-visible, summary:focus-visible \{ outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\); \}/)
+  assert.match(styles, /\.seg button:focus-visible, \[role=tab\]:focus-visible \{ outline-offset: var\(--focus-inset\); \}/)
+  // One reduced-motion block turns every animation and transition off.
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{ animation: none !important; transition: none !important;/)
+  assert.doesNotMatch(`${styles}${assistantCSS}`, /transition: [^;]*\b(?:\.12s|\.18s|120ms|180ms)/)
+  assert.match(styles, /button:disabled:is\(\.ghost, \.tiny\):not\(\.primary\) \{ opacity: 1; color: var\(--disabled-text\); \}/)
+})
