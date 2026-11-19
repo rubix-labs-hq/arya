@@ -585,6 +585,16 @@ function allocator(p) {
   return prefix => { let n = 1; while (used.has(`${prefix}${n}`)) n++; const id = `${prefix}${n}`; used.add(id); return id }
 }
 
+/** A placed copy keeps its name unless a composition already has it; then it is "Name copy", "Name copy 2" and so on. */
+function freeCompName(p, name) {
+  const taken = new Set(Object.values(p.comps ?? {}).map(comp => comp.name))
+  if (!taken.has(name)) return name
+  for (let n = 1; ; n++) {
+    const next = `${name} copy${n > 1 ? ` ${n}` : ''}`
+    if (!taken.has(next)) return next
+  }
+}
+
 function remapClip(c, ids, fresh, links) {
   const old = c.id; c.id = ids.get(old)
   if (c.parent) c.parent = ids.get(c.parent)
@@ -707,6 +717,7 @@ export function applyLibraryOp(p, op, ctx) {
       comp.id = ids.get(comp.id)
       for (const marker of comp.markers ?? []) { marker.id = fresh('m'); created.push(marker.id) }
       for (const clip of clipsIn(comp.tracks)) remapClip(clip, ids, fresh, links)
+      comp.name = freeCompName(p, comp.name)
       p.comps[comp.id] = comp; created.push(comp.id)
       for (const clip of clipsIn(comp.tracks)) created.push(clip.id)
     }

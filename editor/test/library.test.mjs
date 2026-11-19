@@ -299,6 +299,12 @@ test('two composition applications have independent editable layers and no share
   const firstTitle = createdClip(p, first, 'title')
   const secondTitle = createdClip(first, second, 'title')
   assert.notEqual(firstTitle.id, secondTitle.id)
+  // Each placed copy gets a name no other composition has, so menus can tell them apart.
+  const names = Object.values(second.comps).map(comp => comp.name)
+  assert.equal(new Set(names).size, names.length, names.join(', '))
+  const rootName = source.project.comps[source.root].name
+  const made = project => Object.keys(project.comps).filter(key => !p.comps[key]).map(key => project.comps[key].name)
+  assert.ok(made(second).includes(`${rootName} copy`) && made(second).includes(`${rootName} copy 2`), made(second).join(', '))
   const edited = run(second, [{ op: 'update', id: secondTitle.id, set: { title: { text: 'Second card' } } }])
   assert.equal(clip(edited, firstTitle.id).title.text, 'Reusable Figma')
   assert.equal(clip(edited, source.title).title.text, 'Reusable Figma')

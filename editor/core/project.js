@@ -1109,6 +1109,8 @@ export function applyOps(source, ops) {
       case 'speed': {
         // A slower clip pushes later clips on its tracks, so it never covers the next one. A faster clip
         // leaves a gap unless `ripple: true`; `ripple: false` keeps later clips and stops at the next clip.
+        const before = clipOf(op.id).clip
+        const wasSpeed = before.speed ?? 1, wasReverse = !!before.reverse
         withLinked(op.id, ({ track, clip }) => {
           const old = clip.speed ?? 1
           const oldEnd = clipEnd(clip)
@@ -1125,7 +1127,11 @@ export function applyOps(source, ops) {
           } else if (clip.dur > oldDur || op.ripple === true) shiftAfter(track, oldEnd, clip.dur - oldDur, clip)
           boundCaptionWords(clip, p.fps)
         })
-        log.push(`retimed ${op.id} to ${op.speed}x`)
+        // A change of direction is named, so a Reverse toggle at the same speed does not read as a retime.
+        const now = clipOf(op.id).clip, nowReverse = !!now.reverse
+        if (nowReverse === wasReverse) log.push(`retimed ${op.id} to ${op.speed}x`)
+        else if ((now.speed ?? 1) !== wasSpeed) log.push(`retimed ${op.id} to ${op.speed}x and ${nowReverse ? 'reversed it' : 'restored forward playback'}`)
+        else log.push(nowReverse ? `reversed ${op.id}` : `restored forward playback of ${op.id}`)
         break
       }
       case 'freeze': {

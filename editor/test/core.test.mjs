@@ -112,6 +112,23 @@ test('insert ripples everything after the insert point; overwrite clears its ran
   assert.deepEqual(v1(p).map(c => [c[1], c[2]]), [[0, 3], [3, 2], [5, 3]])
 })
 
+test('the speed log names a change of direction, and a Reverse toggle alone is not a retime', () => {
+  const log = (p, op) => { const r = applyOps(p, [op]); return [r.project, r.log.at(-1)] }
+  let [p, line] = log(base(), { op: 'speed', id: 'c1', speed: 2 })
+  assert.equal(line, 'retimed c1 to 2x')
+  ;[p, line] = log(p, { op: 'speed', id: 'c1', speed: 2, reverse: true })
+  assert.equal(line, 'reversed c1')
+  assert.equal(p.tracks[0].clips[0].reverse, true)
+  ;[p, line] = log(p, { op: 'speed', id: 'c1', speed: 2 })
+  assert.equal(line, 'retimed c1 to 2x', 'an op without reverse keeps the direction')
+  ;[p, line] = log(p, { op: 'speed', id: 'c1', speed: 1, reverse: false })
+  assert.equal(line, 'retimed c1 to 1x and restored forward playback')
+  ;[p, line] = log(p, { op: 'speed', id: 'c1', speed: 0.5, reverse: true })
+  assert.equal(line, 'retimed c1 to 0.5x and reversed it')
+  ;[p, line] = log(p, { op: 'speed', id: 'c1', speed: 0.5, reverse: false })
+  assert.equal(line, 'restored forward playback of c1')
+})
+
 test('delete_range removes a span on every track and closes it', () => {
   const p = applyOps(base(), [{ op: 'delete_range', from: 1, to: 2 }]).project
   assert.equal(duration(p), 7)
