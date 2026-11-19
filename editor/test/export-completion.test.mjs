@@ -15,9 +15,11 @@ const WIDTH = 16, HEIGHT = 16, FPS = 30
 
 // These tests act as the renderer through SSE and frame/audio uploads. Keep the
 // server's worker as an owned child, without launching a second renderer.
+// Fixture processes write each JSON marker under a temporary name and rename it, so a reader that
+// sees the file never reads it half written.
 function fixtureServer(root, workerReady) {
   const workerFile = path.join(root, 'completion-worker.mjs')
-  fs.writeFileSync(workerFile, `import fs from 'node:fs';fs.writeFileSync(${JSON.stringify(workerReady)},JSON.stringify({pid:process.pid,parent:process.ppid}));process.on('disconnect',()=>process.exit(0));setInterval(()=>{},1000);\n`)
+  fs.writeFileSync(workerFile, `import fs from 'node:fs';fs.writeFileSync(${JSON.stringify(workerReady + '.part')},JSON.stringify({pid:process.pid,parent:process.ppid}));fs.renameSync(${JSON.stringify(workerReady + '.part')},${JSON.stringify(workerReady)});process.on('disconnect',()=>process.exit(0));setInterval(()=>{},1000);\n`)
   let source = fs.readFileSync(SERVER, 'utf8')
   const spawnImport = "import { spawn } from 'node:child_process'"
   assert.equal(source.split(spawnImport).length, 2, 'the actual server has one process-launch import')
@@ -46,7 +48,7 @@ async function startServer(t, { controlledEncoder = false, hardStopEncoder = fal
   if (controlledEncoder) {
     const bin = path.join(root, 'bin')
     fs.mkdirSync(bin)
-    fs.writeFileSync(path.join(bin, 'ffmpeg'), `#!${process.execPath}\nimport fs from 'node:fs';const out=process.argv.at(-1);fs.writeFileSync(out,'encoding');fs.watchFile(${JSON.stringify(release)},{interval:10},()=>{if(fs.existsSync(${JSON.stringify(release)}))fs.appendFileSync(out,'late write')});fs.watchFile(${JSON.stringify(stopEncoder)},{interval:10},()=>{if(fs.existsSync(${JSON.stringify(stopEncoder)}))process.exit(0)});process.on('exit',()=>fs.writeFileSync(${JSON.stringify(encoderExited)},'exited'));process.on('SIGTERM',()=>${hardStopEncoder ? "process.kill(process.pid,'SIGKILL')" : 'process.exit(0)'});if(fs.existsSync(${JSON.stringify(stopEncoder)}))process.exit(0);process.stdin.resume();process.stdin.once('end',()=>fs.writeFileSync(${JSON.stringify(marker)},'ready'));fs.writeFileSync(${JSON.stringify(startedMarker)},JSON.stringify({pid:process.pid,out}));\n`, { mode: 0o700 })
+    fs.writeFileSync(path.join(bin, 'ffmpeg'), `#!${process.execPath}\nimport fs from 'node:fs';const out=process.argv.at(-1);fs.writeFileSync(out,'encoding');fs.watchFile(${JSON.stringify(release)},{interval:10},()=>{if(fs.existsSync(${JSON.stringify(release)}))fs.appendFileSync(out,'late write')});fs.watchFile(${JSON.stringify(stopEncoder)},{interval:10},()=>{if(fs.existsSync(${JSON.stringify(stopEncoder)}))process.exit(0)});process.on('exit',()=>fs.writeFileSync(${JSON.stringify(encoderExited)},'exited'));process.on('SIGTERM',()=>${hardStopEncoder ? "process.kill(process.pid,'SIGKILL')" : 'process.exit(0)'});if(fs.existsSync(${JSON.stringify(stopEncoder)}))process.exit(0);process.stdin.resume();process.stdin.once('end',()=>fs.writeFileSync(${JSON.stringify(marker)},'ready'));fs.writeFileSync(${JSON.stringify(startedMarker + '.part')},JSON.stringify({pid:process.pid,out}));fs.renameSync(${JSON.stringify(startedMarker + '.part')},${JSON.stringify(startedMarker)});\n`, { mode: 0o700 })
     env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }
   }
   const reservation = net.createServer()
