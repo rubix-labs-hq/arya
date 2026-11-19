@@ -197,10 +197,11 @@ struct NativeMediaPanel: View {
 
     // BEGIN MEDIA INLINE STATUS
     @ViewBuilder private var mediaStatus: some View {
-        // The editor's status line carries edit and assistant messages. This column repeats them
-        // only inside the phone's Media sheet, which covers that line.
-        let status = session.projectReadOnlyReason.map { "Project is read-only. \($0)" }
-            ?? (model.status.isEmpty || model.mobilePanel != .media ? session.error ?? "" : model.status)
+        // The editor's status line carries edit and assistant messages and the read-only reason.
+        // This column repeats them only inside the phone's Media sheet, which covers that line.
+        let covered = model.mobilePanel == .media
+        let status = (covered ? session.projectReadOnlyReason.map { "Project is read-only. \($0)" } : nil)
+            ?? (model.status.isEmpty || !covered ? session.error ?? "" : model.status)
         if !status.isEmpty {
             DisclosureGroup {
                 ScrollView {

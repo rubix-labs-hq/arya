@@ -8,6 +8,9 @@ import AVFoundation
 #elseif os(macOS)
 import AppKit
 #endif
+#if targetEnvironment(macCatalyst)
+import GameController
+#endif
 
 #if os(iOS)
 private struct NativeContextInteractionsEnabledKey: EnvironmentKey {
@@ -133,11 +136,12 @@ enum NativeWorkspaceLayout {
     /// The width of the assistant when a compact layout docks it as a trailing column, or 0
     /// when it opens as a sheet. A phone on its side gives it about 45 percent beside the
     /// viewer, where a sheet would cover the picture. An iPad at least 900 points wide gives
-    /// it a column. Accessibility text keeps the sheet, which has the whole width.
+    /// it a column at any height, so a short window between the two rules still docks it.
+    /// Accessibility text keeps the sheet, which has the whole width.
     static func compactAssistantDock(width: Double, height: Double, accessibilityText: Bool) -> Double {
         guard width.isFinite, height.isFinite, !accessibilityText else { return 0 }
         if width >= 600 && height < 500 { return min(420, max(280, (width * 0.45).rounded())) }
-        if width >= 900 && height >= 560 { return min(400, max(320, (width * 0.34).rounded())) }
+        if width >= 900 { return min(400, max(320, (width * 0.34).rounded())) }
         return 0
     }
 
@@ -327,6 +331,9 @@ struct NativeEditorView: View {
     @State private var settingsVisible = false
     /// Set by the Ask Arya entry so the opened assistant focuses its draft once.
     @State private var assistantFocusRequest = false
+    /// The compact assistant came from the wide layout's open pane, not from a request made in
+    /// the compact layout, so it is shown only while there is a column for it.
+    @State private var assistantCarried = false
     @State private var lastEditingPanel: NativePanel = .edit
     @State private var compactToolsExpanded = false
     @State private var compactControlsDetailed = false
@@ -348,7 +355,7 @@ struct NativeEditorView: View {
                     if assistantDock > 0, model.mobilePanel == .assistant {
                         Rectangle().fill(NativeEditorStyle.line).frame(width: 1)
                         NativeAssistantPanel(assistant: session.assistant, model: model, openSettings: { settingsVisible = true },
-                                             close: { model.mobilePanel = nil })
+                                             close: closeCompactAssistant)
                             .frame(width: assistantDock)
                             .background(NativeEditorStyle.panel)
                             .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
@@ -424,7 +431,7 @@ struct NativeEditorView: View {
                         .navigationBarTitleDisplayMode(.inline)
                         #endif
                         // The assistant's sheet closes. "Done" there read as finishing the draft.
-                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(panel == .assistant ? "Close" : "Done") { model.mobilePanel = nil } } }
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(panel == .assistant ? "Close" : "Done") { if panel == .assistant { closeCompactAssistant() } else { model.mobilePanel = nil } } } }
                         .modifier(NativeSheetSurface())
                 }
                 .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
@@ -455,6 +462,9 @@ struct NativeEditorView: View {
                     .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
             }
             .onChange(of: model.mobilePanel) { _, next in
+                // Other panels open and replace the compact assistant directly, so the carried
+                // mark is dropped wherever the panel stops being the assistant.
+                if next != .assistant { assistantCarried = false }
                 // A nested picker belongs to the panel that presented it. Never queue it
                 // behind a dismissed panel or migrate it across a layout/project switch.
                 if let request = model.mediaImportRequest, request.panelID != next?.rawValue {
@@ -502,15 +512,29 @@ struct NativeEditorView: View {
             .onChange(of: compact) { _, next in
                 if next {
                     if !NativeCompactWorkspaceRouting.inlineWorkspaces.contains(model.panel) { model.mobilePanel = model.panel; model.panel = compactEditingPanel }
+                    // An open assistant stays open across the change where the compact layout
+                    // has a column for it. Where it would be a sheet over the picture it waits,
+                    // still marked open, for the window to widen or for an explicit close.
+                    if NativeAssistantVisibility.opensCompact(wideVisible: assistantVisible, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = .assistant; assistantCarried = true }
                 } else {
                     let tool = model.mobilePanel
                     // Bounded tasks keep their sheet identity and unsaved form state
                     // when an iPad window widens into the multi-pane workspace.
                     if tool == .media || tool == .deliver { return }
                     model.mobilePanel = nil
+                    // Closing the compact assistant cleared the saved flag, so only an assistant
+                    // still open, or one the compact layout never showed, comes back here.
                     if tool == .assistant || model.panel == .assistant { assistantVisible = true; model.panel = lastEditingPanel }
                     else if let tool, NativePanel.tools.contains(tool) { model.panel = tool }
                 }
+            }
+            // A compact window can lose or gain the column while it stays compact, as when an
+            // iPad or Mac window is dragged through 900 points. A carried assistant leaves with
+            // the column, still marked open, and returns with it. It never turns into a sheet.
+            .onChange(of: assistantDock > 0) { _, docked in
+                guard compact else { return }
+                if NativeAssistantVisibility.hidesWithoutDock(carried: assistantCarried, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = nil }
+                else if docked, NativeAssistantVisibility.opensCompact(wideVisible: assistantVisible, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = .assistant; assistantCarried = true }
             }
         }
         .background(NativeEditorStyle.background)
@@ -622,14 +646,23 @@ struct NativeEditorView: View {
             get: {
                 guard let panel = model.mobilePanel, !NativeCompactWorkspaceRouting.inlineWorkspaces.contains(panel) else { return nil }
                 // A docked assistant is a column in the workspace, so no sheet presents it.
-                if assistantDocked && panel == .assistant { return nil }
+                // A carried one whose column just ended is about to be hidden, so it gets none either.
+                if (assistantDocked || assistantCarried) && panel == .assistant { return nil }
                 return panel
             },
             set: { next in
                 guard next == nil, model.mobilePanel == presented else { return }
-                model.mobilePanel = nil
+                // Swiping the assistant's sheet away closes it, as its Close button does.
+                if presented == .assistant { closeCompactAssistant() } else { model.mobilePanel = nil }
             }
         )
+    }
+
+    /// Closes the compact assistant, docked or in its sheet, and forgets that it was open, so a
+    /// wider layout does not bring back a pane the person closed.
+    private func closeCompactAssistant() {
+        model.mobilePanel = nil
+        assistantVisible = NativeAssistantVisibility.afterCompactClose
     }
 
     private func usesCompactLayout(size: CGSize) -> Bool {
@@ -1340,13 +1373,8 @@ struct NativeEditorView: View {
                     Button("Reset layout") { resetLayout() }
                 }
             }
-            // The browser editor is a development aid. It shows with Option held or a developer default.
-            if NativeDeveloperOptions.visible || session.useWebEditor {
-                Section {
-                    Toggle("Web editor", isOn: $session.useWebEditor)
-                    Button("Reload editor") { session.reloadEditor() }
-                }
-            }
+            // The browser editor is a development aid, under the same rule as the Mac's View menu.
+            NativeDeveloperMenuItems(session: session, optionKey: NativeOptionKey.shared)
         }
         return Menu {
             if compact {
@@ -1441,6 +1469,9 @@ struct NativeEditorView: View {
             } else {
                 // Task presentation never changes the active editing workspace.
                 dismissCompactKeyboard()
+                // Another tool chosen over the open assistant replaces it, so a wider layout
+                // does not bring the assistant back.
+                if NativeAssistantVisibility.replacedByTool(compactPanel: model.mobilePanel?.rawValue, next: panel.rawValue) { assistantVisible = NativeAssistantVisibility.afterCompactClose }
                 model.mobilePanel = panel
             }
             return
@@ -1581,16 +1612,108 @@ private struct NativeSettingsCategoryControl: View {
     }
 }
 
-/// The developer entries in the workspace menu show with Option held as the menu is built, or
-/// with the "editor.developerMenu" default set.
+/// One rule for the developer entries, Web Editor and Reload Editor, in the Mac's View menu and
+/// in the workspace menu: shown with Option held, with the "editor.developerMenu" default set,
+/// or while the web editor is in use, so there is always a way back from it.
 enum NativeDeveloperOptions {
-    static var visible: Bool {
-        if UserDefaults.standard.bool(forKey: "editor.developerMenu") { return true }
+    static func visible(optionHeld: Bool, webEditorInUse: Bool, developerDefault: Bool = UserDefaults.standard.bool(forKey: "editor.developerMenu")) -> Bool {
+        optionHeld || webEditorInUse || developerDefault
+    }
+}
+
+/// Whether the assistant is open, carried between the wide layout's saved flag and the compact
+/// layout's panel.
+enum NativeAssistantVisibility {
+    /// The saved flag after the compact assistant is closed on purpose.
+    static let afterCompactClose = false
+    /// Going compact, an assistant open in the wide layout takes the docked column when there
+    /// is one and nothing else is presented.
+    static func opensCompact(wideVisible: Bool, compactPanel: String?, dock: Double) -> Bool {
+        wideVisible && compactPanel == nil && dock > 0
+    }
+    /// While the layout stays compact, an assistant carried from the wide layout leaves when
+    /// its column does. One opened in the compact layout keeps its sheet.
+    static func hidesWithoutDock(carried: Bool, compactPanel: String?, dock: Double) -> Bool {
+        carried && compactPanel == "assistant" && !(dock > 0)
+    }
+    /// Choosing another tool over the open compact assistant closes the assistant.
+    static func replacedByTool(compactPanel: String?, next: String) -> Bool {
+        compactPanel == "assistant" && next != "assistant"
+    }
+}
+
+/// Whether Option is held, published when it changes so a menu that depends on it is rebuilt
+/// before it opens. The Mac reads its own modifier events. Mac Catalyst has no such events, so
+/// it reads the keyboard itself. The iPhone and iPad have no Option-revealed menus.
+@MainActor
+final class NativeOptionKey: ObservableObject {
+    static let shared = NativeOptionKey()
+    @Published private(set) var held = false
+    private var observers: [Any] = []
+
+    private func set(_ next: Bool) { if next != held { held = next } }
+
+    private init() {
         #if os(macOS)
-        return NSEvent.modifierFlags.contains(.option)
-        #else
-        return false
+        held = NSEvent.modifierFlags.contains(.option)
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged, handler: { event in
+            let option = event.modifierFlags.contains(.option)
+            MainActor.assumeIsolated { NativeOptionKey.shared.set(option) }
+            return event
+        }) { observers.append(monitor) }
+        let center = NotificationCenter.default
+        // A release while another app is in front is never delivered, so each activation reads it again.
+        observers.append(center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { NativeOptionKey.shared.set(NSEvent.modifierFlags.contains(.option)) }
+        })
+        observers.append(center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { NativeOptionKey.shared.set(false) }
+        })
+        #elseif targetEnvironment(macCatalyst)
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: .GCKeyboardDidConnect, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { NativeOptionKey.shared.watchKeyboard() }
+        })
+        observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { NativeOptionKey.shared.watchKeyboard() }
+        })
+        observers.append(center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { NativeOptionKey.shared.set(false) }
+        })
+        watchKeyboard()
         #endif
+    }
+
+    #if targetEnvironment(macCatalyst)
+    /// Reads both Option keys now and again whenever either changes.
+    private func watchKeyboard() {
+        guard let input = GCKeyboard.coalesced?.keyboardInput else { return }
+        let read = { [weak input] in
+            input?.button(forKeyCode: .leftAlt)?.isPressed == true || input?.button(forKeyCode: .rightAlt)?.isPressed == true
+        }
+        input.keyChangedHandler = { _, _, code, _ in
+            guard code == .leftAlt || code == .rightAlt else { return }
+            let option = read()
+            DispatchQueue.main.async { MainActor.assumeIsolated { NativeOptionKey.shared.set(option) } }
+        }
+        set(read())
+    }
+    #endif
+}
+
+/// Web editor and Reload editor in the workspace menu. Its own view, so a change of the Option
+/// key rebuilds these two entries and not the editor around them.
+struct NativeDeveloperMenuItems: View {
+    @ObservedObject var session: EditorSession
+    @ObservedObject var optionKey: NativeOptionKey
+
+    var body: some View {
+        if NativeDeveloperOptions.visible(optionHeld: optionKey.held, webEditorInUse: session.useWebEditor) {
+            Section {
+                Toggle("Web editor", isOn: $session.useWebEditor)
+                Button("Reload editor") { session.reloadEditor() }
+            }
+        }
     }
 }
 

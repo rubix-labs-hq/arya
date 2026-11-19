@@ -39,4 +39,21 @@ assert '.disabled(precisionStepsDisabled)' in timeline and 'track in !track.lock
 assert timeline.count('if clip.kind == "video" && !clip.fields.string("link").isEmpty { Button("Unlink audio and video")') == 2, 'Unlink shows only on linked video clips'
 assert 'let playhead = (time * fps).rounded() / max(1, fps)' in model, 'Split tests the frame the core cuts on'
 assert 'if press.key == .upArrow || press.key == .downArrow' in timeline, 'Up and Down jump between edits, as in the browser'
+# Web Editor and Reload Editor are development aids. The View menu and the workspace menu show
+# them under one rule, and each reads an Option state that is published when it changes.
+editor_view = (root / 'native/App/Shared/NativeEditor/NativeEditorView.swift').read_text()
+rule = 'NativeDeveloperOptions.visible(optionHeld: optionKey.held, webEditorInUse: session.useWebEditor)'
+assert '@ObservedObject private var optionKey = NativeOptionKey.shared' in app, 'The menu bar must observe Option, or it keeps the state it had when it was built'
+gate = app.index('if ' + rule + ' {')
+assert gate < app.index('Toggle("Web Editor"') and gate < app.index('Button("Reload Editor")'), 'View > Web Editor and Reload Editor show under the developer rule'
+assert app.count('Toggle("Web Editor"') == 1 and app.count('Button("Reload Editor")') == 1
+items = editor_view.split('struct NativeDeveloperMenuItems: View {', 1)[1].split('\n}\n', 1)[0]
+assert '@ObservedObject var optionKey: NativeOptionKey' in items and 'if ' + rule + ' {' in items, 'The workspace menu uses the same rule'
+assert 'Toggle("Web editor"' in items and editor_view.count('Toggle("Web editor"') == 1, 'The workspace menu has no ungated Web editor entry'
+assert 'optionHeld || webEditorInUse || developerDefault' in editor_view and 'forKey: "editor.developerMenu"' in editor_view, 'Option, the web editor in use, or the developer default'
+option = editor_view.split('final class NativeOptionKey: ObservableObject {', 1)[1].split('\n}\n', 1)[0]
+assert 'if next != held { held = next }' in option, 'Publish Option only when it changes'
+assert 'NSEvent.addLocalMonitorForEvents(matching: .flagsChanged' in option, 'The Mac follows its modifier events'
+assert '#elseif targetEnvironment(macCatalyst)' in option and 'button(forKeyCode: .leftAlt)' in option and 'button(forKeyCode: .rightAlt)' in option, 'Mac Catalyst reads Option from the keyboard, not a constant false'
+assert 'return false' not in option
 print('Mac menu state checks passed.')

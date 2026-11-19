@@ -73,6 +73,38 @@ check('ScrollView(.vertical)' in source_view and 'layout.controls' in source_vie
 for text, expected in [(assistant, 3), (media, 1)]:
     check(text.count('#if os(macOS)\n            .frame(minWidth: 320') == expected, 'Touched modal minimum frames must be macOS-only')
 
+# The compact assistant: one close for the dock, the sheet's button and a swipe, and a transfer on both layout changes.
+close_compact = block(view, 'private func closeCompactAssistant()')
+check('model.mobilePanel = nil' in close_compact and 'assistantVisible = NativeAssistantVisibility.afterCompactClose' in close_compact, 'Closing the compact assistant clears the saved wide flag with the panel')
+check('close: closeCompactAssistant)' in view and 'close: { model.mobilePanel = nil }' not in view, 'The docked assistant closes through the shared close')
+check('if panel == .assistant { closeCompactAssistant() } else { model.mobilePanel = nil }' in view, 'The assistant sheet Close button closes through the shared close')
+check('if presented == .assistant { closeCompactAssistant() } else { model.mobilePanel = nil }' in block(view, 'private func compactTaskBinding('), 'Swiping the assistant sheet away closes through the shared close')
+layout_change = block(view, '.onChange(of: compact)')
+check('NativeAssistantVisibility.opensCompact(wideVisible: assistantVisible, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = .assistant; assistantCarried = true }' in layout_change, 'Going compact carries an open assistant into the dock')
+check('if tool == .assistant || model.panel == .assistant { assistantVisible = true' in layout_change, 'Going wide carries an open compact assistant into the pane')
+dock_change = block(view, '.onChange(of: assistantDock > 0)')
+check('guard compact else { return }' in dock_change and 'NativeAssistantVisibility.hidesWithoutDock(carried: assistantCarried, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = nil }' in dock_change and 'assistantVisible' not in dock_change.split('opensCompact')[0], 'A compact window that loses its column hides a carried assistant and keeps it marked open')
+check('NativeAssistantVisibility.opensCompact(wideVisible: assistantVisible, compactPanel: model.mobilePanel?.rawValue, dock: assistantDock) { model.mobilePanel = .assistant; assistantCarried = true }' in dock_change, 'A compact window that regains its column docks the assistant again')
+check('if next != .assistant { assistantCarried = false }' in block(view, '.onChange(of: model.mobilePanel)'), 'The carried mark ends wherever the panel stops being the assistant')
+check('NativeAssistantVisibility.replacedByTool(compactPanel: model.mobilePanel?.rawValue, next: panel.rawValue) { assistantVisible = NativeAssistantVisibility.afterCompactClose }' in block(view, 'private func select(_ panel: NativePanel, compact: Bool = false)'), 'Another tool chosen over the compact assistant clears the saved wide flag')
+check('private var editorLineHeight = NativeAssistantLayout.draftLineHeight' in assistant and '#if os(iOS)\n    static let draftLineHeight = 22.0' in assistant, 'The draft line is a text measure keyed on the platform font, not on touch targets')
+check('private static var touch: Bool { NativeEditorStyle.touchControls }' in assistant and 'static let touch = NativeEditorStyle.touchControls' in block(assistant, 'private enum NativeAssistantCardMetrics'), 'Assistant Send, Stop, Apply and Discard take touch heights only on iPhone and iPad, not on Mac Catalyst')
+check(assistant.count('#if os(iOS)\n    static let touch = true') == 0 and '#if os(iOS) && !targetEnvironment(macCatalyst)\n    static let touchControls = true' in (editor / 'NativeControls.swift').read_text(), 'Touch control heights exclude Mac Catalyst in one place')
+intro = block(assistant, 'private var introBlock: some View')
+check('assistant.previewChanges ? "Tell Arya what to change. You approve every edit."' in intro and 'Edits apply right away' in intro, 'The introduction only promises approval while Preview changes is on')
+row = block(assistant, '@ViewBuilder private func messageRow(')
+check('NativeAssistant.providerName(fields.string("provider"))' in row and '"\\(title), answered by \\(account)"' in row, 'Each reply shows and speaks the provider saved with it')
+activity = block(assistant, 'private var runActivity: some View')
+check('.accessibilityLabel("\\(label), \\(quiet ? detail : stage), \\(elapsed)\\(account.isEmpty ? "" : ", \\(account)")")' in activity, 'The run line speaks the elapsed time, then the provider')
+card = block(assistant, 'private var resultCard: some View')
+check('let latest = undoable.map { runReceipts.receipt(for: $0) } ?? model.changeReceipts.last' in card, 'A card whose Undo reverses the run lists the whole run, never only its last commit')
+check('let sentence = undoable?.kind == "history" ? kind :' in card, 'A history run keeps the Undo or Redo title as its headline')
+check('NativeChangeReceipt.run(before: change.before, after: change.after, version: change.afterVersion, edits: change.edits)' in assistant, 'The run receipt compares the snapshots Undo restores between')
+readable = block(assistant, 'static func readable(_ change: NativeChangeReceipt.Change)')
+check('NativeChangeReceipt.decimals(before, after)' in readable and 'before != after' in readable, 'Preview and receipt rows widen precision for two numbers that differ')
+status_block = media.split('// BEGIN MEDIA INLINE STATUS', 1)[1].split('if !status.isEmpty', 1)[0]
+check('let covered = model.mobilePanel == .media' in status_block and '(covered ? session.projectReadOnlyReason.map' in status_block and 'session.projectReadOnlyReason.map { "Project is read-only. \\($0)" }\n            ??' not in status_block, 'Media repeats the read-only reason only in the sheet that covers the footer')
+
 # When testing an isolated draft, compare action closures with its retained production base.
 base = source.parent / 'base/native/App/Shared/NativeEditor'
 if base.exists():
@@ -94,7 +126,7 @@ print(f'PASS: {contracts} responsive source/action/modal contracts')
 if args.contracts_only:
     raise SystemExit(0)
 
-policies = 'import Foundation\n' + block(view, 'enum NativeWorkspaceLayout {') + '\n' + block(assistant, 'enum NativeAssistantLayout {') + '\n' + block(viewer, 'enum NativeSourceViewerLayout {')
+policies = 'import Foundation\n' + block(view, 'enum NativeWorkspaceLayout {') + '\n' + block(assistant, 'enum NativeAssistantLayout {') + '\n' + block(viewer, 'enum NativeSourceViewerLayout {') + '\n' + block(view, 'enum NativeAssistantVisibility {') + '\n' + block(view, 'enum NativeDeveloperOptions {')
 with tempfile.TemporaryDirectory(prefix='arya-native-responsive-') as directory:
     temp = Path(directory); helpers = temp / 'Policies.swift'; helpers.write_text(policies)
     main = temp / 'main.swift'; main.write_text((source / 'native/scripts/native-responsive-geometry-tests.swift').read_text())

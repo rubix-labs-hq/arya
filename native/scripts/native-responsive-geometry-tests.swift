@@ -158,4 +158,51 @@ for height in [0.0, 120, 208, 400, 780] {
 }
 let sourceShort = NativeSourceViewerLayout.regions(height: 208, hasRange: true)
 check(sourceShort.controls < 200, "Source controls taller than the short pane must use their bounded scroll viewport")
+// The compact assistant docks beside a phone on its side and beside any iPad window at least 900 points wide.
+func dock(_ width: Double, _ height: Double, large: Bool = false) -> Double {
+    NativeWorkspaceLayout.compactAssistantDock(width: width, height: height, accessibilityText: large)
+}
+check(dock(1000, 530) == 340, "An iPad window of 1000x530 docks the assistant; the phone rule must not hide the width rule")
+for height in stride(from: 500.0, through: 1400, by: 10) {
+    for width in [900.0, 1000, 1100, 1199] {
+        check(dock(width, height) == min(400, max(320, (width * 0.34).rounded())), "An iPad at least 900 points wide docks the assistant at every height")
+    }
+    for width in [320.0, 600, 700, 899] { check(dock(width, height) == 0, "A narrower window that is not a phone on its side keeps the sheet") }
+}
+check(dock(932, 430) == 419 && dock(667, 375) == 300 && dock(599, 375) == 0, "A phone on its side keeps its own 45 percent column")
+check(dock(900, 499) == 405 && dock(900, 500) == 320, "The phone rule ends where the iPad rule begins, with no gap between them")
+check(dock(1000, 530, large: true) == 0 && dock(932, 430, large: true) == 0, "Accessibility text keeps the sheet")
+check(dock(.nan, 530) == 0 && dock(1000, .infinity) == 0, "A size that is not a number docks nothing")
+for (width, height) in [(1000.0, 530.0), (932, 430), (1100, 800)] {
+    check(NativeWorkspaceLayout.compact(width: width, height: height, mobile: true, accessibilityText: false), "Every docked size is a compact layout")
+}
+
+// The assistant's visibility moves between the wide layout's saved flag and the compact panel.
+check(NativeAssistantVisibility.opensCompact(wideVisible: true, compactPanel: nil, dock: 340), "An assistant open in the wide layout stays open in the compact dock")
+check(!NativeAssistantVisibility.opensCompact(wideVisible: false, compactPanel: nil, dock: 340), "A closed assistant stays closed when the window narrows")
+check(!NativeAssistantVisibility.opensCompact(wideVisible: true, compactPanel: nil, dock: 0), "Narrowing a window never presents the assistant as a sheet by itself")
+check(!NativeAssistantVisibility.opensCompact(wideVisible: true, compactPanel: "transcript", dock: 340), "The assistant never replaces a tool that is already presented")
+// A window dragged from wide through the docked band to below 900 points, then back.
+do {
+    var panel: String? = nil
+    var carried = false
+    let wideVisible = true
+    if NativeAssistantVisibility.opensCompact(wideVisible: wideVisible, compactPanel: panel, dock: dock(1100, 800)) { panel = "assistant"; carried = true }
+    check(panel == "assistant" && carried, "Going compact at 1100 points docks the open assistant")
+    check(dock(850, 800) == 0 && NativeAssistantVisibility.hidesWithoutDock(carried: carried, compactPanel: panel, dock: dock(850, 800)), "A carried assistant leaves when the window narrows past its column, so no sheet covers the picture")
+    panel = nil; carried = false
+    check(wideVisible && NativeAssistantVisibility.opensCompact(wideVisible: wideVisible, compactPanel: panel, dock: dock(950, 800)), "The carried assistant returns to the column when the window grows back, still marked open")
+}
+check(!NativeAssistantVisibility.hidesWithoutDock(carried: false, compactPanel: "assistant", dock: 0), "An assistant opened in the compact layout keeps its sheet when the column ends")
+check(!NativeAssistantVisibility.hidesWithoutDock(carried: true, compactPanel: "assistant", dock: 340) && !NativeAssistantVisibility.hidesWithoutDock(carried: true, compactPanel: "transcript", dock: 0), "Only a docked assistant that lost its column is hidden")
+check(NativeAssistantVisibility.hidesWithoutDock(carried: true, compactPanel: "assistant", dock: .nan), "A dock that is not a number hides the carried assistant, not presents it")
+check(NativeAssistantVisibility.replacedByTool(compactPanel: "assistant", next: "transcript") && !NativeAssistantVisibility.replacedByTool(compactPanel: "assistant", next: "assistant") && !NativeAssistantVisibility.replacedByTool(compactPanel: nil, next: "transcript"), "Another tool chosen over the compact assistant closes it for the wide layout too")
+check(NativeAssistantLayout.draftLineHeight == 17, "The Mac measures the draft at its own body line; iOS builds, Mac Catalyst included, use 22")
+check(!NativeAssistantVisibility.afterCompactClose, "Closing the compact assistant clears the saved wide flag, so widening does not reopen it")
+
+// One rule shows Web Editor and Reload Editor in the Mac's View menu and the workspace menu.
+check(!NativeDeveloperOptions.visible(optionHeld: false, webEditorInUse: false, developerDefault: false), "The developer entries are hidden by default")
+check(NativeDeveloperOptions.visible(optionHeld: true, webEditorInUse: false, developerDefault: false), "Option shows the developer entries")
+check(NativeDeveloperOptions.visible(optionHeld: false, webEditorInUse: true, developerDefault: false), "The web editor in use keeps its way back")
+check(NativeDeveloperOptions.visible(optionHeld: false, webEditorInUse: false, developerDefault: true), "The developer default shows the entries")
 print("PASS: \(checks) extracted responsive pane/assistant/source geometry assertions (native UI untested)")
