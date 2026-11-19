@@ -45,8 +45,8 @@ test('saved-only actual asset renders as Media registration and exposes separate
   assert.equal(receipt.scopes[0].asset, path)
   assert.equal(receipt.scopes[0].status, 'added')
   const { tree } = render(receipt, after), displayed = text(tree)
-  assert.match(displayed, /^Made 1 edit1 Media asset changedDetailsEdit 4/)
-  assert.match(displayed, /Media registration · added/)
+  assert.match(displayed, /^1 change: media1 Media asset changedDetailsMedia asset/)
+  assert.match(displayed, /Media registration · New/)
   assert.doesNotMatch(displayed, /Project settings changed|Project or composition settings/)
   assert.ok(displayed.includes(path))
   assert.ok(displayed.includes(asset.generated.provenance))
@@ -63,7 +63,7 @@ test('saved-only actual asset renders as Media registration and exposes separate
 test('the actual saved-only component headline does not classify registration as project settings', () => {
   const after = saved(), receipt = changeReceipt(actualBefore, after, { version: 4, who: 'agent' })
   const displayed = text(render(receipt, after).tree)
-  assert.match(displayed, /^Made 1 edit1 Media asset changedDetailsEdit 4/)
+  assert.match(displayed, /^1 change: media1 Media asset changedDetailsMedia asset/)
   assert.doesNotMatch(displayed, /Project settings changed/)
 })
 
@@ -194,12 +194,12 @@ test('retained legacy asset receipts use Media labels without recovering missing
     scopes: [{ comp: null, track: null, name: 'Main timeline', status: 'changed', changes: [{ property: prefix, before: 'Absent', after: '{"score":"shortened…"}' }] }] }
   const displayed = text(render(receipt, saved()).tree)
   assert.match(displayed, /Media assets changed/)
-  assert.match(displayed, /Media metadata · changed/)
+  assert.match(displayed, /Media metadata · Changed/)
   assert.doesNotMatch(displayed, /Project settings changed|Locally synthesized/)
   receipt.projectChanges.push('fps'); receipt.scopes[0].changes.push({ property: 'fps', before: '30', after: '24' })
   const mixed = text(render(receipt, saved()).tree)
   assert.match(mixed, /Media assets changed · Project or track settings changed/)
-  assert.match(mixed, /Media and project settings · changed/)
+  assert.match(mixed, /Media and project settings · Changed/)
 })
 
 test('receipt generation and component rendering leave captured projects unchanged', () => {

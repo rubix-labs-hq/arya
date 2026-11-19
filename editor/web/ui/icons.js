@@ -51,6 +51,16 @@ const ICONS = {
   grid: [{ rect: [3.5, 4.5, 17, 15, 1.5] }, 'M9.2 4.5v15M14.8 4.5v15M3.5 9.5h17M3.5 14.5h17'],
   ellipse: ['M3.5 12a8.5 6.5 0 1 0 17 0a8.5 6.5 0 1 0-17 0z'],
   polygon: ['M12 3.5l7.4 4.25v8.5L12 20.5l-7.4-4.25v-8.5z'],
+  alert: ['M12 4.5 3.5 19.5h17z', 'M12 10.5v4', 'M12 17.2v.1'],
+  check: ['M5 12.5l4.5 4.5L19 7.5'],
+  eye: ['M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z', { circle: [12, 12, 2.75] }],
+  layout: [{ rect: [3.5, 4.5, 17, 15, 2] }, 'M9.5 4.5v15M9.5 12h11'],
+  recovery: ['M4.5 12a7.5 7.5 0 1 0 2.4-5.5', 'M4.5 5v4h4', 'M12 8.5V12l2.5 1.5'],
+  render: [{ rect: [3.5, 5.5, 17, 13, 2] }, { path: 'M10 9.2v5.6l4.8-2.8z', fill: true }],
+  more: [{ circle: [6, 12, 1.2], fill: true }, { circle: [12, 12, 1.2], fill: true }, { circle: [18, 12, 1.2], fill: true }],
+  help: [{ circle: [12, 12, 8.5] }, 'M9.6 9.6a2.5 2.5 0 1 1 3.6 2.2c-.8.5-1.2 1-1.2 1.9', 'M12 16.9v.1'],
+  download: ['M12 4v11', 'M7.5 10.5 12 15l4.5-4.5', 'M4.5 19.5h15'],
+  camera: [{ rect: [3.5, 7, 17, 12, 2] }, 'M8.5 7l1.2-2.2h4.6L15.5 7', { circle: [12, 13, 3] }],
   star: ['M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.7L12 16.8l-5.1 2.7 1-5.7-4.1-4 5.7-.8z'],
 }
 
@@ -63,6 +73,11 @@ function part(p, i) {
   return html`<rect key=${i} x=${x} y=${y} width=${width} height=${height} rx=${rx} ...${solid} />`
 }
 
+/** A turning arc for work in progress. With reduced motion it stays still and the label carries the state. */
+export function Spinner({ size = 14 }) {
+  return html`<svg class="spinner" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5" opacity="0.28" /><path d="M20.5 12A8.5 8.5 0 0 0 12 3.5" /></svg>`
+}
+
 export function hasIcon(name) {
   return Object.hasOwn(ICONS, name)
 }
@@ -70,6 +85,7 @@ export function hasIcon(name) {
 // Returns null for an unknown name so a caller can fall back to its text label.
 export function Icon({ name, size = 16 }) {
   // Own-property check, so names such as `constructor` or `__proto__` fall back like any unknown name.
+  if (name === 'spinner') return Spinner({ size })
   if (!hasIcon(name)) return null
   const parts = ICONS[name]
   return html`<svg class="ico" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${parts.map(part)}</svg>`

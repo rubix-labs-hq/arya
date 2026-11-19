@@ -10,7 +10,7 @@ import { assistantActivity } from './assistant-activity.js'
 const html = htm.bind(h)
 
 // Apply and Discard work here too, because on a phone the preview card is in the assistant
-// sheet, which covers the viewer.
+// sheet, which covers the viewer. There the banner is one row: the label, Apply and Discard.
 export function PreviewBanner() {
   const s = useStore()
   const [busy, setBusy] = useState('')
@@ -24,12 +24,12 @@ export function PreviewBanner() {
     try { await api(`/api/assistant/proposal/${kind}`, { id: proposal.id }) } catch (error) { toast(error.message, 'error') } finally { setBusy('') }
   }
   return html`<div class="viewer-preview-banner" role="status" aria-label="Showing the preview">
-    <p><b>Showing the preview</b> ${proposal.summary || 'Assistant preview'}. Not applied yet; editing is off.</p>
+    <p><b>Preview</b> <span class="viewer-preview-copy">${proposal.summary || "Previewing the assistant's changes"}. Nothing is saved until you apply, and editing is off.</span></p>
     ${steps ? html`<p class="viewer-preview-steps">The viewer shows the edits only. ${steps === 1 ? '1 processing step runs' : `${steps} processing steps run`} after you apply and ${steps === 1 ? 'is' : 'are'} not shown.</p>` : null}
     <div class="assistant-preview-actions">
       <button class="assistant-apply" disabled=${Boolean(running || busy)} title=${running ? 'Wait for the assistant to finish' : 'Apply these edits as one undo step'} onClick=${() => decide('apply')}>${busy === 'apply' ? 'Applying…' : 'Apply'}</button>
       <button class="ghost" disabled=${Boolean(busy)} onClick=${() => decide('discard')}>Discard</button>
-      <button class="ghost" disabled=${Boolean(busy)} onClick=${() => set({ previewShown: null })}>Back to project</button>
+      <button class="ghost viewer-preview-back" disabled=${Boolean(busy)} onClick=${() => set({ previewShown: null })}>Back to project</button>
     </div>
   </div>`
 }

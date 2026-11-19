@@ -7,7 +7,8 @@
 import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
-import { edit, store, toast, useStore } from '../store.js'
+import { edit, store, toast, useStore, viewProject } from '../store.js'
+import { clipIdTitle, shownClipName } from '../clip-name.js'
 import { openMenu } from '../menu.js'
 import { BUILTIN_PRESETS } from './presets.js'
 import {
@@ -296,7 +297,7 @@ export function NodeEditor({ clip }) {
   return html`
     <div class="node-panel" ref=${wrap} tabIndex="0" onKeyDown=${keyDown} data-clip=${clip.id}>
       <div class="node-bar">
-        <b>Nodes</b><span class="muted">${clip.id}${clip.nodes ? '' : ' · default graph'}</span>
+        <b>Nodes</b><span class="muted" title=${clipIdTitle(clip)}>${shownClipName(viewProject(), clip)}${clip.nodes ? '' : ' · default graph'}</span>
         <span class="grow"></span>
         <button class="ghost tiny" title="Add Serial Node (⌥S)" onClick=${() => act.serial()}>+ Serial</button>
         <button class="ghost tiny" title="Add Parallel Node (⌥P)" onClick=${() => act.branch('parallel')}>+ Parallel</button>

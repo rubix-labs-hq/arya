@@ -179,6 +179,8 @@ const app = fs.readFileSync(new URL('../web/ui/app.js', import.meta.url), 'utf8'
 const storeSource = fs.readFileSync(new URL('../web/ui/store.js', import.meta.url), 'utf8')
 const nodes = (value, output = []) => { if (Array.isArray(value)) value.forEach(child => nodes(child, output)); else if (value && typeof value === 'object') { output.push(value); nodes(value.props?.children, output) } return output }
 const nodeText = node => [node.props.children].flat(Infinity).filter(value => typeof value === 'string').join('')
+// The top bar Recovery button is an icon with a label that hides on narrow windows, so its name is the aria-label.
+const named = node => node.props['aria-label'] || nodeText(node)
 function shell(status, kind = 'http', history) {
   const store = { project: null, version: 7, root: '/selected', recovery: { status, history }, jobs: [], claude: { state: 'idle' }, refs: [] }, requests = [], opened = []
   const context = vm.createContext({ html: htm.bind(h), h, Icon, assistantState, assistantActivity, store, host: { kind }, useStore: () => store, useState: value => [value, () => {}], useRef: value => ({ current: value }), showRecovery: () => opened.push(true), api: async route => { requests.push(route); return {} }, set: value => Object.assign(store, value), toast() {}, PAGES: [], registry: { pages: [] }, ScrollTabs() {}, LayoutMenu() {} })
@@ -213,8 +215,8 @@ test('actual welcome in a new folder offers creation without a missing-file warn
 
 test('actual normal top bar exposes browser recovery while native retains its own chooser', () => {
   const browser = shell('valid'), native = shell('valid', 'native')
-  assert.ok(nodes(browser.context.TopBar()).find(node => node.type === 'button' && nodeText(node) === 'Recovery'))
-  assert.equal(nodes(native.context.TopBar()).some(node => node.type === 'button' && nodeText(node) === 'Recovery'), false)
+  assert.ok(nodes(browser.context.TopBar()).find(node => node.type === 'button' && named(node) === 'Recovery'))
+  assert.equal(nodes(native.context.TopBar()).some(node => node.type === 'button' && named(node) === 'Recovery'), false)
 })
 
 test('actual app bootstrap retains cold recovery status without dispatching restoration', async () => {
@@ -251,7 +253,7 @@ test('actual pending assistant send blocks both recovery entries and their stale
   f.context.s = f.store
   vm.runInContext(app.match(/function showRecovery\([^]*?\n}\n/)[0], f.context)
   const controls = () => [f.context.TopBar(), f.context.Welcome()].flatMap(value => nodes(value))
-    .filter(node => node.type === 'button' && ['Recovery', 'Choose a recovery copy'].includes(nodeText(node)))
+    .filter(node => node.type === 'button' && ['Recovery', 'Choose a recovery copy'].includes(named(node)))
   const staleClicks = controls().map(node => node.props.onClick)
   assert.equal(staleClicks.length, 2)
   const chat = fs.readFileSync(new URL('../web/ui/chat.js', import.meta.url), 'utf8')

@@ -234,7 +234,7 @@ export function Divider({ field, axis = 'horizontal', label, reverse = false, si
 export function LayoutMenu() {
   const l = useLayout()
   const [open, setOpen] = useState(false)
-  return html`<div class="workspace-layout-menu"><button class="ghost" aria-label="Customize workspace" onClick=${() => setOpen(!open)}>Layout</button>
+  return html`<div class="workspace-layout-menu"><button class="ghost" aria-label="Customize workspace" title="Layout" aria-expanded=${open} onClick=${() => setOpen(!open)}><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M9.5 4.5v15M9.5 12h11" /></svg><span class="entry-text">Layout</span></button>
     ${open ? html`<div class="workspace-options" role="dialog" aria-label="Workspace layout">
       <p class="hint compact-layout-note">Compact Edit keeps Viewer, Media, Inspector and the timeline available. The layout settings below apply to wider workspaces.</p>
       <div class="row gap"><button onClick=${() => save(defaults)}>Default</button><button onClick=${() => save({ ...defaults, upper: 65, showMedia: false, showInspector: false })}>Review</button><button onClick=${() => save({ ...defaults, upper: 40, media: 200, inspector: 280 })}>Editing</button></div>

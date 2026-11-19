@@ -17,8 +17,34 @@ export const SHORTCUTS = [
   ['F', 'Match frame (open the source at this frame)'], ['E W D Q', 'Append / insert / overwrite / connect the source clip'],
   ['⌘C ⌘X ⌘V', 'Copy / cut / paste at playhead'], ['⌘D', 'Duplicate'], ['⌘A', 'Select all'], ['⌘Z ⇧⌘Z', 'Undo / redo'],
   ['⌘= ⌘-', 'Zoom timeline'], ['⇧Z', 'Zoom to fit'], ['⌘L', 'Loop playback'], ['⇧1 … ⇧6', 'Media, Edit, Motion, Color, Audio, Deliver pages'],
-  ['⌘E', 'Export'], ['⌘,', 'Settings'], ['/', 'Ask Arya'], ['⌥-click', 'Reference anything to the assistant'], ['?', 'This list'],
+  ['⌘E', 'Export'], ['⌘,', 'Settings'], ['F6 / ⇧F6', 'Next / previous panel'], ['/', 'Ask Arya'], ['⌥-click', 'Reference anything to the assistant'], ['?', 'This list'],
 ]
+
+// F6 and Shift+F6 walk the editor's regions in document order: top bar, media, viewer, inspector,
+// timeline and the assistant on the Edit page, and top bar, page and assistant elsewhere.
+export const LANDMARKS = '.topbar, .main > .page [role="region"][aria-label], .main > .page:not(:has([role="region"][aria-label])), #editor-assistant'
+const LANDMARK_FOCUS = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+
+// From no region the first step lands on the first one, and a step back on the last.
+export function landmarkStep(count, current, back = false) {
+  if (!(count > 0)) return -1
+  if (current < 0) return back ? count - 1 : 0
+  return (current + (back ? -1 : 1) + count) % count
+}
+
+export function cycleLandmark(back = false, doc = globalThis.document) {
+  // An open dialog keeps focus: its own Tab order is the way around it.
+  if ([...doc.querySelectorAll('[aria-modal="true"]')].some(el => el.getClientRects().length)) return null
+  const shown = [...doc.querySelectorAll(LANDMARKS)].filter(el => el.getClientRects().length)
+  // A labelled section inside a panel is part of that panel's stop, not a stop of its own.
+  const regions = shown.filter(el => !shown.some(other => other !== el && other.contains(el)))
+  const next = regions[landmarkStep(regions.length, regions.findIndex(el => el.contains(doc.activeElement)), back)]
+  if (!next) return null
+  const inside = (next.id === 'editor-assistant' ? next.querySelector('textarea:not(:disabled)') : null) ?? [...next.querySelectorAll(LANDMARK_FOCUS)].find(el => el.getClientRects().length)
+  if (!inside && !next.hasAttribute('tabindex')) next.setAttribute('tabindex', '-1')
+  ;(inside ?? next).focus()
+  return next
+}
 
 function sel() {
   return store.selection.filter(id => !id.startsWith('tr:'))
@@ -392,6 +418,11 @@ export function installKeys() {
     }
     if (handled) e.preventDefault()
   })
+  // On capture, so the way between panels also works from a field that keeps its own keys.
+  globalThis.document?.addEventListener?.('keydown', e => {
+    if (e.key !== 'F6' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || store.settingsOpen || store.showKeys || store.assistantSharingReviewOpen) return
+    e.preventDefault(); cycleLandmark(e.shiftKey)
+  }, true)
 }
 
 export { snapToFrame }

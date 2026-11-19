@@ -79,7 +79,8 @@ function TopBar() {
   const openAssistant = () => {
     if (store.assistantSharingReviewOpen) return
     const focus = () => globalThis.document?.querySelector('#editor-assistant :is(textarea, .assistant-setup a.primary)')?.focus()
-    if (s.chatOpen && !s.chatCollapsed) focus()
+    // Behind the Inspector tab the panel is open but not shown, so it is brought forward first.
+    if (s.chatOpen && !s.chatCollapsed && store.sideTab !== 'inspector') focus()
     else {
       set({ chatOpen: true, chatCollapsed: false })
       queueMicrotask(focus)
@@ -89,7 +90,7 @@ function TopBar() {
   const running = s.jobs.filter(j => j.kind === 'export' && (j.state === 'running' || j.state === 'queued' || host.kind === 'browser-local' && ['cancelling', 'committing'].includes(j.state)))
 
   return html`
-    <div class="topbar">
+    <div class="topbar" role="banner" aria-label="Top bar">
       <div class="topbar-project"><div class="brand"><picture><source media="(max-width: 480px)" srcset="/assets/brand/mark.svg" /><img src="/assets/brand/wordmark.svg" alt="Arya" width="166" height="77" /></picture></div>
       ${p ? html`<div class="proj" title=${p.name ?? 'Untitled'}><span class="proj-name" title=${p.name ?? 'Untitled'}>${p.name ?? 'Untitled'}</span><span class="muted proj-format">${`${p.width}×${p.height} · ${p.fps}fps`}</span></div>` : null}</div>
       <div class="workflow-pages" hidden=${!p}><${ScrollTabs} tabs=${[...PAGES, ...registry.pages.map(pg => [pg.id, pg.label, pg.key ?? '', pg.order ?? 100])].sort((a, b) => a[3] - b[3])} value=${s.page} onChange=${page => set({ page })} label="Workflow" /></div>
@@ -104,14 +105,14 @@ function TopBar() {
       </div>
       <span class="topbar-sep" aria-hidden="true"></span>
       <div class="topbar-utility"><${LayoutMenu} /></div>` : null}
-      ${host.kind === 'http' ? html`<button class="ghost recovery-entry" aria-haspopup="dialog" disabled=${s.assistantSharingReviewOpen === true} title=${s.recovery?.warning ?? 'Review verified saved project copies'} onClick=${() => openActionDialog(showRecovery)}>Recovery</button>` : null}
+      ${host.kind === 'http' ? html`<button class="ghost recovery-entry" aria-label="Recovery" aria-haspopup="dialog" disabled=${s.assistantSharingReviewOpen === true} title=${s.recovery?.warning ?? 'Review verified saved project copies'} onClick=${() => openActionDialog(showRecovery)}><${Icon} name="recovery" /><span class="entry-text">Recovery</span></button>` : null}
       <button class="ghost topbar-utility" aria-label="Keyboard shortcuts" aria-haspopup="dialog" title="Keyboard shortcuts (?)" onClick=${() => openActionDialog(() => set({ showKeys: !s.showKeys }))}><${Icon} name="keyboard" /><span class="action-label">Shortcuts</span></button>
       <button class="ghost settings-entry" aria-haspopup="dialog" title="Settings (⌘,)" disabled=${s.assistantSharingReviewOpen === true} onClick=${() => openActionDialog(() => set({ settingsOpen: true }))}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"/><circle cx="12" cy="12" r="3"/></svg><span class="action-label">Settings</span></button>
       <button type="button" class="ghost compact-actions-done" onClick=${closeActions}>Close actions</button>
       </div></div>
       <span class="topbar-sep before-assistant" aria-hidden="true"></span>
-      <button type="button" id="ask-arya" class=${`assistant-entry ${s.chatOpen ? 'on' : ''}`} data-state=${!hosted && s.connected && working ? 'working' : !hosted && s.connected && assistant.ready ? 'ready' : 'idle'} aria-controls=${s.chatOpen ? 'editor-assistant' : undefined} disabled=${s.assistantSharingReviewOpen === true} onClick=${openAssistant}>
-        <${Icon} name="assistant" /><span class="assistant-entry-label">Ask Arya</span><span class="assistant-entry-hint" aria-hidden="true">to edit or explain</span><span class="assistant-entry-state"><i aria-hidden="true"></i>${assistantLabel}${s.refs.length ? ` · ${s.refs.length} attached` : ''}</span><kbd aria-hidden="true">/</kbd>
+      <button type="button" id="ask-arya" class=${`assistant-entry ${s.chatOpen ? 'on' : ''}${hosted ? ' hosted' : ''}`} data-state=${!hosted && s.connected && working ? 'working' : !hosted && assistantLabel === 'Failed' ? 'failed' : !hosted && s.connected && assistant.ready ? 'ready' : 'idle'} aria-controls=${s.chatOpen ? 'editor-assistant' : undefined} disabled=${s.assistantSharingReviewOpen === true} onClick=${openAssistant}>
+        <${Icon} name="assistant" /><span class="assistant-entry-label">${hosted ? 'Assistant' : 'Ask Arya'}</span>${hosted ? null : html`<span class="assistant-entry-hint" aria-hidden="true">to edit or explain</span>`}<span class="assistant-entry-state"><i aria-hidden="true"></i><span class="assistant-entry-word">${assistantLabel}${s.refs.length ? ` · ${s.refs.length} attached` : ''}</span></span>${hosted ? null : html`<kbd aria-hidden="true">/</kbd>`}
       </button>
       ${/* Shown only when the editor loses its server, so a dot beside Assistant never reads as AI status. */ s.connected ? null : html`<span class="conn" role="status" aria-label="Disconnected from the Arya server" title="Disconnected from the Arya server"></span>`}
       </div>
@@ -119,9 +120,17 @@ function TopBar() {
   `
 }
 
+// Between 901 and 1439px an open assistant takes the inspector's column, so media, viewer and
+// timeline keep their places. These two tabs switch that column between the two.
+const sideColumnShared = (chatOpen, width = globalThis.innerWidth) => chatOpen === true && typeof width === 'number' && width >= 901 && width <= 1439
+
+function SideTabs({ tab }) {
+  return html`<div class="side-tabs" role="tablist" aria-label="Side panel">${[['assistant', 'Assistant'], ['inspector', 'Inspector']].map(([id, label]) => html`<button type="button" role="tab" aria-selected=${tab === id} class=${tab === id ? 'on' : ''} onClick=${() => set({ sideTab: id })}>${label}</button>`)}</div>`
+}
+
 function EditPage() {
   const s = useStore()
-  const l = useLayout()
+  const saved = useLayout()
   const workspace = useWorkspaceWidth()
   const [compactPanel, choosePanel] = useCompactEditPanel()
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -144,7 +153,12 @@ function EditPage() {
       document.removeEventListener('focusin', update)
     }
   }, [phone])
-  const compact = !phone && Number.isFinite(workspace.width) && workspace.width < 900
+  // The hosted build's assistant panel is a short pitch with no tabs, so it sits beside the inspector as before.
+  const shared = !phone && host.kind !== 'browser-local' && sideColumnShared(s.chatOpen)
+  const sideTab = shared ? (s.sideTab === 'inspector' ? 'inspector' : 'assistant') : null
+  // The Inspector tab always shows the inspector, even when the saved layout hides it, so there is a way back.
+  const l = sideTab ? { ...saved, showInspector: sideTab === 'inspector' } : saved
+  const compact = !phone && !shared && Number.isFinite(workspace.width) && workspace.width < 900
   // A resize or the Assistant opening can make the workspace compact while an Inspector field
   // is focused. On that transition only, keep the Inspector shown so the field is not hidden and
   // blurred, then record the choice. Later panel choices while compact are never overridden.
@@ -164,8 +178,8 @@ function EditPage() {
   const paneProps = name => ({
     hidden: phone || compact ? panel !== name : !visible(name),
     style: phone || compact ? undefined : { gridColumn: column(name), gridRow: 1 },
-    id: `edit-panel-${name}`, role: phone ? 'tabpanel' : undefined,
-    'aria-labelledby': phone ? `phone-tab-${name}` : undefined,
+    id: `edit-panel-${name}`, role: phone ? 'tabpanel' : 'region',
+    'aria-labelledby': phone ? `phone-tab-${name}` : undefined, 'aria-label': phone ? undefined : name === 'media' ? 'Media browser' : 'Inspector',
   })
   const setPhonePanel = name => {
     const mapped = phonePanelToCompact(name)
@@ -174,7 +188,7 @@ function EditPage() {
 
   // Keep these keyed panes mounted so resizing does not discard an input draft.
   return html`
-    <div class=${`page edit ${phone ? 'phone-edit' : compact ? 'customizable compact-edit' : 'customizable'} ${phone && compactPanel === 'inspector' ? 'phone-inspector-focus' : ''} ${previewOpen ? 'phone-preview-open' : ''} ${s.chatOpen ? 'with-chat' : ''} ${showTimeline ? '' : 'timeline-hidden'}`} data-compact-panel=${compactPanel}>
+    <div class=${`page edit ${phone ? 'phone-edit' : compact ? 'customizable compact-edit' : 'customizable'} ${phone && compactPanel === 'inspector' ? 'phone-inspector-focus' : ''} ${previewOpen ? 'phone-preview-open' : ''} ${s.chatOpen ? 'with-chat' : ''} ${sideTab ? `side-${sideTab}` : ''} ${showTimeline ? '' : 'timeline-hidden'}`} data-compact-panel=${compactPanel}>
       <${PhonePanelControls} panel=${compactPanelToPhone(compactPanel)} setPanel=${setPhonePanel} previewOpen=${previewOpen} setPreviewOpen=${setPreviewOpen} />
       <div class="compact-edit-access">
         <div class="compact-panel-picker" role="group" aria-label="Edit panels">${[['viewer', 'Viewer'], ['media', 'Media'], ['inspector', 'Inspector']].map(([name, label]) => html`<button type="button" class=${panel === name ? 'on' : 'ghost'} aria-pressed=${panel === name} aria-controls="edit-upper" onClick=${() => choosePanel(name)}>${label}</button>`)}</div>
@@ -183,12 +197,12 @@ function EditPage() {
       <div id="edit-upper" class="upper" ref=${workspace.ref} style=${phone ? undefined : { gridTemplateColumns: compact ? 'minmax(0, 1fr)' : editGridColumns(l, workspace.width) }}>
         <div key="media" class="edit-pane edit-media-pane" ...${paneProps('media')}><${Browser} key="media" /></div>
         ${!phone && !compact && visible(left) ? html`<${Divider} key="left-divider" field=${left} size=${sizes[left]} label=${`Resize ${left} panel`} />` : null}
-        <div key="viewer" id="edit-viewer" class="edit-viewer" hidden=${compact && panel !== 'viewer'} style=${phone || compact ? undefined : { gridColumn: visible(left) ? 3 : 1, gridRow: 1 }}><${Viewer} key="viewer" compact=${phone} /></div>
+        <div key="viewer" id="edit-viewer" class="edit-viewer" role="region" aria-label="Viewer" hidden=${compact && panel !== 'viewer'} style=${phone || compact ? undefined : { gridColumn: visible(left) ? 3 : 1, gridRow: 1 }}><${Viewer} key="viewer" compact=${phone} /></div>
         ${!phone && !compact && visible(right) ? html`<${Divider} key="right-divider" field=${right} size=${sizes[right]} label=${`Resize ${right} panel`} reverse=${true} />` : null}
-        <div key="inspector" class="edit-pane edit-inspector-pane" ...${paneProps('inspector')}><${Inspector} key="inspector" /></div>
+        <div key="inspector" class="edit-pane edit-inspector-pane" ...${paneProps('inspector')}>${sideTab === 'inspector' ? html`<${SideTabs} key="side-tabs" tab="inspector" />` : null}<${Inspector} key="inspector" /></div>
       </div>
       ${!phone && !compact && showTimeline ? html`<${Divider} field="upper" axis="vertical" label="Resize viewer and timeline" />` : null}
-      <div class="lower" id="edit-panel-timeline" hidden=${phone ? compactPanel !== 'viewer' : !showTimeline} role=${phone ? 'tabpanel' : undefined} aria-labelledby=${phone ? 'phone-tab-timeline' : undefined}>
+      <div class="lower" id="edit-panel-timeline" hidden=${phone ? compactPanel !== 'viewer' : !showTimeline} role=${phone ? 'tabpanel' : 'region'} aria-label=${phone ? undefined : 'Timeline'} aria-labelledby=${phone ? 'phone-tab-timeline' : undefined}>
         <${Toolbar} /><${Timeline} />
       </div>
     </div>

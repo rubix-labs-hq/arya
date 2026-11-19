@@ -356,6 +356,10 @@
     "target": "editor/ui/chat.js"
   },
   {
+    "source": "web/ui/clip-name.js",
+    "target": "editor/ui/clip-name.js"
+  },
+  {
     "source": "web/ui/color.js",
     "target": "editor/ui/color.js"
   },
@@ -410,6 +414,10 @@
   {
     "source": "web/ui/delivery-preview.js",
     "target": "editor/ui/delivery-preview.js"
+  },
+  {
+    "source": "web/ui/dialog-focus.js",
+    "target": "editor/ui/dialog-focus.js"
   },
   {
     "source": "web/ui/engine-host.js",

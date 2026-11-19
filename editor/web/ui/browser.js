@@ -317,13 +317,13 @@ function MediaTab({ p }) {
         <input ref=${fileInput} type="file" multiple accept="video/*,audio/*,image/*" hidden onChange=${e => { const files = [...(e.target.files ?? [])]; e.target.value = ''; return uploadFiles(files) }} />
         <button class="ghost" onClick=${() => host.kind === 'browser-local' ? folderInput.current?.click() : setPicker(true)}>From folder…</button>
         ${host.kind === 'browser-local' ? html`<input ref=${folderInput} type="file" multiple webkitdirectory=${true} hidden onChange=${e => { const files = [...(e.target.files ?? [])]; e.target.value = ''; return uploadFiles(files) }} />` : null}
-        <button type="button" class="ghost" style=${{ minHeight: '44px' }} disabled=${!store.connected || host.kind === 'browser-local'} title=${host.kind === 'browser-local' ? 'Music generation requires the native app or a local Arya connection.' : undefined} onClick=${() => showMusicDetails()}>Create music…</button>
+        ${/* The hosted build cannot make music, so it says where that works instead of showing a dead button. */ host.kind === 'browser-local' ? html`<p class="muted small hosted-note">Create music is available in Arya for Mac.</p>` : html`<button type="button" class="ghost" style=${{ minHeight: '44px' }} disabled=${!store.connected} onClick=${() => showMusicDetails()}>Create music…</button>`}
       </div>
       <div class="row gap">
         <input class="search" placeholder="Search media" value=${q} onInput=${e => setQ(e.target.value)} />
         <select aria-label="Media type" value=${kind} onChange=${e => setKind(e.target.value)}><option value="all">All</option><option value="video">Video</option><option value="audio">Audio</option><option value="image">Stills</option></select>
       </div>
-      ${entries.length === 0 ? html`<div class="empty-hint">${host.kind === 'browser-local' ? 'Drop your video, audio or images here, or choose Import or From folder. Music generation needs a supported native or local connection.' : 'Drop video, audio or images anywhere in this window, use Import, or create music.'}</div>` : null}
+      ${entries.length === 0 ? html`<div class="empty-hint">${host.kind === 'browser-local' ? 'Drop your video, audio or images here, or choose Import or From folder.' : 'Drop video, audio or images anywhere in this window, use Import, or create music.'}</div>` : null}
       ${empty && folderMedia?.count > 0 ? html`<div class="empty-hint"><p>${folderMedia.count} media ${folderMedia.count === 1 ? 'file' : 'files'} in this folder</p><button class="primary" onClick=${() => importFolder([folderMedia.dir], folderMedia.count)}>Import all media here (${folderMedia.count})</button></div>` : null}
       <div class="media-grid">
         ${entries.map(([src, asset]) => html`<${MediaCard} key=${src} p=${p} src=${src} asset=${asset} />`)}

@@ -51,7 +51,8 @@ function receiptCaption(receipts, project) {
   const otherSettings = assets && scopes.length || legacyAssets && receipts.some(receipt => receipt.projectChanges.some(property => property !== 'assets'))
   // Settings alone: a caption track's style, another track's settings, or the project's.
   const tracks = scopes.map(scope => scopeTrack(project, scope))
-  const settings = scopes.length && tracks.every(Boolean) ? tracks.every(track => track.kind === 'caption') ? 'Caption style changed' : 'Track settings changed' : 'Project settings changed'
+  const markers = scopes.length > 0 && scopes.every(scope => scope.track == null && scope.changes.every(change => change.property === 'markers' || change.property === 'Object order'))
+  const settings = markers ? 'Markers changed' : scopes.length && tracks.every(Boolean) ? tracks.every(track => track.kind === 'caption') ? 'Caption style changed' : 'Track settings changed' : 'Project settings changed'
   return [total ? `${plural(total, 'layer')} changed` : '',
     assets ? `${assets} Media ${assets === 1 ? 'asset' : 'assets'} changed` : legacyAssets ? 'Media assets changed' : '',
     otherSettings ? 'Project or track settings changed' : '',
@@ -62,21 +63,36 @@ function ReceiptDetails({ receipt }) {
   const assetChange = change => change.property === 'assets' || change.property.startsWith('assets.') || change.property.startsWith('assets[')
   const scopeLabel = scope => scope.asset != null ? 'Media registration' : scope.comp == null && scope.track == null && scope.changes.some(assetChange)
     ? scope.changes.every(assetChange) ? 'Media metadata' : 'Media and project settings' : scope.track == null ? 'Project or composition settings' : 'Track settings'
+  // A clip added to or removed from a track also reorders it. The layer row already says so.
+  const moved = receipt.clips.some(clip => clip.status !== 'changed')
+  const scopes = (receipt.scopes ?? []).map(scope => ({ ...scope, changes: moved ? scope.changes.filter(change => change.property !== 'Object order') : scope.changes })).filter(scope => scope.changes.length)
   return html`<div class="receipt-edit" key=${receipt.version}>
-    <p class="receipt-meta">Edit ${receipt.version}${receipt.undone ? ' · undone' : ''}${receipt.projectChanges.length ? ` · ${receipt.projectChanges.join(', ')}` : ''}</p>
-    ${(receipt.scopes ?? []).map(scope => html`<div class="receipt-layer"><b>${scope.name}</b><span class="receipt-meta">${scopeLabel(scope)} · ${scope.status}</span>${scope.asset != null ? html`<p class="receipt-meta">${scope.asset}</p>` : null}${assistantPanel.ChangeList({ changes: scope.changes, fps: assistantPanel.fpsOf(store.project, scope.comp) })}</div>`)}
-    ${receipt.clips.map(clip => html`<div class="receipt-layer"><b>${clip.name}</b><span class="receipt-meta">${clip.compositionName} · ${clip.id} · ${clip.status}</span>${assistantPanel.ChangeList({ changes: clip.changes, fps: assistantPanel.fpsOf(store.project, clip.comp) })}</div>`)}
+    ${scopes.map(scope => html`<div class="receipt-layer"><b>${String(scope.name).replace(/^Track /, '')}</b><span class="receipt-meta">${scopeLabel(scope)} · ${assistantPanel.STATUS[scope.status] ?? scope.status}</span>${assistantPanel.ChangeList({ changes: scope.changes, fps: assistantPanel.fpsOf(store.project, scope.comp) })}</div>`)}
+    ${receipt.clips.map(clip => {
+      const where = assistantPanel.layerPlace(store.project, clip)
+      return html`<div class="receipt-layer"><b title=${clip.id}>${where.name}</b><span class="receipt-meta">${[clip.comp == null ? '' : clip.compositionName, where.place, assistantPanel.STATUS[clip.status] ?? clip.status].filter(Boolean).join(' · ')}</span>${assistantPanel.ChangeList({ changes: clip.changes, fps: assistantPanel.fpsOf(store.project, clip.comp) })}</div>`
+    })}
     ${receipt.truncated ? html`<p class="receipt-meta">Some changes or values are shortened. Showing ${receipt.clips.length} of ${receipt.total} changed layers${receipt.totalScopes == null ? '' : ` and ${(receipt.scopes ?? []).length} of ${receipt.totalScopes} ${receipt.totalAssets ? 'Media and settings' : 'settings'} groups`}.</p>` : null}
-    <details class="receipt-json"><summary>Read-only JSON diff</summary><pre>${JSON.stringify({ clips: receipt.clips, scopes: receipt.scopes, projectChanges: receipt.projectChanges, totalLayers: receipt.total, totalScopes: receipt.totalScopes, totalAssets: receipt.totalAssets, truncated: receipt.truncated }, null, 2)}</pre></details>
   </div>`
+}
+
+/** The stored names, ids and values of a run's edits, for someone debugging. One disclosure per card. */
+function TechnicalDetails({ receipts }) {
+  return html`<details class="receipt-json"><summary>Technical details</summary>
+    ${receipts.map(receipt => html`<p class="receipt-meta" key=${receipt.version}>Edit ${receipt.version}${receipt.undone ? ' · undone' : ''}${receipt.projectChanges.length ? ` · ${receipt.projectChanges.join(', ')}` : ''}</p>`)}
+    <pre>${JSON.stringify(receipts.map(receipt => ({ version: receipt.version, clips: receipt.clips, scopes: receipt.scopes, projectChanges: receipt.projectChanges, totalLayers: receipt.total, totalScopes: receipt.totalScopes, totalAssets: receipt.totalAssets, truncated: receipt.truncated })), null, 2)}</pre>
+  </details>`
 }
 
 /**
  * A card is named for its kind of change: an applied preview, Undo or Redo the assistant ran, or
  * edits. A request that also called Undo or Redo carries a label that counts each kind of step.
  */
-function resultTitle(kind, label, edits) {
-  return kind === 'preview' ? 'Applied the preview' : (kind === 'history' || kind === 'request' && label !== 'Assistant request') && label ? label : `Made ${plural(edits, 'edit')}`
+function resultTitle(kind, label, edits, receipts = []) {
+  if (kind === 'preview') return 'Applied the preview'
+  if ((kind === 'history' || kind === 'request' && label !== 'Assistant request') && label) return label
+  // With the receipts in hand the title says what changed; after a reload only the count is known.
+  return assistantPanel.changeKinds(receipts).text || `Made ${plural(edits, 'edit')}`
 }
 
 /** Compositions the receipts added that still exist and are not open, as [id, name]. */
@@ -90,20 +106,22 @@ function addedCompositions(receipts, project, open) {
  * undo of the latest assistant change when that change belongs to this run. With no receipt (after
  * a reload) it still offers that undo.
  */
-function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
+function ResultCard({ receipts = [], change = null, busy = '', onUndo, onRedo = null }) {
   const undoable = Boolean(change?.undoable)
   const undone = !undoable && receipts.length > 0 && receipts.every(receipt => receipt.undone)
   const edits = change ? change.edits : receipts.length
   // Older cards keep their name: each receipt carries the kind of change the server put it in.
   const kinds = new Set(receipts.map(receipt => receipt.changeKind))
   const kind = change ? change.kind : kinds.size === 1 ? receipts[0]?.changeKind : null
-  const title = resultTitle(kind, change ? change.label : receipts[0]?.changeLabel, edits)
+  const title = resultTitle(kind, change ? change.label : receipts[0]?.changeLabel, edits, receipts)
+  // An applied preview keeps its title, so what it changed goes on the line under it.
+  const changed = kind === 'preview' ? assistantPanel.changeKinds(receipts).text : ''
   // The assistant undid or redid edits, and the card cannot simply reverse that: the reason says what can.
   const moved = kind === 'history' || Boolean(change?.moves?.undo || change?.moves?.redo)
   const pointer = moved && change && !undoable && !undone ? change.reason : ''
   const added = undone ? [] : addedCompositions(receipts, store.project, store.openComp)
   const openComposition = id => set({ openComp: id, compParents: { ...(store.compParents ?? {}), [id]: null }, selection: [], page: 'edit', viewerMode: 'timeline', scroll: 0 })
-  const caption = receipts.length ? receiptCaption(receipts, store.project) : ''
+  const caption = [changed, receipts.length ? receiptCaption(receipts, store.project) : ''].filter(Boolean).join(' · ')
   const notes = [...new Set(receipts.flatMap(receipt => receipt.notes ?? []))]
   // Select works on the layers of every edit in the run, one button per timeline they are on.
   const merged = { clips: receipts.flatMap(receipt => receipt.clips) }
@@ -114,12 +132,15 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
     set({ openComp: current.comp, selection: current.ids, page: 'edit', viewerMode: 'timeline' })
     player.seek(current.start)
   }
-  return html`<section class=${`assistant-result-card${undone ? ' undone' : ''}`} aria-label=${undone ? 'Undone edit result' : 'Committed edit result'}>
-    <div class="receipt-heading"><b>${title}</b>${undone ? html`<small>Undone</small>` : null}</div>
+  // The card that was just undone offers the way back while Redo in the toolbar would still restore it.
+  const redoable = undone && Boolean(onRedo)
+  return html`<section class=${`assistant-result-card${undone ? ' undone' : ''}${receipts.length ? '' : ' compact'}`} aria-label=${undone ? 'Undone edit result' : 'Committed edit result'}>
+    <div class="receipt-heading"><b>${title}</b>${undone ? html`<small class="assistant-undone-tag">Undone</small>` : null}</div>
     ${caption ? html`<p class="assistant-result-caption">${caption}</p>` : null}
-    ${undoable || groups.length || added.length ? html`<div class="receipt-actions">
+    ${undoable || redoable || groups.length || added.length ? html`<div class="receipt-actions">
       ${added.map(([id, name]) => html`<button class="ghost tiny" key=${id} onClick=${() => openComposition(id)}>Open ${name}</button>`)}
-      ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title=${kind === 'history' ? 'Redo the edits the assistant undid. Undo in the toolbar undoes them again.' : 'Restore the project from before this assistant change. Redo brings it back.'} onClick=${onUndo}>${busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
+      ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title=${kind === 'history' ? 'Redo the edits the assistant undid. Undo in the toolbar undoes them again.' : 'Restore the project from before this assistant change. Redo brings it back.'} onClick=${onUndo}>${kind === 'history' ? (busy === 'undo' ? 'Redoing…' : 'Redo this change') : busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
+      ${redoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title="Bring this change back. Undo in the toolbar removes it again." onClick=${onRedo}>${busy === 'redo' ? 'Redoing…' : 'Redo this change'}</button></span>` : null}
       ${groups.map(comp => {
         const selectable = receiptSelection(merged, store.project, comp)
         const name = comp == null ? 'main timeline' : store.project?.comps?.[comp]?.name ?? comp
@@ -130,9 +151,15 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
     ${notes.map(note => html`<p class="assistant-note">${note}</p>`)}
     ${receipts.length ? html`<details class="change-receipt"><summary>Details</summary>
       ${[...receipts].reverse().map(receipt => ReceiptDetails({ receipt }))}
-      <p class="receipt-meta">Undo in the toolbar reverts the latest edit.</p>
+      <p class="receipt-meta">${undone ? 'Redo in the toolbar brings this change back.' : 'Undo in the toolbar reverts the latest edit.'}</p>
+      ${TechnicalDetails({ receipts })}
     </details>` : null}
   </section>`
+}
+
+const RUN_SYMBOL = {
+  working: () => html`<${Icon} name="spinner" size=${14} />`, reconnecting: () => html`<${Icon} name="spinner" size=${14} />`,
+  done: () => html`<${Icon} name="check" size=${14} />`, error: () => html`<${Icon} name="alert" size=${14} />`, stopped: () => html`<${Icon} name="stop" size=${14} />`,
 }
 
 /** A run as one quiet line: label, stage and elapsed time. It opens to the tool updates. */
@@ -141,7 +168,7 @@ function RunLine({ label, stage, elapsed, state, symbol, detail = '', updates = 
   const bare = value => String(value ?? '').replace(/\.$/, '')
   const extra = detail && !(stage && bare(detail).endsWith(bare(stage))) ? detail : ''
   const expandable = Boolean(extra || updates.length || [children].flat(Infinity).some(Boolean))
-  const heading = html`<span class="assistant-run-symbol" aria-hidden="true">${symbol}</span><b role=${live ? 'status' : undefined}>${label}</b>${stage ? html`<span class="assistant-run-stage" title=${stage}>${stage}</span>` : null}${elapsed ? html`<span class="assistant-run-time">${elapsed}</span>` : null}`
+  const heading = html`<span class="assistant-run-symbol" aria-hidden="true">${RUN_SYMBOL[symbol] ? RUN_SYMBOL[symbol]() : symbol}</span><b role=${live ? 'status' : undefined}>${label}</b>${stage ? html`<span class="assistant-run-stage" title=${stage}>${stage}</span>` : null}${elapsed ? html`<span class="assistant-run-time">${elapsed}</span>` : null}`
   if (!expandable) return html`<div class=${`assistant-run ${state}`}><div class="assistant-run-heading">${heading}</div></div>`
   return html`<details class=${`assistant-run ${state}`} open=${open}>
     <summary class="assistant-run-heading">${heading}</summary>
@@ -150,6 +177,11 @@ function RunLine({ label, stage, elapsed, state, symbol, detail = '', updates = 
     ${children}
   </details>`
 }
+
+// The kind of job a starter is, shown beside it so the list scans by task.
+const STARTER_GROUPS = { 'rough-cut': 'Cut', silences: 'Cut', 'silences-selection': 'Cut', shorts: 'Cut', vertical: 'Cut', 'animate-title': 'Titles and captions', captions: 'Titles and captions',
+  'clean-audio': 'Sound', 'explain-selection': 'Explain', review: 'Explain', match: 'Color', 'grade-shot': 'Color', 'match-all': 'Color' }
+const starterGroup = id => STARTER_GROUPS[id] ?? 'Edit'
 
 function AssistantHistoryNotice({ status }) {
   const warning = typeof status?.warning === 'string' ? status.warning.slice(0, 500) : ''
@@ -367,6 +399,8 @@ export function ChatPanel() {
     return { id, label: transition ? label ? `Transition into ${label}` : `Transition ${id.slice(3)}` : label || id,
       track: object ? object.track.name ? `${object.track.name} (${object.track.id})` : object.track.id : null }
   })
+  // One chip for the selection: a name for one object, a count for more. Ids stay in the tooltip.
+  const selectedText = selection.length === 1 ? selection[0].label : selection.length ? `${selection.length} ${selection.every(item => !item.id.startsWith('tr:')) ? 'clips' : 'items'} selected` : ''
   const quick = assistantPanel.suggestions(s.project, { selection: s.selection, comp: s.openComp })
   // Suggestions populate an empty draft as a prompt.
   const showSuggestions = canSend && quick.length > 0 && !text.trim()
@@ -387,11 +421,12 @@ export function ChatPanel() {
   const mode = native ? '' : preview ? 'Preview first' : 'Applies directly'
   const review = native ? null : s.assistantReview
   const [reviewBusy, setReviewBusy] = useState('')
+  const [undoneChange, setUndoneChange] = useState(null)
   // Whether a change is undone comes from the server, which hears every Undo and Redo.
   const decide = async (kind, route, body) => {
     if (reviewBusy) return
     setReviewBusy(kind)
-    try { await api(route, body) }
+    try { return await api(route, body) }
     catch (error) { toast(error.message, 'error') }
     finally { setReviewBusy('') }
   }
@@ -399,8 +434,15 @@ export function ChatPanel() {
   // Undoing an earlier change is an edit, so it waits until the viewer stops showing a preview.
   const undoChange = () => {
     if (store.previewShown) { toast('Undo is off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.', 'error'); return }
-    return decide('undo', '/api/assistant/change/undo', { id: store.assistantReview?.change?.id })
+    const id = store.assistantReview?.change?.id
+    return Promise.resolve(decide('undo', '/api/assistant/change/undo', { id })).then(result => { if (Number.isSafeInteger(result?.version) && result.history?.redo > 0) setUndoneChange({ id, version: result.version }) })
   }
+  // The change just undone from its card is one Redo away until anything else moves the project.
+  const redoChange = () => {
+    if (store.previewShown) { toast('Redo is off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.', 'error'); return }
+    return Promise.resolve(decide('redo', '/api/redo', {})).then(() => setUndoneChange(null))
+  }
+  const redoFor = receipts => undoneChange && s.version === undoneChange.version && s.history?.redo !== 0 && receipts.some(receipt => receipt.changeId === undoneChange.id) ? redoChange : null
   // "Show in viewer": on a phone the sheet covers the viewer, so it drops to its bar; the banner over the viewer has Apply and Discard.
   // The store stamps the project it was shown over and forgets it once it no longer applies.
   const showInViewer = on => {
@@ -409,22 +451,31 @@ export function ChatPanel() {
   }
   const shownPreview = Boolean(review?.proposal?.id) && s.previewShown?.id === review.proposal.id
   // The current run's line, and what a failed run saved and how to try again.
-  const liveSymbol = !s.connected ? '↻' : working ? '◌' : activity.state === 'done' ? '↵' : activity.state === 'error' ? '!' : '■'
-  const liveRunLine = updates => RunLine({ live: true, state: working ? 'active' : activity.state, symbol: liveSymbol, label: activity.label, stage: activity.stage, elapsed: activity.elapsed, detail: activity.detail, updates,
+  const liveSymbol = !s.connected ? 'reconnecting' : working ? 'working' : activity.state === 'done' ? 'done' : activity.state === 'error' ? 'error' : 'stopped'
+  // `quiet` leaves out the outcome sentence, for a finished run whose result card already says it.
+  const liveRunLine = (updates, quiet = false) => RunLine({ live: true, state: working ? 'active' : activity.state, symbol: liveSymbol, label: activity.label, stage: quiet ? '' : activity.stage, elapsed: activity.elapsed, detail: quiet ? '' : activity.detail, updates,
     children: [activity.connectionNotice ? html`<p>${activity.connectionNotice}</p>` : null,
       (!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><${RoutingReceipt} value=${s.claude.routing} /></div>` : null] })
+  // Once the latest run has finished and its result card is there, the card says what happened. The line
+  // goes, as on a past turn, unless it still has the request's route or a connection notice to show.
+  const finishedWithCard = turn => !working && activity.state === 'done' && turn.receipts.some(receipt => receipt.total > 0 || receipt.clips?.length || receipt.projectChanges?.length)
+  const lineStillNeeded = () => Boolean(activity.connectionNotice || s.claude.routing?.ok)
   const failureBlock = lastReply => {
     // A stopped request can be sent again as well.
     const stopped = activity.state === 'cancelled'
     if (working || activity.state !== 'error' && !stopped) return null
     const saved = committed.length > 0 && !committed.every(item => lastReply?.text?.includes(item.summary))
-    return html`<div class=${`assistant-failure${stopped ? ' stopped' : ''}`}>
+    // The provider's own words sit inside the card, so the failure reads as one thing.
+    const message = !stopped && lastReply?.error ? String(lastReply.text ?? '').trim() : ''
+    return html`<div class=${`assistant-failure${stopped ? ' stopped' : ''}`} role="group" aria-label=${stopped ? 'Stopped request' : 'Failed request'}>
+              <div class="assistant-failure-heading"><${Icon} name=${stopped ? 'stop' : 'alert'} /><b>${stopped ? 'You stopped this request' : 'The request did not finish'}</b></div>
+              ${message ? html`<div class="assistant-failure-message msg-body" dangerouslySetInnerHTML=${{ __html: md(message) }}></div>` : null}
               ${chatgptCode === 'chatgpt_usage_limit' ? html`<div class="assistant-plan-error"><b>Usage limit reached</b><p>ChatGPT account: ${chatgpt?.email || 'your signed-in account'}. Check your usage, then try again later.</p><a class="button primary" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></div>` : null}
               ${['chatgpt_sign_in_required', 'chatgpt_not_authorized', 'chatgpt_plan_disabled', 'chatgpt_account_changed', 'chatgpt_not_eligible'].includes(chatgptCode) ? html`<div class="assistant-plan-error"><button class="ghost tiny" onClick=${() => set({ settingsOpen: true })}>Review ChatGPT sign-in</button></div>` : null}
               ${saved ? html`<div class="assistant-saved"><b>${stopped ? 'Saved before you stopped it' : 'Saved before the failure'}</b><ul>${committed.map(item => html`<li key=${item.version}>${item.summary}</li>`)}</ul></div>` : null}
               ${lastRequest || canRetry ? html`<div class="assistant-failure-actions">
-                ${lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title=${`Put the ${stopped ? 'stopped' : 'failed'} request back in the text box to edit or send again. Clear the current draft first.`} onClick=${() => { setText(lastRequest); focusComposer() }}>Edit and retry</button>` : null}
-                ${canRetry ? html`<button class="ghost tiny assistant-resend" disabled=${pending || !s.connected} title="Send the same request again" onClick=${retry}>Retry</button>` : null}
+                ${canRetry ? html`<button class="primary tiny assistant-resend" disabled=${pending || !s.connected} title="Send the same request again" onClick=${retry}>Retry</button>` : null}
+                ${lastRequest ? html`<button class="ghost tiny assistant-retry" disabled=${Boolean(text)} title=${`Put the ${stopped ? 'stopped' : 'failed'} request back in the text box to edit or send again. Clear the current draft first.`} onClick=${() => { setText(lastRequest); focusComposer() }}>Edit request</button>` : null}
               </div>` : null}
             </div>`
   }
@@ -485,8 +536,8 @@ export function ChatPanel() {
   const modelName = connection?.mode === 'auto' ? 'Auto' : [name, connection?.model].filter(Boolean).join(' · ')
 
   if (hosted) return html`<section class="panel chat assistant-unavailable" id="editor-assistant" aria-label="Assistant">
-    <div class="chat-head"><div class="chat-title"><b>Assistant</b><span class="muted">Unavailable in beta</span></div><button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button></div>
-    <div class="chat-list"><div class="assistant-setup"><b>Use Assistant in Arya for Mac</b><p>Assistant is also available in the local editor.</p><div class="assistant-setup-actions"><a class="button primary" href="https://editwitharya.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a><a class="settings-link" href="https://editwitharya.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run locally</a></div></div></div>
+    <div class="chat-head"><div class="chat-title"><b>Assistant</b><span class="muted">Mac app</span></div><button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button></div>
+    <div class="chat-list"><div class="assistant-setup"><b>Ask for edits in Arya for Mac</b><p>The assistant cuts, titles, mixes and explains your project from a plain request. It runs in the Mac app and the local editor, not in this browser build.</p><div class="assistant-setup-actions"><a class="button primary" href="https://editwitharya.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a></div><p class="assistant-setup-note">Editing here works without it. <a class="settings-link" href="https://editwitharya.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run the editor locally</a></p></div></div>
   </section>`
 
   return html`
@@ -502,6 +553,8 @@ export function ChatPanel() {
         <button class="ghost tiny chat-collapse" aria-label=${collapsed ? 'Expand assistant' : 'Minimize assistant'} title=${collapsed ? 'Expand assistant' : 'Minimize to reach the timeline. Your draft is kept.'} aria-expanded=${!collapsed} onClick=${() => set({ chatCollapsed: !collapsed })}><${Icon} name=${collapsed ? 'chevron-up' : 'chevron-down'} /></button>
         <button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button>
       </div>
+      ${/* Shown by CSS between 901 and 1439px on the Edit page, where this panel takes the inspector's column. */ null}
+      <div class="side-tabs" role="tablist" aria-label="Side panel"><button type="button" role="tab" aria-selected="true" class="on">Assistant</button><button type="button" role="tab" aria-selected="false" onClick=${() => set({ sideTab: 'inspector' })}>Inspector</button></div>
       ${/* These two stay pinned under the header, so a long conversation cannot scroll them away. */ null}
       <${AssistantHistoryNotice} status=${s.chatHistory} />
       ${s.caps.assistant?.pluginSession ? html`<p class="assistant-plugin-note">Typing here starts a separate ${name} run. To use this Claude session, ask in the terminal.</p>` : null}
@@ -511,31 +564,34 @@ export function ChatPanel() {
       }}>
         ${status.ready && !working && !conversation.length && !text.trim() ? html`<div class="chat-empty">
           <p>Ask for an edit, or ask a question about this project.</p>
+          <span class="assistant-sees" title="What the assistant is given with your request">Sees ${openTimeline ? openTimeline.name ?? s.openComp : 'Main timeline'} · ${selectedText || 'nothing selected'} · ${!view.time || view.time === 'unavailable' ? 'playhead unavailable' : `playhead ${view.time}`}</span>
         </div>` : null}
         ${turns.map((turn, index) => {
           const latest = index === turns.length - 1
           const live = latest && liveRun
           const failed = turn.replies.some(reply => reply.error)
           const lastReply = turn.replies.at(-1)
-          const symbol = failed ? '!' : '↵'
+          const symbol = failed ? 'error' : 'done'
+          // The failure card of the live turn carries the provider's message, so its bubble is not drawn twice.
+          const inCard = live && !working && activity.state === 'error' && Boolean(lastReply?.error)
           const updates = turn.updates.length ? plural(turn.updates.length, 'tool update') : ''
           const past = turn.updates.length && turn.request && lastReply ? elapsedBetween(turn.request.at, lastReply.at) : ''
           return html`<div class="assistant-turn" key=${`turn-${turn.at}-${index}`}>
             ${index === firstOfSession && index > 0 ? html`<p class="assistant-session-divider" role="separator">New session</p>` : null}
-            ${[turn.request, ...turn.replies].filter(Boolean).map(m => html`<div class=${`msg ${['user', 'you'].includes(m.role) ? 'user' : 'claude'}`}>
+            ${[turn.request, ...turn.replies].filter(m => m && !(inCard && m === lastReply)).map(m => html`<div class=${`msg ${['user', 'you'].includes(m.role) ? 'user' : 'claude'}`} data-last=${latest && ['user', 'you'].includes(m.role) ? '' : undefined}>
               <span class="sr-only">${['user', 'you'].includes(m.role) ? 'You' : 'Assistant'}</span>
               ${m.refs?.length ? html`<div class="msg-refs">${m.refs.map(r => html`<span class="chip small"><${Icon} name="attach" size=${14} /> ${r.label}</span>`)}</div>` : null}
               <div class="msg-body" dangerouslySetInnerHTML=${{ __html: md(m.text) }}></div>
               ${['user', 'you'].includes(m.role) ? html`<button class="ghost tiny assistant-edit-request" disabled=${working || Boolean(text) || !m.text} title="Restore this text as a draft with the current selection. Clear the existing draft first." onClick=${() => { setText(m.text); focusComposer() }}>Edit request</button>` : null}
             </div>`)}
             ${live && working && runActive && s.claude.text ? html`<div class="msg claude assistant-stream"><span class="sr-only">Writing…</span><div class="msg-body" dangerouslySetInnerHTML=${{ __html: md(s.claude.text) }}></div></div>` : null}
-            ${live ? liveRunLine(turn.updates)
-              : turn.updates.length ? RunLine({ state: failed ? 'error' : 'done', symbol, label: failed ? 'Failed' : 'Done', stage: updates, elapsed: past, updates: turn.updates }) : null}
+            ${live ? (finishedWithCard(turn) ? (lineStillNeeded() ? liveRunLine(turn.updates, true) : null) : liveRunLine(turn.updates))
+              : turn.updates.length && (failed || !turn.receipts.length) ? RunLine({ state: failed ? 'error' : 'done', symbol, label: failed ? 'Failed' : 'Done', stage: updates, elapsed: past, updates: turn.updates }) : null}
             ${live ? failureBlock(lastReply) : null}
             ${latest && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy} shown=${shownPreview} onShow=${showInViewer}
               onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
             ${latest && review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
-            ${turn.receipts.length || index === changeTurn ? html`<${ResultCard} receipts=${turn.receipts} change=${index === changeTurn ? changeShown : null} busy=${reviewBusy} onUndo=${undoChange} />` : null}
+            ${turn.receipts.length || index === changeTurn ? html`<${ResultCard} receipts=${turn.receipts} change=${index === changeTurn ? changeShown : null} busy=${reviewBusy} onUndo=${undoChange} onRedo=${redoFor(turn.receipts)} />` : null}
           </div>`
         })}
         ${!turns.length && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${false} busy=${reviewBusy} shown=${shownPreview} onShow=${showInViewer}
@@ -544,7 +600,7 @@ export function ChatPanel() {
         ${!turns.length && changeShown ? html`<${ResultCard} change=${changeShown} busy=${reviewBusy} onUndo=${undoChange} />` : null}
         ${!turns.length && liveRun ? html`${liveRunLine([])}${failureBlock(null)}` : null}
         ${chatgpt?.welcome ? html`<section class="assistant-setup chatgpt-welcome" aria-labelledby="chatgpt-welcome-heading"><b id="chatgpt-welcome-heading">You’re using your ChatGPT plan</b><p>Eligible AI requests in Arya use your ChatGPT plan or credits balance. Check and manage usage in your ChatGPT settings.</p><button class="primary" onClick=${chatgptTask(() => chatgptAccountAction('welcome'))}>Got it</button><a class="button" href=${chatgptUsage} target="_blank" rel="noopener noreferrer">Manage usage ↗</a></section>` : null}
-        ${checking ? html`<p class="assistant-checking" role="status"><span class="assistant-run-symbol" aria-hidden="true">◌</span>Checking your assistant…</p>` : !status.ready ? html`<section class="assistant-setup" aria-label="Assistant setup">
+        ${checking ? html`<p class="assistant-checking" role="status"><span class="assistant-run-symbol" aria-hidden="true"><${Icon} name="spinner" size=${14} /></span>Checking your assistant…</p>` : !status.ready ? html`<section class="assistant-setup" aria-label="Assistant setup">
           <b>Set up the assistant</b>
           ${chatgptWaiting || needsRefresh ? html`<p class="assistant-setup-state">${chatgptWaiting ? 'Waiting for ChatGPT sign-in' : status.refreshRequired ? status.label : `${name}: ${status.label}`}</p>` : null}
           <p>${chatgptWaiting ? 'Finish signing in on the ChatGPT page.' : needsRefresh ? status.reason
@@ -565,7 +621,7 @@ export function ChatPanel() {
           </div>
           <p class="assistant-setup-note">Editing works without an account.${text.trim() ? ' Your draft is kept.' : ''}</p>
         </section>` : null}
-        ${showSuggestions && !review?.proposal && !(review?.applying && !review.applying.finished) ? html`<div class=${`assistant-suggestions${conversation.length ? ' compact' : ''}`} role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${item.prompt} onFocus=${e => e.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })} onClick=${() => { setText(item.prompt, 'prompt'); focusComposer() }}>${item.label}</button>`)}</div>` : null}
+        ${showSuggestions && !conversation.length && !review?.proposal && !(review?.applying && !review.applying.finished) ? html`<div class="assistant-suggestions" role="group" aria-label="Suggested requests">${quick.map(item => html`<button class="assistant-suggestion" key=${item.id} disabled=${working} title=${item.prompt} onFocus=${e => e.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })} onClick=${() => { setText(item.prompt, 'prompt'); focusComposer() }}><small>${starterGroup(item.id)}</small><span>${item.label}</span></button>`)}</div>` : null}
       </div>
       <div class="assistant-composer-card" role="group" aria-label="Assistant composer">
         <div class="assistant-field">
@@ -575,13 +631,12 @@ export function ChatPanel() {
                 <span class="chip small" title=${scopeName}>${openTimeline ? openTimeline.name ?? s.openComp : 'Main timeline'}</span>
                 <span class="chip small" title=${view.under.join(', ') || undefined}>${!view.time || view.time === 'unavailable' ? 'Playhead unavailable' : `Playhead ${view.time}`}</span>
               </div>
-              ${native ? null : html`<label class="assistant-preview-toggle" title=${preview ? 'Preview changes: edits wait for Apply' : 'Preview changes is off: edits apply directly'}><input type="checkbox" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span>Preview</span></label>`}
-              ${selection.length ? html`<div class="assistant-selection-chips" role="group" aria-label="Current selection included when sending">${selection.map(item => html`<span class="chip small" key=${item.id}><b>${item.label}</b>${item.track || item.id !== item.label ? html`<small>${item.id}${item.track ? ` · ${item.track}` : ''}</small>` : null}</span>`)}</div>` : null}
+              ${selection.length ? html`<div class="assistant-selection-chips" role="group" aria-label="Current selection included when sending"><span class="chip small" title=${selection.map(item => `${item.label}${item.track ? `, ${item.track}` : ''} (${item.id})`).join('\n')}><b>${selectedText}</b>${selection.length === 1 && selection[0].track ? html`<small>${selection[0].track}</small>` : null}<button aria-label="Clear selection" onClick=${() => set({ selection: [] })}><${Icon} name="close" size=${14} /></button></span></div>` : null}
               ${s.refs.length ? html`<div class="refs" role="group" aria-label="Attached references">${s.refs.map(r => html`<span class="chip"><${Icon} name="attach" size=${14} /> ${r.label}<button aria-label=${`Remove reference ${r.label}`} onClick=${() => set({ refs: s.refs.filter(x => x !== r) })}><${Icon} name="close" size=${14} /></button></span>`)}</div>` : null}
             </div>
           </div>
           <div class="composer">
-            <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${`${draft.inputKind !== 'prompt' ? 'Paste a script to build editable scenes' : s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit, or ask about the project'}${mode ? ` · ${mode}` : ''}`} value=${text}
+            <textarea ref=${composer} rows="2" aria-label="Message your editing assistant" maxLength=${inputLimit} placeholder=${draft.inputKind !== 'prompt' ? 'Paste a script to build editable scenes' : s.selection.length ? 'Ask about or change this selection' : 'Ask for an edit or ask about the project'} value=${text}
               onInput=${e => setText(e.target.value)}
               onCompositionStart=${() => { composing.current = true }} onCompositionEnd=${() => { composing.current = false }}
               onKeyDown=${e => {
@@ -605,11 +660,11 @@ export function ChatPanel() {
                 </div>
               </details>
               <label class="assistant-input-kind"><select aria-label="Assistant input kind" value=${draft.inputKind} disabled=${inputLocked} onChange=${e => setText(text, e.target.value)}><option value="prompt">Prompt</option><option value="script">Script</option><option value="screenplay">Screenplay</option></select></label>
-              <label class="assistant-script-import"><span>Import text</span><input type="file" aria-label="Import script or screenplay" accept=".txt,.md,.fountain,.script,.screenplay,text/plain,text/markdown" disabled=${inputLocked || importing || !s.project}
+              <label class="assistant-script-import" title="Import a script or screenplay text file"><${Icon} name="attach" /><span class="sr-only">Import text</span><input type="file" aria-label="Import script or screenplay" accept=".txt,.md,.fountain,.script,.screenplay,text/plain,text/markdown" disabled=${inputLocked || importing || !s.project}
                 onClick=${() => { scriptPicker.current = scriptImport.current.begin() }}
                 onChange=${e => { const captured = scriptPicker.current; scriptPicker.current = null; const file = e.target.files?.[0]; e.target.value = ''; return scriptImport.current.consume(file, captured) }}
                 onCancel=${() => { scriptImport.current.cancel(scriptPicker.current); scriptPicker.current = null }} /></label>
-              <details class="assistant-input-help" name="assistant-composer-menu" onKeyDown=${closeComposerMenu} onFocusOut=${leaveComposerMenu}><summary aria-label="Input tips">?</summary>
+              <details class="assistant-input-help" name="assistant-composer-menu" onKeyDown=${closeComposerMenu} onFocusOut=${leaveComposerMenu}><summary aria-label="Input tips" title="Input tips"><${Icon} name="help" /></summary>
                 <div class="assistant-model-popover">
                   <p class="assistant-composer-hint">⌥-click a clip, keyframe, track, marker or inspector field to attach it.</p>
                   <p class="assistant-composer-hint">Press / anywhere to type here · ${draft.inputKind === 'prompt' ? 'Return to send · Shift+Return for a new line' : '⌘Return to send · Return for a new line'} · ${inputLimit.toLocaleString()} character limit.</p>
@@ -617,7 +672,7 @@ export function ChatPanel() {
                 </div>
               </details>
             </div>
-            <div class="assistant-primary-action"><button
+            <div class="assistant-primary-action">${native ? null : html`<label class="assistant-preview-toggle" title=${preview ? 'Preview changes: edits wait for Apply' : 'Preview changes is off: edits apply directly'}><input type="checkbox" role="switch" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span class="assistant-switch" aria-hidden="true"></span><span>Preview<span class="assistant-preview-first"> first</span></span></label>`}<button
               class=${working ? 'assistant-stop' : 'send'}
               aria-label=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : 'Send message'}
               title=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : `${draft.inputKind === 'prompt' ? 'Send (Return)' : 'Send (⌘Return)'}${mode ? `. ${preview ? 'Preview first: edits wait for Apply' : 'Applies edits directly'}` : ''}`}

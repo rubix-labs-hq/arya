@@ -222,10 +222,10 @@ async function panelFixture(caps) {
   globalThis.__aryaPanelAPI = async (route, body) => { c.calls.push({ route, body }); if (route === '/api/luts/apply') return { applied: true, project: applyOps(c.state.project, body.targets.map(target => ({ op: 'node_update', id: target.id, comp: body.comp, node: target.node, set: { grade: { lut: body.path } } }))).project, version: c.state.version + 1 }; return c.inspection }
   globalThis.__aryaPanelUpload = async picked => { c.uploads.push(picked); return { path: 'media/copied.png' } }
   const hookURL = localData('export const {useState,useRef,useEffect} = globalThis.__aryaPanelHooks;')
-  const storeURL = localData('export const store=globalThis.__aryaPanelState; export const time={t:1.5}; export const useStore=()=>store; export const set=patch=>Object.assign(store,patch); export const api=(...args)=>globalThis.__aryaPanelAPI(...args);')
+  const storeURL = localData('export const store=globalThis.__aryaPanelState; export const time={t:1.5}; export const useStore=()=>store; export const viewProject=()=>store.project; export const set=patch=>Object.assign(store,patch); export const api=(...args)=>globalThis.__aryaPanelAPI(...args);')
   const hostURL = localData('export const host={upload:(...args)=>globalThis.__aryaPanelUpload(...args)};')
   const stateURL = localData('export const gradedClip=()=>globalThis.__aryaPanelState.clip; export const selectedNode=()=>globalThis.__aryaPanelState.node;')
-  const imports = { preact: url(path.join(editor, 'node_modules/preact/dist/preact.module.js')), 'preact/hooks': hookURL, htm: url(path.join(editor, 'node_modules/htm/dist/htm.module.js')), '../../host.js': hostURL, '../store.js': storeURL, './state.js': stateURL, './workflows.js': workflowURL }
+  const imports = { preact: url(path.join(editor, 'node_modules/preact/dist/preact.module.js')), 'preact/hooks': hookURL, htm: url(path.join(editor, 'node_modules/htm/dist/htm.module.js')), '../../host.js': hostURL, '../store.js': storeURL, './state.js': stateURL, './workflows.js': workflowURL, '../clip-name.js': url(path.join(editor, 'web/ui/clip-name.js')), './graph.js': url(path.join(editor, 'web/ui/color/graph.js')) }
   let text = fs.readFileSync(file, 'utf8')
   for (const [name, replacement] of Object.entries(imports)) text = text.replace(`from '${name}'`, `from ${JSON.stringify(replacement)}`)
   const module = await import(localData(text))

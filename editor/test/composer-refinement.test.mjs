@@ -67,27 +67,31 @@ test('the exact committed receipt is passed to the result card', () => {
   assert.equal(component.props.receipts[0], receipt)
 })
 
-test('selection chips visibly distinguish duplicate labels, tracks and exact transition IDs in the current composition', () => {
+test('several selected objects are one counted chip, with each name, track and id in its tooltip', () => {
   const f = fixture({ selection: ['c1', 'c2', 'tr:c2', 'missing'], openComp: 'k1', project: { tracks: [{ clips: [{ id: 'c1', label: 'Wrong main title' }] }], comps: { k1: { name: 'Opening', tracks: [{ id: 'T1', name: 'Titles', clips: [{ id: 'c1', label: 'Opening title' }] }, { id: 'V2', clips: [{ id: 'c2', label: 'Opening title', transitionIn: { type: 'crossDissolve' } }] }] } } } })
   const tree = f.draw(), group = nodes(tree).find(node => node.props?.class === 'assistant-selection-chips')
   assert.ok(group)
   assert.equal(group.props['aria-label'], 'Current selection included when sending')
   const chips = nodes(group).filter(node => node.props?.class === 'chip small')
-  assert.deepEqual(chips.map(text), ['Opening title c1 · Titles (T1)', 'Opening title c2 · V2', 'Transition into Opening title tr:c2 · V2', 'missing'])
+  assert.deepEqual(chips.map(text), ['4 items selected'])
+  assert.equal(chips[0].props.title, ['Opening title, Titles (T1) (c1)', 'Opening title, V2 (c2)', 'Transition into Opening title, V2 (tr:c2)', 'missing (missing)'].join('\n'))
+  const clips = fixture({ selection: ['c1', 'c2'], project: { tracks: [{ id: 'V1', clips: [{ id: 'c1', label: 'One' }, { id: 'c2', label: 'Two' }] }], comps: {} } }).draw()
+  assert.equal(text(nodes(clips).find(node => node.props?.class === 'chip small' && /selected/.test(text(node)))), '2 clips selected')
   assert.match(text(tree), /Opening Playhead/)
   assert.equal(nodes(tree).find(node => node.props?.title === 'Opening (k1)')?.props.class, 'chip small', 'the composition id stays on the context chip')
   assert.doesNotMatch(text(group), /Wrong main title/)
-  assert.equal(nodes(group).some(node => node.type === 'button'), false)
+  const clear = nodes(group).filter(node => node.type === 'button')
+  assert.deepEqual(clear.map(node => node.props['aria-label']), ['Clear selection'])
 })
 
 test('changing current selection updates readable chips while preserving the draft and sharing boundary', () => {
   const f = fixture({ selection: ['c1'], project: { tracks: [{ id: 'V1', clips: [{ id: 'c1', label: 'First' }, { id: 'c2', label: 'Second' }] }], comps: {} } })
   const first = f.draw()
-  assert.match(text(nodes(first).find(node => node.props?.class === 'assistant-selection-chips')), /First c1/)
+  assert.match(text(nodes(first).find(node => node.props?.class === 'assistant-selection-chips')), /First V1/)
   f.state.selection = ['c2']
   const second = f.draw()
-  assert.match(text(nodes(second).find(node => node.props?.class === 'assistant-selection-chips')), /Second c2/)
-  assert.doesNotMatch(text(nodes(second).find(node => node.props?.class === 'assistant-selection-chips')), /First|c1/)
+  assert.match(text(nodes(second).find(node => node.props?.class === 'assistant-selection-chips')), /Second V1/)
+  assert.doesNotMatch(text(nodes(second).find(node => node.props?.class === 'assistant-selection-chips')), /First|c1|c2/)
   assert.equal(input(second).props.value, 'Refine this title')
   assert.deepEqual(f.drafts, []); assert.deepEqual(f.calls, [])
 })
@@ -95,7 +99,7 @@ test('changing current selection updates readable chips while preserving the dra
 test('historical references remain separate from current selection and explicit reference removal', () => {
   const f = fixture({ chat: [{ role: 'user', text: 'Previous request', refs: [{ label: 'Previous frame', id: 'old' }] }], selection: ['c1'], refs: [{ label: 'Current frame', id: 'c1' }], project: { tracks: [{ id: 'V1', clips: [{ id: 'c1', label: 'Current clip' }] }], comps: {} } })
   const tree = f.draw(), current = nodes(tree).find(node => node.props?.class === 'assistant-selection-chips')
-  assert.match(text(current), /Current clip c1/)
+  assert.match(text(current), /Current clip V1/)
   assert.doesNotMatch(text(current), /Previous frame|old/)
   assert.ok(nodes(tree).some(node => node.props?.class === 'msg-refs' && /Previous frame/.test(text(node))))
   const remove = nodes(tree).find(node => node.props?.['aria-label'] === 'Remove reference Current frame')
@@ -136,7 +140,7 @@ test('suggestions follow the selection, sit before the text box and set a draft 
   const tree = f.draw(), group = nodes(tree).find(node => node.props?.class === 'assistant-suggestions')
   assert.ok(group); assert.equal(group.props['aria-label'], 'Suggested requests')
   const labels = nodes(group).filter(node => node.type === 'button').map(node => text(node))
-  assert.deepEqual(labels, ['Grade these to match', 'Cut the silences', 'Clean up the sound', 'Explain the selection'])
+  assert.deepEqual(labels, ['Color Grade these to match', 'Cut Cut the silences', 'Sound Clean up the sound', 'Explain Explain the selection'])
   nodes(group).find(node => node.type === 'button').props.onClick()
   assert.equal(f.drafts.length, 1); assert.match(f.drafts[0], /Grade the 2 selected shots to match/); assert.equal(f.calls.length, 0)
   const card = nodes(tree).find(node => node.props?.class === 'assistant-composer-card')
@@ -163,19 +167,19 @@ test('Command-Return sends like Return, as in the Mac Assistant', async () => {
 })
 
 test('the prompt placeholder follows the selection', () => {
-  assert.equal(input(fixture().draw()).props.placeholder, 'Ask for an edit, or ask about the project · Preview first')
-  assert.equal(input(fixture({ selection: ['c1'] }).draw()).props.placeholder, 'Ask about or change this selection · Preview first')
+  assert.equal(input(fixture().draw()).props.placeholder, 'Ask for an edit or ask about the project')
+  assert.equal(input(fixture({ selection: ['c1'] }).draw()).props.placeholder, 'Ask about or change this selection')
 })
 
 test('the placeholder, Send and the Preview toggle say whether edits wait for Apply', () => {
   const off = fixture({ assistantPreview: false }).draw()
-  assert.equal(input(off).props.placeholder, 'Ask for an edit, or ask about the project · Applies directly')
+  assert.equal(input(off).props.placeholder, 'Ask for an edit or ask about the project')
   assert.match(nodes(off).find(node => node.props?.['aria-label'] === 'Send message').props.title, /^Send \(Return\)\. Applies edits directly$/)
   assert.equal(nodes(off).find(node => node.props?.class === 'assistant-preview-toggle').props.title, 'Preview changes is off: edits apply directly')
   const on = fixture().draw()
   assert.equal(nodes(on).find(node => node.props?.['aria-label'] === 'Send message').props.title, 'Send (Return). Preview first: edits wait for Apply')
   // The Mac app has no Preview toggle, so its placeholder names no mode.
-  assert.equal(input(fixture({ caps: { host: 'native' } }).draw()).props.placeholder, 'Ask for an edit, or ask about the project')
+  assert.equal(input(fixture({ caps: { host: 'native' } }).draw()).props.placeholder, 'Ask for an edit or ask about the project')
 })
 
 test('in a script or screenplay, Return adds a line and Command-Return sends', async () => {
@@ -187,7 +191,7 @@ test('in a script or screenplay, Return adds a line and Command-Return sends', a
     assert.equal(plain.prevented, 0, `${inputKind}: Return keeps the newline`)
     assert.deepEqual(f.calls, [])
     assert.match(text(f.draw()), /⌘Return to send · Return for a new line/)
-    assert.equal(input(f.draw()).props.placeholder, 'Paste a script to build editable scenes · Preview first', `${inputKind}: placeholder`)
+    assert.equal(input(f.draw()).props.placeholder, 'Paste a script to build editable scenes', `${inputKind}: placeholder`)
     const command = event({ metaKey: true })
     input(f.draw()).props.onKeyDown(command)
     await tick()
@@ -231,10 +235,10 @@ test('live terminal labels and inline model controls retain their current contra
 })
 
 for (const [name, clip, selected, expected] of [
-  ['title', { id: 'title1', kind: 'title', title: { text: 'Opening title' } }, 'title1', /Opening title title1/],
-  ['video', { id: 'video1', kind: 'video', src: 'media/interview-take.mp4' }, 'video1', /interview-take\.mp4 video1/],
-  ['transition', { id: 'title1', kind: 'title', title: { text: 'Opening title' }, transitionIn: { type: 'crossDissolve' } }, 'tr:title1', /Transition into Opening title tr:title1/],
-]) test(`unlabeled ${name} uses its current visible timeline label with exact identity`, () => {
+  ['title', { id: 'title1', kind: 'title', title: { text: 'Opening title' } }, 'title1', /Opening title V1/],
+  ['video', { id: 'video1', kind: 'video', src: 'media/interview-take.mp4' }, 'video1', /interview-take\.mp4 V1/],
+  ['transition', { id: 'title1', kind: 'title', title: { text: 'Opening title' }, transitionIn: { type: 'crossDissolve' } }, 'tr:title1', /Transition into Opening title V1/],
+]) test(`unlabeled ${name} uses its current visible timeline label and track`, () => {
   const f = fixture({ selection: [selected], project: { tracks: [{ id: 'V1', clips: [clip] }], comps: {} } })
   const group = nodes(f.draw()).find(node => node.props?.class === 'assistant-selection-chips')
   assert.ok(group)
@@ -267,7 +271,7 @@ for (const referenceCount of [0, 12]) test(`context leads the composer with its 
   assert.equal(kind.props.disabled, false); assert.equal(file.props.disabled, false)
   assert.equal(children.filter(node => node.props?.class === 'assistant-context-chips').length, 1)
   assert.match(text(content), /Main timeline Playhead 00:00:12:08/)
-  assert.match(text(content), /Opening title c1 · Picture \(V1\)/)
+  assert.match(text(content), /Opening title Picture \(V1\)/)
   assert.equal(nodes(content).filter(node => node.props?.['aria-label']?.startsWith('Remove reference ')).length, referenceCount)
   assert.equal(nodes(content).some(node => node.type === 'textarea'), false)
   for (const inputKind of ['script', 'screenplay', 'prompt']) {
@@ -328,7 +332,7 @@ test('Preview changes is on by default, travels with the request and can be turn
   const f = fixture()
   const toggle = nodes(f.draw()).find(node => node.props?.class === 'assistant-preview-toggle')
   const box = nodes(toggle).find(node => node.type === 'input')
-  assert.equal(box.props.checked, true); assert.equal(text(toggle), 'Preview')
+  assert.equal(box.props.checked, true); assert.equal(text(toggle), 'Preview first'); assert.equal(box.props.role, 'switch')
   assert.equal(toggle.props.title, 'Preview changes: edits wait for Apply'); assert.equal(box.props['aria-label'], 'Preview changes')
   box.props.onChange({ target: { checked: false } })
   assert.equal(f.state.assistantPreview, false)
@@ -365,12 +369,16 @@ test('a pending preview and the latest change render above the composer and call
   assert.equal(nodes(working).some(node => node.type?.name === 'ResultCard'), false, 'no undo offer while a request is still editing')
 })
 
-test('a failed request offers Edit and retry, which restores its text without sending', () => {
+test('a failed request offers Edit request, which restores its text without sending', () => {
   const f = fixture({ claude: { state: 'error', text: 'The agent could not complete the request.' }, chat: [{ role: 'user', text: 'Grade these to match' }, { role: 'claude', text: 'Failed.', error: true }] }, '')
-  const retry = nodes(f.draw()).find(node => node.type === 'button' && text(node) === 'Edit and retry')
+  const inCard = tree => nodes(nodes(tree).find(node => node.props?.class === 'assistant-failure') ?? {}).find(node => node.type === 'button' && text(node) === 'Edit request')
+  const card = nodes(f.draw()).find(node => node.props?.class === 'assistant-failure')
+  assert.match(text(card), /The request did not finish/); assert.match(text(card) + JSON.stringify(nodes(card).map(node => node.props?.dangerouslySetInnerHTML?.__html ?? '')), /Failed\./, 'the provider message is inside the card')
+  assert.equal(nodes(f.draw()).filter(node => node.props?.class === 'msg claude').length, 0, 'and is not drawn a second time as a reply')
+  const retry = inCard(f.draw())
   assert.ok(retry); assert.equal(retry.props.disabled, false)
   retry.props.onClick()
   assert.deepEqual(f.drafts, ['Grade these to match']); assert.deepEqual(f.calls, [])
-  assert.equal(nodes(fixture({ claude: { state: 'done' }, chat: [{ role: 'user', text: 'Fine' }] }, '').draw()).some(node => text(node) === 'Edit and retry'), false)
-  assert.equal(nodes(fixture({ claude: { state: 'error' }, chat: [{ role: 'user', text: 'Keep' }] }, 'A newer draft').draw()).find(node => node.type === 'button' && text(node) === 'Edit and retry').props.disabled, true)
+  assert.equal(inCard(fixture({ claude: { state: 'done' }, chat: [{ role: 'user', text: 'Fine' }] }, '').draw()), undefined)
+  assert.equal(inCard(fixture({ claude: { state: 'error' }, chat: [{ role: 'user', text: 'Keep' }] }, 'A newer draft').draw()).props.disabled, true)
 })
