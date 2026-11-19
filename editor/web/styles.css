@@ -1129,3 +1129,4 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 }
 .deliver-actions { flex-wrap: wrap; }
 .deliver-actions button { white-space: normal; }
+.hosted-note { margin: 2px 0 0; padding: 0 2px; }

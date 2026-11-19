@@ -317,7 +317,7 @@ function MediaTab({ p }) {
         <input ref=${fileInput} type="file" multiple accept="video/*,audio/*,image/*" hidden onChange=${e => { const files = [...(e.target.files ?? [])]; e.target.value = ''; return uploadFiles(files) }} />
         <button class="ghost" onClick=${() => host.kind === 'browser-local' ? folderInput.current?.click() : setPicker(true)}>From folder…</button>
         ${host.kind === 'browser-local' ? html`<input ref=${folderInput} type="file" multiple webkitdirectory=${true} hidden onChange=${e => { const files = [...(e.target.files ?? [])]; e.target.value = ''; return uploadFiles(files) }} />` : null}
-        <button type="button" class="ghost" style=${{ minHeight: '44px' }} disabled=${!store.connected || host.kind === 'browser-local'} title=${host.kind === 'browser-local' ? 'Music generation requires the native app or a local Arya connection.' : undefined} onClick=${() => showMusicDetails()}>Create music…</button>
+        ${/* The hosted build cannot make music, so it says where that works instead of showing a dead button. */ host.kind === 'browser-local' ? html`<p class="muted small hosted-note">Create music is available in Arya for Mac.</p>` : html`<button type="button" class="ghost" style=${{ minHeight: '44px' }} disabled=${!store.connected} onClick=${() => showMusicDetails()}>Create music…</button>`}
       </div>
       <div class="row gap">
         <input class="search" placeholder="Search media" value=${q} onInput=${e => setQ(e.target.value)} />
