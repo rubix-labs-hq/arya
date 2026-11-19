@@ -181,9 +181,10 @@ test('dialogs share one shell, and Captions from a transcript leads with the tas
   const captions = read('ui/plugins/captions.js')
   assert.match(captions, /<div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby=\$\{confirm \? 'cap-confirm-title' : 'cap-transcript-title'\}/)
   assert.match(captions, /<h3 id="cap-transcript-title">Captions from a transcript<\/h3><p class="dialog-subtitle">Pick a clip and a style, then preview the captions before they are added\.<\/p>/)
-  // A missing transcriber is a neutral note with one command to copy and a link, not a stack of warnings.
-  assert.match(captions, /<div class="cap-note" role="note">/); assert.match(captions, /<code>\$\{setup\.commands\[0\]\}<\/code><button type="button" class="ghost tiny"[^\n]*>Copy<\/button>/)
-  assert.match(captions, /<a href="https:\/\/editwitharya\.app\/install\/" target="_blank" rel="noopener noreferrer">How to install<\/a>/)
+  // A missing transcriber is a neutral note with each install command to copy, not a stack of warnings.
+  // The file ships in the native apps, so it names no website (native/scripts/test-support-channels.py).
+  assert.match(captions, /<div class="cap-note" role="note">/); assert.match(captions, /setup\?\.commands\.map\(command => html`<div class="cap-command"><code>\$\{command\}<\/code><button type="button" class="ghost tiny"[^\n]*>Copy<\/button>/)
+  assert.doesNotMatch(captions, /editwitharya/)
   assert.doesNotMatch(captions, /Run in Terminal/)
   assert.match(captions, /<button class="primary" disabled=\$\{busy \|\| !src\} title=\$\{!src \? 'Put a clip with sound on the timeline first' : undefined\}/)
   assert.match(captions, /Only the selected clip<\/label>/); assert.doesNotMatch(captions, /Only selected clip \$\{selected\.id\}/)
