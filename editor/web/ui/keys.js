@@ -32,6 +32,10 @@ export function landmarkStep(count, current, back = false) {
   return (current + (back ? -1 : 1) + count) % count
 }
 
+// Laid out and not under visibility: hidden, as the body of the minimized phone assistant is.
+const landmarkShown = (el, doc) => el.getClientRects().length > 0 && (doc.defaultView ?? globalThis).getComputedStyle?.(el)?.visibility !== 'hidden'
+
+/** Moves focus to the next region, or the previous one. Returns the region, or null when focus did not move there. */
 export function cycleLandmark(back = false, doc = globalThis.document) {
   // An open dialog keeps focus: its own Tab order is the way around it.
   if ([...doc.querySelectorAll('[aria-modal="true"]')].some(el => el.getClientRects().length)) return null
@@ -40,10 +44,24 @@ export function cycleLandmark(back = false, doc = globalThis.document) {
   const regions = shown.filter(el => !shown.some(other => other !== el && other.contains(el)))
   const next = regions[landmarkStep(regions.length, regions.findIndex(el => el.contains(doc.activeElement)), back)]
   if (!next) return null
-  const inside = (next.id === 'editor-assistant' ? next.querySelector('textarea:not(:disabled)') : null) ?? [...next.querySelectorAll(LANDMARK_FOCUS)].find(el => el.getClientRects().length)
+  // The assistant's stop is its text box. Minimized, that is hidden, and the stop is the first control still shown: Expand assistant.
+  const field = next.id === 'editor-assistant' ? next.querySelector('textarea:not(:disabled)') : null
+  const inside = (field && landmarkShown(field, doc) ? field : null) ?? [...next.querySelectorAll(LANDMARK_FOCUS)].find(el => landmarkShown(el, doc))
   if (!inside && !next.hasAttribute('tabindex')) next.setAttribute('tabindex', '-1')
-  ;(inside ?? next).focus()
-  return next
+  const target = inside ?? next
+  target.focus()
+  return doc.activeElement === target ? next : null
+}
+
+/**
+ * F6 for the whole document. A key an input method is composing with belongs to it, and the key
+ * is taken from the browser only once focus has moved. Returns whether it was.
+ */
+export function landmarkKey(e, doc = globalThis.document) {
+  if (e.key !== 'F6' || e.isComposing || e.keyCode === 229 || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || store.settingsOpen || store.showKeys || store.assistantSharingReviewOpen) return false
+  if (!cycleLandmark(e.shiftKey, doc)) return false
+  e.preventDefault()
+  return true
 }
 
 function sel() {
@@ -419,10 +437,7 @@ export function installKeys() {
     if (handled) e.preventDefault()
   })
   // On capture, so the way between panels also works from a field that keeps its own keys.
-  globalThis.document?.addEventListener?.('keydown', e => {
-    if (e.key !== 'F6' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || store.settingsOpen || store.showKeys || store.assistantSharingReviewOpen) return
-    e.preventDefault(); cycleLandmark(e.shiftKey)
-  }, true)
+  globalThis.document?.addEventListener?.('keydown', e => { landmarkKey(e) }, true)
 }
 
 export { snapToFrame }

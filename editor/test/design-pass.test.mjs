@@ -152,8 +152,7 @@ test('F6 and Shift+F6 walk the regions in order: top bar, media, viewer, inspect
   // The Edit page names its regions in that order, and the key works from a field.
   const order = ['class="topbar" role="banner" aria-label="Top bar"', "'Media browser' : 'Inspector'", 'role="region" aria-label="Viewer"', "aria-label=${phone ? undefined : 'Timeline'}"].map(part => app.indexOf(part))
   assert.ok(order.every(at => at > 0), String(order))
-  assert.match(keys, /if \(e\.key !== 'F6' \|\| e\.defaultPrevented[^\n]*\) return\n    e\.preventDefault\(\); cycleLandmark\(e\.shiftKey\)\n  \}, true\)/, 'on capture, so a field that stops its own keys still lets F6 through')
-  assert.match(keys, /globalThis\.document\?\.addEventListener\?\.\('keydown', e => \{\n    if \(e\.key !== 'F6'/)
+  assert.match(keys, /globalThis\.document\?\.addEventListener\?\.\('keydown', e => \{ landmarkKey\(e\) \}, true\)/, 'on capture, so a field that stops its own keys still lets F6 through')
   assert.match(keys, /\['F6 \/ ⇧F6', 'Next \/ previous panel'\]/)
 })
 
@@ -258,4 +257,36 @@ test('the Clear selection chip button is a 44px touch target and the ruler draws
   new Function('RULER', 'store', 'tx', 'timecode', 'time', `${source}\nreturn drawRuler`)(26, store, t => t * store.zoom, t => `00:00:${String(Math.floor(t)).padStart(2, '0')}:00`, { t: 0 })(ctx, { fps: 30, markers: [], range: null }, { width: 600 })
   assert.ok(fonts.length > 3, 'the ruler drew its labels')
   for (const font of fonts) assert.ok(Number(font.match(/(\d+(?:\.\d+)?)px/)[1]) >= 11, font)
+})
+
+test('F6 leaves a composing input method alone, lands on a control that is shown, and takes the key only when focus moved', () => {
+  const keys = read('ui/keys.js')
+  const source = keys.slice(keys.indexOf('export const LANDMARKS'), keys.indexOf('function sel()')).replace(/export /g, '')
+  const store = {}
+  const { LANDMARKS, landmarkKey } = new Function('store', `${source}; return { LANDMARKS, landmarkKey }`)(store)
+  const focused = []
+  const control = (name, { hidden = false, refuses = false } = {}) => { const el = { name, hidden, getClientRects: () => [1], focus() { focused.push(name); if (!refuses) doc.activeElement = el } }; return el }
+  const region = (name, controls, { id = '', field = null } = {}) => ({ name, id, getClientRects: () => [1], contains: other => other != null && (controls.includes(other) || other === field), hasAttribute: () => true, setAttribute() {}, focus() {}, querySelector: () => field, querySelectorAll: () => controls })
+  // The phone assistant minimized: its text box and Settings are laid out but under visibility: hidden.
+  const textarea = control('textarea', { hidden: true }), expand = control('Expand assistant')
+  const top = control('top bar button'), assistant = region('assistant', [control('Assistant settings', { hidden: true }), expand, control('Close assistant')], { id: 'editor-assistant', field: textarea })
+  let regions = [region('top bar', [top]), assistant]
+  const doc = { activeElement: null, defaultView: { getComputedStyle: el => ({ visibility: el.hidden ? 'hidden' : 'visible' }) }, querySelectorAll: selector => selector === '[aria-modal="true"]' ? [] : (assert.equal(selector, LANDMARKS), regions) }
+  const press = (extra = {}) => { const event = { key: 'F6', prevented: false, preventDefault() { this.prevented = true }, ...extra }; return [landmarkKey(event, doc), event.prevented] }
+  assert.deepEqual(press(), [true, true]); assert.equal(doc.activeElement, top)
+  assert.deepEqual(press(), [true, true]); assert.equal(doc.activeElement, expand, 'the minimized assistant stops on Expand assistant')
+  assert.deepEqual(press(), [true, true]); assert.equal(doc.activeElement, top, 'and the walk carries on from there')
+  assert.equal(focused.includes('textarea'), false); assert.equal(focused.includes('Assistant settings'), false)
+  // Expanded, the stop is the text box again.
+  textarea.hidden = false; press(); assert.equal(doc.activeElement, textarea)
+  // An input method that is composing keeps its key, on either signal, and the browser keeps its default.
+  const before = focused.length
+  assert.deepEqual(press({ isComposing: true }), [false, false]); assert.deepEqual(press({ keyCode: 229 }), [false, false]); assert.equal(focused.length, before)
+  // Focus that could not move leaves the key to the browser.
+  regions = [region('stuck', [control('stuck control', { refuses: true })])]
+  assert.deepEqual(press(), [false, false])
+  regions = []; assert.deepEqual(press(), [false, false])
+  // An open dialog or Settings keeps the key too.
+  regions = [region('top bar', [top])]; store.settingsOpen = true; assert.deepEqual(press(), [false, false]); store.settingsOpen = false
+  assert.deepEqual(press({ key: 'F5' }), [false, false])
 })
