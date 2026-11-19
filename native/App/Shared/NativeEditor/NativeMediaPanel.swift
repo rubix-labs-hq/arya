@@ -534,7 +534,7 @@ struct NativeMediaPanel: View {
                     }.buttonStyle(.plain).accessibilityLabel("Add \(name)").disabled(model.busy || (section != "Titles" && !eligible))
                 }
                 Divider()
-                NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask AI about selection").buttonStyle(NativeToolbarButtonStyle())
+                NativeSelectionAIAction(model: model, assistant: session.assistant, title: "Ask Arya about selection").buttonStyle(NativeToolbarButtonStyle())
                 Text("Save custom work in the project library to reuse independent copies.").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
             }.padding(12)
         }
