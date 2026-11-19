@@ -53,6 +53,14 @@
   .strip { min-width: 108px; }
 }
 
+/* Phone widths: every field and button in a panel is a 44px target, a checkbox or radio is hit through its
+   whole label, and field text is 16px so the keyboard does not zoom the page. */
+@media (max-width: 720px) {
+  .page :is(.inspector, .browser, .field) :is(select, textarea, input:not([type=checkbox], [type=radio], [type=range], [type=color])) { min-height: 44px; font-size: 16px; }
+  .page :is(.inspector, .browser) button { min-height: 44px; min-width: 44px; }
+  .page :is(.inspector, .browser, .field) label:has(> input:is([type=checkbox], [type=radio])) { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
+}
+
 /* Wrapper visibility also covers the existing compact tablet layout. */
 .page.edit.compact-edit .upper > :is(.edit-pane, .edit-viewer) { min-width: 0; }
 .page.edit.compact-edit .upper > .edit-viewer:not([hidden]) > .viewer { display: flex; }
