@@ -202,8 +202,8 @@ test('Ask Arya instructions follow each released edition independently', async (
     return result.home;
   };
   const screenshot = native.next.images['iphone-assistant'];
-  for (const page of [live.home, macOnly.home, await buildAt('1.3.0', '1.2.0', true, false), await buildAt('1.2.9', '1.3.0', false), await buildAt('1.2.9', '2.0-rc')]) {
-    assert.doesNotMatch(page, /Open Ask Arya|Undo this change|choose Apply or Discard/);
+  for (const page of [await buildAt('1.2.9', '1.2.0'), await buildAt('1.3.0', '1.2.0', true, false), await buildAt('1.2.9', '1.3.0', false), await buildAt('1.2.9', '2.0-rc')]) {
+    assert.doesNotMatch(page, /Open Ask Arya|Undo on it|choose Apply or Discard/);
     assert.ok(!page.includes(screenshot.src));
   }
   const direct = await buildAt('1.3.0', '1.2.0');
@@ -214,7 +214,10 @@ test('Ask Arya instructions follow each released edition independently', async (
   assert.ok(mobile.includes(screenshot.src) && mobile.includes(screenshot.caption));
   const both = await buildAt('1.4.0', '2.0');
   assert.match(both, /Using Ask Arya in the direct Mac download and the iPhone and iPad apps<\/h3>/);
-  for (const page of [direct, mobile, both]) assert.match(page, /Undo this change.*choose Apply or Discard/);
+  for (const page of [direct, mobile, both]) assert.match(page, /Undo on it.*choose Apply or Discard/);
+  // The shipped config has the 1.3.0 Mac download live, so the home page carries the Mac instructions.
+  assert.match(live.home, /Using Ask Arya in the direct Mac download<\/h3>/);
+  assert.match(macOnly.home, /Using Ask Arya in the direct Mac download<\/h3>/);
 });
 
 test('the six pages keep the app’s tab order and native screens stay apart from browser screens', () => {
