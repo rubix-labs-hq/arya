@@ -124,7 +124,7 @@ function TopBar() {
 // timeline keep their places. These two tabs switch that column between the two.
 const sideColumnShared = (chatOpen, width = globalThis.innerWidth) => chatOpen === true && typeof width === 'number' && width >= 901 && width <= 1439
 // An action that reveals the inspector, such as Denoise or reframe, also selects its tab in the shared column.
-onInspectorReveal(() => set({ sideTab: 'inspector' }))
+onInspectorReveal(() => { if (sideColumnShared(store.chatOpen)) set({ sideTab: 'inspector' }) })
 
 function SideTabs({ tab }) {
   return html`<div class="side-tabs" role="tablist" aria-label="Side panel">${[['assistant', 'Assistant'], ['inspector', 'Inspector']].map(([id, label]) => html`<button type="button" role="tab" aria-selected=${tab === id} class=${tab === id ? 'on' : ''} onClick=${() => set({ sideTab: id })}>${label}</button>`)}</div>`

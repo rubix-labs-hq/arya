@@ -190,7 +190,7 @@ test('the existing processing action can reveal the compact Inspector', t => {
   const f = fixture(t, { width: 390, saved: { ...defaults, showInspector: false } }); f.pick('Media'); const before = copy(f.state)
   f.layout.revealInspector(); const tree = f.edit()
   assert.equal(tree.props['data-compact-panel'], 'inspector'); assert.equal(componentCount(tree, f.components.Inspector), 1)
-  assert.deepEqual(f.persisted(), { ...defaults, showInspector: true }); assert.equal(f.writes.length, 1); assert.deepEqual(f.state, { ...before, sideTab: 'inspector' })
+  assert.deepEqual(f.persisted(), { ...defaults, showInspector: true }); assert.equal(f.writes.length, 1); assert.deepEqual(f.state, before)
 })
 // innerWidth is what the shell reads to decide whether the assistant shares the inspector's column.
 function windowWidth(t, width) { const had = Object.hasOwn(globalThis, 'innerWidth'), old = globalThis.innerWidth; globalThis.innerWidth = width; t.after(() => { if (had) globalThis.innerWidth = old; else delete globalThis.innerWidth }) }
