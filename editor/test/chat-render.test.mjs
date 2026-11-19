@@ -78,24 +78,35 @@ test('a past turn shows its tool updates as one quiet line that opens to the lis
   assert.deepEqual(nodes(run).filter(node => node.type === 'li').map(textContent), ['Calling get_project', 'Calling apply_ops'])
 })
 
-test('inside a turn the reply comes first, then the run line, then one result card', async () => {
+test('inside a turn the reply comes first, then one result card, and a finished run adds no Done line of its own', async () => {
   const { changeReceipt } = await import('../web/ui/change-receipt.js')
   const at = Date.now() - 5000
   const before = { tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }], comps: {} }
   const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
   const receipt = changeReceipt(before, after, { who: 'agent', version: 5, at: at + 2000 })
-  const tree = panel({ state: 'done', startedAt: at, finishedAt: at + 4000 }, true, { chat: [{ role: 'user', text: 'Make the title longer', at }, { role: 'claude', text: 'Done.', at: at + 3000 }],
-    activity: [{ who: 'agent', text: 'Calling apply_ops', at: at + 1000 }], receipts: [receipt] })
-  const turn = nodes(tree).find(node => node.props?.class === 'assistant-turn')
-  const order = children(turn).map(node => typeof node.type === 'function' ? node.type.name : node.props?.class)
-  assert.deepEqual(order, ['msg user', 'msg claude', 'assistant-run done', 'ResultCard'])
+  const options = { chat: [{ role: 'user', text: 'Make the title longer', at }, { role: 'claude', text: 'Done.', at: at + 3000 }],
+    activity: [{ who: 'agent', text: 'Calling apply_ops', at: at + 1000 }], receipts: [receipt] }
+  const order = tree => children(nodes(tree).find(node => node.props?.class === 'assistant-turn')).map(node => typeof node.type === 'function' ? node.type.name : node.props?.class)
+  const run = { state: 'done', startedAt: at, finishedAt: at + 4000, outcome: 'This request made 1 edit. Review it in the timeline.' }
+  assert.deepEqual(order(panel(run, true, options)), ['msg user', 'msg claude', 'ResultCard'], 'the card is the Done line')
+  // The request's route still needs a place, so the line stays for it without repeating what the card says.
+  const routed = panel({ ...run, routing: { ok: true } }, true, options)
+  assert.deepEqual(order(routed), ['msg user', 'msg claude', 'assistant-run done', 'ResultCard'])
+  const line = nodes(routed).find(node => node.props?.class === 'assistant-run done')
+  assert.equal(nodes(line).some(node => node.props?.class === 'assistant-run-stage'), false, 'no outcome sentence beside the card')
+  assert.ok(nodes(line).some(node => node.props?.class === 'assistant-route'))
+  // With no result card the line keeps its outcome sentence.
+  const bare = panel(run, true, { ...options, receipts: [] })
+  assert.deepEqual(order(bare), ['msg user', 'msg claude', 'assistant-run done'])
+  // A run still working keeps its line above the card of an edit it already made.
+  assert.ok(order(panel({ state: 'working', startedAt: at }, true, options)).includes('assistant-run active'))
 })
 
 
 // ResultCard is a component, so the walker leaves it as a node. Call it with the panel's own store.
 const resultCard = (tree, state = {}) => {
   const node = nodes(tree).find(node => node.type?.name === 'ResultCard')
-  return node && { props: node.props, tree: node.type(node.props) }
+  return node && { props: node.props, type: node.type, tree: node.type(node.props) }
 }
 
 test('a result card names caption style and track settings changes and lists the edit notes', async () => {
@@ -145,7 +156,7 @@ test('a result card is undone while the server says its change is, whatever chan
   assert.equal(unknown.props.receipts[0], receipt)
 })
 
-test('a history card is named for its move and offers Undo only as the server allows', async () => {
+test('a history card is named for its move and its button says Redo, offered only as the server allows', async () => {
   const { changeReceipt } = await import('../web/ui/change-receipt.js')
   const at = Date.now() - 5000
   const before = { comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }] }
@@ -156,10 +167,19 @@ test('a history card is named for its move and offers Undo only as the server al
   const card = review => resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review })).tree
   const offered = card({ change, changes: [{ ...change, undone: false }] })
   assert.equal(textContent(nodes(offered).find(node => node.type === 'b')), 'Undid 1 edit')
-  assert.match(nodes(offered).find(node => node.type === 'button' && textContent(node) === 'Undo this change').props.title, /^Redo the edits the assistant undid/)
+  // The button redoes what the assistant undid, so it says Redo. An ordinary card keeps Undo.
+  const buttons = tree => nodes(tree).filter(node => node.type === 'button').map(textContent)
+  assert.ok(buttons(offered).includes('Redo this change')); assert.equal(buttons(offered).includes('Undo this change'), false)
+  assert.match(nodes(offered).find(node => node.type === 'button' && textContent(node) === 'Redo this change').props.title, /^Redo the edits the assistant undid/)
+  const working = resultCard(panel({ state: 'done' }, true, { chat, receipts: [receipt], project: after, review: { change, changes: [{ ...change, undone: false }] } }))
+  assert.ok(buttons(working.type({ ...working.props, busy: 'undo' })).includes('Redoing…'), 'the busy label follows the kind')
+  const plainChange = { ...change, id: 'r1', kind: 'request', label: '' }
+  const plain = resultCard(panel({ state: 'done' }, true, { chat, receipts: [{ ...receipt, changeId: 'r1', changeKind: 'request', changeLabel: '' }], project: after, review: { change: plainChange, changes: [{ ...plainChange, undone: false }] } }))
+  assert.ok(buttons(plain.tree).includes('Undo this change')); assert.equal(buttons(plain.tree).includes('Redo this change'), false)
+  assert.ok(buttons(plain.type({ ...plain.props, busy: 'undo' })).includes('Undoing…'))
   const reason = 'Use Redo in the toolbar to bring back the edits the assistant undid.'
   const pointed = card({ change: { ...change, undoable: false, reason }, changes: [{ ...change, undone: false }] })
-  assert.equal(nodes(pointed).some(node => node.type === 'button' && textContent(node) === 'Undo this change'), false)
+  assert.equal(nodes(pointed).some(node => node.type === 'button' && /this change$/.test(textContent(node))), false)
   assert.deepEqual(nodes(pointed).filter(node => node.props?.class === 'assistant-note').map(textContent), [reason])
   assert.equal(textContent(nodes(card({ change: null, changes: [] })).find(node => node.type === 'b')), 'Undid 1 edit', 'an older card keeps the name too')
 })

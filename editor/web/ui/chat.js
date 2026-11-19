@@ -139,7 +139,7 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo, onRedo = 
     ${caption ? html`<p class="assistant-result-caption">${caption}</p>` : null}
     ${undoable || redoable || groups.length || added.length ? html`<div class="receipt-actions">
       ${added.map(([id, name]) => html`<button class="ghost tiny" key=${id} onClick=${() => openComposition(id)}>Open ${name}</button>`)}
-      ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title=${kind === 'history' ? 'Redo the edits the assistant undid. Undo in the toolbar undoes them again.' : 'Restore the project from before this assistant change. Redo brings it back.'} onClick=${onUndo}>${busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
+      ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title=${kind === 'history' ? 'Redo the edits the assistant undid. Undo in the toolbar undoes them again.' : 'Restore the project from before this assistant change. Redo brings it back.'} onClick=${onUndo}>${kind === 'history' ? (busy === 'undo' ? 'Redoing…' : 'Redo this change') : busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
       ${redoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title="Bring this change back. Undo in the toolbar removes it again." onClick=${onRedo}>${busy === 'redo' ? 'Redoing…' : 'Redo this change'}</button></span>` : null}
       ${groups.map(comp => {
         const selectable = receiptSelection(merged, store.project, comp)
@@ -452,9 +452,14 @@ export function ChatPanel() {
   const shownPreview = Boolean(review?.proposal?.id) && s.previewShown?.id === review.proposal.id
   // The current run's line, and what a failed run saved and how to try again.
   const liveSymbol = !s.connected ? 'reconnecting' : working ? 'working' : activity.state === 'done' ? 'done' : activity.state === 'error' ? 'error' : 'stopped'
-  const liveRunLine = updates => RunLine({ live: true, state: working ? 'active' : activity.state, symbol: liveSymbol, label: activity.label, stage: activity.stage, elapsed: activity.elapsed, detail: activity.detail, updates,
+  // `quiet` leaves out the outcome sentence, for a finished run whose result card already says it.
+  const liveRunLine = (updates, quiet = false) => RunLine({ live: true, state: working ? 'active' : activity.state, symbol: liveSymbol, label: activity.label, stage: quiet ? '' : activity.stage, elapsed: activity.elapsed, detail: quiet ? '' : activity.detail, updates,
     children: [activity.connectionNotice ? html`<p>${activity.connectionNotice}</p>` : null,
       (!working || runActive) && s.claude.routing?.ok ? html`<div class="assistant-route" role="group" aria-label=${runActive ? 'Current request route' : 'Last request route'}><${RoutingReceipt} value=${s.claude.routing} /></div>` : null] })
+  // Once the latest run has finished and its result card is there, the card says what happened. The line
+  // goes, as on a past turn, unless it still has the request's route or a connection notice to show.
+  const finishedWithCard = turn => !working && activity.state === 'done' && turn.receipts.length > 0
+  const lineStillNeeded = () => Boolean(activity.connectionNotice || s.claude.routing?.ok)
   const failureBlock = lastReply => {
     // A stopped request can be sent again as well.
     const stopped = activity.state === 'cancelled'
@@ -548,7 +553,7 @@ export function ChatPanel() {
         <button class="ghost tiny chat-collapse" aria-label=${collapsed ? 'Expand assistant' : 'Minimize assistant'} title=${collapsed ? 'Expand assistant' : 'Minimize to reach the timeline. Your draft is kept.'} aria-expanded=${!collapsed} onClick=${() => set({ chatCollapsed: !collapsed })}><${Icon} name=${collapsed ? 'chevron-up' : 'chevron-down'} /></button>
         <button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button>
       </div>
-      ${/* Shown by CSS between 1100 and 1439px on the Edit page, where this panel takes the inspector's column. */ null}
+      ${/* Shown by CSS between 901 and 1439px on the Edit page, where this panel takes the inspector's column. */ null}
       <div class="side-tabs" role="tablist" aria-label="Side panel"><button type="button" role="tab" aria-selected="true" class="on">Assistant</button><button type="button" role="tab" aria-selected="false" onClick=${() => set({ sideTab: 'inspector' })}>Inspector</button></div>
       ${/* These two stay pinned under the header, so a long conversation cannot scroll them away. */ null}
       <${AssistantHistoryNotice} status=${s.chatHistory} />
@@ -580,7 +585,7 @@ export function ChatPanel() {
               ${['user', 'you'].includes(m.role) ? html`<button class="ghost tiny assistant-edit-request" disabled=${working || Boolean(text) || !m.text} title="Restore this text as a draft with the current selection. Clear the existing draft first." onClick=${() => { setText(m.text); focusComposer() }}>Edit request</button>` : null}
             </div>`)}
             ${live && working && runActive && s.claude.text ? html`<div class="msg claude assistant-stream"><span class="sr-only">Writing…</span><div class="msg-body" dangerouslySetInnerHTML=${{ __html: md(s.claude.text) }}></div></div>` : null}
-            ${live ? liveRunLine(turn.updates)
+            ${live ? (finishedWithCard(turn) ? (lineStillNeeded() ? liveRunLine(turn.updates, true) : null) : liveRunLine(turn.updates))
               : turn.updates.length && (failed || !turn.receipts.length) ? RunLine({ state: failed ? 'error' : 'done', symbol, label: failed ? 'Failed' : 'Done', stage: updates, elapsed: past, updates: turn.updates }) : null}
             ${live ? failureBlock(lastReply) : null}
             ${latest && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy} shown=${shownPreview} onShow=${showInViewer}
