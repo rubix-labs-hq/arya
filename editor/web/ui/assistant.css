@@ -338,7 +338,14 @@
 .chat .assistant-import-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 4px 0; color: var(--muted); font-size: 11px; }
 /* Menus open above the field. A window too short for that opens them under the header instead. */
 @media (min-height: 521px) {
-  .chat .assistant-composer-card { position: relative; }
+  .chat .assistant-composer-card { position: relative; container-type: inline-size; container-name: composer; }
+}
+/* A field too narrow for one row puts the input options above Preview first and Send, so the provider
+   and model name is never cut to a letter. A short window keeps the one row so Send stays on screen. */
+@container composer (max-width: 409px) {
+  .chat .assistant-field-bar { flex-wrap: wrap; row-gap: 2px; }
+  .chat .assistant-input-tools { flex: 1 1 100%; }
+  .chat .assistant-primary-action { flex: 1 1 100%; justify-content: space-between; margin-left: 0; padding-left: 4px; }
 }
 @media (max-height: 520px) {
   .assistant-model-popover { top: 46px; bottom: auto; }
@@ -353,17 +360,14 @@
   .chat .assistant-context-chips .chip { order: 1; }
   .chat .assistant-field .composer textarea { min-height: calc(1lh + 10px); max-height: 3lh; padding-block: 5px; }
   .chat .assistant-composer-card { padding-bottom: 6px; }
+  .chat .assistant-preview-first, .chat .assistant-input-tools > .assistant-input-help { display: none; }
 }
-/* Between 1100 and 1439px the assistant takes the inspector's column on the Edit page, at 320px, and a
+/* Between 901 and 1439px the assistant takes the inspector's column on the Edit page, at 320px, and a
    two-tab strip switches the column between them. Media, viewer and timeline keep their places. */
 .side-tabs { display: none; }
-@media (min-width: 1100px) and (max-width: 1439px) {
+@media (min-width: 901px) and (max-width: 1439px) {
   .main:has(> .page.edit) > .chat.panel { width: 320px; }
   .main:has(> .page.edit) > .workspace-divider.divider-chat { display: none; }
-  .main:has(> .page.edit) > .chat .assistant-preview-first { display: none; }
-  /* At 320px the model control keeps its short name and the help button gives way. */
-  .main:has(> .page.edit) > .chat .assistant-input-tools > .assistant-model-menu { min-width: 34px; }
-  .main:has(> .page.edit) > .chat .assistant-input-tools > .assistant-input-help { display: none; }
   .main:has(> .page.edit) > .chat .side-tabs, .page.edit.side-inspector .side-tabs { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 6px 6px 0; padding: 2px; background: var(--input); border: 1px solid var(--line); border-radius: 8px; }
   .side-tabs button { min-height: 28px; border-color: transparent; background: transparent; color: var(--muted); font-weight: 500; }
   .side-tabs button.on { background: var(--selection-fill); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
@@ -375,6 +379,14 @@
   .app.chat-open .page.edit.customizable .tl-toolbar { flex-wrap: nowrap; }
   .app.chat-open .page.edit.customizable .tl-toolbar .tool-readout { display: none; }
   .app.chat-open .page.edit.customizable .tl-toolbar input[type=range] { width: 72px; }
+}
+/* Under 1100px the column leaves less room for the timeline toolbar: the zoom slider gives way to its
+   buttons, and under 1000px the zoom controls take a second row instead of scrolling out of sight. */
+@media (min-width: 901px) and (max-width: 1099px) {
+  .app.chat-open .page.edit.customizable .tl-toolbar .tl-zoom input[type=range] { display: none; }
+}
+@media (min-width: 901px) and (max-width: 999px) {
+  .app.chat-open .page.edit.customizable .tl-toolbar { flex-wrap: wrap; }
 }
 @media (max-width: 900px) {
   .main > .chat.panel { position: fixed; width: min(var(--chat-width, 360px), max(38vw, 320px)); }
@@ -448,8 +460,10 @@
   .topbar .assistant-entry { position: relative; justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; }
   .topbar .assistant-entry .assistant-entry-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .topbar .assistant-entry .assistant-entry-state { position: absolute; top: 7px; right: 7px; min-width: 0; margin: 0; }
-  /* The button fills the first row of the phone top bar, so it draws no frame against the page tabs under it. */
-  .topbar .assistant-entry:not(.on) { border-color: transparent; background: transparent; }
+  /* The button fills the first row of the phone top bar, so it draws no frame against the page tabs under it.
+     Open or working, it shows a fill set 4px inside the 44px target instead. */
+  .topbar .assistant-entry, .topbar .assistant-entry.on, .topbar .assistant-entry[data-state="working"], .topbar .assistant-entry:hover:not(:disabled) { border-color: transparent; background: transparent; isolation: isolate; }
+  .topbar .assistant-entry:is(.on, [data-state="working"])::before { content: ''; position: absolute; z-index: -1; inset: 4px; border-radius: 8px; background: var(--selection-fill); }
 }
 @media (max-width: 720px) and (max-height: 580px) and (orientation: portrait) {
   .main > .chat.panel:not(.assistant-unavailable) { height: calc(100dvh - var(--topbar-height) - 6px); }

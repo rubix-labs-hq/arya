@@ -7,6 +7,8 @@ import { Icon, hasIcon } from '../web/ui/icons.js'
 
 const read = path => readFileSync(new URL(`../web/${path}`, import.meta.url), 'utf8')
 const mediaBlock = (css, query) => { const start = css.indexOf(`@media ${query} {`); assert.notEqual(start, -1, query); let depth = 0; for (let i = css.indexOf('{', start); i < css.length; i++) { if (css[i] === '{') depth++; if (css[i] === '}' && --depth === 0) return css.slice(start, i + 1) } }
+// The pixel size of each font or font-size declaration, shorthand included.
+const pxSizes = css => [...css.matchAll(/(?:^|[\s;{])font(?:-size)?:\s*(?:[a-z0-9-]+\s+)*?(\d+(?:\.\d+)?)px/g)].map(match => Number(match[1]))
 const styles = read('styles.css'), assistantCSS = read('ui/assistant.css'), chat = read('ui/chat.js')
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value == null || value === false ? [] : [value]
 const nodes = node => node && typeof node === 'object' ? [node, ...flatten(node.props?.children).flatMap(nodes)] : []
@@ -52,10 +54,10 @@ test('Layout and Recovery are icon buttons that keep their names when the label 
   assert.match(styles, /@media \(min-width: 900px\) and \(max-width: 1279px\) \{[^@]*\.entry-text \{[^}]*clip-path: inset\(50%\)/)
 })
 
-test('between 1100 and 1439px an open assistant takes the inspector column and the compact picker waits for under 900px', () => {
+test('between 901 and 1439px an open assistant takes the inspector column and the compact picker waits for 900px and under', () => {
   const app = read('ui/app.js'), store = read('ui/store.js')
   const shared = new Function(`${app.match(/const sideColumnShared = [^\n]+/)[0]}; return sideColumnShared`)()
-  assert.deepEqual([1099, 1100, 1280, 1439, 1440].map(width => shared(true, width)), [false, true, true, true, false])
+  assert.deepEqual([900, 901, 1024, 1099, 1100, 1280, 1439, 1440].map(width => shared(true, width)), [false, true, true, true, true, true, true, false])
   assert.equal(shared(false, 1280), false); assert.equal(shared(true, undefined), false)
   assert.match(app, /const l = sideTab \? \{ \.\.\.saved, showInspector: sideTab === 'inspector' \} : saved/, 'the Inspector tab shows the inspector even when the saved layout hides it')
   assert.match(app, /const shared = !phone && host\.kind !== 'browser-local' && sideColumnShared\(s\.chatOpen\)/)
@@ -63,26 +65,50 @@ test('between 1100 and 1439px an open assistant takes the inspector column and t
   assert.match(app, /const compact = !phone && !shared && Number\.isFinite\(workspace\.width\) && workspace\.width < 900/)
   assert.match(store, /if \(next\.chatOpen === true && !Object\.hasOwn\(next, 'sideTab'\)\) store\.sideTab = 'assistant'/)
   assert.match(chat, /<div class="side-tabs" role="tablist" aria-label="Side panel">/)
-  const mid = mediaBlock(assistantCSS, '(min-width: 1100px) and (max-width: 1439px)')
+  const mid = mediaBlock(assistantCSS, '(min-width: 901px) and (max-width: 1439px)')
   assert.match(mid, /\.main:has\(> \.page\.edit\) > \.chat\.panel \{ width: 320px; \}/)
   assert.match(mid, /\.main:has\(> \.page\.edit\.side-inspector\) > :is\(\.chat, \.workspace-divider\.divider-chat\) \{ display: none; \}/, 'the assistant stays mounted behind the Inspector tab')
   assert.match(mid, /\.tl-toolbar \{ flex-wrap: nowrap; \}/, 'the timeline toolbar keeps to one row')
   assert.match(assistantCSS, /\n\.side-tabs \{ display: none; \}/)
+  // The panel is a fixed overlay at 900px and under, so the shared column starts one pixel above that.
+  assert.match(assistantCSS, /@media \(max-width: 900px\) \{\s*\.main > \.chat\.panel \{ position: fixed;/)
+  assert.match(mediaBlock(assistantCSS, '(min-width: 901px) and (max-width: 1099px)'), /\.tl-zoom input\[type=range\] \{ display: none; \}/, 'the zoom slider gives way first')
+  assert.match(mediaBlock(assistantCSS, '(min-width: 901px) and (max-width: 999px)'), /\.tl-toolbar \{ flex-wrap: wrap; \}/, 'then the zoom buttons take a second row')
+})
+
+test('a narrow composer puts the input options above Preview first and Send, so the model name is not cut', () => {
+  const narrow = assistantCSS.slice(assistantCSS.indexOf('@container composer (max-width: 409px) {')); assert.ok(narrow.startsWith('@container'))
+  const block = narrow.slice(0, narrow.indexOf('\n}\n'))
+  assert.match(block, /\.chat \.assistant-field-bar \{ flex-wrap: wrap;/)
+  assert.match(block, /\.chat \.assistant-input-tools \{ flex: 1 1 100%; \}/)
+  assert.match(block, /\.chat \.assistant-primary-action \{ flex: 1 1 100%; justify-content: space-between;/)
+  // Nothing hides the word or the tips button to make room any more, except in a window too short for two rows.
+  assert.doesNotMatch(assistantCSS, /\.assistant-model-menu \{ min-width: 34px; \}/)
+  assert.doesNotMatch(mediaBlock(assistantCSS, '(min-width: 901px) and (max-width: 1439px)'), /assistant-preview-first|assistant-input-help/)
+})
+
+test('on a phone the open assistant button shows an inset fill and no frame', () => {
+  const phone = assistantCSS.slice(assistantCSS.lastIndexOf('@media (max-width: 480px) {'))
+  const block = phone.slice(0, phone.indexOf('\n}\n'))
+  assert.match(block, /\.topbar \.assistant-entry, \.topbar \.assistant-entry\.on, \.topbar \.assistant-entry\[data-state="working"\], \.topbar \.assistant-entry:hover:not\(:disabled\) \{ border-color: transparent; background: transparent; isolation: isolate; \}/)
+  assert.match(block, /\.topbar \.assistant-entry:is\(\.on, \[data-state="working"\]\)::before \{ content: ''; position: absolute; z-index: -1; inset: 4px;/)
 })
 
 test('type, focus, motion and disabled text come from root tokens, and nothing is set below 11px', () => {
   for (const token of ['--text-caption: 11px', '--text-label: 12px', '--text-body: 13px', '--text-title: 15px', '--text-dialog: 18px', '--text-display: 21px', '--mono-small: 11px', '--mono: 12px', '--focus-ring: 2px solid var(--accent)', '--focus-offset: 2px', '--focus-inset: -2px', '--motion-fast: 120ms', '--motion-base: 180ms', '--disabled-text: #8a8e83']) assert.ok(styles.includes(`  ${token};`), token)
-  for (const [name, css] of [['styles.css', styles], ['assistant.css', assistantCSS], ['phone.css', read('ui/phone.css')], ['icons.css', read('ui/icons.css')]]) {
-    for (const [rule, size] of css.matchAll(/font(?:-size)?:\s*(\d+(?:\.\d+)?)px/g)) assert.ok(Number(size) >= 11, `${name}: ${rule}`)
-  }
+  // Every stylesheet under web/, and the size inside a font shorthand such as "font: 600 10px/1.5 monospace".
+  const sheets = readdirSync(new URL('../web/', import.meta.url), { recursive: true }).filter(name => name.endsWith('.css'))
+  assert.ok(sheets.includes('styles.css') && sheets.some(name => name.endsWith('motion.css')) && sheets.some(name => name.endsWith('library.css')) && sheets.length >= 8, sheets.join(', '))
+  assert.deepEqual(pxSizes('a { font: 600 10px/1.5 ui-monospace; } b { font-size: 9.5px } c { font: italic 700 12px x } d { font: var(--mono-small) x; line-height: 4px }'), [10, 9.5, 12])
+  for (const name of sheets) for (const size of pxSizes(read(name))) assert.ok(size >= 11, `${name}: ${size}px`)
   // Plugins carry their own style blocks; the same floor holds there.
-  for (const file of readdirSync(new URL('../web/ui/plugins/', import.meta.url)).filter(name => name.endsWith('.js'))) for (const [rule, size] of read(`ui/plugins/${file}`).matchAll(/font(?:-size)?:\s*(\d+(?:\.\d+)?)px/g)) assert.ok(Number(size) >= 11, `${file}: ${rule}`)
+  for (const file of readdirSync(new URL('../web/ui/plugins/', import.meta.url)).filter(name => name.endsWith('.js'))) for (const size of pxSizes(read(`ui/plugins/${file}`))) assert.ok(size >= 11, `${file}: ${size}px`)
   // Inputs keep the browser ring until the shared one replaces it: no blanket outline: none.
   assert.doesNotMatch(styles, /\nselect, input[^{]*\{[^}]*outline: none/)
   assert.match(styles, /select:focus-visible, input:focus-visible, textarea:focus-visible \{ outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\); \}/)
   assert.match(styles, /button:focus-visible, a:focus-visible, \[tabindex\]:focus-visible, summary:focus-visible \{ outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\); \}/)
   assert.match(styles, /\.seg button:focus-visible, \[role=tab\]:focus-visible \{ outline-offset: var\(--focus-inset\); \}/)
-  // One reduced-motion block turns every animation and transition off.
+  // The global reduced-motion block turns every animation and transition off.
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{ animation: none !important; transition: none !important;/)
   assert.doesNotMatch(`${styles}${assistantCSS}`, /transition: [^;]*\b(?:\.12s|\.18s|120ms|180ms)/)
   assert.match(styles, /button:disabled:is\(\.ghost, \.tiny\):not\(\.primary\) \{ opacity: 1; color: var\(--disabled-text\); \}/)
@@ -134,6 +160,10 @@ test('phone panels use 44px targets, whole-label checkboxes and 16px field text'
   assert.match(block, /@media \(max-width: 720px\) \{\s*\.page :is\(\.inspector, \.browser, \.field\) :is\(select, textarea, input:not\(\[type=checkbox\], \[type=radio\], \[type=range\], \[type=color\]\)\) \{ min-height: 44px; font-size: 16px; \}/)
   assert.match(block, /\.page :is\(\.inspector, \.browser\) button \{ min-height: 44px; min-width: 44px; \}/)
   assert.match(block, /label:has\(> input:is\(\[type=checkbox\], \[type=radio\]\)\) \{ display: inline-flex; align-items: center; gap: 8px; min-height: 44px; \}/)
+  // Outside the panels too. This reads the rule; the heights were measured in a browser at 390px.
+  const outside = block.match(/\.page :is\(([^)]*)\) :is\(button, select, summary, input:not\(\[type=checkbox\], \[type=radio\], \[type=range\], \[type=color\]\)\) \{ min-height: 44px; \}/)
+  assert.ok(outside, 'one rule for the controls outside the panels')
+  for (const place of ['.viewer-bar', '.audio-tools', '.mixer .strip', '.phone-switch', '.deliver-settings', '.deliver-queue', '.deliver-viewer-tools', '.transcript-panel', '.th-add', '.tl-toolbar']) assert.ok(outside[1].split(', ').includes(place), place)
 })
 
 test('panel headings share one sentence-case style', () => {

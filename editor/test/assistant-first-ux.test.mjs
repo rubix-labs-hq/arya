@@ -1042,7 +1042,7 @@ test('every CSS variable used without a fallback is defined', () => {
 })
 
 test('composer menus open above the field unless the window is 520px tall or shorter', () => {
-  assert.match(assistantCSS, /@media \(min-height: 521px\) \{\s*\.chat \.assistant-composer-card \{ position: relative; \}\s*\}/)
+  assert.match(assistantCSS, /@media \(min-height: 521px\) \{\s*\.chat \.assistant-composer-card \{ position: relative; container-type: inline-size; container-name: composer; \}\s*\}/)
   assert.match(assistantCSS, /@media \(max-height: 520px\) \{\s*\.assistant-model-popover \{ top: 46px; bottom: auto;/)
 })
 

@@ -50,7 +50,7 @@ export const store = {
   settingsOpen: false,
   settingsOtherWays: false, // the assistant panel's "Other ways to connect" opens that Settings section expanded
   chatCollapsed: false, // the phone sheet reduced to a one-line bar; kept in memory only
-  sideTab: 'assistant', // between 1100 and 1439px the assistant takes the inspector's column and this picks which one shows
+  sideTab: 'assistant', // between 901 and 1439px the assistant takes the inspector's column and this picks which one shows
   assistantStatus: null,
   assistantStatusError: '',
   assistantReview: null, // { proposal, change } from the server: the pending preview and the latest assistant change

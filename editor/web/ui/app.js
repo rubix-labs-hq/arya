@@ -120,9 +120,9 @@ function TopBar() {
   `
 }
 
-// Between 1100 and 1439px an open assistant takes the inspector's column, so media, viewer and
+// Between 901 and 1439px an open assistant takes the inspector's column, so media, viewer and
 // timeline keep their places. These two tabs switch that column between the two.
-const sideColumnShared = (chatOpen, width = globalThis.innerWidth) => chatOpen === true && typeof width === 'number' && width >= 1100 && width <= 1439
+const sideColumnShared = (chatOpen, width = globalThis.innerWidth) => chatOpen === true && typeof width === 'number' && width >= 901 && width <= 1439
 
 function SideTabs({ tab }) {
   return html`<div class="side-tabs" role="tablist" aria-label="Side panel">${[['assistant', 'Assistant'], ['inspector', 'Inspector']].map(([id, label]) => html`<button type="button" role="tab" aria-selected=${tab === id} class=${tab === id ? 'on' : ''} onClick=${() => set({ sideTab: id })}>${label}</button>`)}</div>`
