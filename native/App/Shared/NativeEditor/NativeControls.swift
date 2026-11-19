@@ -30,11 +30,21 @@ enum NativeEditorStyle {
     static let playhead = Color(red: 255 / 255, green: 59 / 255, blue: 74 / 255)
     #if os(iOS)
     static let minimumControlHeight: CGFloat = 44
-    /// A small row control, such as a size choice: still a full touch target.
-    static let compactControlHeight: CGFloat = 44
     #else
     static let minimumControlHeight: CGFloat = 40
+    #endif
+    // Touch sizes are for the phone and iPad. The Mac Catalyst app is a pointer app, so the
+    // shared action, menu, segmented and input styles keep the Mac's compact rows there.
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    static let touchControls = true
+    /// A small row control, such as a size choice: still a full touch target.
+    static let compactControlHeight: CGFloat = 44
+    /// The default height of a primary or secondary action.
+    static let actionHeight: CGFloat = 44
+    #else
+    static let touchControls = false
     static let compactControlHeight: CGFloat = 26
+    static let actionHeight: CGFloat = 40
     #endif
 
     /// Keeps a toggle's on state amber inside a container whose tint is neutral.
@@ -144,7 +154,7 @@ private struct NativeActionButton: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: NativeRadius.control)
         configuration.label
-            #if os(iOS)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             .font(.subheadline.weight(primary ? .semibold : .medium))
             #else
             .font(primary ? NativeType.controlEmphasis : NativeType.control)
@@ -152,8 +162,8 @@ private struct NativeActionButton: View {
             .lineLimit(1)
             .foregroundStyle(!enabled ? NativeEditorStyle.muted : primary ? NativeEditorStyle.accentInk : NativeEditorStyle.text)
             .padding(.horizontal, 12)
-            .frame(minWidth: height ?? NativeEditorStyle.minimumControlHeight, maxWidth: fill ? .infinity : nil,
-                   minHeight: height ?? NativeEditorStyle.minimumControlHeight)
+            .frame(minWidth: height ?? NativeEditorStyle.actionHeight, maxWidth: fill ? .infinity : nil,
+                   minHeight: height ?? NativeEditorStyle.actionHeight)
             .background(primary && enabled ? NativeEditorStyle.accent.opacity(hovered ? 0.9 : 1)
                         : hovered && enabled ? NativeEditorStyle.selectionFill : NativeEditorStyle.panelRaised, in: shape)
             .overlay { shape.stroke(primary && enabled ? Color.clear : NativeEditorStyle.controlLine.opacity(enabled ? 1 : 0.5)) }
@@ -170,6 +180,9 @@ struct NativeMenuButtonStyle: MenuStyle {
         Menu(configuration)
             #if os(macOS)
             .menuStyle(.borderlessButton)
+            .font(NativeType.control)
+            .padding(.horizontal, 7).frame(minHeight: 26)
+            #elseif targetEnvironment(macCatalyst)
             .font(NativeType.control)
             .padding(.horizontal, 7).frame(minHeight: 26)
             #else
@@ -212,7 +225,7 @@ struct NativeSegmentedControl<Value: Hashable>: View {
                 let selected = option.value == selection
                 Button { selection = option.value } label: {
                     Text(option.title).lineLimit(1)
-                        #if os(iOS)
+                        #if os(iOS) && !targetEnvironment(macCatalyst)
                         .font(.subheadline.weight(selected ? .semibold : .regular))
                         .frame(maxWidth: fill ? .infinity : nil, minHeight: 36)
                         #else
@@ -240,7 +253,7 @@ struct NativeSegmentedControl<Value: Hashable>: View {
 struct NativeInputField: ViewModifier {
     func body(content: Content) -> some View {
         content
-            #if os(iOS)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             .padding(.horizontal, 10).frame(minHeight: 44)
             #else
             .font(NativeType.control).padding(.horizontal, 7).frame(minHeight: 26)

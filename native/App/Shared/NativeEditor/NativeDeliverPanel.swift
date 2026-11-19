@@ -246,6 +246,14 @@ struct NativeDeliverPanel: View {
         outputOverrides = true
         outputWidth = Double(width)
     }
+    private var sizeLabel: some View {
+        Text("Size").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted).fixedSize()
+    }
+    @ViewBuilder private var sizeChoices: some View {
+        Button("1080p") { chooseSize(long: 1920, short: 1080) }.accessibilityIdentifier("deliver.size.1080")
+        Button("4K" + proBadge) { chooseSize(long: 3840, short: 2160) }.accessibilityIdentifier("deliver.size.4k")
+        Button("Canvas") { outputOverrides = false }.accessibilityIdentifier("deliver.size.canvas")
+    }
     private var activeRange: ClosedRange<Double>? {
         NativeExportDimensions.markedRange(project: model.project?.fields ?? [:], composition: model.composition, duration: model.duration)
     }
@@ -272,11 +280,12 @@ struct NativeDeliverPanel: View {
                 let range = exportScope == "range" ? activeRange : nil
                 Text("\(nativeTimecode(range?.lowerBound ?? 0, fps: model.fps)) to \(nativeTimecode(range?.upperBound ?? model.duration, fps: model.fps))")
                     .font(.system(.caption, design: .monospaced)).foregroundStyle(NativeEditorStyle.muted)
-                HStack(spacing: 8) {
-                    Text("Size").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted)
-                    Button("1080p") { chooseSize(long: 1920, short: 1080) }.accessibilityIdentifier("deliver.size.1080")
-                    Button("4K" + proBadge) { chooseSize(long: 3840, short: 2160) }.accessibilityIdentifier("deliver.size.4k")
-                    Button("Canvas") { outputOverrides = false }.accessibilityIdentifier("deliver.size.canvas")
+                // One row where the names fit whole. Otherwise the label sits above the choices, and
+                // at the largest text sizes the choices stack, so no name is ever cut.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { sizeLabel; sizeChoices }
+                    VStack(alignment: .leading, spacing: 6) { sizeLabel; HStack(spacing: 8) { sizeChoices } }
+                    VStack(alignment: .leading, spacing: 6) { sizeLabel; sizeChoices }
                 }
                 .buttonStyle(NativeSecondaryButtonStyle(height: NativeEditorStyle.compactControlHeight))
                 .accessibilityElement(children: .contain).accessibilityLabel("Output size")
