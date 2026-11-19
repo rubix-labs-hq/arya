@@ -89,7 +89,7 @@ function TopBar() {
   const running = s.jobs.filter(j => j.kind === 'export' && (j.state === 'running' || j.state === 'queued' || host.kind === 'browser-local' && ['cancelling', 'committing'].includes(j.state)))
 
   return html`
-    <div class="topbar">
+    <div class="topbar" role="banner" aria-label="Top bar">
       <div class="topbar-project"><div class="brand"><picture><source media="(max-width: 480px)" srcset="/assets/brand/mark.svg" /><img src="/assets/brand/wordmark.svg" alt="Arya" width="166" height="77" /></picture></div>
       ${p ? html`<div class="proj" title=${p.name ?? 'Untitled'}><span class="proj-name" title=${p.name ?? 'Untitled'}>${p.name ?? 'Untitled'}</span><span class="muted proj-format">${`${p.width}×${p.height} · ${p.fps}fps`}</span></div>` : null}</div>
       <div class="workflow-pages" hidden=${!p}><${ScrollTabs} tabs=${[...PAGES, ...registry.pages.map(pg => [pg.id, pg.label, pg.key ?? '', pg.order ?? 100])].sort((a, b) => a[3] - b[3])} value=${s.page} onChange=${page => set({ page })} label="Workflow" /></div>
@@ -175,8 +175,8 @@ function EditPage() {
   const paneProps = name => ({
     hidden: phone || compact ? panel !== name : !visible(name),
     style: phone || compact ? undefined : { gridColumn: column(name), gridRow: 1 },
-    id: `edit-panel-${name}`, role: phone ? 'tabpanel' : undefined,
-    'aria-labelledby': phone ? `phone-tab-${name}` : undefined,
+    id: `edit-panel-${name}`, role: phone ? 'tabpanel' : 'region',
+    'aria-labelledby': phone ? `phone-tab-${name}` : undefined, 'aria-label': phone ? undefined : name === 'media' ? 'Media browser' : 'Inspector',
   })
   const setPhonePanel = name => {
     const mapped = phonePanelToCompact(name)
@@ -194,12 +194,12 @@ function EditPage() {
       <div id="edit-upper" class="upper" ref=${workspace.ref} style=${phone ? undefined : { gridTemplateColumns: compact ? 'minmax(0, 1fr)' : editGridColumns(l, workspace.width) }}>
         <div key="media" class="edit-pane edit-media-pane" ...${paneProps('media')}><${Browser} key="media" /></div>
         ${!phone && !compact && visible(left) ? html`<${Divider} key="left-divider" field=${left} size=${sizes[left]} label=${`Resize ${left} panel`} />` : null}
-        <div key="viewer" id="edit-viewer" class="edit-viewer" hidden=${compact && panel !== 'viewer'} style=${phone || compact ? undefined : { gridColumn: visible(left) ? 3 : 1, gridRow: 1 }}><${Viewer} key="viewer" compact=${phone} /></div>
+        <div key="viewer" id="edit-viewer" class="edit-viewer" role="region" aria-label="Viewer" hidden=${compact && panel !== 'viewer'} style=${phone || compact ? undefined : { gridColumn: visible(left) ? 3 : 1, gridRow: 1 }}><${Viewer} key="viewer" compact=${phone} /></div>
         ${!phone && !compact && visible(right) ? html`<${Divider} key="right-divider" field=${right} size=${sizes[right]} label=${`Resize ${right} panel`} reverse=${true} />` : null}
         <div key="inspector" class="edit-pane edit-inspector-pane" ...${paneProps('inspector')}>${sideTab === 'inspector' ? html`<${SideTabs} key="side-tabs" tab="inspector" />` : null}<${Inspector} key="inspector" /></div>
       </div>
       ${!phone && !compact && showTimeline ? html`<${Divider} field="upper" axis="vertical" label="Resize viewer and timeline" />` : null}
-      <div class="lower" id="edit-panel-timeline" hidden=${phone ? compactPanel !== 'viewer' : !showTimeline} role=${phone ? 'tabpanel' : undefined} aria-labelledby=${phone ? 'phone-tab-timeline' : undefined}>
+      <div class="lower" id="edit-panel-timeline" hidden=${phone ? compactPanel !== 'viewer' : !showTimeline} role=${phone ? 'tabpanel' : 'region'} aria-label=${phone ? undefined : 'Timeline'} aria-labelledby=${phone ? 'phone-tab-timeline' : undefined}>
         <${Toolbar} /><${Timeline} />
       </div>
     </div>
