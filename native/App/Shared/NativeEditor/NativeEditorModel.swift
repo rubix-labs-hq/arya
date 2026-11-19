@@ -666,8 +666,9 @@ final class NativeEditorModel: ObservableObject {
     @Published var composition: String? { didSet { discardRenderPreview(redraw: false); viewerComparison = nil; selectedID = nil; seek(0) } }
     @Published var panel: NativePanel = .edit { didSet { if oldValue != panel { discardRenderPreview() }; if panel == .color { if let metalFrame { frame = try? metalFrame.cgImage() }; requestFrame() } } }
     @Published var requestedWorkspace: NativePanel?
-    /// Set by the menu bar's Show Assistant command. The editor view answers it with the same toggle as Ask Arya.
-    @Published var assistantToggleRequested = false
+    /// Counted up by the menu bar's Show Assistant command. The editor view answers each change with the
+    /// same toggle as Ask Arya. A count cannot stick, so a press with no editor on screen is dropped.
+    @Published var assistantToggleRequests = 0
     @Published var time: Double = 0
     @Published var zoom: Double = 80
     @Published private(set) var playing = false

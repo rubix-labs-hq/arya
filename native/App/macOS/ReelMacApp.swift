@@ -88,7 +88,7 @@ struct ReelMacApp: App {
         }
         CommandGroup(after: .toolbar) {
             // Option-Command-A lives here, not on the toolbar button, so it works after a click on that button.
-            Button(assistantVisible ? "Hide Assistant" : "Show Assistant") { session.nativeEditor.assistantToggleRequested = true }
+            Button(assistantVisible ? "Hide Assistant" : "Show Assistant") { session.nativeEditor.assistantToggleRequests += 1 }
                 .keyboardShortcut(editorShortcut("a", modifiers: [.command, .option]))
                 .disabled(session.folder == nil || session.useWebEditor)
             Divider()

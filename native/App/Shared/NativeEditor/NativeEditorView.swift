@@ -483,9 +483,7 @@ struct NativeEditorView: View {
             .onChange(of: model.requestedWorkspace) { _, _ in
                 showRequestedWorkspace(compact: compact)
             }
-            .onChange(of: model.assistantToggleRequested) { _, requested in
-                guard requested else { return }
-                model.assistantToggleRequested = false
+            .onChange(of: model.assistantToggleRequests) { _, _ in
                 if compact { select(.assistant, compact: true) } else { toggleAssistant() }
             }
             .onChange(of: model.panel) { previous, next in

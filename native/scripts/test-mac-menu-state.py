@@ -58,7 +58,7 @@ assert '#elseif targetEnvironment(macCatalyst)' in option and 'button(forKeyCode
 assert 'return false' not in option
 # Option-Command-A belongs to one menu command. A second shortcut on the toolbar button made the
 # key do nothing right after a click on that button.
-toggle = re.search(r'Button\(assistantVisible \? "Hide Assistant" : "Show Assistant"\) \{ session\.nativeEditor\.assistantToggleRequested = true \}\n\s*\.keyboardShortcut\(editorShortcut\("a", modifiers: \[\.command, \.option\]\)\)\n\s*\.disabled\((.*)\)', app)
+toggle = re.search(r'Button\(assistantVisible \? "Hide Assistant" : "Show Assistant"\) \{ session\.nativeEditor\.assistantToggleRequests \+= 1 \}\n\s*\.keyboardShortcut\(editorShortcut\("a", modifiers: \[\.command, \.option\]\)\)\n\s*\.disabled\((.*)\)', app)
 assert toggle and 'session.useWebEditor' in toggle.group(1), 'View > Show Assistant owns Option-Command-A and stays out of the web editor'
 assert '@AppStorage("editor.layout.assistantVisible") private var assistantVisible' in app, 'The menu item reads the stored panel state'
 desktop = editor_view.split('private func desktopHeaderActions(width: Double) -> some View {', 1)[1].split('#endif', 1)[0]
