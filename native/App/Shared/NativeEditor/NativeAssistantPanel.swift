@@ -711,7 +711,7 @@ struct NativeAssistantPanel: View {
                 // Fires when the line appears and again when its text gets longer or changes.
                 .onChange(of: below ? stage : "") { _, text in if !text.isEmpty { runLineGrowth += 1 } }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(label), \(quiet ? detail : stage), \(meta)")
+                .accessibilityLabel("\(label), \(quiet ? detail : stage), \(elapsed)")
             }
             .font(.system(size: activityFontSize))
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -1444,15 +1444,17 @@ private struct NativeAssistantIconActionStyle: LabelStyle {
     }
 }
 
-/// One changed value in plain words: "opacity 1 to 0.85", never "Absent → 0.84999999999999998".
+/// One changed value in plain words: "opacity 1 to 0.85" or "opacity set to 0.85", never "Absent → 0.84999999999999998".
 enum NativeAssistantChangeText {
     typealias Item = (property: String, before: String, after: String)
+    /// What a value that is absent reads as.
+    static let missing = "not set"
 
-    /// grade.exposure: not set to 0.3 instead of /grade: Absent → {"exposure":0.2999…}.
+    /// grade.exposure set to 0.3 instead of /grade: Absent → {"exposure":0.2999…}.
     static func readable(_ change: NativeChangeReceipt.Change) -> [Item] {
         let property = change.property.split(separator: "/").joined(separator: ".")
         if change.before == "Absent", let data = change.after.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            return object.keys.sorted().map { key in (property: "\(property).\(key)", before: "not set", after: value(object[key] as Any)) }
+            return object.keys.sorted().map { key in (property: "\(property).\(key)", before: missing, after: value(object[key] as Any)) }
         }
         return [(property: property, before: scalar(change.before), after: scalar(change.after))]
     }
@@ -1460,7 +1462,7 @@ enum NativeAssistantChangeText {
     /// A receipt value as a person reads it: up to three decimals, "not set" for a missing one.
     static func scalar(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed == "Absent" || trimmed == "null" || trimmed.isEmpty { return "not set" }
+        if trimmed == "Absent" || trimmed == "null" || trimmed.isEmpty { return missing }
         if let number = Double(trimmed), number.isFinite { return decimal(number) }
         return trimmed
     }
@@ -1479,6 +1481,16 @@ enum NativeAssistantChangeText {
         if let text = item as? String { return "\"\(text)\"" }
         if let data = try? JSONSerialization.data(withJSONObject: item, options: [.fragmentsAllowed]), let text = String(data: data, encoding: .utf8) { return text }
         return "\(item)"
+    }
+
+    /// "opacity 1 to 0.85". A value with nothing before it reads "opacity set to 0.85", never
+    /// "opacity not set to 0.85", which says the opposite. A cleared one reads "opacity cleared, was 1".
+    static func sentence(_ change: Item) -> String {
+        if change.before.isEmpty && change.after.isEmpty { return change.property }
+        if change.before == missing && change.after == missing { return change.property }
+        if change.before == missing { return "\(change.property) set to \(change.after)" }
+        if change.after == missing { return "\(change.property) cleared, was \(change.before)" }
+        return "\(change.property) \(change.before) to \(change.after)"
     }
 
     /// Every changed value in a receipt, each with the layer or settings group it belongs to.
@@ -1516,7 +1528,7 @@ struct NativeAssistantChangeRow: View {
     let change: NativeAssistantChangeText.Item
 
     var body: some View {
-        let values = change.before.isEmpty && change.after.isEmpty ? change.property : "\(change.property) \(change.before) to \(change.after)"
+        let values = NativeAssistantChangeText.sentence(change)
         (Text(layer.map { "\($0): " } ?? "").foregroundStyle(NativeEditorStyle.text).fontWeight(.medium)
             + Text(values).foregroundStyle(NativeEditorStyle.muted))
             .font(.caption).monospacedDigit().fixedSize(horizontal: false, vertical: true)
