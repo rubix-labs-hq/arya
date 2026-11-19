@@ -180,7 +180,7 @@ test('dialogs share one shell, and Captions from a transcript leads with the tas
   assert.match(styles, /\.dialog-subtitle, \.settings-head p \{ margin: 3px 0 0; font-size: var\(--text-label\); color: var\(--muted\); \}/)
   assert.match(styles, /\.modal \{ max-height: min\(80vh, calc\(100dvh - 32px\)\); overflow-y: auto; \}/)
   const captions = read('ui/plugins/captions.js')
-  assert.match(captions, /<div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby="cap-transcript-title"/)
+  assert.match(captions, /<div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby=\$\{confirm \? 'cap-confirm-title' : 'cap-transcript-title'\}/)
   assert.match(captions, /<h3 id="cap-transcript-title">Captions from a transcript<\/h3><p class="dialog-subtitle">Pick a clip and a style, then preview the captions before they are added\.<\/p>/)
   // A missing transcriber is a neutral note with one command to copy and a link, not a stack of warnings.
   assert.match(captions, /<div class="cap-note" role="note">/); assert.match(captions, /<code>\$\{setup\.commands\[0\]\}<\/code><button type="button" class="ghost tiny"[^\n]*>Copy<\/button>/)
