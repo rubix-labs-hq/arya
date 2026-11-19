@@ -40,7 +40,7 @@ test('a run that is writing its reply says Writing', () => {
   assert.equal(assistantActivity({state:'thinking',text:'Partial',phase:'Thinking'}).label,'Working')
 })
 test('the status word follows the order the Mac app uses', () => {
-  assert.equal(assistantStatusWord({hosted:true}),'Unavailable in beta')
+  assert.equal(assistantStatusWord({hosted:true}),'Mac app')
   assert.equal(assistantStatusWord({connected:false,ready:true}),'Reconnecting')
   assert.equal(assistantStatusWord({run:{state:'cancelling'},ready:true,proposal:true}),'Stopping')
   assert.equal(assistantStatusWord({run:{state:'working'},ready:true,proposal:true}),'Working')

@@ -110,7 +110,10 @@ test('the entry dot and label agree in every assistant state, and the state stay
   expectState({ assistantStatus: stale }, 'Not set up', 'idle')
   expectState({ claude: { state: 'working' } }, 'Working', 'working')
   const hosted = entryOf(shell({ kind: 'browser-local', patch: { assistantStatus: ready, claude: { state: 'working' } } }))
-  assert.equal(text(byClass(hosted, 'assistant-entry-state')), 'Unavailable in beta')
+  assert.equal(text(byClass(hosted, 'assistant-entry-state')), 'Mac app')
+  // The hosted build has no assistant, so its entry is a quiet button with no key hint.
+  assert.equal(text(byClass(hosted, 'assistant-entry-label')), 'Assistant'); assert.ok(cls(hosted, 'hosted'))
+  assert.equal(nodes(hosted).some(node => node.type === 'kbd' || cls(node, 'assistant-entry-hint')), false)
   assert.equal(hosted.props['data-state'], 'idle')
 })
 

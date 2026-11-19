@@ -60,7 +60,7 @@ export function assistantActivity(run = {}, { connected = true, pending = false,
  * iPad and iPhone apps use. `hosted` is the beta browser editor, where the assistant is not offered.
  */
 export function assistantStatusWord({ hosted = false, connected = true, run = {}, pending = false, ready = false, checking = false, proposal = false } = {}) {
-  if (hosted) return 'Unavailable in beta'
+  if (hosted) return 'Mac app'
   if (!connected) return 'Reconnecting'
   const { state, active } = assistantActivity(run, { connected, pending })
   if (state === 'cancelling') return 'Stopping'

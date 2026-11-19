@@ -83,3 +83,15 @@ test('type, focus, motion and disabled text come from root tokens, and nothing i
   assert.doesNotMatch(`${styles}${assistantCSS}`, /transition: [^;]*\b(?:\.12s|\.18s|120ms|180ms)/)
   assert.match(styles, /button:disabled:is\(\.ghost, \.tiny\):not\(\.primary\) \{ opacity: 1; color: var\(--disabled-text\); \}/)
 })
+
+test('chrome names clips by name and place, and the hosted entry and settings say what they are', () => {
+  const inspector = read('ui/inspector.js')
+  assert.doesNotMatch(inspector, /<span class="muted">\$\{clip\.id\}/, 'the inspector header does not print the stored id')
+  assert.match(inspector, /\$\{s\.selection\.length > 1 \? `\$\{s\.selection\.length\} clips selected` : clipName\(clip\)\}/)
+  assert.match(inspector, /`\$\{track\.id\} at \$\{timecode\(clip\.start, p\.fps\)\}`/)
+  assert.match(inspector, /<b>Transition<\/b><span class="muted" title=\$\{`Clip id \$\{clip\.id\}`\}> into \$\{clipName\(clip\)\}<\/span>/)
+  assert.match(inspector, /<b>Marker<\/b><span class="muted" title=\$\{`Marker id \$\{m\.id\}`\}> at \$\{timecode\(m\.t, p\.fps\)\}<\/span>/)
+  assert.match(inspector, /<div class="kv"><span>ID<\/span><b>\$\{clip\.id\}<\/b><\/div>/, 'the id stays on the Info tab')
+  assert.match(read('ui/settings.js'), /settings-theme-note">Arya has one theme, a dark one/)
+  assert.match(assistantCSS, /\.topbar \.assistant-entry\.hosted \{ min-width: 0; border-color: var\(--line\); background: transparent; color: var\(--muted\); \}/)
+})

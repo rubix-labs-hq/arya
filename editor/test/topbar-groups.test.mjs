@@ -86,7 +86,7 @@ test('Ask Arya is outside More and reports one status word for setup, ready, run
   check({ connected: true, assistantStatus: { provider: 'codex', configured: false, mode: 'auto',
     autoPreview: { ok: false, blocked: [{ reason: 'The model catalog needs a refresh.' }] } } }, 'Not set up')
   const hosted = nodes(shell(project, 'browser-local').TopBar()).find(node => node.props?.id === 'ask-arya')
-  assert.match(text(hosted), /Unavailable in beta/)
+  assert.match(text(hosted), /^AssistantMac app$/)
 })
 
 test('Ask Arya opens and focuses the composer and keeps sharing review in control', () => {

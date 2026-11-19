@@ -80,6 +80,11 @@
 .assistant-entry[data-state="ready"] i { color: var(--good); background: currentColor; }
 .assistant-entry[data-state="working"] i { color: var(--accent); background: currentColor; }
 .assistant-entry[data-state="failed"] i { color: var(--danger); background: currentColor; }
+/* The hosted build has no assistant. Its entry is a quiet way to the Mac app, not a call to action. */
+.topbar .assistant-entry.hosted { min-width: 0; border-color: var(--line); background: transparent; color: var(--muted); }
+.topbar .assistant-entry.hosted > .ico { color: var(--muted); }
+.topbar .assistant-entry.hosted .assistant-entry-label { font-weight: 500; }
+.topbar .assistant-entry.hosted .assistant-entry-state i { display: none; }
 /* The word stays in the entry's name. It shows only where the panel header is not there to say it:
    with the panel closed on a wide window. Below 1100px the entry is icon, label and dot. */
 .topbar .assistant-entry.on .assistant-entry-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
