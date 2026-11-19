@@ -621,10 +621,8 @@ struct NativeViewer: View {
                 NativeSourceViewer(model: model)
             } else { timelineViewer }
             #else
-            Picker("Viewer", selection: $model.showingSource) {
-                Text("Timeline").tag(false)
-                Text("Source").tag(true)
-            }.pickerStyle(.segmented).labelsHidden().frame(width: 168).tint(NativeEditorStyle.accent).padding(6).frame(maxWidth: .infinity, alignment: .leading)
+            NativeSegmentedControl(label: "Viewer", selection: $model.showingSource, options: [(value: false, title: "Timeline"), (value: true, title: "Source")], fill: true)
+                .frame(width: 168).padding(6).frame(maxWidth: .infinity, alignment: .leading)
                 .background(NativeEditorStyle.panel)
             if model.showingSource { NativeSourceViewer(model: model) }
             else { timelineViewer }
@@ -716,9 +714,7 @@ struct NativeViewer: View {
             Spacer(minLength: 0)
             Text("\(Int(model.width)) × \(Int(model.height)) · \(model.fps.formatted()) fps")
                 .font(.caption2).monospacedDigit().foregroundStyle(NativeEditorStyle.muted).lineLimit(1)
-            Picker("Viewer zoom", selection: $canvasZoom) {
-                ForEach(["Fit", "25%", "50%", "100%"], id: \.self) { Text($0).tag($0) }
-            }.labelsHidden().frame(width: 65)
+            NativeMenuPicker(label: "Viewer zoom", selection: $canvasZoom, options: ["Fit", "25%", "50%", "100%"]).fixedSize()
             Button { guides.toggle() } label: { Image(systemName: "viewfinder") }
                 .buttonStyle(NativeToolbarButtonStyle(selected: guides)).help("Safe-area guides").accessibilityLabel("Safe-area guides")
         }.padding(.horizontal, 10).frame(height: 40).background(NativeEditorStyle.panel)
@@ -747,6 +743,7 @@ struct NativeViewer: View {
                     NativeMetalViewer(texture: frame.texture)
                         .frame(width: model.width * scale, height: model.height * scale)
                         .allowsHitTesting(false)
+                        .transition(.opacity)
                     if guides {
                         ZStack {
                             Rectangle().stroke(.white.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [5, 4])).padding(.horizontal, model.width * scale * 0.05).padding(.vertical, model.height * scale * 0.05)
@@ -756,12 +753,19 @@ struct NativeViewer: View {
                 } else if let error = model.renderError, !timelineIsEmpty {
                     Text(error).font(.callout).foregroundStyle(.white).multilineTextAlignment(.center).padding()
                 } else if model.project != nil, !timelineIsEmpty {
-                    ProgressView("Rendering frame").tint(.white).foregroundStyle(.white)
-                } else if model.project == nil {
+                    NativeViewerPlaceholder(size: CGSize(width: model.width * scale, height: model.height * scale), label: "Rendering frame")
+                        .transition(.opacity)
+                } else if model.project == nil, model.projectMissing {
+                    // Only once the backend has answered that the folder holds no project.
                     VStack(spacing: 10) {
-                        Text("Create a project in this folder").foregroundStyle(.white)
+                        Text("Create a project in this folder").foregroundStyle(NativeEditorStyle.text)
                         Button("Create project") { model.perform { _ = try await model.call("/api/new", ["name": model.folder?.lastPathComponent ?? "Untitled"]); await model.refresh() } }
+                            .buttonStyle(NativePrimaryButtonStyle())
                     }
+                } else if model.project == nil {
+                    // Still opening: the canvas waits quietly and offers nothing to press.
+                    NativeViewerPlaceholder(size: CGSize(width: model.width * scale, height: model.height * scale), label: "Opening project")
+                        .transition(.opacity)
                 }
                 if timelineIsEmpty {
                     ScrollView(.vertical) { emptyTimelineCard.padding(12) }
@@ -790,7 +794,10 @@ struct NativeViewer: View {
                     NativeDrawingOverlay(model: model, mode: mode)
                         .frame(width: model.width * scale, height: model.height * scale)
                 }
-            }.frame(width: geometry.size.width, height: geometry.size.height).coordinateSpace(name: "nativeViewerViewport").clipped()
+            }
+            // The first frame fades in over the waiting canvas.
+            .animation(.easeOut(duration: 0.15), value: model.metalFrame == nil)
+            .frame(width: geometry.size.width, height: geometry.size.height).coordinateSpace(name: "nativeViewerViewport").clipped()
             .overlay(alignment: .topLeading) {
                 if model.viewerColorPicker != nil {
                     HStack {
@@ -839,8 +846,8 @@ struct NativeViewer: View {
 
     @ViewBuilder private var emptyTimelineActions: some View {
         Button { model.showFiles = true } label: {
-            Text("Import media").frame(minHeight: NativeEditorStyle.minimumControlHeight).contentShape(Rectangle())
-        }.buttonStyle(NativeToolbarButtonStyle(selected: true))
+            Text("Import media")
+        }.buttonStyle(NativePrimaryButtonStyle())
         Button { model.edit(["op": "add_title", "text": "Your title", "start": 0, "dur": 5, "title": ["size": min(model.width, model.height) * 0.09]]) } label: {
             Text("Add title").frame(minHeight: NativeEditorStyle.minimumControlHeight).contentShape(Rectangle())
         }.buttonStyle(NativeToolbarButtonStyle())
@@ -1345,3 +1352,30 @@ private struct NativeSourcePlayerView: UIViewRepresentable {
     static func dismantleUIView(_ view: NativeSourcePlayerHost, coordinator: ()) { view.playerLayer.player = nil }
 }
 #endif
+
+/// The canvas while it has no frame: a rectangle at the project's shape with a small progress
+/// mark in its corner, not a spinner on black. The label waits 400 ms, so a fast load shows none.
+private struct NativeViewerPlaceholder: View {
+    let size: CGSize
+    let label: String
+    @State private var showsLabel = false
+
+    var body: some View {
+        Rectangle().fill(NativeEditorStyle.panel)
+            .overlay { Rectangle().stroke(NativeEditorStyle.line) }
+            .overlay(alignment: .bottomLeading) {
+                HStack(spacing: 7) {
+                    ProgressView().controlSize(.small)
+                    if showsLabel {
+                        Text(label).font(NativeType.helper).foregroundStyle(NativeEditorStyle.muted).transition(.opacity)
+                    }
+                }.padding(10)
+            }
+            .frame(width: max(0, size.width), height: max(0, size.height))
+            .task {
+                try? await Task.sleep(for: .milliseconds(400))
+                withAnimation(NativeMotion.content) { showsLabel = true }
+            }
+            .accessibilityElement(children: .ignore).accessibilityLabel(label)
+    }
+}

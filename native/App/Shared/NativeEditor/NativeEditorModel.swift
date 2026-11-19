@@ -620,6 +620,9 @@ struct NativeClipboardActionCapture {
 @MainActor
 final class NativeEditorModel: ObservableObject {
     @Published private(set) var project: NativeProject?
+    /// True once the backend has answered that this folder holds no project. Until then a nil
+    /// project means "still opening", and nothing offers to create one.
+    @Published private(set) var projectMissing = false
     @Published private(set) var version = -1
     @Published private(set) var changeReceipts: [NativeChangeReceipt] = []
     @Published private(set) var hapticSignal = NativeHapticSignal()
@@ -1006,7 +1009,7 @@ final class NativeEditorModel: ObservableObject {
         pause(); renderTask?.cancel(); renderTask = nil; pendingFrame = nil; renderWorkerID = UUID(); renderer = nil
         proxyTask?.cancel(); proxyTask = nil; proxies = [:]
         generation = UUID(); renderGeneration = UUID()
-        project = nil; version = -1; selectedID = nil; composition = nil
+        project = nil; projectMissing = false; version = -1; selectedID = nil; composition = nil
         changeReceipts = []
         timelineClipboard = nil; clipboardEditing = false; clipboardTaskID = nil
         hapticPolicy.reset()
@@ -1046,7 +1049,11 @@ final class NativeEditorModel: ObservableObject {
         switch event {
         case "project":
             let incomingVersion = Int(fields.number("version", Double(version)))
-            guard incomingVersion >= version, let p = fields["project"] as? [String: Any] else { return }
+            guard incomingVersion >= version, let p = fields["project"] as? [String: Any] else {
+                if project == nil, fields["project"] is NSNull { projectMissing = true }
+                return
+            }
+            projectMissing = false
             discardRenderPreview(redraw: false); projectRevision = UUID()
             if let receipt = NativeChangeReceipt.make(before: project?.fields, after: p, previousVersion: version,
                                                        version: incomingVersion, who: fields.string("who")) {
