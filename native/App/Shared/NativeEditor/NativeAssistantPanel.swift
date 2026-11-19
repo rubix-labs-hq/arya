@@ -357,6 +357,15 @@ struct NativeAssistantPanel: View {
             .onChange(of: model.changeReceipts.count) { _, _ in scrollToLatest(proxy) }
             .onChange(of: assistant.proposal?.id) { _, _ in scrollToLatest(proxy) }
             .onChange(of: runLineGrowth) { _, _ in scrollToLatest(proxy) }
+            // A change that has just landed is the thing to read, even while the setup card would
+            // otherwise hold the top of a short sheet: bring its result card and Undo into view.
+            .onChange(of: assistant.lastChange?.id) { _, id in
+                guard id != nil else { return }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(250))
+                    withAnimation(reduceMotion ? nil : NativeMotion.content) { proxy.scrollTo("receipts", anchor: .bottom) }
+                }
+            }
             #if DEBUG
             .onChange(of: assistant.fixtureScroll) { _, _ in scrollToLatest(proxy) }
             #endif
