@@ -9,6 +9,7 @@ import { assistantPanel } from '../web/ui/assistant-panel.js'
 import { assistantActivity } from '../web/ui/assistant-activity.js'
 import { createAssistantSharingGate } from '../web/ui/assistant-sharing.js'
 import { assistantState, assistantPrompt, providerName } from '../web/ui/assistant-state.js'
+import { createToolOutcomes, editedOutcome, unfinishedJobsOutcome, unresolvedToolOutcome } from '../agent/tool-outcomes.mjs'
 
 // Render the actual component with inert host and hook boundaries. HTM and
 // Preact remain real so malformed template nesting cannot pass as text tests.
@@ -23,12 +24,16 @@ const nodes = node => typeof node === 'object' && node ? [node, ...children(node
 const textContent = node => children(node).map(child => typeof child === 'object' ? textContent(child) : String(child)).join('')
 // The panel's refs in the order ChatPanel creates them, so a test can preset one (the last request sent).
 const refNames = [...source.matchAll(/(\w+) = useRef\(/g)].map(match => match[1])
-function panel(run, connected = true, { draft = '', chat = [], activity = [], receipts = [], review = null, previewShown = null, session = null, project = { comps: {} }, lastSent = null, patches = [], onDraft = () => {}, api = () => {}, toast = () => {}, status = { provider: 'codex', configured: true }, refresh = async () => {} } = {}) {
+function panel(run, connected = true, { stateSlots = null, version = undefined, history = undefined, draft = '', chat = [], activity = [], receipts = [], review = null, previewShown = null, session = null, project = { comps: {} }, lastSent = null, patches = [], onDraft = () => {}, api = () => {}, toast = () => {}, status = { provider: 'codex', configured: true }, refresh = async () => {} } = {}) {
   const state = { claude: run, connected, caps: {}, assistantStatus: status, assistantReview: review, previewShown, session,
     root: '/fixture', assistantDraft: { root: '/fixture', text: draft, inputKind: 'prompt' }, chat, activity, receipts, selection: [], refs: [], project, openComp: null }
   let refIndex = 0
   const useRef = value => ({ current: refNames[refIndex++] === 'lastSent' && lastSent ? lastSent : value })
-  return render(Icon, h, htm, () => {}, useRef, value => [value, () => {}], () => state,
+  // `stateSlots` keeps useState values between renders of the same panel, in hook order.
+  let stateIndex = 0
+  const useState = stateSlots ? value => { const at = stateIndex++; if (!(at in stateSlots)) stateSlots[at] = value; return [stateSlots[at], next => { stateSlots[at] = next }] } : value => [value, () => {}]
+  if (version !== undefined) Object.assign(state, { version, history })
+  return render(Icon, h, htm, () => {}, useRef, useState, () => state,
     assistantActivity, assistantState, assistantPrompt, providerName, () => 0, refresh, api, patch => { patches.push(patch); Object.assign(state, patch); if (patch.assistantDraft) onDraft(patch.assistantDraft.text) }, state, { t: 0 }, toast, () => {}, {}, () => null, () => null, () => null, createAssistantSharingGate, ...Object.values(script), assistantPanel)
 }
 
@@ -95,6 +100,26 @@ test('inside a turn the reply comes first, then one result card, and a finished 
   const line = nodes(routed).find(node => node.props?.class === 'assistant-run done')
   assert.equal(nodes(line).some(node => node.props?.class === 'assistant-run-stage'), false, 'no outcome sentence beside the card')
   assert.ok(nodes(line).some(node => node.props?.class === 'assistant-route'))
+  // The line that gave way took the tool updates with it, so the card's Details list them. A line that stayed keeps them.
+  const updatesIn = tree => nodes(tree).filter(node => node.props?.['aria-label'] === 'Tool updates').flatMap(list => nodes(list).filter(node => node.type === 'li').map(textContent))
+  const carded = resultCard(panel(run, true, options))
+  assert.deepEqual(updatesIn(nodes(carded.tree).find(node => node.props?.class === 'change-receipt')), ['Calling apply_ops'])
+  assert.deepEqual(updatesIn(line), ['Calling apply_ops']); assert.deepEqual(resultCard(routed).props.updates, [])
+  // An older turn that succeeded has no line either, and its card keeps its tool updates too.
+  const older = panel({ state: 'idle' }, true, { ...options, chat: [...options.chat, { role: 'user', text: 'Thanks', at: at + 3500 }] })
+  assert.deepEqual(order(older), ['msg user', 'msg claude', 'ResultCard']); assert.deepEqual(updatesIn(resultCard(older).tree), ['Calling apply_ops'])
+  // A request that saved an edit and ended with a failed processing job keeps its whole line: the warning is not the card's to say.
+  const warning = unfinishedJobsOutcome([{ state: 'failed', kind: 'denoise', name: 'clip.mov', error: 'ffmpeg exited with code 1' }])
+  for (const outcome of [warning, unresolvedToolOutcome({ ...createToolOutcomes(), otherPlacementFailed: true })]) {
+    const warned = panel({ ...run, outcome }, true, options)
+    assert.deepEqual(order(warned), ['msg user', 'msg claude', 'assistant-run done', 'ResultCard'])
+    const kept = nodes(warned).find(node => node.props?.class === 'assistant-run done')
+    assert.equal(textContent(nodes(kept).find(node => node.props?.class === 'assistant-run-stage')), outcome)
+    assert.deepEqual(updatesIn(kept), ['Calling apply_ops']); assert.deepEqual(resultCard(warned).props.updates, [])
+    assert.equal(nodes(panel({ ...run, outcome, routing: { ok: true } }, true, options)).find(node => node.props?.class === 'assistant-run-stage')?.props.title, outcome, 'and beside the route as well')
+  }
+  // Both sentences the server ends an ordinary edit with are the card's to say.
+  for (const outcome of [editedOutcome(1, 1), editedOutcome(3, 2)]) assert.deepEqual(order(panel({ ...run, outcome }, true, options)), ['msg user', 'msg claude', 'ResultCard'], outcome)
   // With no result card the line keeps its outcome sentence.
   const bare = panel(run, true, { ...options, receipts: [] })
   assert.deepEqual(order(bare), ['msg user', 'msg claude', 'assistant-run done'])
@@ -491,4 +516,32 @@ test('Undo this change on a result card is refused while the viewer shows a prev
   const back = resultCard(panel({ state: 'done' }, true, options(null)))
   await back.props.onUndo()
   assert.deepEqual(calls, [['/api/assistant/change/undo', 'ch1']], 'Undo works again once the preview is not shown')
+})
+
+test('a history card offers a follow-up Redo only when the server says the next Redo is that change', async () => {
+  const { changeReceipt } = await import('../web/ui/change-receipt.js')
+  const at = Date.now() - 5000
+  const before = { comps: {}, tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'c1', kind: 'title', start: 0, dur: 2 }] }] }
+  const after = structuredClone(before); after.tracks[0].clips[0].dur = 3
+  const receipt = { ...changeReceipt(before, after, { who: 'agent', version: 5, at: at + 1000 }), changeId: 'h1', changeKind: 'history', changeLabel: 'Undid 1 edit' }
+  const chat = [{ role: 'user', text: 'Undo that', at }]
+  const change = { id: 'h1', kind: 'history', label: 'Undid 1 edit', beforeVersion: 4, afterVersion: 5, edits: 1, undoable: true, reason: '' }
+  const buttons = tree => nodes(tree).filter(node => node.type === 'button').map(textContent)
+  // The server's answer to pressing the card. Another edit already waits in the redo history either way.
+  const press = async reply => {
+    const stateSlots = [], calls = []
+    const options = { stateSlots, chat, receipts: [receipt], project: after, api: async (route, body) => { calls.push([route, body]); return reply } }
+    const offered = resultCard(panel({ state: 'done' }, true, { ...options, review: { change, changes: [{ ...change, undone: false }] }, version: 5, history: { undo: 0, redo: 2 } }))
+    assert.ok(buttons(offered.tree).includes('Redo this change'))
+    await offered.props.onUndo()
+    assert.deepEqual(calls, [['/api/assistant/change/undo', { id: 'h1' }]])
+    return resultCard(panel({ state: 'done' }, true, { ...options, review: { change: null, changes: [{ ...change, undone: true }] }, version: 6, history: { undo: 1, redo: 1 } }))
+  }
+  const unrelated = await press({ undone: true, redoable: false, version: 6, history: { undo: 1, redo: 1 } })
+  assert.equal(unrelated.props.onRedo, null, 'the remaining redo step is another edit')
+  assert.equal(buttons(unrelated.tree).some(label => /Redo/.test(label)), false)
+  // An older server that does not say is treated the same way.
+  assert.equal((await press({ undone: true, version: 6, history: { undo: 1, redo: 1 } })).props.onRedo, null)
+  const own = await press({ undone: true, redoable: true, version: 6, history: { undo: 1, redo: 1 } })
+  assert.equal(typeof own.props.onRedo, 'function'); assert.ok(buttons(own.tree).includes('Redo this change'))
 })

@@ -20,7 +20,7 @@ import { AudioPage } from './mixer.js'
 import { DeliverPage } from './deliver.js'
 import { MediaPage } from './media-page.js'
 import { registry } from './registry.js'
-import { Divider, LayoutMenu, editGridColumns, editPaneSizes, layoutStyle, useCompactEditPanel, useLayout, useWorkspaceWidth } from './layout.js'
+import { Divider, LayoutMenu, editGridColumns, editPaneSizes, layoutStyle, onInspectorReveal, useCompactEditPanel, useLayout, useWorkspaceWidth } from './layout.js'
 import { Settings, refreshAssistantStatus } from './settings.js'
 import { ScrollTabs } from './scroll-tabs.js'
 import { Icon } from './icons.js'
@@ -123,6 +123,8 @@ function TopBar() {
 // Between 901 and 1439px an open assistant takes the inspector's column, so media, viewer and
 // timeline keep their places. These two tabs switch that column between the two.
 const sideColumnShared = (chatOpen, width = globalThis.innerWidth) => chatOpen === true && typeof width === 'number' && width >= 901 && width <= 1439
+// An action that reveals the inspector, such as Denoise or reframe, also selects its tab in the shared column.
+onInspectorReveal(() => { if (sideColumnShared(store.chatOpen)) set({ sideTab: 'inspector' }) })
 
 function SideTabs({ tab }) {
   return html`<div class="side-tabs" role="tablist" aria-label="Side panel">${[['assistant', 'Assistant'], ['inspector', 'Inspector']].map(([id, label]) => html`<button type="button" role="tab" aria-selected=${tab === id} class=${tab === id ? 'on' : ''} onClick=${() => set({ sideTab: id })}>${label}</button>`)}</div>`

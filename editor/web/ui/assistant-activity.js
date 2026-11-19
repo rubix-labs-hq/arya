@@ -9,6 +9,13 @@ export function elapsedLabel(milliseconds) {
 // The browser server's outcome for a finished request that ran with Preview changes on.
 export const PREVIEW_OUTCOME = 'Preview mode was on. Proposed edits are applied only when you choose Apply.'
 
+// The outcomes that only repeat what a result card already shows. Anything else a finished request
+// ends with, such as a processing job that failed, is a warning the card does not carry.
+const ROUTINE_OUTCOMES = [PREVIEW_OUTCOME, 'You applied the preview. Use Undo this change to remove it.', 'You discarded the preview. No edits were applied.', 'You undid the applied preview.', 'No project edits were applied during this request.',
+  'The project changed during this request. Review edits in the timeline.', // the Mac app's sentence for an ordinary edit
+  /^This request made \d+ edits?\. Review (it|them) in the timeline\.$/, /^\d+ edits? (was|were) saved while this request ran\. Review (it|them) in the timeline\.$/]
+export const outcomeWarning = run => run?.state === 'done' && typeof run.outcome === 'string' && run.outcome.trim() && !ROUTINE_OUTCOMES.some(known => typeof known === 'string' ? known === run.outcome : known.test(run.outcome)) ? run.outcome : ''
+
 // The phase the browser server and the Mac app publish with each piece of reply text.
 export const WRITING_PHASE = 'Generating a response'
 
@@ -52,7 +59,7 @@ export function assistantActivity(run = {}, { connected = true, pending = false,
     : state === 'done' ? run.outcome === PREVIEW_OUTCOME && proposal === false ? '' : run.outcome || 'Edit results have not been verified.'
     : state === 'cancelled' ? unchanged ? 'Stopped. Nothing was changed.' : edits === false ? '' : 'Stopped. Review or undo any committed edits.'
     : state === 'error' ? 'Request failed. Review the error before retrying.' : ''
-  return { state, active, terminal, writing, quiet, label, stage, detail, connectionNotice: !connected && terminal ? 'Reconnecting. Showing the last confirmed result.' : '', elapsed, canStop: connected && active && !['sending', 'cancelling'].includes(state) }
+  return { state, active, terminal, writing, quiet, label, stage, detail, warning: outcomeWarning({ ...run, state }), connectionNotice: !connected && terminal ? 'Reconnecting. Showing the last confirmed result.' : '', elapsed, canStop: connected && active && !['sending', 'cancelling'].includes(state) }
 }
 
 /**

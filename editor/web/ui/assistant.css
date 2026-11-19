@@ -226,6 +226,7 @@
 .chat-list .assistant-run p { margin: 4px 0 0 20px; overflow-wrap: anywhere; }
 .chat-list .assistant-run-updates { margin: 4px 0 0; padding-left: 34px; }
 .chat-list .assistant-run-updates li + li { margin-top: 3px; }
+.chat-list .change-receipt .assistant-run-updates { padding-left: 18px; }
 .chat-list .assistant-run.error :is(.assistant-run-symbol, b) { color: var(--danger); }
 .chat-list .assistant-route { margin: 4px 0 0 20px; padding: 0; border: 0; }
 .chat-list .assistant-failure { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--danger); border-radius: 8px; background: var(--panel-2); font-size: 12px; overflow-wrap: anywhere; }
@@ -269,7 +270,7 @@
 .chat .assistant-selection-chips .chip { flex-wrap: wrap; gap: 0 5px; padding: 0 7px; border-radius: 12px; }
 .chat .assistant-selection-chips small { color: var(--muted); opacity: 1; font-size: .9em; overflow-wrap: anywhere; }
 /* The remove button keeps a 24px target without making its chip taller than the others. */
-.chat .assistant-composer-card .refs .chip button { min-width: 24px; min-height: 24px; margin-block: -4px; }
+.chat .assistant-composer-card :is(.refs, .assistant-selection-chips) .chip button { min-width: 24px; min-height: 24px; margin-block: -4px; }
 .chat .assistant-preview-toggle { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 4px; cursor: pointer; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .chat .assistant-preview-toggle input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
 .assistant-switch { flex: none; width: 24px; height: 14px; border-radius: 999px; background: var(--line-2); position: relative; transition: background-color var(--motion-fast); }
@@ -364,12 +365,14 @@
   .chat .assistant-preview-first, .chat .assistant-input-tools > .assistant-input-help { display: none; }
 }
 /* Between 901 and 1439px the assistant takes the inspector's column on the Edit page, at 320px, and a
-   two-tab strip switches the column between them. Media, viewer and timeline keep their places. */
+   two-tab strip switches the column between them. Media, viewer and timeline keep their places.
+   The page carries side-assistant or side-inspector only while it shares the column, so a landscape
+   phone and the hosted build, which lay out differently at these widths, show no tabs. */
 .side-tabs { display: none; }
 @media (min-width: 901px) and (max-width: 1439px) {
-  .main:has(> .page.edit) > .chat.panel { width: 320px; }
-  .main:has(> .page.edit) > .workspace-divider.divider-chat { display: none; }
-  .main:has(> .page.edit) > .chat .side-tabs, .page.edit.side-inspector .side-tabs { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 6px 6px 0; padding: 2px; background: var(--input); border: 1px solid var(--line); border-radius: 8px; }
+  .main:has(> .page.edit.side-assistant) > .chat.panel { width: 320px; }
+  .main:has(> .page.edit.side-assistant) > .workspace-divider.divider-chat { display: none; }
+  .main:has(> .page.edit.side-assistant) > .chat .side-tabs, .page.edit.side-inspector .side-tabs { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 6px 6px 0; padding: 2px; background: var(--input); border: 1px solid var(--line); border-radius: 8px; }
   .side-tabs button { min-height: 28px; border-color: transparent; background: transparent; color: var(--muted); font-weight: 500; }
   .side-tabs button.on { background: var(--selection-fill); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
   .page.edit.side-inspector .edit-inspector-pane { flex-direction: column; gap: 6px; }
@@ -399,7 +402,7 @@
   .chat .assistant-input-help summary { min-width: 44px; }
   .chat .assistant-primary-action button { width: 44px; min-width: 44px; height: 44px; }
   .chat .assistant-field-context { padding-top: 0; }
-  .chat .assistant-composer-card .refs .chip button { min-width: 44px; min-height: 44px; margin-block: -14px; }
+  .chat .assistant-composer-card :is(.refs, .assistant-selection-chips) .chip button { min-width: 44px; min-height: 44px; margin-block: -14px; }
   /* The link keeps a 44px target while its row stays one line tall. */
   .chat-list .msg.user .assistant-edit-request { min-height: 44px; margin-block: -8px -10px; }
   .chat :is(.change-receipt > summary, .receipt-json > summary, .assistant-preview-details > summary) { padding-block: 15px; }

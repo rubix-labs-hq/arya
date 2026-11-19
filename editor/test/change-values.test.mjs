@@ -183,3 +183,21 @@ test('a result title counts the changes and names their kinds', () => {
   assert.equal(changeKinds([]).text, '')
   assert.deepEqual([clock(1), clock(65.9), clock(-3), clock(NaN)], ['0:01', '1:05', '0:00', '0:00'])
 })
+
+test('a renamed marker is a change, not a reorder, and the headline counts every layer the receipt recorded', () => {
+  const marker = (id, t, label) => ({ id, t, label })
+  const base = { name: 'Cut', width: 1920, height: 1080, fps: 30, assets: {}, comps: {}, markers: [marker('m1', 1, 'Intro'), marker('m2', 4, 'Reveal')],
+    tracks: [{ id: 'V1', kind: 'video', clips: Array.from({ length: 100 }, (_, index) => ({ id: `c${index}`, kind: 'color', start: index, dur: 1 })) }] }
+  const markerChange = after => changeReceipt(base, after, { version: 2, who: 'agent' }).scopes.flatMap(scope => scope.changes).find(change => change.property === 'markers')
+  const renamed = structuredClone(base); renamed.markers[0].label = 'Cold open'
+  assert.equal(readableChange(markerChange(renamed)).only, '1 marker changed')
+  const swapped = structuredClone(base); swapped.markers.reverse()
+  assert.equal(readableChange(markerChange(swapped)).only, 'Reordered')
+  // A list too long to keep whole reads the same on both sides. That is not known to be a reorder.
+  assert.equal(readableChange({ property: 'markers', before: '[{"id":"m1","label":"A…', after: '[{"id":"m1","label":"B…' }).only, 'Changed')
+  const faded = structuredClone(base); for (const clip of faded.tracks[0].clips) clip.opacity = 0.5
+  const receipt = changeReceipt(base, faded, { version: 2, who: 'agent' })
+  assert.equal(receipt.clips.length, 80); assert.equal(receipt.total, 100)
+  assert.equal(changeKinds([receipt]).text, '100 changes: transform')
+  assert.equal(changeKinds([receipt]).count, 100)
+})

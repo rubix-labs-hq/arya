@@ -206,8 +206,11 @@ function FilePicker({ kind, title, onPick, onClose }) {
   `
 }
 
-/** Shows caption items and offers to add them to a track or replace it. */
-function CaptionsConfirm({ title, items, tracks, initialTrack, note, warnings, onClose, onApply, expectedVersion }) {
+/**
+ * Shows caption items and offers to add them to a track or replace it. With `bare` it is the second
+ * step of a dialog that is already open, and draws inside that dialog instead of opening its own.
+ */
+function CaptionsConfirm({ title, items, tracks, initialTrack, note, warnings, onClose, onApply, expectedVersion, bare = false, titleId }) {
   const s = useStore()
   const usedTracks = new Set(viewProject().tracks.map(t => t.id))
   let nextTrack = 1
@@ -230,15 +233,13 @@ function CaptionsConfirm({ title, items, tracks, initialTrack, note, warnings, o
   }
   const fps = store.project.fps
 
-  return html`
-    <div class="modal-back" onClick=${onClose}>
-      <div class="modal cap-dialog" onClick=${e => e.stopPropagation()}>
-        <h3>${title}</h3>
+  const body = html`
+        <h3 id=${titleId}>${title}</h3>
         ${note ? html`<div class="hint">${note}</div>` : null}
         ${(warnings ?? []).map(warning => html`<div class="cap-warn" role="status">${warning}</div>`)}
         <div class="cap-preview">${items.slice(0, 200).map(c => html`<div><span class="cap-n">${tc(c.t, fps)} → ${tc(c.end, fps)}</span><br />${c.text}</div>`)}</div>
         ${items.length > 200 ? html`<div class="hint">…and ${items.length - 200} more.</div>` : null}
-        <div class="field"><label>Caption track</label><select value=${track} onChange=${e => setTrack(e.target.value)}>
+        <div class="field"><label for="cap-track">Caption track</label><select id="cap-track" value=${track} onChange=${e => setTrack(e.target.value)}>
           ${tracks.map(t => html`<option value=${t.id}>${t.id} ${t.name ?? ''} (${t.clips.length})</option>`)}
           <option value=${newTrack}>${newTrack} (new track)</option>
         </select></div>
@@ -247,8 +248,11 @@ function CaptionsConfirm({ title, items, tracks, initialTrack, note, warnings, o
           ${exists && tracks.find(t => t.id === track).clips.length ? html`<button class="ghost danger" disabled=${busy || (expectedVersion !== undefined && expectedVersion !== s.version)} onClick=${() => apply(true)}>Replace ${track}</button>` : null}
           <button disabled=${busy || !items.length || (expectedVersion !== undefined && expectedVersion !== s.version)} onClick=${() => apply(false)}>${busy ? 'Applying...' : `Add ${items.length} caption${items.length === 1 ? '' : 's'}`}</button>
         </div>
-        ${expectedVersion !== undefined && expectedVersion !== s.version ? html`<div class="cap-warn">The project changed. Close this preview and generate it again before applying.</div>` : null}
-      </div>
+        ${expectedVersion !== undefined && expectedVersion !== s.version ? html`<div class="cap-warn">The project changed. Close this preview and generate it again before applying.</div>` : null}`
+  if (bare) return body
+  return html`
+    <div class="modal-back" onClick=${onClose}>
+      <div class="modal cap-dialog" onClick=${e => e.stopPropagation()}>${body}</div>
     </div>
   `
 }
@@ -301,6 +305,9 @@ function TranscriptDialog({ onClose }) {
     doc.addEventListener('keydown', key, true)
     return () => { doc.removeEventListener('keydown', key, true); if (opener?.isConnected) opener.focus?.() }
   }, [])
+  // The preview is a second step of the same dialog, so Escape and Tab keep working. Focus moves to its first control.
+  const confirming = Boolean(result)
+  useEffect(() => { if (confirming && dialog.current) (dialogControls(dialog.current)[0] ?? dialog.current).focus() }, [confirming])
   const run = async () => {
     if (request.current || !src || renderIdentity.current !== identity || store.root !== identity.root || store.project !== identity.project || store.version !== identity.version || (store.openComp ?? null) !== identity.comp) return
     const owned = { identity, ctrl: new AbortController(), applying: false }
@@ -331,9 +338,10 @@ function TranscriptDialog({ onClose }) {
       if (owns(owned)) { toast(error.name === 'AbortError' ? 'Transcription cancelled' : error.message, 'error'); request.current = null; setBusy(false); setJob(null) }
     } finally { if (owns(owned)) { setBusy(false); setJob(null) } }
   }
+  let confirm = null
   if (result) {
     const owned = request.current
-    return html`<${CaptionsConfirm} title="Captions from the transcript" items=${result.items} tracks=${p.tracks.filter(t => t.kind === 'caption')}
+    confirm = html`<${CaptionsConfirm} bare titleId="cap-confirm-title" title="Captions from the transcript" items=${result.items} tracks=${p.tracks.filter(t => t.kind === 'caption')}
       note=${`${result.items.length} captions on ${result.clips.join(', ')}. The ${style === 'karaoke' ? 'word highlight' : style === 'word' ? 'one word at a time' : style} style and all word timings remain editable.`}
       warnings=${result.warnings}
       expectedVersion=${result.version}
@@ -352,11 +360,11 @@ function TranscriptDialog({ onClose }) {
 
   return html`
     <div class="modal-back" onClick=${() => { request.current?.ctrl.abort(); onClose() }}>
-      <div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby="cap-transcript-title" tabIndex="-1" ref=${dialog} onClick=${e => e.stopPropagation()}>
-        <header><div><h3 id="cap-transcript-title">Captions from a transcript</h3><p class="dialog-subtitle">Pick a clip and a style, then preview the captions before they are added.</p></div></header>
+      <div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby=${confirm ? 'cap-confirm-title' : 'cap-transcript-title'} tabIndex="-1" ref=${dialog} onClick=${e => e.stopPropagation()}>
+        ${confirm ?? html`<header><div><h3 id="cap-transcript-title">Captions from a transcript</h3><p class="dialog-subtitle">Pick a clip and a style, then preview the captions before they are added.</p></div></header>
         ${sources.length ? html`
-          <div class="field"><label>Media</label><select disabled=${busy} value=${src} onChange=${e => (setSrc(e.target.value), setResult(null), setNotes([]))}>${sources.map(x => html`<option value=${x}>${x.split('/').pop()}</option>`)}</select></div>
-          <div class="field"><label>Style</label><select disabled=${busy} value=${style} onChange=${e => setStyle(e.target.value)}><option value="plain">Plain</option><option value="boxed">Boxed</option><option value="karaoke">Word highlight</option><option value="word">One word at a time</option></select></div>
+          <div class="field"><label for="cap-media">Media</label><select id="cap-media" disabled=${busy} value=${src} onChange=${e => (setSrc(e.target.value), setResult(null), setNotes([]))}>${sources.map(x => html`<option value=${x}>${x.split('/').pop()}</option>`)}</select></div>
+          <div class="field"><label for="cap-style">Style</label><select id="cap-style" disabled=${busy} value=${style} onChange=${e => setStyle(e.target.value)}><option value="plain">Plain</option><option value="boxed">Boxed</option><option value="karaoke">Word highlight</option><option value="word">One word at a time</option></select></div>
           ${selected?.src === src ? html`<label class="row gap"><input type="checkbox" disabled=${busy} checked=${onlySelected} onChange=${e => setOnlySelected(e.target.checked)} />Only the selected clip</label>` : null}
           <${Num} label="Characters/line" value=${maxChars} step=${1} min=${16} max=${80} onCommit=${setMaxChars} />
           <${Num} label="Lines" value=${maxLines} step=${1} min=${1} max=${3} onCommit=${setMaxLines} />
@@ -370,7 +378,7 @@ function TranscriptDialog({ onClose }) {
           <button class="ghost" onClick=${() => { request.current?.ctrl.abort(); onClose() }}>Cancel</button>
           <button class="primary" disabled=${busy || !src} title=${!src ? 'Put a clip with sound on the timeline first' : undefined} onClick=${run}>${busy ? job?.message ?? 'Preparing preview...' : 'Preview captions'}</button>
         </div>
-        ${!src ? html`<p class="cap-disabled-reason muted small">Preview needs a clip with sound on the timeline.</p>` : null}
+        ${!src ? html`<p class="cap-disabled-reason muted small">Preview needs a clip with sound on the timeline.</p>` : null}`}
       </div>
     </div>
   `

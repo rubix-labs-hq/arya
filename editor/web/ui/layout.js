@@ -90,7 +90,11 @@ export function useCompactEditPanel() {
 
 export function revealMedia() { chooseCompactEditPanel('media'); save({ showMedia: true }) }
 
-export function revealInspector() { chooseCompactEditPanel('inspector'); save({ showInspector: true }) }
+// The shell hears each reveal, so it can bring the Inspector forward where the saved layout does not decide what shows.
+const reveals = new Set()
+export function onInspectorReveal(fn) { reveals.add(fn); return () => reveals.delete(fn) }
+
+export function revealInspector() { chooseCompactEditPanel('inspector'); save({ showInspector: true }); for (const fn of reveals) fn() }
 
 export function layoutStyle(value) {
   return { '--media-width': `${value.media}px`, '--inspector-width': `${value.inspector}px`, '--chat-width': `${value.chat}px`, '--upper-height': `${value.upper}%` }

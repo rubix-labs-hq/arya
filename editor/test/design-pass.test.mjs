@@ -66,7 +66,9 @@ test('between 901 and 1439px an open assistant takes the inspector column and th
   assert.match(store, /if \(next\.chatOpen === true && !Object\.hasOwn\(next, 'sideTab'\)\) store\.sideTab = 'assistant'/)
   assert.match(chat, /<div class="side-tabs" role="tablist" aria-label="Side panel">/)
   const mid = mediaBlock(assistantCSS, '(min-width: 901px) and (max-width: 1439px)')
-  assert.match(mid, /\.main:has\(> \.page\.edit\) > \.chat\.panel \{ width: 320px; \}/)
+  assert.match(mid, /\.main:has\(> \.page\.edit\.side-assistant\) > \.chat\.panel \{ width: 320px; \}/)
+  // Every rule for the shared column waits for the class the page sets when it shares it, so CSS and the layout code agree.
+  for (const line of mid.split('\n').filter(line => /side-tabs|chat\.panel|divider-chat/.test(line))) for (const selector of line.slice(0, line.indexOf('{')).split(/,(?![^(]*\))/)) assert.match(selector, /side-tabs button|\.side-(assistant|inspector)\b/, selector.trim())
   assert.match(mid, /\.main:has\(> \.page\.edit\.side-inspector\) > :is\(\.chat, \.workspace-divider\.divider-chat\) \{ display: none; \}/, 'the assistant stays mounted behind the Inspector tab')
   assert.match(mid, /\.tl-toolbar \{ flex-wrap: nowrap; \}/, 'the timeline toolbar keeps to one row')
   assert.match(assistantCSS, /\n\.side-tabs \{ display: none; \}/)
@@ -150,8 +152,7 @@ test('F6 and Shift+F6 walk the regions in order: top bar, media, viewer, inspect
   // The Edit page names its regions in that order, and the key works from a field.
   const order = ['class="topbar" role="banner" aria-label="Top bar"', "'Media browser' : 'Inspector'", 'role="region" aria-label="Viewer"', "aria-label=${phone ? undefined : 'Timeline'}"].map(part => app.indexOf(part))
   assert.ok(order.every(at => at > 0), String(order))
-  assert.match(keys, /if \(e\.key !== 'F6' \|\| e\.defaultPrevented[^\n]*\) return\n    e\.preventDefault\(\); cycleLandmark\(e\.shiftKey\)\n  \}, true\)/, 'on capture, so a field that stops its own keys still lets F6 through')
-  assert.match(keys, /globalThis\.document\?\.addEventListener\?\.\('keydown', e => \{\n    if \(e\.key !== 'F6'/)
+  assert.match(keys, /globalThis\.document\?\.addEventListener\?\.\('keydown', e => \{ landmarkKey\(e\) \}, true\)/, 'on capture, so a field that stops its own keys still lets F6 through')
   assert.match(keys, /\['F6 \/ ⇧F6', 'Next \/ previous panel'\]/)
 })
 
@@ -178,7 +179,7 @@ test('dialogs share one shell, and Captions from a transcript leads with the tas
   assert.match(styles, /\.dialog-subtitle, \.settings-head p \{ margin: 3px 0 0; font-size: var\(--text-label\); color: var\(--muted\); \}/)
   assert.match(styles, /\.modal \{ max-height: min\(80vh, calc\(100dvh - 32px\)\); overflow-y: auto; \}/)
   const captions = read('ui/plugins/captions.js')
-  assert.match(captions, /<div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby="cap-transcript-title"/)
+  assert.match(captions, /<div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby=\$\{confirm \? 'cap-confirm-title' : 'cap-transcript-title'\}/)
   assert.match(captions, /<h3 id="cap-transcript-title">Captions from a transcript<\/h3><p class="dialog-subtitle">Pick a clip and a style, then preview the captions before they are added\.<\/p>/)
   // A missing transcriber is a neutral note with one command to copy and a link, not a stack of warnings.
   assert.match(captions, /<div class="cap-note" role="note">/); assert.match(captions, /<code>\$\{setup\.commands\[0\]\}<\/code><button type="button" class="ghost tiny"[^\n]*>Copy<\/button>/)
@@ -239,4 +240,53 @@ test('a dialog keeps Tab inside it, takes focus back from outside and closes on 
   assert.match(captions, /if \(element\) \(dialogControls\(element\)\[0\] \?\? element\)\.focus\(\)/, 'focus moves into the dialog when it opens')
   assert.match(captions, /doc\.addEventListener\('keydown', key, true\)/)
   assert.match(captions, /if \(opener\?\.isConnected\) opener\.focus\?\.\(\)/, 'and returns to what opened it')
+})
+
+test('the Clear selection chip button is a 44px touch target and the ruler draws its labels at 11px', () => {
+  // Every chip in the composer that holds a button: the selection chip and the reference chips.
+  const holders = [...chat.matchAll(/<div class="([\w -]+)" role="group" aria-label="[^"]+">(?:(?!<\/div>)[\s\S])*?<span class="chip[^"]*"(?:(?!<\/span>)[\s\S])*?<button aria-label=/g)].map(match => match[1])
+  assert.deepEqual(holders, ['assistant-selection-chips', 'refs'])
+  const touch = assistantCSS.slice(assistantCSS.indexOf('@media (pointer: coarse), (max-width: 720px) {'))
+  const rule = touch.slice(0, touch.indexOf('\n}')).split('\n').find(line => /\.chip button \{/.test(line))
+  assert.match(rule, /min-width: 44px; min-height: 44px;/)
+  for (const holder of holders) assert.match(rule.slice(0, rule.indexOf('{')), new RegExp(`\\.${holder}\\b`), `${holder} chips are covered`)
+  // The ruler, drawn into a canvas that records the font of each label.
+  const timeline = read('ui/timeline.js'), from = timeline.indexOf('function drawRuler('), source = timeline.slice(from, timeline.indexOf('\nfunction ', from + 1))
+  const fonts = [], ctx = { fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fill() {}, closePath() {}, save() {}, restore() {}, measureText: () => ({ width: 10 }), fillText() { fonts.push(ctx.font) } }
+  const store = { zoom: 100, scroll: 0, playhead: 0 }
+  new Function('RULER', 'store', 'tx', 'timecode', 'time', `${source}\nreturn drawRuler`)(26, store, t => t * store.zoom, t => `00:00:${String(Math.floor(t)).padStart(2, '0')}:00`, { t: 0 })(ctx, { fps: 30, markers: [], range: null }, { width: 600 })
+  assert.ok(fonts.length > 3, 'the ruler drew its labels')
+  for (const font of fonts) assert.ok(Number(font.match(/(\d+(?:\.\d+)?)px/)[1]) >= 11, font)
+})
+
+test('F6 leaves a composing input method alone, lands on a control that is shown, and takes the key only when focus moved', () => {
+  const keys = read('ui/keys.js')
+  const source = keys.slice(keys.indexOf('export const LANDMARKS'), keys.indexOf('function sel()')).replace(/export /g, '')
+  const store = {}
+  const { LANDMARKS, landmarkKey } = new Function('store', `${source}; return { LANDMARKS, landmarkKey }`)(store)
+  const focused = []
+  const control = (name, { hidden = false, refuses = false } = {}) => { const el = { name, hidden, getClientRects: () => [1], focus() { focused.push(name); if (!refuses) doc.activeElement = el } }; return el }
+  const region = (name, controls, { id = '', field = null } = {}) => ({ name, id, getClientRects: () => [1], contains: other => other != null && (controls.includes(other) || other === field), hasAttribute: () => true, setAttribute() {}, focus() {}, querySelector: () => field, querySelectorAll: () => controls })
+  // The phone assistant minimized: its text box and Settings are laid out but under visibility: hidden.
+  const textarea = control('textarea', { hidden: true }), expand = control('Expand assistant')
+  const top = control('top bar button'), assistant = region('assistant', [control('Assistant settings', { hidden: true }), expand, control('Close assistant')], { id: 'editor-assistant', field: textarea })
+  let regions = [region('top bar', [top]), assistant]
+  const doc = { activeElement: null, defaultView: { getComputedStyle: el => ({ visibility: el.hidden ? 'hidden' : 'visible' }) }, querySelectorAll: selector => selector === '[aria-modal="true"]' ? [] : (assert.equal(selector, LANDMARKS), regions) }
+  const press = (extra = {}) => { const event = { key: 'F6', prevented: false, preventDefault() { this.prevented = true }, ...extra }; return [landmarkKey(event, doc), event.prevented] }
+  assert.deepEqual(press(), [true, true]); assert.equal(doc.activeElement, top)
+  assert.deepEqual(press(), [true, true]); assert.equal(doc.activeElement, expand, 'the minimized assistant stops on Expand assistant')
+  assert.deepEqual(press(), [true, true]); assert.equal(doc.activeElement, top, 'and the walk carries on from there')
+  assert.equal(focused.includes('textarea'), false); assert.equal(focused.includes('Assistant settings'), false)
+  // Expanded, the stop is the text box again.
+  textarea.hidden = false; press(); assert.equal(doc.activeElement, textarea)
+  // An input method that is composing keeps its key, on either signal, and the browser keeps its default.
+  const before = focused.length
+  assert.deepEqual(press({ isComposing: true }), [false, false]); assert.deepEqual(press({ keyCode: 229 }), [false, false]); assert.equal(focused.length, before)
+  // Focus that could not move leaves the key to the browser.
+  regions = [region('stuck', [control('stuck control', { refuses: true })])]
+  assert.deepEqual(press(), [false, false])
+  regions = []; assert.deepEqual(press(), [false, false])
+  // An open dialog or Settings keeps the key too.
+  regions = [region('top bar', [top])]; store.settingsOpen = true; assert.deepEqual(press(), [false, false]); store.settingsOpen = false
+  assert.deepEqual(press({ key: 'F5' }), [false, false])
 })

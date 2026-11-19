@@ -36,6 +36,7 @@ test('one Redo after "Undo this change" brings the whole change back, and a seco
   assert.deepEqual(afterUndo.project, before.project)
   assert.deepEqual(afterUndo.history, { undo: 1, redo: 1 }, 'the change waits in the redo history and the user edit before it is still one Undo away')
   assert.deepEqual(undone.body.history, { undo: 1, redo: 1 })
+  assert.equal(undone.body.redoable, true, 'the next Redo is this change')
   assert.equal((await server.api('GET', '/api/assistant/review')).body.change, null)
 
   const redo = (await server.api('POST', '/api/redo', {})).body
@@ -218,6 +219,8 @@ test('a request that only undid edits is a history change, and its card undoes i
   const after = (await server.api('GET', '/api/project')).body
   assert.deepEqual(after.project, first.project, 'the edit the assistant undid is back')
   assert.deepEqual(after.history, { undo: 1, redo: 1 }, 'a Redo move, so the older redo step is kept')
+  // That older step is another edit ("Second"). The card must not offer Redo for it as its own change.
+  assert.deepEqual(pressed.body.history, { undo: 1, redo: 1 }); assert.equal(pressed.body.redoable, false)
   const state = (await server.api('GET', '/api/assistant/review')).body
   assert.equal(state.change, null); assert.equal(state.changes[0].undone, true)
   // Toolbar Undo repeats the assistant's undo, so the change and its card are current again.

@@ -189,9 +189,10 @@ export default ctx => {
         // project from before the change is no longer in the undo history.
         ;(ctx.restoreProject ?? ctx.commit)(target.change.before, 'you', [target.change.kind === 'preview' ? 'Undo applied assistant preview' : 'Undo assistant request'])
       }
-      r.undone(target.change.id)
+      // After undoing a history change, the Redo history holds other edits, never this change.
+      const redoable = r.undone(target.change.id)
       if (target.change.kind === 'preview') ctx.assistant?.settlePreview?.('undone')
-      return { undone: true, version: ctx.getVersion(), ...(ctx.getHistory ? { history: ctx.getHistory() } : {}) }
+      return { undone: true, redoable, version: ctx.getVersion(), ...(ctx.getHistory ? { history: ctx.getHistory() } : {}) }
     },
   } }
 }
