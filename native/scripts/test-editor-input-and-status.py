@@ -211,6 +211,32 @@ func require(_ value: Bool, _ message: String) { checks += 1; if !value { fatalE
             "comps": ["k1": ["name": "Inset", "tracks": [["id": "V1", "name": "Inset picture", "clips": []]]]]
         ]
         require(NativeStatusText.activity("updated track V1: name", who: "you", project: unnamed) == "Updated a track.", "An unnamed track does not borrow a nested timeline's name")
+        // A line that names a clip takes its track name from the timeline that holds the clip.
+        let shared: [String: Any] = [
+            "tracks": [["id": "V1", "name": "Video 1", "clips": [["id": "c1", "kind": "video", "src": "media/chirp.mp4"]]]],
+            "comps": ["k1": ["name": "Composition 1", "tracks": [["id": "V1", "name": "Layer 1", "clips": [["id": "c2", "kind": "video", "src": "media/chirp.mp4"]]]]]]
+        ]
+        let addedMain = NativeStatusText.activity("added video c1 on V1 at 0s", who: "you", project: shared)
+        require(addedMain == "Added video “chirp.mp4” on “Video 1” at 0s.", "An add in the main timeline names its track: \(addedMain)")
+        let addedNested = NativeStatusText.activity("added video c2 on V1 at 0s", who: "you", project: shared)
+        require(addedNested == "Added video “chirp.mp4” on “Layer 1” at 0s.", "An add in a composition names that composition's track: \(addedNested)")
+        require(NativeStatusText.activity("added video c9 on V1 at 0s", who: "you", project: shared) == "Added video a clip on a track at 0s.", "A clip in no timeline leaves a shared track unnamed")
+        // Names the person chose print once, in curly quotes, with no ID beside them.
+        let newComp = NativeStatusText.activity("new composition k1 \"Composition 1\"", who: "you", project: shared)
+        require(newComp == "New composition “Composition 1”.", "A new composition is named once: \(newComp)")
+        let savedItem = status("saved composition \"Composition 1\" as lib1")
+        require(savedItem == "Saved composition “Composition 1” to the library.", "A saved component hides its library ID: \(savedItem)")
+        let appliedItem = status("applied library item \"Composition 1\"")
+        require(appliedItem == "Applied library item “Composition 1”.", "A placed component uses curly quotes: \(appliedItem)")
+        let appliedTo = status("applied library item \"Soft glow\" to c1")
+        require(appliedTo == "Applied library item “Soft glow” to “Coastal arrival”.", "An applied component names its clip: \(appliedTo)")
+        require(status("renamed library item lib1 to \"Opening card\"") == "Renamed a library item to “Opening card”.", "A rename hides the library ID")
+        require(status("removed library item \"Opening card\"") == "Removed library item “Opening card”.", "A removal uses curly quotes")
+        require(!hasID(savedItem) && !savedItem.contains("lib1") && !newComp.contains("\""), "Library lines carry no IDs or straight quotes")
+        // Reverse is reported as a change of direction, not as a retime.
+        require(status("reversed c1") == "Reversed “Coastal arrival”.", "A Reverse toggle says so")
+        require(status("restored forward playback of c1") == "Restored forward playback of “Coastal arrival”.", "Turning Reverse off says so")
+        require(status("retimed c1 to 2x and reversed it") == "Retimed “Coastal arrival” to 2x and reversed it.", "A retime with a new direction names both")
         require(status("", who: "reel").isEmpty, "Empty lines stay empty")
         // Nudge, delete and blade name the clip and round the time.
         let video: [String: Any] = ["id": "c1", "kind": "video", "src": "media/arya-test-clip.mp4", "link": "L1"]
