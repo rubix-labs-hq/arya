@@ -548,6 +548,8 @@ export function ChatPanel() {
         <button class="ghost tiny chat-collapse" aria-label=${collapsed ? 'Expand assistant' : 'Minimize assistant'} title=${collapsed ? 'Expand assistant' : 'Minimize to reach the timeline. Your draft is kept.'} aria-expanded=${!collapsed} onClick=${() => set({ chatCollapsed: !collapsed })}><${Icon} name=${collapsed ? 'chevron-up' : 'chevron-down'} /></button>
         <button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button>
       </div>
+      ${/* Shown by CSS between 1100 and 1439px on the Edit page, where this panel takes the inspector's column. */ null}
+      <div class="side-tabs" role="tablist" aria-label="Side panel"><button type="button" role="tab" aria-selected="true" class="on">Assistant</button><button type="button" role="tab" aria-selected="false" onClick=${() => set({ sideTab: 'inspector' })}>Inspector</button></div>
       ${/* These two stay pinned under the header, so a long conversation cannot scroll them away. */ null}
       <${AssistantHistoryNotice} status=${s.chatHistory} />
       ${s.caps.assistant?.pluginSession ? html`<p class="assistant-plugin-note">Typing here starts a separate ${name} run. To use this Claude session, ask in the terminal.</p>` : null}
@@ -665,7 +667,7 @@ export function ChatPanel() {
                 </div>
               </details>
             </div>
-            <div class="assistant-primary-action">${native ? null : html`<label class="assistant-preview-toggle" title=${preview ? 'Preview changes: edits wait for Apply' : 'Preview changes is off: edits apply directly'}><input type="checkbox" role="switch" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span class="assistant-switch" aria-hidden="true"></span><span>Preview first</span></label>`}<button
+            <div class="assistant-primary-action">${native ? null : html`<label class="assistant-preview-toggle" title=${preview ? 'Preview changes: edits wait for Apply' : 'Preview changes is off: edits apply directly'}><input type="checkbox" role="switch" aria-label="Preview changes" checked=${preview} disabled=${inputLocked} onChange=${e => setPreview(e.target.checked)} /><span class="assistant-switch" aria-hidden="true"></span><span>Preview<span class="assistant-preview-first"> first</span></span></label>`}<button
               class=${working ? 'assistant-stop' : 'send'}
               aria-label=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : 'Send message'}
               title=${working ? activity.state === 'cancelling' ? 'Stopping request' : 'Stop request' : `${draft.inputKind === 'prompt' ? 'Send (Return)' : 'Send (⌘Return)'}${mode ? `. ${preview ? 'Preview first: edits wait for Apply' : 'Applies edits directly'}` : ''}`}

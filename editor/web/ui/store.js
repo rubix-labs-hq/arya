@@ -50,6 +50,7 @@ export const store = {
   settingsOpen: false,
   settingsOtherWays: false, // the assistant panel's "Other ways to connect" opens that Settings section expanded
   chatCollapsed: false, // the phone sheet reduced to a one-line bar; kept in memory only
+  sideTab: 'assistant', // between 1100 and 1439px the assistant takes the inspector's column and this picks which one shows
   assistantStatus: null,
   assistantStatusError: '',
   assistantReview: null, // { proposal, change } from the server: the pending preview and the latest assistant change
@@ -173,6 +174,8 @@ export function set(patch) {
   const changedComp = Object.hasOwn(next, 'openComp') && next.openComp !== store.openComp
   const changedProject = Object.hasOwn(next, 'project') && next.project !== store.project
   Object.assign(store, next, changedComp ? { selMarker: null } : {})
+  // Opening or calling the assistant brings its tab forward again.
+  if (next.chatOpen === true && !Object.hasOwn(next, 'sideTab')) store.sideTab = 'assistant'
   // Undo, Redo or another edit can remove the open composition. The editor then returns to Main.
   if (changedProject && store.compParents) store.compParents = compParentsIn(store.project, store.compParents)
   if (changedProject && store.openComp != null && !Object.hasOwn(store.project?.comps ?? {}, store.openComp)) Object.assign(store, { openComp: null, selection: [], selMarker: null })

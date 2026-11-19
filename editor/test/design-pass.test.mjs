@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { Icon, hasIcon } from '../web/ui/icons.js'
 
 const read = path => readFileSync(new URL(`../web/${path}`, import.meta.url), 'utf8')
+const mediaBlock = (css, query) => { const start = css.indexOf(`@media ${query} {`); assert.notEqual(start, -1, query); let depth = 0; for (let i = css.indexOf('{', start); i < css.length; i++) { if (css[i] === '{') depth++; if (css[i] === '}' && --depth === 0) return css.slice(start, i + 1) } }
 const styles = read('styles.css'), assistantCSS = read('ui/assistant.css'), chat = read('ui/chat.js')
 const flatten = value => Array.isArray(value) ? value.flatMap(flatten) : value == null || value === false ? [] : [value]
 const nodes = node => node && typeof node === 'object' ? [node, ...flatten(node.props?.children).flatMap(nodes)] : []
@@ -49,4 +50,20 @@ test('Layout and Recovery are icon buttons that keep their names when the label 
   assert.match(layout, /<span class="entry-text">Layout<\/span>/)
   assert.doesNotMatch(layout, /from '\.\/icons\.js'/, 'layout.js draws its own icon so its test harnesses keep loading it alone')
   assert.match(styles, /@media \(min-width: 900px\) and \(max-width: 1279px\) \{[^@]*\.entry-text \{[^}]*clip-path: inset\(50%\)/)
+})
+
+test('between 1100 and 1439px an open assistant takes the inspector column and the compact picker waits for under 900px', () => {
+  const app = read('ui/app.js'), store = read('ui/store.js')
+  const shared = new Function(`${app.match(/const sideColumnShared = [^\n]+/)[0]}; return sideColumnShared`)()
+  assert.deepEqual([1099, 1100, 1280, 1439, 1440].map(width => shared(true, width)), [false, true, true, true, false])
+  assert.equal(shared(false, 1280), false); assert.equal(shared(true, undefined), false)
+  assert.match(app, /const l = sideTab === 'assistant' \? \{ \.\.\.saved, showInspector: false \} : saved/)
+  assert.match(app, /const compact = !phone && !shared && Number\.isFinite\(workspace\.width\) && workspace\.width < 900/)
+  assert.match(store, /if \(next\.chatOpen === true && !Object\.hasOwn\(next, 'sideTab'\)\) store\.sideTab = 'assistant'/)
+  assert.match(chat, /<div class="side-tabs" role="tablist" aria-label="Side panel">/)
+  const mid = mediaBlock(assistantCSS, '(min-width: 1100px) and (max-width: 1439px)')
+  assert.match(mid, /\.main:has\(> \.page\.edit\) > \.chat\.panel \{ width: 320px; \}/)
+  assert.match(mid, /\.main:has\(> \.page\.edit\.side-inspector\) > :is\(\.chat, \.workspace-divider\.divider-chat\) \{ display: none; \}/, 'the assistant stays mounted behind the Inspector tab')
+  assert.match(mid, /\.tl-toolbar \{ flex-wrap: nowrap; \}/, 'the timeline toolbar keeps to one row')
+  assert.match(assistantCSS, /\n\.side-tabs \{ display: none; \}/)
 })

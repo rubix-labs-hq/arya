@@ -119,9 +119,17 @@ function TopBar() {
   `
 }
 
+// Between 1100 and 1439px an open assistant takes the inspector's column, so media, viewer and
+// timeline keep their places. These two tabs switch that column between the two.
+const sideColumnShared = (chatOpen, width = globalThis.innerWidth) => chatOpen === true && typeof width === 'number' && width >= 1100 && width <= 1439
+
+function SideTabs({ tab }) {
+  return html`<div class="side-tabs" role="tablist" aria-label="Side panel">${[['assistant', 'Assistant'], ['inspector', 'Inspector']].map(([id, label]) => html`<button type="button" role="tab" aria-selected=${tab === id} class=${tab === id ? 'on' : ''} onClick=${() => set({ sideTab: id })}>${label}</button>`)}</div>`
+}
+
 function EditPage() {
   const s = useStore()
-  const l = useLayout()
+  const saved = useLayout()
   const workspace = useWorkspaceWidth()
   const [compactPanel, choosePanel] = useCompactEditPanel()
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -144,7 +152,10 @@ function EditPage() {
       document.removeEventListener('focusin', update)
     }
   }, [phone])
-  const compact = !phone && Number.isFinite(workspace.width) && workspace.width < 900
+  const shared = !phone && sideColumnShared(s.chatOpen)
+  const sideTab = shared ? (s.sideTab === 'inspector' ? 'inspector' : 'assistant') : null
+  const l = sideTab === 'assistant' ? { ...saved, showInspector: false } : saved
+  const compact = !phone && !shared && Number.isFinite(workspace.width) && workspace.width < 900
   // A resize or the Assistant opening can make the workspace compact while an Inspector field
   // is focused. On that transition only, keep the Inspector shown so the field is not hidden and
   // blurred, then record the choice. Later panel choices while compact are never overridden.
@@ -174,7 +185,7 @@ function EditPage() {
 
   // Keep these keyed panes mounted so resizing does not discard an input draft.
   return html`
-    <div class=${`page edit ${phone ? 'phone-edit' : compact ? 'customizable compact-edit' : 'customizable'} ${phone && compactPanel === 'inspector' ? 'phone-inspector-focus' : ''} ${previewOpen ? 'phone-preview-open' : ''} ${s.chatOpen ? 'with-chat' : ''} ${showTimeline ? '' : 'timeline-hidden'}`} data-compact-panel=${compactPanel}>
+    <div class=${`page edit ${phone ? 'phone-edit' : compact ? 'customizable compact-edit' : 'customizable'} ${phone && compactPanel === 'inspector' ? 'phone-inspector-focus' : ''} ${previewOpen ? 'phone-preview-open' : ''} ${s.chatOpen ? 'with-chat' : ''} ${sideTab ? `side-${sideTab}` : ''} ${showTimeline ? '' : 'timeline-hidden'}`} data-compact-panel=${compactPanel}>
       <${PhonePanelControls} panel=${compactPanelToPhone(compactPanel)} setPanel=${setPhonePanel} previewOpen=${previewOpen} setPreviewOpen=${setPreviewOpen} />
       <div class="compact-edit-access">
         <div class="compact-panel-picker" role="group" aria-label="Edit panels">${[['viewer', 'Viewer'], ['media', 'Media'], ['inspector', 'Inspector']].map(([name, label]) => html`<button type="button" class=${panel === name ? 'on' : 'ghost'} aria-pressed=${panel === name} aria-controls="edit-upper" onClick=${() => choosePanel(name)}>${label}</button>`)}</div>
@@ -185,7 +196,7 @@ function EditPage() {
         ${!phone && !compact && visible(left) ? html`<${Divider} key="left-divider" field=${left} size=${sizes[left]} label=${`Resize ${left} panel`} />` : null}
         <div key="viewer" id="edit-viewer" class="edit-viewer" hidden=${compact && panel !== 'viewer'} style=${phone || compact ? undefined : { gridColumn: visible(left) ? 3 : 1, gridRow: 1 }}><${Viewer} key="viewer" compact=${phone} /></div>
         ${!phone && !compact && visible(right) ? html`<${Divider} key="right-divider" field=${right} size=${sizes[right]} label=${`Resize ${right} panel`} reverse=${true} />` : null}
-        <div key="inspector" class="edit-pane edit-inspector-pane" ...${paneProps('inspector')}><${Inspector} key="inspector" /></div>
+        <div key="inspector" class="edit-pane edit-inspector-pane" ...${paneProps('inspector')}>${sideTab === 'inspector' ? html`<${SideTabs} key="side-tabs" tab="inspector" />` : null}<${Inspector} key="inspector" /></div>
       </div>
       ${!phone && !compact && showTimeline ? html`<${Divider} field="upper" axis="vertical" label="Resize viewer and timeline" />` : null}
       <div class="lower" id="edit-panel-timeline" hidden=${phone ? compactPanel !== 'viewer' : !showTimeline} role=${phone ? 'tabpanel' : undefined} aria-labelledby=${phone ? 'phone-tab-timeline' : undefined}>
