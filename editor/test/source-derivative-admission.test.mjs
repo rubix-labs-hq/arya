@@ -36,7 +36,11 @@ import fs from 'node:fs'; import { spawnSync } from 'node:child_process'
 const out = process.argv.at(-1)
 if (!out.endsWith('.part.wav')) process.exit(spawnSync(${JSON.stringify(realFFmpeg)}, process.argv.slice(2), { stdio: 'inherit' }).status ?? 1)
 fs.writeFileSync(${JSON.stringify(started)}, 'started')
-const wait = () => fs.existsSync(${JSON.stringify(release)}) ? (fs.writeFileSync(out, 'RIFF preview'), process.exit(0)) : setTimeout(wait, 20)
+// The stand-in outlives the server it was spawned by, so it stops by itself once the test has
+// removed its folder or after a minute, whichever comes first.
+const deadline = Date.now() + 60000
+const wait = () => fs.existsSync(${JSON.stringify(release)}) ? (fs.writeFileSync(out, 'RIFF preview'), process.exit(0))
+  : !fs.existsSync(${JSON.stringify(root)}) || Date.now() > deadline ? process.exit(1) : setTimeout(wait, 20)
 wait()
 `, { mode: 0o700 })
 
