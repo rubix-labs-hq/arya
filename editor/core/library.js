@@ -709,7 +709,7 @@ export function applyLibraryOp(p, op, ctx) {
     } else track = p.tracks.find(t => t.id === (op.track ?? [...p.tracks].reverse().find(t => t.kind === 'video' && !t.locked)?.id))
     if (!track || track.kind !== 'video' || track.locked) fail('placement needs an unlocked video track')
     if (!Number.isFinite(start) || start < 0 || start >= 1000000) fail('invalid placement time')
-    const body = normalized.body, ids = new Map(), links = new Map()
+    const body = normalized.body, ids = new Map(), links = new Map(), renamed = new Map()
     for (const id of Object.keys(body.comps ?? {})) ids.set(id, fresh('k'))
     for (const comp of Object.values(body.comps ?? {})) for (const clip of clipsIn(comp.tracks)) ids.set(clip.id, fresh('c'))
     if (body.clip) ids.set(body.clip.id, fresh('c'))
@@ -717,7 +717,9 @@ export function applyLibraryOp(p, op, ctx) {
       comp.id = ids.get(comp.id)
       for (const marker of comp.markers ?? []) { marker.id = fresh('m'); created.push(marker.id) }
       for (const clip of clipsIn(comp.tracks)) remapClip(clip, ids, fresh, links)
-      comp.name = freeCompName(p, comp.name)
+      const name = freeCompName(p, comp.name)
+      if (name !== comp.name) renamed.set(comp.id, { from: comp.name, to: name })
+      comp.name = name
       p.comps[comp.id] = comp; created.push(comp.id)
       for (const clip of clipsIn(comp.tracks)) created.push(clip.id)
     }
@@ -727,6 +729,10 @@ export function applyLibraryOp(p, op, ctx) {
       const comp = p.comps[ids.get(body.composition)]
       clip = { id: fresh('c'), kind: 'comp', comp: comp.id, start: 0, in: 0, dur: duration, label: item.name }
     }
+    // A clip named after its composition follows that composition's new name, so the timeline
+    // and the composition menu call the placed copy the same thing.
+    const rename = clip.kind === 'comp' ? renamed.get(clip.comp) : null
+    if (rename && (clip.label === undefined || clip.label === rename.from)) clip.label = rename.to
     clip.start = ctx.snapToFrame(start, p.fps)
     track.clips.push(clip); track.clips.sort((a, b) => a.start - b.start); created.push(clip.id)
   } else {

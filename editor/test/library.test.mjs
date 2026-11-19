@@ -311,6 +311,27 @@ test('two composition applications have independent editable layers and no share
   assert.equal(clip(edited, secondTitle.id).title.text, 'Second card')
 })
 
+test('a placed composition clip named after its composition takes the copy name', () => {
+  const source = figmaProject()
+  const rootName = source.project.comps[source.root].name
+  // Saved from the composition itself, under the composition's own name.
+  let p = save(source.project, 'composition', { composition: source.root }, rootName)
+  p = run(p, [{ op: 'library_apply', item: item(p, rootName).id, start: 0, track: 'V1' }])
+  const placed = p.tracks.flatMap(t => t.clips).find(c => c.kind === 'comp' && !source.project.comps[c.comp])
+  assert.equal(p.comps[placed.comp].name, `${rootName} copy`)
+  assert.equal(placed.label, p.comps[placed.comp].name)
+  // Saved from a composition clip that carries the composition's name as its label.
+  let q = run(source.project, [{ op: 'comp_clip', target: source.root, track: 'V1', start: 0, dur: 4 }])
+  const host = q.tracks[0].clips.find(c => c.kind === 'comp')
+  q = run(q, [{ op: 'update', id: host.id, set: { label: rootName } }])
+  q = save(q, 'composition', { clip: host.id }, 'From a clip')
+  const before = q
+  q = run(q, [{ op: 'library_apply', item: item(q, 'From a clip').id, start: 8, track: 'V1' }])
+  const copy = createdClip(before, q, 'comp')
+  assert.equal(q.comps[copy.comp].name, `${rootName} copy`)
+  assert.equal(copy.label, q.comps[copy.comp].name)
+})
+
 test('a layered title can be saved from a composition clip and placed inside another composition', () => {
   const source = figmaProject()
   let p = run(source.project, [
