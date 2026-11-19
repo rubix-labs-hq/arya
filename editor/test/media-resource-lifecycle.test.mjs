@@ -27,7 +27,7 @@ async function decoderFixture({ pending = deferred(), planned = false, track } =
   }
   const bunny = moduleURL(`export const ALL_FORMATS=[]; export class BlobSource { constructor(){} } export class UrlSource { constructor(){} }
     export class Input { getPrimaryVideoTrack(){return globalThis.__decoderFixture.primary()} dispose(){globalThis.__decoderFixture.dispose()} }
-    export class VideoSampleSink { getSample(){return globalThis.__decoderFixture.sample()} samplesAtTimestamps(){return globalThis.__decoderFixture.iter()} }`)
+    export class VideoSampleSink { getSample(){return globalThis.__decoderFixture.sample()} samplesAtTimestamps(times){return globalThis.__decoderFixture.iter(times)} }`)
   const source = (await read('decoder.js')).replace("'/vendor/mediabunny/dist/bundles/mediabunny.min.mjs'", JSON.stringify(bunny))
   const { FrameReader } = await import(moduleURL(source))
   const reader = new FrameReader('/movie.mp4')
@@ -63,6 +63,26 @@ test('sample conversion failure still closes the sample', async () => {
   await assert.rejects(result, /conversion failed/)
   assert.equal(s.closed, 1)
   f.reader.close()
+})
+
+test('a long export plan is read in batches, and each finished batch is closed', async () => {
+  const f = await decoderFixture(), batches = [], closed = []
+  globalThis.__decoderFixture.iter = times => {
+    const index = batches.push([...times]) - 1
+    let at = 0
+    return { next: async () => ({ value: at < times.length ? { ...sample(), t: times[at++] } : undefined, done: at > times.length }),
+      return: async () => { closed.push(index); return { done: true } } }
+  }
+  const { PLAN_BATCH } = await import(moduleURL((await read('decoder.js')).replace("'/vendor/mediabunny/dist/bundles/mediabunny.min.mjs'", JSON.stringify(moduleURL('export const ALL_FORMATS=[]; export class BlobSource {} export class UrlSource {} export class Input {} export class VideoSampleSink {}')))))
+  const times = Array.from({ length: PLAN_BATCH + 2 }, (_, i) => i / 30)
+  f.reader.setPlan(times)
+  for (const t of times) assert.ok(await f.reader.frameAt(t))
+  assert.deepEqual(batches.map(b => b.length), [PLAN_BATCH, 2])
+  assert.deepEqual(batches.flat(), times)
+  await new Promise(resolve => setTimeout(resolve))
+  assert.deepEqual(closed, [0])
+  f.reader.close()
+  assert.deepEqual(closed, [0, 1])
 })
 
 test('closing during asynchronous open disposes the input exactly once', async () => {

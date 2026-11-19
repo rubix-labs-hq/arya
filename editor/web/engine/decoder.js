@@ -43,9 +43,18 @@ export class FrameReader {
     const plan = this.plan
     let sample
     if (plan && plan.index < plan.times.length && Math.abs(plan.times[plan.index] - t) < 1e-4) {
-      plan.iter ??= this.sink.samplesAtTimestamps(plan.times)
+      if (!plan.iter || plan.index >= plan.batchEnd) {
+        // Mediabunny keeps a few hundred bytes per requested time until its iterator ends,
+        // so a long export reads its plan in batches. Each new batch starts at a key frame.
+        // return() ends a pending next() at once, so the old batch closes after its last read.
+        const old = plan.iter
+        if (old) Promise.resolve(plan.last).finally(() => closeIterator(old)).catch(() => {})
+        plan.batchEnd = Math.min(plan.times.length, plan.index + PLAN_BATCH)
+        plan.iter = this.sink.samplesAtTimestamps(plan.times.slice(plan.index, plan.batchEnd))
+      }
       plan.index++
-      const { value } = await plan.iter.next()
+      const read = plan.last = plan.iter.next()
+      const { value } = await read
       sample = value
     } else sample = await this.sink.getSample(t)
     if (this.closed || generation !== this.generation) {
@@ -56,7 +65,7 @@ export class FrameReader {
   }
 
   endPlan() {
-    try { Promise.resolve(this.plan?.iter?.return?.()).catch(() => {}) } catch {}
+    closeIterator(this.plan?.iter)
     this.plan = null
   }
 
@@ -73,6 +82,13 @@ export class FrameReader {
     this.endPlan()
     this.disposeInput()
   }
+}
+
+/** Planned times per Mediabunny iterator: about 1.4 MB of its bookkeeping at most. */
+export const PLAN_BATCH = 4096
+
+function closeIterator(iter) {
+  try { Promise.resolve(iter?.return?.()).catch(() => {}) } catch {}
 }
 
 function sampleToFrame(sample) {
