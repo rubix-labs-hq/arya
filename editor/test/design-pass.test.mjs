@@ -106,15 +106,26 @@ test('F6 and Shift+F6 walk the regions in order: top bar, media, viewer, inspect
   const focused = []
   const region = (name, { shown = true, field = true } = {}) => { const el = { name, id: name === 'assistant' ? 'editor-assistant' : '', attrs: {}, getClientRects: () => shown ? [1] : [], contains: other => other === el || other === el.inner, hasAttribute: key => key in el.attrs, setAttribute: (key, value) => { el.attrs[key] = value }, focus: () => { doc.activeElement = el; focused.push(name) }, querySelector: () => null, querySelectorAll: () => field ? [el.inner] : [] }; el.inner = { getClientRects: () => [1], focus: () => { doc.activeElement = el.inner; focused.push(name) } }; return el }
   const regions = [region('top bar'), region('media'), region('viewer', { field: false }), region('inspector', { shown: false }), region('timeline'), region('assistant')]
+  // A labelled section nested in the media panel is not a stop of its own.
+  const nested = region('nested'); const mediaContains = regions[1].contains; regions[1].contains = other => other === nested || other === nested.inner || mediaContains(other); regions.splice(2, 0, nested)
   const doc = { activeElement: null, querySelectorAll: selector => { assert.equal(selector, LANDMARKS); return regions } }
   for (let i = 0; i < 6; i++) cycleLandmark(false, doc)
   assert.deepEqual(focused, ['top bar', 'media', 'viewer', 'timeline', 'assistant', 'top bar'], 'hidden regions are skipped and the walk wraps')
-  assert.equal(regions[2].attrs.tabindex, '-1', 'a region with nothing to focus takes focus itself')
+  assert.equal(regions[3].attrs.tabindex, '-1', 'a region with nothing to focus takes focus itself')
   cycleLandmark(true, doc); cycleLandmark(true, doc)
   assert.deepEqual(focused.slice(-2), ['assistant', 'timeline'])
   // The Edit page names its regions in that order, and the key works from a field.
   const order = ['class="topbar" role="banner" aria-label="Top bar"', "'Media browser' : 'Inspector'", 'role="region" aria-label="Viewer"', "aria-label=${phone ? undefined : 'Timeline'}"].map(part => app.indexOf(part))
   assert.ok(order.every(at => at > 0), String(order))
-  assert.ok(keys.indexOf("e.key === 'F6'") < keys.indexOf('if (e.target.closest?.(COMMAND_INPUTS)) return'))
+  assert.match(keys, /if \(e\.key !== 'F6' \|\| e\.defaultPrevented[^\n]*\) return\n    e\.preventDefault\(\); cycleLandmark\(e\.shiftKey\)\n  \}, true\)/, 'on capture, so a field that stops its own keys still lets F6 through')
+  assert.match(keys, /globalThis\.document\?\.addEventListener\?\.\('keydown', e => \{\n    if \(e\.key !== 'F6'/)
   assert.match(keys, /\['F6 \/ ⇧F6', 'Next \/ previous panel'\]/)
+})
+
+test('phone panels use 44px targets, whole-label checkboxes and 16px field text', () => {
+  const phone = read('ui/phone.css')
+  const block = phone.slice(phone.indexOf('/* Phone widths: every field and button in a panel is a 44px target'))
+  assert.match(block, /@media \(max-width: 720px\) \{\s*\.page :is\(\.inspector, \.browser, \.field\) :is\(select, textarea, input:not\(\[type=checkbox\], \[type=radio\], \[type=range\], \[type=color\]\)\) \{ min-height: 44px; font-size: 16px; \}/)
+  assert.match(block, /\.page :is\(\.inspector, \.browser\) button \{ min-height: 44px; min-width: 44px; \}/)
+  assert.match(block, /label:has\(> input:is\(\[type=checkbox\], \[type=radio\]\)\) \{ display: inline-flex; align-items: center; gap: 8px; min-height: 44px; \}/)
 })

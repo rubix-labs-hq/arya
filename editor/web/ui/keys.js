@@ -33,7 +33,9 @@ export function landmarkStep(count, current, back = false) {
 }
 
 export function cycleLandmark(back = false, doc = globalThis.document) {
-  const regions = [...doc.querySelectorAll(LANDMARKS)].filter(el => el.getClientRects().length)
+  const shown = [...doc.querySelectorAll(LANDMARKS)].filter(el => el.getClientRects().length)
+  // A labelled section inside a panel is part of that panel's stop, not a stop of its own.
+  const regions = shown.filter(el => !shown.some(other => other !== el && other.contains(el)))
   const next = regions[landmarkStep(regions.length, regions.findIndex(el => el.contains(doc.activeElement)), back)]
   if (!next) return null
   const inside = (next.id === 'editor-assistant' ? next.querySelector('textarea:not(:disabled)') : null) ?? [...next.querySelectorAll(LANDMARK_FOCUS)].find(el => el.getClientRects().length)
@@ -158,8 +160,6 @@ export function installKeys() {
     if (e.defaultPrevented) return
     if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); set({ settingsOpen: !store.settingsOpen, settingsOtherWays: false }); return }
     if (store.settingsOpen) return
-    // Before the typing checks, so the way between panels also works from a field.
-    if (e.key === 'F6' && !e.metaKey && !e.ctrlKey && !e.altKey && !store.showKeys && !store.assistantSharingReviewOpen) { e.preventDefault(); cycleLandmark(e.shiftKey); return }
     if (e.key === 'Escape' && store.showKeys) { e.preventDefault(); set({ showKeys: false }); return }
     if (e.target.closest?.(COMMAND_INPUTS)) return
     if (CONTROL_KEYS.has(e.key) && e.target.closest?.(FOCUSABLE_CONTROLS)) return
@@ -416,6 +416,11 @@ export function installKeys() {
     }
     if (handled) e.preventDefault()
   })
+  // On capture, so the way between panels also works from a field that keeps its own keys.
+  globalThis.document?.addEventListener?.('keydown', e => {
+    if (e.key !== 'F6' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || store.settingsOpen || store.showKeys || store.assistantSharingReviewOpen) return
+    e.preventDefault(); cycleLandmark(e.shiftKey)
+  }, true)
 }
 
 export { snapToFrame }
