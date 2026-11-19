@@ -79,7 +79,8 @@ function TopBar() {
   const openAssistant = () => {
     if (store.assistantSharingReviewOpen) return
     const focus = () => globalThis.document?.querySelector('#editor-assistant :is(textarea, .assistant-setup a.primary)')?.focus()
-    if (s.chatOpen && !s.chatCollapsed) focus()
+    // Behind the Inspector tab the panel is open but not shown, so it is brought forward first.
+    if (s.chatOpen && !s.chatCollapsed && store.sideTab !== 'inspector') focus()
     else {
       set({ chatOpen: true, chatCollapsed: false })
       queueMicrotask(focus)
@@ -152,9 +153,11 @@ function EditPage() {
       document.removeEventListener('focusin', update)
     }
   }, [phone])
-  const shared = !phone && sideColumnShared(s.chatOpen)
+  // The hosted build's assistant panel is a short pitch with no tabs, so it sits beside the inspector as before.
+  const shared = !phone && host.kind !== 'browser-local' && sideColumnShared(s.chatOpen)
   const sideTab = shared ? (s.sideTab === 'inspector' ? 'inspector' : 'assistant') : null
-  const l = sideTab === 'assistant' ? { ...saved, showInspector: false } : saved
+  // The Inspector tab always shows the inspector, even when the saved layout hides it, so there is a way back.
+  const l = sideTab ? { ...saved, showInspector: sideTab === 'inspector' } : saved
   const compact = !phone && !shared && Number.isFinite(workspace.width) && workspace.width < 900
   // A resize or the Assistant opening can make the workspace compact while an Inspector field
   // is focused. On that transition only, keep the Inspector shown so the field is not hidden and

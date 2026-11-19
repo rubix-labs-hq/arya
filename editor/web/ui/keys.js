@@ -33,6 +33,8 @@ export function landmarkStep(count, current, back = false) {
 }
 
 export function cycleLandmark(back = false, doc = globalThis.document) {
+  // An open dialog keeps focus: its own Tab order is the way around it.
+  if ([...doc.querySelectorAll('[aria-modal="true"]')].some(el => el.getClientRects().length)) return null
   const shown = [...doc.querySelectorAll(LANDMARKS)].filter(el => el.getClientRects().length)
   // A labelled section inside a panel is part of that panel's stop, not a stop of its own.
   const regions = shown.filter(el => !shown.some(other => other !== el && other.contains(el)))

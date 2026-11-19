@@ -2,7 +2,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { h } from 'preact'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { Icon, hasIcon } from '../web/ui/icons.js'
 
 const read = path => readFileSync(new URL(`../web/${path}`, import.meta.url), 'utf8')
@@ -57,7 +57,9 @@ test('between 1100 and 1439px an open assistant takes the inspector column and t
   const shared = new Function(`${app.match(/const sideColumnShared = [^\n]+/)[0]}; return sideColumnShared`)()
   assert.deepEqual([1099, 1100, 1280, 1439, 1440].map(width => shared(true, width)), [false, true, true, true, false])
   assert.equal(shared(false, 1280), false); assert.equal(shared(true, undefined), false)
-  assert.match(app, /const l = sideTab === 'assistant' \? \{ \.\.\.saved, showInspector: false \} : saved/)
+  assert.match(app, /const l = sideTab \? \{ \.\.\.saved, showInspector: sideTab === 'inspector' \} : saved/, 'the Inspector tab shows the inspector even when the saved layout hides it')
+  assert.match(app, /const shared = !phone && host\.kind !== 'browser-local' && sideColumnShared\(s\.chatOpen\)/)
+  assert.match(app, /if \(s\.chatOpen && !s\.chatCollapsed && store\.sideTab !== 'inspector'\) focus\(\)/, 'Ask Arya brings the assistant forward from the Inspector tab')
   assert.match(app, /const compact = !phone && !shared && Number\.isFinite\(workspace\.width\) && workspace\.width < 900/)
   assert.match(store, /if \(next\.chatOpen === true && !Object\.hasOwn\(next, 'sideTab'\)\) store\.sideTab = 'assistant'/)
   assert.match(chat, /<div class="side-tabs" role="tablist" aria-label="Side panel">/)
@@ -73,6 +75,8 @@ test('type, focus, motion and disabled text come from root tokens, and nothing i
   for (const [name, css] of [['styles.css', styles], ['assistant.css', assistantCSS], ['phone.css', read('ui/phone.css')], ['icons.css', read('ui/icons.css')]]) {
     for (const [rule, size] of css.matchAll(/font(?:-size)?:\s*(\d+(?:\.\d+)?)px/g)) assert.ok(Number(size) >= 11, `${name}: ${rule}`)
   }
+  // Plugins carry their own style blocks; the same floor holds there.
+  for (const file of readdirSync(new URL('../web/ui/plugins/', import.meta.url)).filter(name => name.endsWith('.js'))) for (const [rule, size] of read(`ui/plugins/${file}`).matchAll(/font(?:-size)?:\s*(\d+(?:\.\d+)?)px/g)) assert.ok(Number(size) >= 11, `${file}: ${rule}`)
   // Inputs keep the browser ring until the shared one replaces it: no blanket outline: none.
   assert.doesNotMatch(styles, /\nselect, input[^{]*\{[^}]*outline: none/)
   assert.match(styles, /select:focus-visible, input:focus-visible, textarea:focus-visible \{ outline: var\(--focus-ring\); outline-offset: var\(--focus-offset\); \}/)
@@ -108,7 +112,9 @@ test('F6 and Shift+F6 walk the regions in order: top bar, media, viewer, inspect
   const regions = [region('top bar'), region('media'), region('viewer', { field: false }), region('inspector', { shown: false }), region('timeline'), region('assistant')]
   // A labelled section nested in the media panel is not a stop of its own.
   const nested = region('nested'); const mediaContains = regions[1].contains; regions[1].contains = other => other === nested || other === nested.inner || mediaContains(other); regions.splice(2, 0, nested)
-  const doc = { activeElement: null, querySelectorAll: selector => { assert.equal(selector, LANDMARKS); return regions } }
+  let modal = []
+  const doc = { activeElement: null, querySelectorAll: selector => { if (selector === '[aria-modal="true"]') return modal; assert.equal(selector, LANDMARKS); return regions } }
+  modal = [{ getClientRects: () => [1] }]; assert.equal(cycleLandmark(false, doc), null, 'an open dialog keeps focus'); assert.deepEqual(focused, []); modal = []
   for (let i = 0; i < 6; i++) cycleLandmark(false, doc)
   assert.deepEqual(focused, ['top bar', 'media', 'viewer', 'timeline', 'assistant', 'top bar'], 'hidden regions are skipped and the walk wraps')
   assert.equal(regions[3].attrs.tabindex, '-1', 'a region with nothing to focus takes focus itself')

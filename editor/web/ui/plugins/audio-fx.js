@@ -32,7 +32,7 @@ const CSS = `
 .afx-band { border-top: 1px solid var(--line); padding-top: 4px; display: flex; flex-direction: column; gap: 3px; }
 .afx-band .field select { flex: 1; }
 .afx-meter { display: flex; flex-direction: column; gap: 6px; }
-.afx-loud { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; font-size: 10.5px; color: var(--muted); }
+.afx-loud { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; font-size: 11px; color: var(--muted); }
 .afx-loud b { display: block; font: 600 15px ui-monospace, Menlo, monospace; color: var(--text); }
 .afx-loud b.hot { color: var(--danger); }
 .afx-bar { height: 7px; background: #000; border-radius: 3px; position: relative; overflow: hidden; }
@@ -40,12 +40,12 @@ const CSS = `
 .afx-bar i.m { background: #2fbf7166; }
 .afx-bar u { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); }
 .afx-slots { display: flex; flex-direction: column; gap: 2px; width: 100%; }
-.afx-slot { font-size: 10.5px; padding: 1px 4px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+.afx-slot { font-size: 11px; padding: 1px 4px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .afx-slot.off { opacity: 0.45; text-decoration: line-through; }
 .afx-slot.empty { color: var(--muted); }
-.afx-tp { font: 10px ui-monospace, Menlo, monospace; color: var(--muted); cursor: pointer; }
+.afx-tp { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); cursor: pointer; }
 .afx-tp.hot { color: var(--danger); }
-.afx-mini { font: 10px ui-monospace, Menlo, monospace; color: var(--muted); text-align: center; line-height: 1.3; }
+.afx-mini { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); text-align: center; line-height: 1.3; }
 .afx-mini b { color: var(--text); font-weight: 600; }
 `
 
