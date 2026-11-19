@@ -483,6 +483,11 @@ struct NativeEditorView: View {
             .onChange(of: model.requestedWorkspace) { _, _ in
                 showRequestedWorkspace(compact: compact)
             }
+            .onChange(of: model.assistantToggleRequested) { _, requested in
+                guard requested else { return }
+                model.assistantToggleRequested = false
+                if compact { select(.assistant, compact: true) } else { toggleAssistant() }
+            }
             .onChange(of: model.panel) { previous, next in
                 if compact {
                     if !NativeCompactWorkspaceRouting.inlineWorkspaces.contains(next) {
@@ -494,6 +499,8 @@ struct NativeEditorView: View {
                     return
                 }
                 if next == .assistant {
+                    // A page request opens the assistant like Ask Arya does, with its draft focused.
+                    if !assistantVisible { assistantFocusRequest = true }
                     assistantVisible = true
                     model.panel = NativePanel.workflow.contains(previous) ? previous : lastEditingPanel
                 } else if NativePanel.workflow.contains(next) {
@@ -1184,8 +1191,9 @@ struct NativeEditorView: View {
             Button { settingsVisible = true } label: { Image(systemName: "gearshape") }
                 .keyboardShortcut(",", modifiers: [.command])
                 .help("Settings (⌘,)").accessibilityLabel("Settings")
+            // The menu bar's Show Assistant command owns Option-Command-A on the Mac. A second
+            // shortcut on this button made the key do nothing right after a click on it.
             NativeAssistantEntry(assistant: session.assistant, open: assistantVisible, action: toggleAssistant)
-                .keyboardShortcut("a", modifiers: [.command, .option])
                 .padding(.horizontal, 4)
             workspaceMenu(compact: false)
         }.buttonStyle(NativeDesktopChromeButtonStyle())
@@ -1457,6 +1465,7 @@ struct NativeEditorView: View {
 
     private func select(_ panel: NativePanel, compact: Bool = false) {
         if panel == .assistant && !compact {
+            if !assistantVisible { assistantFocusRequest = true }
             assistantVisible = true
             return
         }
