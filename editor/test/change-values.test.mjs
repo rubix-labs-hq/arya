@@ -157,6 +157,9 @@ test('a card shows the inspector name and unit for a property, never the stored 
   assert.equal(pair({ property: 'volume', before: 'Absent', after: '-6' }), '0 dB > -6 dB')
   assert.equal(pair({ property: 'volume', before: '-6', after: '3' }), '-6 dB > +3 dB')
   assert.equal(pair({ property: 'transitionIn.type', before: 'Absent', after: '"crossDissolve"' }), 'None > Cross dissolve')
+  // A transition that was not there has no length: None, not "Not set".
+  assert.equal(pair({ property: 'transitionIn.dur', before: 'Absent', after: '0.5' }), 'None > 0.5 s')
+  assert.equal(pair({ property: 'transitionIn.dur', before: '0.5', after: 'Absent' }), '0.5 s > None')
   assert.equal(pair({ property: 'rotation', before: '0', after: '12.5' }), '0° > 12.5°')
   // Ids never show: a track that gained a clip reads as a count, and a reshuffle as one word.
   assert.equal(pair({ property: 'Object order', before: '["c1","c2"]', after: '["c1","c2","c9"]' }), '2 clips > 3 clips')

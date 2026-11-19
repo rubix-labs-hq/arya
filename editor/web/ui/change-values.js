@@ -117,7 +117,7 @@ function keyRows(before, after) {
 // `exact` shows every digit, for when rounding would make a real change read the same on both sides.
 function side(parsed, property, fps, exact = false) {
   if (parsed.missing && Object.hasOwn(DEFAULTS, property)) parsed = { value: DEFAULTS[property] }
-  if (parsed.missing && property === 'transitionIn.type') return { text: 'None' }
+  if (parsed.missing && (property === 'transitionIn.type' || property === 'transitionIn.dur')) return { text: 'None' }
   if (parsed.missing) return { text: ORDERS[property] ? `No ${ORDERS[property]}s` : 'Not set' }
   if (parsed.cut) return { text: CUT }
   const value = parsed.value
