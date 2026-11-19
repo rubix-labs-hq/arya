@@ -130,6 +130,17 @@ enum NativeWorkspaceLayout {
         width >= 600 && height < 400
     }
 
+    /// The width of the assistant when a compact layout docks it as a trailing column, or 0
+    /// when it opens as a sheet. A phone on its side gives it about 45 percent beside the
+    /// viewer, where a sheet would cover the picture. An iPad at least 900 points wide gives
+    /// it a column. Accessibility text keeps the sheet, which has the whole width.
+    static func compactAssistantDock(width: Double, height: Double, accessibilityText: Bool) -> Double {
+        guard width.isFinite, height.isFinite, !accessibilityText else { return 0 }
+        if width >= 600 && height < 500 { return min(420, max(280, (width * 0.45).rounded())) }
+        if width >= 900 && height >= 560 { return min(400, max(320, (width * 0.34).rounded())) }
+        return 0
+    }
+
     static func scrollingStack(width: Double, height: Double) -> Bool {
         width < 600 && height < 400
     }
@@ -324,12 +335,26 @@ struct NativeEditorView: View {
     var body: some View {
         GeometryReader { geometry in
             let compact = usesCompactLayout(size: geometry.size)
+            let assistantDock = compact ? NativeWorkspaceLayout.compactAssistantDock(width: geometry.size.width, height: geometry.size.height, accessibilityText: dynamicTypeSize.isAccessibilitySize) : 0
             let status = session.projectReadOnlyReason.map { "Project is read-only. \($0)" } ?? model.status
             VStack(spacing: 0) {
                 header(compact: compact, width: geometry.size.width)
                 Rectangle().fill(NativeEditorStyle.line).frame(height: 1)
                 #if os(iOS)
-                mobileWorkspace(compact: compact)
+                HStack(spacing: 0) {
+                    mobileWorkspace(compact: compact)
+                    // Where there is room the assistant sits beside the picture, not over it.
+                    if assistantDock > 0, model.mobilePanel == .assistant {
+                        Rectangle().fill(NativeEditorStyle.line).frame(width: 1)
+                        NativeAssistantPanel(assistant: session.assistant, model: model, openSettings: { settingsVisible = true },
+                                             close: { model.mobilePanel = nil }, inSheet: true)
+                            .frame(width: assistantDock)
+                            .background(NativeEditorStyle.panel)
+                            .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
+                            .accessibilityIdentifier("editor.assistant.docked")
+                    }
+                }
+                .animation(reduceMotion ? nil : NativeMotion.panel, value: model.mobilePanel == .assistant)
                 #else
                 if compact {
                     compactWorkspace
@@ -381,7 +406,7 @@ struct NativeEditorView: View {
                     }
                 }
             }
-            .sheet(item: compactTaskBinding()) { panel in
+            .sheet(item: compactTaskBinding(assistantDocked: assistantDock > 0)) { panel in
                 NavigationStack {
                     NativePanelView(panel: panel, model: model, session: session, inSheet: true)
                         .navigationTitle(panel.name)
@@ -582,11 +607,13 @@ struct NativeEditorView: View {
         )
     }
 
-    private func compactTaskBinding() -> Binding<NativePanel?> {
+    private func compactTaskBinding(assistantDocked: Bool = false) -> Binding<NativePanel?> {
         let presented = model.mobilePanel
         return Binding(
             get: {
                 guard let panel = model.mobilePanel, !NativeCompactWorkspaceRouting.inlineWorkspaces.contains(panel) else { return nil }
+                // A docked assistant is a column in the workspace, so no sheet presents it.
+                if assistantDocked && panel == .assistant { return nil }
                 return panel
             },
             set: { next in
@@ -1365,7 +1392,6 @@ struct NativeEditorView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(selected == panel ? NativeEditorStyle.accent : NativeEditorStyle.muted)
                 .background(selected == panel ? NativeEditorStyle.selectionFill : .clear, in: RoundedRectangle(cornerRadius: 6))
-                .overlay { RoundedRectangle(cornerRadius: 6).stroke(selected == panel ? NativeEditorStyle.accent.opacity(0.38) : .clear) }
                 .keyboardShortcut(KeyEquivalent(Character(String((NativePanel.workflow.firstIndex(of: panel) ?? 0) + 1))), modifiers: [.shift])
                 .accessibilityLabel("\(panel.name) workflow")
                 .accessibilityAddTraits(selected == panel ? [.isSelected] : [])
