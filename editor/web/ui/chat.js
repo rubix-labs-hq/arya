@@ -435,9 +435,10 @@ export function ChatPanel() {
   const undoChange = () => {
     if (store.previewShown) { toast('Undo is off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.', 'error'); return }
     const id = store.assistantReview?.change?.id
-    return Promise.resolve(decide('undo', '/api/assistant/change/undo', { id })).then(result => { if (Number.isSafeInteger(result?.version) && result.history?.redo > 0) setUndoneChange({ id, version: result.version }) })
+    return Promise.resolve(decide('undo', '/api/assistant/change/undo', { id })).then(result => { if (Number.isSafeInteger(result?.version) && result.redoable === true) setUndoneChange({ id, version: result.version }) })
   }
-  // The change just undone from its card is one Redo away until anything else moves the project.
+  // The change just undone from its card is one Redo away until anything else moves the project. The server says
+  // so: a redo step alone can be an unrelated edit, as it is after the card reverses the assistant's own Undo.
   const redoChange = () => {
     if (store.previewShown) { toast('Redo is off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.', 'error'); return }
     return Promise.resolve(decide('redo', '/api/redo', {})).then(() => setUndoneChange(null))

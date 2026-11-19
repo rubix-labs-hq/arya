@@ -225,11 +225,13 @@ export function createAssistantReview({ getVersion, getEpoch, getProject, redoDe
       const value = publicChange()
       return value.undoable ? { change } : { reason: value.reason }
     },
+    /** Marks the change undone. Returns whether the next Redo restores exactly this change. */
     undone(id) {
       const item = changes.find(entry => entry.id === id)
       if (item) item.undone = true
       if (change?.id === id) { change = null; if (applying?.finished) applying = null }
       if (item) changed()
+      return Boolean(item) && redoDepth(item.after) === 1
     },
   }
 }
