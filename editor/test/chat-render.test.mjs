@@ -182,7 +182,7 @@ test('a request that edited and then undid is named for both steps and says why 
   // A plain request that cannot be undone in one step keeps its quiet card.
   const plain = { ...change, label: 'Assistant request', moves: undefined, edits: 1, afterVersion: 5, reason: 'The project changed after this assistant change. Use Undo step by step.' }
   const quiet = resultCard(panel({ state: 'done' }, true, { chat, receipts: [{ ...receipts[0], changeLabel: 'Assistant request' }], project: after, review: { change: plain, changes: [{ ...plain, undone: false }] } })).tree
-  assert.equal(textContent(nodes(quiet).find(node => node.type === 'b')), 'Made 1 edit')
+  assert.equal(textContent(nodes(quiet).find(node => node.type === 'b')), '1 change: trim')
   assert.equal(nodes(quiet).some(node => node.props?.class === 'assistant-note'), false)
 })
 
@@ -294,13 +294,13 @@ test('saved-only asset receipt renders its actual path and metadata without a la
   const receipt = changeReceipt(before, after, { who: 'agent', version: 7 })
   const { tree } = renderReceipt(receipt, after), all = nodes(tree), text = textContent(tree)
   assert.match(text, /1 Media asset changed/)
-  assert.match(text, /Media registration · added/)
+  assert.match(text, /Media registration · New/)
   assert.doesNotMatch(text, /Project settings changed/)
-  assert.match(text, /assets\["media\/generated\/music\/owned\/score\.wav"\]/)
+  assert.match(text, /media\/generated\/music\/owned\/score\.wav/, 'the stored path is in Technical details')
   assert.match(text, /Reviewed cue/)
   assert.match(text, /Absent/)
   assert.equal(all.some(node => node.type === 'button'), false)
-  const json = JSON.parse(children(all.find(node => node.type === 'pre')).join(''))
+  const json = JSON.parse(children(all.find(node => node.type === 'pre')).join(''))[0]
   assert.equal(json.totalLayers, 0)
   assert.equal(json.totalScopes, 1)
   assert.equal(json.scopes[0].changes[0].before, 'Absent')
@@ -313,9 +313,9 @@ test('track-only receipt renders the settings group and committed before and aft
   after.tracks[0].volume = -6
   const receipt = changeReceipt(before, after, { who: 'agent', version: 8 })
   const { tree } = renderReceipt(receipt, after), text = textContent(tree)
-  assert.match(text, /Track A3 · Music · Main timeline/)
-  assert.match(text, /Track settings · changed/)
-  assert.match(text, /volume0→-6/)
+  assert.match(text, /A3 · Music · Main timeline/)
+  assert.match(text, /Track settings · Changed/)
+  assert.match(text, /Volume0 dB→-6 dB/)
   assert.equal(nodes(tree).some(node => node.type === 'button'), false)
 })
 
@@ -348,7 +348,7 @@ test('shortened scope values visibly declare truncation even when every entry is
   assert.equal(receipt.scopes.length, receipt.totalScopes)
   const { tree } = renderReceipt(receipt, after)
   assert.match(textContent(tree), /Some changes or values are shortened\. Showing 0 of 0 changed layers and 1 of 1 settings groups\./)
-  const json = JSON.parse(children(nodes(tree).find(node => node.type === 'pre')).join(''))
+  const json = JSON.parse(children(nodes(tree).find(node => node.type === 'pre')).join(''))[0]
   assert.equal(json.truncated, true)
 })
 

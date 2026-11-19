@@ -51,7 +51,8 @@ function receiptCaption(receipts, project) {
   const otherSettings = assets && scopes.length || legacyAssets && receipts.some(receipt => receipt.projectChanges.some(property => property !== 'assets'))
   // Settings alone: a caption track's style, another track's settings, or the project's.
   const tracks = scopes.map(scope => scopeTrack(project, scope))
-  const settings = scopes.length && tracks.every(Boolean) ? tracks.every(track => track.kind === 'caption') ? 'Caption style changed' : 'Track settings changed' : 'Project settings changed'
+  const markers = scopes.length > 0 && scopes.every(scope => scope.track == null && scope.changes.every(change => change.property === 'markers' || change.property === 'Object order'))
+  const settings = markers ? 'Markers changed' : scopes.length && tracks.every(Boolean) ? tracks.every(track => track.kind === 'caption') ? 'Caption style changed' : 'Track settings changed' : 'Project settings changed'
   return [total ? `${plural(total, 'layer')} changed` : '',
     assets ? `${assets} Media ${assets === 1 ? 'asset' : 'assets'} changed` : legacyAssets ? 'Media assets changed' : '',
     otherSettings ? 'Project or track settings changed' : '',
@@ -62,21 +63,36 @@ function ReceiptDetails({ receipt }) {
   const assetChange = change => change.property === 'assets' || change.property.startsWith('assets.') || change.property.startsWith('assets[')
   const scopeLabel = scope => scope.asset != null ? 'Media registration' : scope.comp == null && scope.track == null && scope.changes.some(assetChange)
     ? scope.changes.every(assetChange) ? 'Media metadata' : 'Media and project settings' : scope.track == null ? 'Project or composition settings' : 'Track settings'
+  // A clip added to or removed from a track also reorders it. The layer row already says so.
+  const moved = receipt.clips.some(clip => clip.status !== 'changed')
+  const scopes = (receipt.scopes ?? []).map(scope => ({ ...scope, changes: moved ? scope.changes.filter(change => change.property !== 'Object order') : scope.changes })).filter(scope => scope.changes.length)
   return html`<div class="receipt-edit" key=${receipt.version}>
-    <p class="receipt-meta">Edit ${receipt.version}${receipt.undone ? ' · undone' : ''}${receipt.projectChanges.length ? ` · ${receipt.projectChanges.join(', ')}` : ''}</p>
-    ${(receipt.scopes ?? []).map(scope => html`<div class="receipt-layer"><b>${scope.name}</b><span class="receipt-meta">${scopeLabel(scope)} · ${scope.status}</span>${scope.asset != null ? html`<p class="receipt-meta">${scope.asset}</p>` : null}${assistantPanel.ChangeList({ changes: scope.changes, fps: assistantPanel.fpsOf(store.project, scope.comp) })}</div>`)}
-    ${receipt.clips.map(clip => html`<div class="receipt-layer"><b>${clip.name}</b><span class="receipt-meta">${clip.compositionName} · ${clip.id} · ${clip.status}</span>${assistantPanel.ChangeList({ changes: clip.changes, fps: assistantPanel.fpsOf(store.project, clip.comp) })}</div>`)}
+    ${scopes.map(scope => html`<div class="receipt-layer"><b>${String(scope.name).replace(/^Track /, '')}</b><span class="receipt-meta">${scopeLabel(scope)} · ${assistantPanel.STATUS[scope.status] ?? scope.status}</span>${assistantPanel.ChangeList({ changes: scope.changes, fps: assistantPanel.fpsOf(store.project, scope.comp) })}</div>`)}
+    ${receipt.clips.map(clip => {
+      const where = assistantPanel.layerPlace(store.project, clip)
+      return html`<div class="receipt-layer"><b title=${clip.id}>${where.name}</b><span class="receipt-meta">${[clip.comp == null ? '' : clip.compositionName, where.place, assistantPanel.STATUS[clip.status] ?? clip.status].filter(Boolean).join(' · ')}</span>${assistantPanel.ChangeList({ changes: clip.changes, fps: assistantPanel.fpsOf(store.project, clip.comp) })}</div>`
+    })}
     ${receipt.truncated ? html`<p class="receipt-meta">Some changes or values are shortened. Showing ${receipt.clips.length} of ${receipt.total} changed layers${receipt.totalScopes == null ? '' : ` and ${(receipt.scopes ?? []).length} of ${receipt.totalScopes} ${receipt.totalAssets ? 'Media and settings' : 'settings'} groups`}.</p>` : null}
-    <details class="receipt-json"><summary>Read-only JSON diff</summary><pre>${JSON.stringify({ clips: receipt.clips, scopes: receipt.scopes, projectChanges: receipt.projectChanges, totalLayers: receipt.total, totalScopes: receipt.totalScopes, totalAssets: receipt.totalAssets, truncated: receipt.truncated }, null, 2)}</pre></details>
   </div>`
+}
+
+/** The stored names, ids and values of a run's edits, for someone debugging. One disclosure per card. */
+function TechnicalDetails({ receipts }) {
+  return html`<details class="receipt-json"><summary>Technical details</summary>
+    ${receipts.map(receipt => html`<p class="receipt-meta" key=${receipt.version}>Edit ${receipt.version}${receipt.undone ? ' · undone' : ''}${receipt.projectChanges.length ? ` · ${receipt.projectChanges.join(', ')}` : ''}</p>`)}
+    <pre>${JSON.stringify(receipts.map(receipt => ({ version: receipt.version, clips: receipt.clips, scopes: receipt.scopes, projectChanges: receipt.projectChanges, totalLayers: receipt.total, totalScopes: receipt.totalScopes, totalAssets: receipt.totalAssets, truncated: receipt.truncated })), null, 2)}</pre>
+  </details>`
 }
 
 /**
  * A card is named for its kind of change: an applied preview, Undo or Redo the assistant ran, or
  * edits. A request that also called Undo or Redo carries a label that counts each kind of step.
  */
-function resultTitle(kind, label, edits) {
-  return kind === 'preview' ? 'Applied the preview' : (kind === 'history' || kind === 'request' && label !== 'Assistant request') && label ? label : `Made ${plural(edits, 'edit')}`
+function resultTitle(kind, label, edits, receipts = []) {
+  if (kind === 'preview') return 'Applied the preview'
+  if ((kind === 'history' || kind === 'request' && label !== 'Assistant request') && label) return label
+  // With the receipts in hand the title says what changed; after a reload only the count is known.
+  return assistantPanel.changeKinds(receipts).text || `Made ${plural(edits, 'edit')}`
 }
 
 /** Compositions the receipts added that still exist and are not open, as [id, name]. */
@@ -90,20 +106,22 @@ function addedCompositions(receipts, project, open) {
  * undo of the latest assistant change when that change belongs to this run. With no receipt (after
  * a reload) it still offers that undo.
  */
-function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
+function ResultCard({ receipts = [], change = null, busy = '', onUndo, onRedo = null }) {
   const undoable = Boolean(change?.undoable)
   const undone = !undoable && receipts.length > 0 && receipts.every(receipt => receipt.undone)
   const edits = change ? change.edits : receipts.length
   // Older cards keep their name: each receipt carries the kind of change the server put it in.
   const kinds = new Set(receipts.map(receipt => receipt.changeKind))
   const kind = change ? change.kind : kinds.size === 1 ? receipts[0]?.changeKind : null
-  const title = resultTitle(kind, change ? change.label : receipts[0]?.changeLabel, edits)
+  const title = resultTitle(kind, change ? change.label : receipts[0]?.changeLabel, edits, receipts)
+  // An applied preview keeps its title, so what it changed goes on the line under it.
+  const changed = kind === 'preview' ? assistantPanel.changeKinds(receipts).text : ''
   // The assistant undid or redid edits, and the card cannot simply reverse that: the reason says what can.
   const moved = kind === 'history' || Boolean(change?.moves?.undo || change?.moves?.redo)
   const pointer = moved && change && !undoable && !undone ? change.reason : ''
   const added = undone ? [] : addedCompositions(receipts, store.project, store.openComp)
   const openComposition = id => set({ openComp: id, compParents: { ...(store.compParents ?? {}), [id]: null }, selection: [], page: 'edit', viewerMode: 'timeline', scroll: 0 })
-  const caption = receipts.length ? receiptCaption(receipts, store.project) : ''
+  const caption = [changed, receipts.length ? receiptCaption(receipts, store.project) : ''].filter(Boolean).join(' · ')
   const notes = [...new Set(receipts.flatMap(receipt => receipt.notes ?? []))]
   // Select works on the layers of every edit in the run, one button per timeline they are on.
   const merged = { clips: receipts.flatMap(receipt => receipt.clips) }
@@ -114,12 +132,15 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
     set({ openComp: current.comp, selection: current.ids, page: 'edit', viewerMode: 'timeline' })
     player.seek(current.start)
   }
-  return html`<section class=${`assistant-result-card${undone ? ' undone' : ''}`} aria-label=${undone ? 'Undone edit result' : 'Committed edit result'}>
-    <div class="receipt-heading"><b>${title}</b>${undone ? html`<small>Undone</small>` : null}</div>
+  // The card that was just undone offers the way back while Redo in the toolbar would still restore it.
+  const redoable = undone && Boolean(onRedo)
+  return html`<section class=${`assistant-result-card${undone ? ' undone' : ''}${receipts.length ? '' : ' compact'}`} aria-label=${undone ? 'Undone edit result' : 'Committed edit result'}>
+    <div class="receipt-heading"><b>${title}</b>${undone ? html`<small class="assistant-undone-tag">Undone</small>` : null}</div>
     ${caption ? html`<p class="assistant-result-caption">${caption}</p>` : null}
-    ${undoable || groups.length || added.length ? html`<div class="receipt-actions">
+    ${undoable || redoable || groups.length || added.length ? html`<div class="receipt-actions">
       ${added.map(([id, name]) => html`<button class="ghost tiny" key=${id} onClick=${() => openComposition(id)}>Open ${name}</button>`)}
       ${undoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title=${kind === 'history' ? 'Redo the edits the assistant undid. Undo in the toolbar undoes them again.' : 'Restore the project from before this assistant change. Redo brings it back.'} onClick=${onUndo}>${busy === 'undo' ? 'Undoing…' : 'Undo this change'}</button></span>` : null}
+      ${redoable ? html`<span class="assistant-change"><button class="ghost tiny" disabled=${Boolean(busy)} title="Bring this change back. Undo in the toolbar removes it again." onClick=${onRedo}>${busy === 'redo' ? 'Redoing…' : 'Redo this change'}</button></span>` : null}
       ${groups.map(comp => {
         const selectable = receiptSelection(merged, store.project, comp)
         const name = comp == null ? 'main timeline' : store.project?.comps?.[comp]?.name ?? comp
@@ -130,7 +151,8 @@ function ResultCard({ receipts = [], change = null, busy = '', onUndo }) {
     ${notes.map(note => html`<p class="assistant-note">${note}</p>`)}
     ${receipts.length ? html`<details class="change-receipt"><summary>Details</summary>
       ${[...receipts].reverse().map(receipt => ReceiptDetails({ receipt }))}
-      <p class="receipt-meta">Undo in the toolbar reverts the latest edit.</p>
+      <p class="receipt-meta">${undone ? 'Redo in the toolbar brings this change back.' : 'Undo in the toolbar reverts the latest edit.'}</p>
+      ${TechnicalDetails({ receipts })}
     </details>` : null}
   </section>`
 }
@@ -387,11 +409,12 @@ export function ChatPanel() {
   const mode = native ? '' : preview ? 'Preview first' : 'Applies directly'
   const review = native ? null : s.assistantReview
   const [reviewBusy, setReviewBusy] = useState('')
+  const [undoneChange, setUndoneChange] = useState(null)
   // Whether a change is undone comes from the server, which hears every Undo and Redo.
   const decide = async (kind, route, body) => {
     if (reviewBusy) return
     setReviewBusy(kind)
-    try { await api(route, body) }
+    try { return await api(route, body) }
     catch (error) { toast(error.message, 'error') }
     finally { setReviewBusy('') }
   }
@@ -399,8 +422,15 @@ export function ChatPanel() {
   // Undoing an earlier change is an edit, so it waits until the viewer stops showing a preview.
   const undoChange = () => {
     if (store.previewShown) { toast('Undo is off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.', 'error'); return }
-    return decide('undo', '/api/assistant/change/undo', { id: store.assistantReview?.change?.id })
+    const id = store.assistantReview?.change?.id
+    return Promise.resolve(decide('undo', '/api/assistant/change/undo', { id })).then(result => { if (Number.isSafeInteger(result?.version) && result.history?.redo > 0) setUndoneChange({ id, version: result.version }) })
   }
+  // The change just undone from its card is one Redo away until anything else moves the project.
+  const redoChange = () => {
+    if (store.previewShown) { toast('Redo is off while the viewer shows the assistant preview. Apply or discard it, or choose Back to project.', 'error'); return }
+    return Promise.resolve(decide('redo', '/api/redo', {})).then(() => setUndoneChange(null))
+  }
+  const redoFor = receipts => undoneChange && s.version === undoneChange.version && s.history?.redo !== 0 && receipts.some(receipt => receipt.changeId === undoneChange.id) ? redoChange : null
   // "Show in viewer": on a phone the sheet covers the viewer, so it drops to its bar; the banner over the viewer has Apply and Discard.
   // The store stamps the project it was shown over and forgets it once it no longer applies.
   const showInViewer = on => {
@@ -535,7 +565,7 @@ export function ChatPanel() {
             ${latest && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${Boolean(runActive && review.runId && review.runId !== review.proposal.runId)} busy=${reviewBusy} shown=${shownPreview} onShow=${showInViewer}
               onApply=${() => decide('apply', '/api/assistant/proposal/apply', { id: review.proposal.id })} onDiscard=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.proposal.id })} />` : null}
             ${latest && review?.applying ? html`<${assistantPanel.ApplyingCard} applying=${review.applying} onDismiss=${() => decide('discard', '/api/assistant/proposal/discard', { id: review.applying.id })} />` : null}
-            ${turn.receipts.length || index === changeTurn ? html`<${ResultCard} receipts=${turn.receipts} change=${index === changeTurn ? changeShown : null} busy=${reviewBusy} onUndo=${undoChange} />` : null}
+            ${turn.receipts.length || index === changeTurn ? html`<${ResultCard} receipts=${turn.receipts} change=${index === changeTurn ? changeShown : null} busy=${reviewBusy} onUndo=${undoChange} onRedo=${redoFor(turn.receipts)} />` : null}
           </div>`
         })}
         ${!turns.length && review?.proposal ? html`<${assistantPanel.PreviewCard} proposal=${review.proposal} project=${s.project} version=${s.version} running=${runActive} newRequest=${false} busy=${reviewBusy} shown=${shownPreview} onShow=${showInViewer}

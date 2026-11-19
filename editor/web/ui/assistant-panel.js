@@ -9,7 +9,7 @@ import { editNotes } from '../../core/edit-notes.js'
 import { changeReceipt } from './change-receipt.js'
 import { assistantSuggestions } from './assistant-suggestions.js'
 import { messageHTML } from './message-text.js'
-import { readableChange, settingsSummary, splitChanges } from './change-values.js'
+import { changeKinds, clock, readableChange, settingsSummary, splitChanges } from './change-values.js'
 import { proposalOps } from '../../core/proposal-ops.js'
 
 const html = htm.bind(h)
@@ -39,9 +39,9 @@ function previewChanges(project, proposal) {
     if (!receipt) return { error: 'These edits would not change the project.' }
     // Name layers as the timeline does, and list new nested values one property at a time.
     // A linked video clip and its audio share a name, so each row also says which kind of track it is on.
-    const names = new Map(), kinds = new Map()
-    for (const p of [project, next]) for (const scope of [p, ...Object.values(p.comps ?? {})]) for (const track of scope.tracks ?? []) for (const clip of track.clips ?? []) { names.set(clip.id, clipName(next, clip)); kinds.set(clip.id, track.kind === 'audio' ? 'Audio' : 'Video') }
-    const layers = receipt.clips.map(layer => ({ ...layer, name: names.get(layer.id) ?? layer.name, track: kinds.get(layer.id) ?? '', changes: splitChanges(layer.changes) }))
+    const names = new Map(), places = new Map()
+    for (const p of [project, next]) for (const scope of [p, ...Object.values(p.comps ?? {})]) for (const track of scope.tracks ?? []) for (const clip of track.clips ?? []) { names.set(clip.id, layerName(next, clip, track)); places.set(clip.id, `${track.id} at ${clock(clip.start)}`) }
+    const layers = receipt.clips.map(layer => ({ ...layer, name: names.get(layer.id) ?? layer.name, track: places.get(layer.id) ?? '', changes: splitChanges(layer.changes) }))
     // A clip added to or removed from a track also reorders it; the layer row already says so.
     const settings = receipt.scopes.filter(scope => scope.changes.some(change => change.property !== 'Object order')).map(scope => scope.changes.filter(change => change.property !== 'Object order').every(change => change.property === 'duration') ? { ...scope, name: 'Timeline length' } : scope)
     // The same notes the editor shows under a committed edit: overlaps, shortened text, fonts and the like.
@@ -53,6 +53,21 @@ function previewChanges(project, proposal) {
 }
 
 const plural = (count, one, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
+
+/** A clip's name as the timeline draws it. The sound of a linked video clip says so, so the two rows differ. */
+function layerName(project, clip, track) {
+  const name = clipName(project, clip)
+  return track?.kind === 'audio' && project?.assets?.[clip.src]?.hasVideo ? `${name} audio` : name
+}
+
+/** Where a receipt layer is now: its name, and "V3 at 0:01" from the live project, or the time alone once it is gone. */
+function layerPlace(project, layer) {
+  const scope = layer.comp == null ? project : Object.hasOwn(project?.comps ?? {}, layer.comp) ? project.comps[layer.comp] : null
+  for (const track of scope?.tracks ?? []) for (const clip of track.clips ?? []) {
+    if (clip.id === layer.id) return { name: layerName(project, clip, track), place: `${track.id} at ${clock(clip.start)}` }
+  }
+  return { name: layer.name, place: Number.isFinite(layer.start) ? `at ${clock(layer.start)}` : '' }
+}
 
 const STATUS = { added: 'New', deleted: 'Removed', changed: 'Changed' }
 const MAX_KEYS = 4
@@ -76,7 +91,7 @@ function ChangeList({ changes = [], fps = 30, keyLimit = Infinity }) {
         <span class="change-key-time">${key.time}</span> ${key.status === 'added' ? html`<span>Added ${key.after}</span>` : key.status === 'removed' ? html`<span>Removed ${key.before}</span>` : html`<span>${key.before}</span>${arrow}<span>${key.after}</span>`}
       </li>`)}${row.keys.length > shown.length ? html`<li>${plural(row.keys.length - shown.length, 'more keyframe')}</li>` : null}${row.keys.length ? null : html`<li>No keyframes changed</li>`}</ul></dd>`
     }
-    return html`<dt>${row.label}</dt><dd>${Value({ text: row.before, swatch: row.swatches?.[0] })}${arrow}${Value({ text: row.after, swatch: row.swatches?.[1] })}</dd>`
+    return html`<dt>${row.label}</dt><dd class="change-pair">${Value({ text: row.before, swatch: row.swatches?.[0] })}<span class="change-to">${arrow}${Value({ text: row.after, swatch: row.swatches?.[1] })}</span></dd>`
   })}</dl>`
 }
 
@@ -95,7 +110,7 @@ function PreviewCard({ proposal, project, version, running, newRequest, busy, sh
       : error ? html`<p class="assistant-preview-note" role="alert">This preview cannot be applied: ${error}</p>`
       : html`<p class="assistant-preview-note" role="status">${headline}. Nothing has changed yet${steps.length ? ' and nothing renders until you apply' : ''}.</p>`}
     ${layers.length ? html`<ul class="assistant-preview-list">${layers.slice(0, MAX_LAYERS).map(layer => html`<li key=${`${layer.comp}:${layer.id}`}>
-      <div><b>${layer.name}</b><span class=${`assistant-preview-status ${layer.status}`}>${STATUS[layer.status] ?? layer.status}</span><small>${layer.compositionName} · ${layer.track || layer.id}</small></div>
+      <div><b>${layer.name}</b><span class=${`assistant-preview-status ${layer.status}`}>${STATUS[layer.status] ?? layer.status}</span><small title=${layer.id}>${layer.comp == null ? '' : `${layer.compositionName} · `}${layer.track || `at ${clock(layer.start)}`}</small></div>
       ${layer.status === 'changed' ? ChangeList({ changes: layer.changes.slice(0, MAX_PROPERTIES), fps: fpsOf(project, layer.comp), keyLimit: MAX_KEYS }) : null}
       ${layer.status === 'changed' && layer.changes.length > MAX_PROPERTIES ? html`<small>${plural(layer.changes.length - MAX_PROPERTIES, 'more property', 'more properties')}</small>` : null}
     </li>`)}</ul>` : null}
@@ -104,7 +119,7 @@ function PreviewCard({ proposal, project, version, running, newRequest, busy, sh
     ${notes.map(note => html`<p class="assistant-note">${note}</p>`)}
     ${receipt && !stale ? html`<details class="assistant-preview-details"><summary>Show all changes</summary>
       ${[...receipt.scopes, ...layers].map(item => html`<div class="receipt-layer">
-        <b>${item.name}</b><span class="receipt-meta">${item.compositionName ?? ''} ${item.id ?? ''} · ${STATUS[item.status] ?? item.status}</span>
+        <b title=${item.id ?? undefined}>${String(item.name).replace(/^Track /, '')}</b><span class="receipt-meta">${[item.track && item.id ? item.track : '', STATUS[item.status] ?? item.status].filter(Boolean).join(' · ')}</span>
         ${ChangeList({ changes: item.changes, fps: fpsOf(project, item.comp) })}
       </div>`)}
       ${receipt.truncated ? html`<p class="assistant-preview-note">Some changes or values in this receipt are shortened.</p>` : null}
@@ -146,4 +161,4 @@ function ChangeBar({ change, busy, onUndo }) {
   </div>`
 }
 
-export const assistantPanel = { focus, suggestions: assistantSuggestions, previewChanges, PreviewCard, ApplyingCard, ChangeBar, messageHTML, ChangeList, fpsOf }
+export const assistantPanel = { layerPlace, layerName, changeKinds, STATUS, focus, suggestions: assistantSuggestions, previewChanges, PreviewCard, ApplyingCard, ChangeBar, messageHTML, ChangeList, fpsOf }

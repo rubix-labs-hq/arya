@@ -295,7 +295,7 @@ test('a committed edit is one result card: title, caption, actions and a collaps
   const card = ResultCard({ receipts: [receipt], change: { id: 'c9', kind: 'request', edits: 1, undoable: true }, onUndo: () => undos++ })
   assert.equal(card.type, 'section'); assert.ok(cls(card, 'assistant-result-card'))
   assert.equal(card.props['aria-label'], 'Committed edit result')
-  assert.equal(text(byClass(card, 'receipt-heading')), 'Made 1 edit')
+  assert.equal(text(byClass(card, 'receipt-heading')), '1 change: title')
   assert.equal(text(byClass(card, 'assistant-result-caption')), '1 layer changed')
   const details = byClass(card, 'change-receipt')
   assert.equal(details.type, 'details'); assert.equal(details.props.open, undefined)
@@ -311,8 +311,26 @@ test('a committed edit is one result card: title, caption, actions and a collaps
   assert.equal(text(byClass(ResultCard({ receipts: [receipt], change: { kind: 'preview', edits: 3, undoable: true } }), 'receipt-heading')), 'Applied the preview')
   const undone = ResultCard({ receipts: [{ ...receipt, undone: true }] })
   assert.equal(undone.props['aria-label'], 'Undone edit result')
-  assert.equal(text(byClass(undone, 'receipt-heading')), 'Made 1 edit Undone')
+  assert.equal(text(byClass(undone, 'receipt-heading')), '1 change: title Undone')
   assert.equal(nodes(undone).some(node => node.type === 'button' && text(node) === 'Undo this change'), false)
+  assert.ok(cls(undone, 'undone')); assert.ok(byClass(undone, 'assistant-undone-tag'))
+  // Each state has one way forward: applied offers Undo, the card just undone offers Redo, an older undone card neither.
+  assert.equal(nodes(undone).some(node => node.type === 'button' && /Redo/.test(text(node))), false)
+  let redos = 0
+  const back = ResultCard({ receipts: [{ ...receipt, undone: true }], onRedo: () => redos++ })
+  const redo = nodes(back).find(node => node.type === 'button' && text(node) === 'Redo this change')
+  redo.props.onClick(); assert.equal(redos, 1)
+  assert.equal(text(nodes(ResultCard({ receipts: [{ ...receipt, undone: true }], onRedo: () => {}, busy: 'redo' })).find(node => node.type === 'button' && /Redo/.test(text(node)))), 'Redoing…')
+  assert.equal(nodes(card).some(node => node.type === 'button' && /Redo/.test(text(node))), false, 'an applied card never offers Redo')
+  // One disclosure at the bottom holds the stored names and ids; the rows above use names, track and time.
+  const technical = nodes(card).filter(node => node.props?.class === 'receipt-json')
+  assert.equal(technical.length, 1); assert.equal(text(nodes(technical[0]).find(node => node.type === 'summary')), 'Technical details')
+  const rows = nodes(details).filter(node => node.props?.class === 'receipt-layer').map(node => text(node).replace(text(technical[0]), ''))
+  assert.ok(rows.length); for (const row of rows) assert.doesNotMatch(row, /\bc1\b|title\.text/)
+  // With no receipts (after a reload) the card is one line.
+  const reloaded = ResultCard({ change: { id: 'c9', kind: 'request', edits: 2, undoable: true }, onUndo() {} })
+  assert.ok(cls(reloaded, 'compact')); assert.equal(text(byClass(reloaded, 'receipt-heading')), 'Made 2 edits')
+  assert.equal(nodes(reloaded).some(node => node.type === 'details'), false)
 })
 
 test('setup is one card with one primary action, and the draft stays in the composer', t => {
