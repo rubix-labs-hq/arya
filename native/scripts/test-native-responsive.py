@@ -85,9 +85,8 @@ if base.exists():
     # contextLabel and receiptRow changed their wording on purpose (browser editor terms), so they are not compared.
     for marker in ['private var inputPicker:', 'private func showSettings()', 'private func receiptChanges(', 'private var canSendDraft: Bool']:
         check(normalized(block(assistant, marker)) == normalized(block(original_assistant, marker)), 'Assistant project/selection/import/inspection boundary changed: ' + marker)
-    existing_viewer = original_viewer[original_viewer.index('enum NativeViewerGeometry {'):original_viewer.index('private struct NativeSourceViewer: View {')]
-    proposed_viewer = viewer[viewer.index('enum NativeViewerGeometry {'):viewer.index('private struct NativeSourceViewer: View {')]
-    check('enum NativeViewerGeometry {' in proposed_viewer and len(existing_viewer) > 0, 'Composition geometry block must remain present')
+    # The viewer around it was restyled (the Timeline and Source control), so the geometry enum itself is compared, exactly.
+    check(block(viewer, 'enum NativeViewerGeometry {') == block(original_viewer, 'enum NativeViewerGeometry {'), 'Composition geometry must remain byte-for-byte intact')
     for marker in ['private func markControls(', 'private var placementControls:']:
         check(block(viewer, marker) == block(original_viewer, marker), 'Source mark/place semantics changed: ' + marker)
     check(block(view, '    private func select(_ panel:') == block(original_view, '    private func select(_ panel:'), 'Workspace routing must remain unchanged')
