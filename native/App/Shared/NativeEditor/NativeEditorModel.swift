@@ -620,6 +620,15 @@ struct NativeClipboardActionCapture {
 @MainActor
 final class NativeEditorModel: ObservableObject {
     @Published private(set) var project: NativeProject?
+    /// True once the backend has answered that this folder holds no project. Until then a nil
+    /// project means "still opening", and nothing offers to create one.
+    @Published private(set) var projectMissing = false
+    /// The project request itself failed, so the folder's contents are unknown: offer Try again.
+    @Published private(set) var projectLoadFailed = false
+    /// The name to show before a project is open: opening, not found, or failed to open.
+    var pendingProjectName: String {
+        projectMissing ? "No project" : projectLoadFailed ? "Project did not open" : "Opening project"
+    }
     @Published private(set) var version = -1
     @Published private(set) var changeReceipts: [NativeChangeReceipt] = []
     @Published private(set) var hapticSignal = NativeHapticSignal()
@@ -1006,7 +1015,7 @@ final class NativeEditorModel: ObservableObject {
         pause(); renderTask?.cancel(); renderTask = nil; pendingFrame = nil; renderWorkerID = UUID(); renderer = nil
         proxyTask?.cancel(); proxyTask = nil; proxies = [:]
         generation = UUID(); renderGeneration = UUID()
-        project = nil; version = -1; selectedID = nil; composition = nil
+        project = nil; projectMissing = false; projectLoadFailed = false; version = -1; selectedID = nil; composition = nil
         changeReceipts = []
         timelineClipboard = nil; clipboardEditing = false; clipboardTaskID = nil
         hapticPolicy.reset()
@@ -1037,6 +1046,8 @@ final class NativeEditorModel: ObservableObject {
         } catch {
             guard session.backend === backend else { return }
             status = error.localizedDescription
+            // Only a failed project request leaves the viewer with nothing to show.
+            if project == nil, !projectMissing { projectLoadFailed = true }
         }
     }
 
@@ -1046,7 +1057,11 @@ final class NativeEditorModel: ObservableObject {
         switch event {
         case "project":
             let incomingVersion = Int(fields.number("version", Double(version)))
-            guard incomingVersion >= version, let p = fields["project"] as? [String: Any] else { return }
+            guard incomingVersion >= version, let p = fields["project"] as? [String: Any] else {
+                if project == nil, fields["project"] is NSNull { projectMissing = true; projectLoadFailed = false }
+                return
+            }
+            projectMissing = false; projectLoadFailed = false
             discardRenderPreview(redraw: false); projectRevision = UUID()
             if let receipt = NativeChangeReceipt.make(before: project?.fields, after: p, previousVersion: version,
                                                        version: incomingVersion, who: fields.string("who")) {

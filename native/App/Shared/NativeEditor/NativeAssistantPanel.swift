@@ -25,13 +25,14 @@ enum NativeAssistantLayout {
     }
 
     /// The draft grows with its lines, from two lines to about seven, then scrolls.
-    static func preferredEditorHeight(text: String, width: Double, lineHeight: Double) -> Double {
+    /// A pane with little height, such as a phone on its side, starts at one line.
+    static func preferredEditorHeight(text: String, width: Double, lineHeight: Double, minimumLines: Double = 2) -> Double {
         let lineHeight = lineHeight.isFinite ? max(10, lineHeight) : 17
         let width = width.isFinite ? max(40, width) : 240
         let perLine = max(8, width / (lineHeight * 0.5))
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
             .reduce(0.0) { $0 + max(1, (Double($1.count) / perLine).rounded(.up)) }
-        return min(lineHeight * 7 + 24, max(lineHeight * 2 + 24, lines * lineHeight + 24))
+        return min(lineHeight * 7 + 24, max(lineHeight * max(1, minimumLines) + 24, lines * lineHeight + 24))
     }
 
     /// Send and Stop are reserved first so they stay reachable, then the context chips and the
@@ -63,8 +64,6 @@ struct NativeAssistantEntry: View {
     let open: Bool
     /// A phone header: a 44-point target and no status text beside the label.
     var phone = false
-    /// Wide Mac windows show the keyboard shortcut inside the control.
-    var shortcut = false
     let action: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -91,14 +90,11 @@ struct NativeAssistantEntry: View {
                 if !phone && statusText != "Ready" {
                     Text(statusText).font(.caption).foregroundStyle(NativeEditorStyle.muted).lineLimit(1).fixedSize()
                 }
-                if shortcut {
-                    Text("⌥⌘A").font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize()
-                }
             }
             .padding(.horizontal, phone ? 12 : 10)
             .frame(minHeight: phone ? 44 : 30)
             .background(Capsule().fill(open ? NativeEditorStyle.selectionFill : NativeEditorStyle.background))
-            .overlay { Capsule().stroke(open ? NativeEditorStyle.accent.opacity(0.55) : NativeEditorStyle.line) }
+            .overlay { Capsule().stroke(open ? Color.clear : NativeEditorStyle.line) }
             .foregroundStyle(open ? NativeEditorStyle.accent : NativeEditorStyle.text)
             .contentShape(Capsule())
         }
@@ -171,9 +167,10 @@ struct NativeAssistantPanel: View {
     var inSheet = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
     @FocusState private var draftFocused: Bool
     /// Decides when the actions stack. It grows faster than the drawn rows on purpose.
@@ -192,6 +189,8 @@ struct NativeAssistantPanel: View {
     @State private var inspectedReceipt: NativeChangeReceipt?
     @State private var inspectedReferences: NativeAssistantReferenceInspection?
     @State private var activityExpanded = false
+    @State private var resultChangesExpanded = false
+    @State private var draftWidth = 280.0
     /// Counts the times the run line grew a second line, so the history can keep it in view.
     @State private var runLineGrowth = 0
     @State private var signingIn = false
@@ -206,6 +205,14 @@ struct NativeAssistantPanel: View {
 
     private var chipHeight: Double { max(Self.touch ? 44 : 26, scaledChipHeight) }
     private var headerHeight: Double { max(Double(NativeEditorStyle.minimumControlHeight), Self.touch ? actionHeight : 0) }
+    /// A phone on its side: the composer starts at one line so the conversation keeps its room.
+    private var shortPane: Bool {
+        #if os(iOS)
+        verticalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -216,13 +223,13 @@ struct NativeAssistantPanel: View {
                 context: chipHeight + 18,
                 // An empty draft is at least as tall as its wrapped placeholder, so large text never cuts it.
                 preferredEditor: max(model.assistantDraft.isEmpty ? placeholderHeight : 0,
-                    NativeAssistantLayout.preferredEditorHeight(text: model.assistantDraft, width: width - 40, lineHeight: editorLineHeight)))
+                    NativeAssistantLayout.preferredEditorHeight(text: model.assistantDraft, width: width - 40, lineHeight: editorLineHeight, minimumLines: shortPane ? 1 : 2)))
             VStack(alignment: .leading, spacing: 0) {
                 if regions.header > 0 {
                     assistantHeader.frame(height: regions.header).clipped()
                 }
                 Rectangle().fill(NativeEditorStyle.line).frame(height: regions.separator)
-                conversationScroll.frame(height: regions.history)
+                conversationScroll.frame(height: regions.history).clipped()
                 Rectangle().fill(NativeEditorStyle.line).frame(height: regions.separator)
                 composer(width: width, regions: regions, stacked: stacked)
             }.frame(width: width, height: geometry.size.height, alignment: .topLeading)
@@ -316,7 +323,7 @@ struct NativeAssistantPanel: View {
     private var assistantHeader: some View {
         HStack(spacing: 8) {
             Image(systemName: "text.bubble").foregroundStyle(NativeEditorStyle.accent)
-            Text("Assistant").font(.system(size: 13, weight: .semibold)).lineLimit(1)
+            Text("Arya").font(.system(size: 13, weight: .semibold)).lineLimit(1)
             HStack(spacing: 4) {
                 Circle().fill(assistant.statusColor).frame(width: 6, height: 6)
                 Text(assistant.statusWord).font(.caption).foregroundStyle(NativeEditorStyle.muted).lineLimit(1)
@@ -350,6 +357,15 @@ struct NativeAssistantPanel: View {
             .onChange(of: model.changeReceipts.count) { _, _ in scrollToLatest(proxy) }
             .onChange(of: assistant.proposal?.id) { _, _ in scrollToLatest(proxy) }
             .onChange(of: runLineGrowth) { _, _ in scrollToLatest(proxy) }
+            // A change that has just landed is the thing to read, even while the setup card would
+            // otherwise hold the top of a short sheet: bring its result card and Undo into view.
+            .onChange(of: assistant.lastChange?.id) { _, id in
+                guard id != nil else { return }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(250))
+                    withAnimation(reduceMotion ? nil : NativeMotion.content) { proxy.scrollTo("receipts", anchor: .bottom) }
+                }
+            }
             #if DEBUG
             .onChange(of: assistant.fixtureScroll) { _, _ in scrollToLatest(proxy) }
             #endif
@@ -395,7 +411,11 @@ struct NativeAssistantPanel: View {
 
     private var conversationContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if !assistant.configured && assistant.chat.isEmpty { setupCard.id("setup").modifier(latestSpan("setup")) }
+            // Before any conversation the panel says what Arya does, then offers setup or suggestions.
+            if !assistant.configured && assistant.chat.isEmpty {
+                introBlock
+                setupCard.id("setup").modifier(latestSpan("setup"))
+            }
             if let diagnostic = assistant.localDiagnostic {
                 VStack(alignment: .leading, spacing: 5) {
                     Label("Latest local tool failure", systemImage: "exclamationmark.triangle").font(.system(size: 11, weight: .semibold))
@@ -418,47 +438,84 @@ struct NativeAssistantPanel: View {
             // Suggestions wait until the assistant can take them, so the setup card stays calm.
             if assistant.chat.isEmpty && assistant.configured { emptyState }
             ForEach(Array(assistant.chat.enumerated()), id: \.offset) { index, message in
-                messageRow((try? JSON.parse(message.text) as? [String: Any]) ?? [:]).id(index)
+                messageRow((try? JSON.parse(message.text) as? [String: Any]) ?? [:],
+                           retry: index == assistant.chat.count - 1 && assistant.state == "error" ? lastRequest : nil).id(index)
+                    .transition(NativeMotion.rise(reduceMotion: reduceMotion))
             }
             if assistant.isWorking && !assistant.partialReply.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Writing…").font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                        .modifier(NativeAssistantPulse(active: !reduceMotion))
                     Text(assistant.partialReply).font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine).accessibilityLabel("Reply in progress: \(assistant.partialReply)")
-                .id("stream")
+                .id("stream").transition(.opacity)
             }
-            if assistant.startedAt != nil { runActivity.id("progress") }
-            if assistant.state == "error", let request = lastRequest {
-                Button { editRequest(request) } label: {
-                    Text("Edit and retry").font(.caption).frame(minHeight: Self.touch ? 44 : 20).contentShape(Rectangle())
-                }.buttonStyle(.plain).foregroundStyle(NativeEditorStyle.accent)
-                    .disabled(!model.assistantDraft.isEmpty)
-                    .help("Put the failed request back in the draft. Clear the current draft first.")
+            if assistant.startedAt != nil { runActivity.id("progress").transition(.opacity) }
+            // A failure without its own message still gets its next step, as a button.
+            if assistant.state == "error", let request = lastRequest, !lastMessageFailed {
+                retryButton(request)
             }
             changeCards
             // After a conversation the reason Send is off sits last, and the history scrolls to its top.
             if !assistant.configured && !assistant.chat.isEmpty { setupCard.id("setup").modifier(latestSpan("setup")) }
             Color.clear.frame(height: 1).id("end").modifier(latestSpan("end"))
-        }.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        }
+        // With nothing said yet the introduction sits just above the composer, where the eye and
+        // the hand already are, not at the top of an empty pane.
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: assistant.chat.isEmpty && assistant.proposal == nil ? max(0, historyHeight - 24) : nil,
+               alignment: assistant.chat.isEmpty ? .bottomLeading : .leading)
+        .animation(reduceMotion ? nil : NativeMotion.content, value: assistant.chat.count)
+        .animation(reduceMotion ? nil : NativeMotion.content, value: assistant.state)
+        .animation(reduceMotion ? nil : NativeMotion.content, value: assistant.proposal?.id)
+        .animation(reduceMotion ? nil : NativeMotion.content, value: model.changeReceipts.count)
+    }
+
+    /// What the assistant is, in one line, under its mark.
+    private var introBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "text.bubble").font(.system(size: 17, weight: .medium))
+                .foregroundStyle(NativeEditorStyle.accent)
+                .frame(width: 36, height: 36)
+                .background(NativeEditorStyle.selectionFill, in: Circle())
+                .accessibilityHidden(true)
+            Text("Tell Arya what to change. You approve every edit.")
+                .font(.callout.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+    }
+
+    private var lastMessageFailed: Bool {
+        guard let last = assistant.chat.last else { return false }
+        return ((try? JSON.parse(last.text) as? [String: Any]) ?? [:])["error"] as? Bool == true
+    }
+
+    /// The next step after a failed request. It puts the request back in the draft to send again.
+    private func retryButton(_ request: [String: Any]) -> some View {
+        Button { editRequest(request) } label: { Label("Try again", systemImage: "arrow.clockwise") }
+            .buttonStyle(NativeSecondaryButtonStyle(height: Self.touch ? 44 : 30))
+            .disabled(!model.assistantDraft.isEmpty)
+            .help("Put the failed request back in the draft to send again. Clear the current draft first.")
+            .accessibilityHint("Puts the failed request back in the draft.")
     }
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 10) {
+            introBlock
             Text(model.selectedIDs.isEmpty ? "Ask for an edit, or ask a question about this project." : "Ask for an edit to the selection, or a question about it.")
                 .font(.callout).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
             // Suggestions only fill an empty draft, so one never replaces typed text.
             // Each one is sent as a prompt, not as a script or screenplay.
             if !assistant.suggestions.isEmpty && model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(assistant.suggestions) { item in
+                    ForEach(assistant.suggestions.prefix(4)) { item in
                         Button { useSuggestion(item) } label: {
                             Label(item.label, systemImage: "arrow.turn.down.right")
-                                .font(.callout).frame(maxWidth: .infinity, minHeight: Self.touch ? 44 : 30, alignment: .leading)
+                                .font(.callout).frame(maxWidth: .infinity, minHeight: Self.touch ? 44 : 32, alignment: .leading)
                                 .padding(.horizontal, 10).contentShape(Rectangle())
                         }.buttonStyle(.plain)
-                            .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 7))
-                            .overlay { RoundedRectangle(cornerRadius: 7).stroke(NativeEditorStyle.line) }
+                            .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: NativeRadius.panel))
+                            .overlay { RoundedRectangle(cornerRadius: NativeRadius.panel).stroke(NativeEditorStyle.line) }
                             .disabled(assistant.isWorking)
                             .help(item.prompt + " It goes into the draft for you to review before sending.")
                     }
@@ -475,7 +532,7 @@ struct NativeAssistantPanel: View {
         #endif
     }
 
-    @ViewBuilder private func messageRow(_ fields: [String: Any]) -> some View {
+    @ViewBuilder private func messageRow(_ fields: [String: Any], retry: [String: Any]? = nil) -> some View {
         let fromUser = ["you", "user"].contains(fields.string("role"))
         let text = fields.string("text")
         if fromUser {
@@ -484,24 +541,34 @@ struct NativeAssistantPanel: View {
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 12))
                     .overlay { RoundedRectangle(cornerRadius: 12).stroke(NativeEditorStyle.line) }
-                HStack(spacing: 12) {
+                HStack(spacing: 4) {
                     attachedContextButton(fields)
-                    Button { editRequest(fields) } label: {
-                        Text("Edit request").font(.caption).frame(minHeight: Self.touch ? 44 : 20).contentShape(Rectangle())
-                    }.buttonStyle(.plain).foregroundStyle(NativeEditorStyle.muted)
+                    Button { editRequest(fields) } label: { Label("Edit request", systemImage: "pencil") }
+                        .buttonStyle(NativeAssistantQuietButtonStyle())
                         .disabled(assistant.isWorking || !model.assistantDraft.isEmpty || text.isEmpty)
                         .help("Edit this request as a new draft. Clear the current draft first.")
                 }
             }.frame(maxWidth: .infinity, alignment: .trailing).padding(.leading, 28)
         } else {
             let failed = fields["error"] as? Bool == true
-            VStack(alignment: .leading, spacing: 4) {
-                Label(fields.string("provider").isEmpty ? "Assistant" : NativeAssistant.providerName(fields.string("provider")),
-                      systemImage: failed ? "exclamationmark.triangle.fill" : "text.bubble")
-                    .font(.caption).foregroundStyle(failed ? NativeEditorStyle.error : NativeEditorStyle.muted)
+            // Every reply is signed Arya. The account that answered is in the run line below.
+            let reply = VStack(alignment: .leading, spacing: 4) {
+                Label(failed ? "Arya could not finish" : "Arya", systemImage: failed ? "exclamationmark.triangle.fill" : "text.bubble")
+                    .font(.caption.weight(.medium)).foregroundStyle(failed ? NativeEditorStyle.error : NativeEditorStyle.muted)
                 Text(text).font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             }.frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
+            if failed {
+                // A failure is a card: what happened, then the one next step directly under it.
+                VStack(alignment: .leading, spacing: 10) {
+                    reply
+                    if let retry { retryButton(retry) }
+                }
+                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: NativeRadius.panel))
+                .overlay { RoundedRectangle(cornerRadius: NativeRadius.panel).stroke(NativeEditorStyle.error.opacity(0.45)) }
+                .accessibilityElement(children: .contain).accessibilityLabel("Request failed")
+            } else { reply }
         }
     }
 
@@ -510,15 +577,13 @@ struct NativeAssistantPanel: View {
             let layers = refs.dictionary("sourceSelection")["nativeLayerIDs"] as? [String] ?? refs["clips"] as? [String] ?? []
             Button { inspectedReferences = NativeAssistantReferenceInspection(text: JSON(any: refs).text) } label: {
                 Label(layers.isEmpty ? "Context" : layers.count == 1 ? "1 layer" : "\(layers.count) layers", systemImage: "paperclip")
-                    .font(.caption).frame(minHeight: Self.touch ? 44 : 20).contentShape(Rectangle())
-            }.buttonStyle(.plain).foregroundStyle(NativeEditorStyle.muted)
+            }.buttonStyle(NativeAssistantQuietButtonStyle())
                 .accessibilityLabel(layers.isEmpty ? "Inspect attached context" : "Inspect \(layers.count) attached layer\(layers.count == 1 ? "" : "s")")
         } else if let labels = fields["refs"] as? [[String: Any]], !labels.isEmpty {
             // A request restored from saved history keeps only the labels of what it attached.
             Button { inspectedReferences = NativeAssistantReferenceInspection(text: JSON(any: labels).text) } label: {
                 Label("References", systemImage: "paperclip")
-                    .font(.caption).frame(minHeight: Self.touch ? 44 : 20).contentShape(Rectangle())
-            }.buttonStyle(.plain).foregroundStyle(NativeEditorStyle.muted)
+            }.buttonStyle(NativeAssistantQuietButtonStyle())
                 .accessibilityLabel("Inspect historical reference labels")
         }
     }
@@ -555,14 +620,17 @@ struct NativeAssistantPanel: View {
     private var setupReason: String {
         let pointsAtSettings = ["Choose your signed-in subscription agent in Assistant settings.",
                                 "Continue with ChatGPT in Assistant settings to use your ChatGPT plan."]
-        return chatGPTPrimary && pointsAtSettings.contains(assistant.reason) ? "Use your ChatGPT plan for eligible requests." : assistant.reason
+        if chatGPTPrimary && pointsAtSettings.contains(assistant.reason) { return "Use your ChatGPT plan for eligible requests." }
+        // The model's wording for "no account chosen yet", said plainly.
+        if assistant.reason == pointsAtSettings[0] { return "Choose the signed-in account Arya should use. You do this once, in Assistant settings." }
+        return assistant.reason
     }
 
     private var chatGPTWaiting: Bool { chatGPT.status.phase == .waiting || chatGPT.status.phase == .exchanging }
 
     private var setupCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Set up the assistant").font(.callout.weight(.semibold))
+            Text("Set up Arya").font(.callout.weight(.semibold))
             Text(setupReason).font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
             if chatGPTPrimary && chatGPTWaiting {
                 Label("Finish signing in on the ChatGPT page.", systemImage: "hourglass")
@@ -571,20 +639,13 @@ struct NativeAssistantPanel: View {
                 Text(chatGPT.status.message).font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
             }
             if chatGPTPrimary && !chatGPTWaiting {
-                Button { startChatGPT() } label: {
-                    NativeAssistantProminentLabel {
-                        Text(signingIn ? "Opening ChatGPT…" : "Continue with ChatGPT").frame(maxWidth: .infinity, minHeight: Self.touch ? 30 : 20)
-                    }
-                }.buttonStyle(.borderedProminent).disabled(signingIn || assistant.isWorking)
-                Button { showSettings() } label: {
-                    Text("Other ways to connect").font(.caption).frame(minHeight: Self.touch ? 44 : 20).contentShape(Rectangle())
-                }.buttonStyle(.plain).foregroundStyle(NativeEditorStyle.accent)
+                Button { startChatGPT() } label: { Text(signingIn ? "Opening ChatGPT…" : "Continue with ChatGPT") }
+                    .buttonStyle(NativePrimaryButtonStyle(fill: true)).disabled(signingIn || assistant.isWorking)
+                Button { showSettings() } label: { Text("Other ways to connect") }
+                    .buttonStyle(NativeAssistantQuietButtonStyle())
             } else {
-                Button { showSettings() } label: {
-                    NativeAssistantProminentLabel {
-                        Text("Assistant settings").frame(maxWidth: .infinity, minHeight: Self.touch ? 30 : 20)
-                    }
-                }.buttonStyle(.borderedProminent)
+                Button { showSettings() } label: { Text("Assistant settings") }
+                    .buttonStyle(NativePrimaryButtonStyle(fill: true))
             }
             if let setupNotice {
                 Text(setupNotice).font(.caption).foregroundStyle(NativeEditorStyle.error).fixedSize(horizontal: false, vertical: true)
@@ -594,8 +655,8 @@ struct NativeAssistantPanel: View {
                 .font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 8))
-        .overlay { RoundedRectangle(cornerRadius: 8).stroke(NativeEditorStyle.line) }
+        .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: NativeRadius.panel))
+        .overlay { RoundedRectangle(cornerRadius: NativeRadius.panel).stroke(NativeEditorStyle.line) }
         .accessibilityElement(children: .contain).accessibilityLabel("Assistant setup")
     }
 
@@ -626,6 +687,9 @@ struct NativeAssistantPanel: View {
             let elapsed = seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
             let quiet = working && context.date.timeIntervalSince(assistant.updatedAt ?? context.date) >= 20
             let stopped = assistant.state == "cancelled"
+            // The account that answered is quiet detail beside the time, not the reply's signature.
+            let account = NativeAssistant.providerName(assistant.route.string("provider", assistant.provider))
+            let meta = dynamicTypeSize.isAccessibilitySize || account.isEmpty ? elapsed : "\(elapsed), \(account)"
             // A stopped request that never moved the version says so, instead of asking for a review of edits it did not make.
             let stoppedNote = assistant.lastRunEdited == false ? "Nothing was changed." : "Review or undo any committed edits."
             let stage = working ? (quiet ? "No update for 20 seconds" : assistant.progress.isEmpty ? "Thinking about your request" : assistant.progress) : assistant.state == "done" ? (assistant.outcome.isEmpty ? "Results not verified" : assistant.outcome) : stopped ? stoppedNote : ""
@@ -651,7 +715,7 @@ struct NativeAssistantPanel: View {
                         Text(label).fontWeight(.semibold).lineLimit(1).fixedSize()
                         if !stage.isEmpty && !below { Text(stage).foregroundStyle(NativeEditorStyle.muted).lineLimit(quiet || stopped ? 2 : 1).truncationMode(.tail).multilineTextAlignment(.leading) }
                         Spacer(minLength: 4)
-                        Text(elapsed).monospacedDigit().foregroundStyle(NativeEditorStyle.muted).lineLimit(1).fixedSize()
+                        Text(meta).monospacedDigit().foregroundStyle(NativeEditorStyle.muted).lineLimit(1).fixedSize()
                     }
                     if below { Text(stage).foregroundStyle(NativeEditorStyle.muted).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true) }
                 }.frame(minHeight: Self.touch ? 44 : 22)
@@ -673,37 +737,64 @@ struct NativeAssistantPanel: View {
                                        newRequest: assistant.isWorking && proposal.runID != assistant.currentRunID,
                                        apply: { Task { await assistant.applyProposal() } }, discard: { assistant.discardProposal() }).id("preview")
                 .modifier(latestSpan("preview"))
+                .transition(NativeMotion.rise(reduceMotion: reduceMotion))
         }
         if let applying = assistant.applyingProposal {
             NativeAssistantApplyingCard(applying: applying, dismiss: { assistant.dismissApplyFailure() })
+                .transition(.opacity)
         }
         if assistant.lastChange != nil && !assistant.isWorking && (assistant.applyingProposal.map { $0.finished } ?? true) && !assistant.canUndoLastChange(version: model.version) {
             Text("Can't undo this run: the project changed after it. Use Undo in the editor.")
                 .font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
         }
-        if assistant.canUndoLastChange(version: model.version) || !model.changeReceipts.isEmpty { resultCard.id("receipts") }
+        if assistant.canUndoLastChange(version: model.version) || !model.changeReceipts.isEmpty {
+            resultCard.id("receipts").transition(NativeMotion.rise(reduceMotion: reduceMotion))
+        }
     }
 
     private var resultCard: some View {
         let undoable = assistant.lastChange.flatMap { assistant.canUndoLastChange(version: model.version) ? $0 : nil }
         let latest = model.changeReceipts.last
         let changed = (latest?.clips ?? []).filter { $0.status != "deleted" && model.receiptSelection($0) != nil }
-        let title = undoable.map { $0.kind == "preview" ? "Applied the preview" : $0.kind == "history" ? ReelBackend.historyChangeTitle(moves: $0.moves) : "Made \($0.edits) edit\($0.edits == 1 ? "" : "s")" }
+        let kind = undoable.map { $0.kind == "preview" ? "Applied the preview" : $0.kind == "history" ? ReelBackend.historyChangeTitle(moves: $0.moves) : "Made \($0.edits) edit\($0.edits == 1 ? "" : "s")" }
             ?? "Recent assistant edits"
+        // The sentence says what changed. How it happened is the quiet line under it.
+        let sentence = latest.flatMap { $0.summary.isEmpty ? nil : $0.summary } ?? kind
+        let rows = latest.map(NativeAssistantChangeText.rows) ?? []
         return VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: "checkmark.circle.fill").font(.callout.weight(.semibold))
-                .foregroundStyle(NativeEditorStyle.text)
-            if let latest, !latest.summary.isEmpty {
-                Text(latest.summary).font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(NativeEditorStyle.success).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(sentence).font(.callout.weight(.semibold)).foregroundStyle(NativeEditorStyle.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if sentence != kind {
+                        Text(kind).font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                    }
+                }
+            }.accessibilityElement(children: .combine)
+            if let latest, !rows.isEmpty {
+                // One line counts the change. It opens to the same rows the preview showed.
+                DisclosureGroup(isExpanded: $resultChangesExpanded) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(rows.prefix(12).enumerated()), id: \.offset) { _, row in
+                            NativeAssistantChangeRow(layer: row.layer, change: row.change)
+                        }
+                        if rows.count > 12 {
+                            Text("\(rows.count - 12) more changes are in Details.").font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                        }
+                    }.padding(.top, 4).frame(maxWidth: .infinity, alignment: .leading)
+                } label: {
+                    Text(NativeAssistantChangeText.count(latest)).font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                        .frame(minHeight: Self.touch ? 44 : 22, alignment: .leading)
+                }
+                .accessibilityIdentifier("editor.assistant.resultChanges")
             }
-            // Bordered on every platform: on iPhone and iPad a default button in a list card reads as plain text.
-            // The height is inside each label, so the capsule itself is the 44-point target.
             // Side by side where both fit. A narrow pane stacks them, so no title is cut short.
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) { resultActions(canUndo: undoable != nil, changed: changed) }
                 VStack(alignment: .leading, spacing: 8) { resultActions(canUndo: undoable != nil, changed: changed) }
             }
-            .buttonStyle(.bordered).controlSize(Self.touch ? .regular : .small)
+            .buttonStyle(NativeSecondaryButtonStyle())
             if !model.changeReceipts.isEmpty {
                 DisclosureGroup("Details") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -715,32 +806,31 @@ struct NativeAssistantPanel: View {
             }
         }
         .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-        .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 8))
-        .overlay { RoundedRectangle(cornerRadius: 8).stroke(NativeEditorStyle.line) }
+        .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: NativeRadius.panel))
+        .overlay { RoundedRectangle(cornerRadius: NativeRadius.panel).stroke(NativeEditorStyle.line) }
         .accessibilityElement(children: .contain).accessibilityLabel("Assistant changes")
     }
 
     @ViewBuilder private func resultActions(canUndo: Bool, changed: [NativeChangeReceipt.Clip]) -> some View {
         if canUndo {
-            Button { Task { await assistant.undoLastChange() } } label: { cardAction("Undo this change") }
+            Button { Task { await assistant.undoLastChange() } } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
                 .help("Restore the project from before this assistant change. Undo restores it again.")
+                .accessibilityLabel("Undo this change")
                 .accessibilityIdentifier("editor.assistant.undoChange")
         } else if !model.changeReceipts.isEmpty {
-            Button { model.undo() } label: { cardAction("Undo latest edit") }
+            Button { model.undo() } label: { Label("Undo latest edit", systemImage: "arrow.uturn.backward") }
                 .help("Undo the latest edit in the project, as Undo in the editor does.")
         }
         if changed.count == 1, let clip = changed.first {
-            Button { model.selectReceiptClip(clip) } label: { cardAction("Select \(clip.name)") }
+            Button { model.selectReceiptClip(clip) } label: { Text("Select \(clip.name)") }
                 .accessibilityLabel("Select \(clip.name) in \(clip.compositionName)")
         } else if changed.count > 1 {
             Menu {
                 ForEach(changed) { clip in Button("\(clip.name) · \(clip.compositionName)") { model.selectReceiptClip(clip) } }
-            } label: { cardAction("Select changed layers") }.fixedSize()
+            } label: { Label("Select changed layers", systemImage: "chevron.down").labelStyle(NativeAssistantTrailingIconStyle()) }
+                // A button menu takes the card's secondary style, so it matches Undo beside it.
+                .menuStyle(.button).menuIndicator(.hidden).fixedSize()
         }
-    }
-
-    private func cardAction(_ title: String) -> some View {
-        Text(title).lineLimit(1).frame(minHeight: Self.touch ? 30 : nil)
     }
 
     // MARK: Composer
@@ -774,6 +864,8 @@ struct NativeAssistantPanel: View {
                 .overlay { RoundedRectangle(cornerRadius: 10).stroke(draftFocused ? NativeEditorStyle.accent.opacity(0.5) : NativeEditorStyle.line) }
                 .padding(8)
         }
+        // Until Arya is set up the composer is plainly not ready. A draft typed here is still kept.
+        .opacity(assistant.configured ? 1 : 0.55)
         .background(NativeEditorStyle.panelRaised)
         #if os(iOS)
         .accessibilityIdentifier("editor.assistant.compactComposer")
@@ -800,7 +892,15 @@ struct NativeAssistantPanel: View {
                         .help("Inspect the current selection and request context. Send captures the current selection again.")
                         .accessibilityLabel("Inspect current request context: \(contextDescription)")
                         .accessibilityIdentifier("editor.assistant.composerContext")
-                    chip { HStack(spacing: 5) { Text("Playhead").foregroundStyle(NativeEditorStyle.muted); footerTimecode } }
+                    chip {
+                        HStack(spacing: 5) {
+                            // Beside the Too long chip the word gives way to an icon, so the count stays whole.
+                            if model.assistantDraft.count > assistant.inputCharacterLimit {
+                                Image(systemName: "timer").foregroundStyle(NativeEditorStyle.muted)
+                            } else { Text("Playhead").foregroundStyle(NativeEditorStyle.muted) }
+                            footerTimecode
+                        }
+                    }
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Playhead \(nativeTimecode(model.time, fps: model.fps))")
                     if model.assistantInputKind != "prompt" {
@@ -819,15 +919,17 @@ struct NativeAssistantPanel: View {
             if showsKeyboardDone {
                 // The frame sits inside the label so the whole 44-point target is the button.
                 Button { draftFocused = false } label: {
-                    Text("Done").fontWeight(.semibold).frame(minWidth: 44, minHeight: chipHeight).contentShape(Rectangle())
-                }
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .foregroundStyle(NativeEditorStyle.muted)
+                        .frame(minWidth: 44, minHeight: chipHeight).contentShape(Rectangle())
+                }.buttonStyle(.plain)
                     .padding(.trailing, 14)
                     .accessibilityLabel("Dismiss assistant keyboard")
             }
         }
     }
 
-    /// A phone puts the keyboard's Done in the composer. In the keyboard toolbar it covered
+    /// A phone puts the keyboard's dismiss button in the composer. In the keyboard toolbar it covered
     /// Send: the sheet's keyboard inset leaves out part of that bar, so the pane ran under it.
     private var showsKeyboardDone: Bool {
         #if os(iOS) && !targetEnvironment(macCatalyst)
@@ -850,6 +952,7 @@ struct NativeAssistantPanel: View {
         .focused($draftFocused)
         .font(.body).scrollContentBackground(.hidden)
         .frame(height: height)
+        .onGeometryChange(for: Double.self) { Double($0.size.width) } action: { draftWidth = $0 }
         .padding(4)
         // A hidden copy measures the placeholder where it wraps, whatever height the draft has now.
         .background(alignment: .topLeading) {
@@ -866,6 +969,9 @@ struct NativeAssistantPanel: View {
         }
         // The placeholder wraps. It stays inside the field when a short pane leaves it less room.
         .clipped()
+        // A draft longer than the field fades at the bottom, so a cut line reads as "more below".
+        .modifier(NativeBottomFade(height: 14, color: NativeEditorStyle.background,
+                                   visible: NativeAssistantLayout.preferredEditorHeight(text: model.assistantDraft, width: max(120, draftWidth), lineHeight: editorLineHeight, minimumLines: 1) > height + 12))
         .accessibilityLabel("Assistant prompt or script")
         .accessibilityIdentifier("editor.assistant.draft")
         .onKeyPress(.return, phases: .down) { press in
@@ -884,6 +990,7 @@ struct NativeAssistantPanel: View {
     }
 
     private var draftPlaceholder: String {
+        if !assistant.configured { return "Set up Arya to send requests" }
         if model.assistantInputKind != "prompt" { return "Paste a script to build editable scenes" }
         return model.selectedIDs.isEmpty ? "Ask for an edit, or ask about the project" : "Ask about or change this selection"
     }
@@ -907,9 +1014,10 @@ struct NativeAssistantPanel: View {
             // provider in its label, and a narrow touch row shows Send or Stop as its icon.
             HStack(spacing: 6) {
                 inputMenu
+                // The round 2 widths keep the model name readable on a phone; Send turns to an icon under 440 pt everywhere.
                 previewToggle(iconOnly: width < 360)
                 modelControls(short: width < 420 || compactTouch)
-                if Self.touch && width < 440 { primaryAction.labelStyle(NativeAssistantIconActionStyle()) } else { primaryAction }
+                if width < 440 { primaryAction.labelStyle(NativeAssistantIconActionStyle()) } else { primaryAction }
             }
             // The row is as tall while a request runs as when idle, so Stop keeps Send's target.
             .frame(minHeight: actionHeight)
@@ -940,10 +1048,11 @@ struct NativeAssistantPanel: View {
 
     private var sendButton: some View {
         // The 44-point minimum is inside the label, so the gold capsule itself is the touch target.
-        Button { sendDraft() } label: { NativeAssistantProminentLabel { Label("Send", systemImage: "arrow.up").lineLimit(1).fixedSize().modifier(NativeAssistantPrimaryTarget()) } }
-        .buttonStyle(.borderedProminent).controlSize(.regular)
+        // One style on every platform: amber when the draft can go, a quiet raised control when it cannot.
+        Button { sendDraft() } label: { Label("Send", systemImage: "arrow.up").lineLimit(1).fixedSize() }
+        .buttonStyle(NativePrimaryButtonStyle(height: Self.touch ? 44 : 28))
         .disabled(!assistant.configured || assistant.isWorking || model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.assistantDraft.count > assistant.inputCharacterLimit)
-        .help(assistant.configured ? "Send (Return). Scripts send with Command-Return." : "Set up the assistant to send. Your draft is kept.")
+        .help(assistant.configured ? "Send (Return). Scripts send with Command-Return." : "Set up Arya to send. Your draft is kept.")
         // Named here, because the icon-only row drops the title from the label.
         .accessibilityLabel("Send")
         .accessibilityHint(draftLimitExplanation)
@@ -952,8 +1061,8 @@ struct NativeAssistantPanel: View {
 
     @ViewBuilder private var cancelButton: some View {
         if assistant.isWorking {
-            Button { assistant.cancel() } label: { NativeAssistantProminentLabel { Label(assistant.state == "cancelling" ? "Stopping…" : "Stop", systemImage: "stop.fill").lineLimit(1).fixedSize().modifier(NativeAssistantPrimaryTarget()) } }
-                .buttonStyle(.borderedProminent).controlSize(.regular)
+            Button { assistant.cancel() } label: { Label(assistant.state == "cancelling" ? "Stopping…" : "Stop", systemImage: "stop.fill").lineLimit(1).fixedSize() }
+                .buttonStyle(NativePrimaryButtonStyle(height: Self.touch ? 44 : 28))
                 .disabled(assistant.state == "cancelling")
                 .accessibilityLabel(assistant.state == "cancelling" ? "Stopping request" : "Stop request")
                 .help("Stop this request. Edits it already made stay and can be undone.")
@@ -965,8 +1074,7 @@ struct NativeAssistantPanel: View {
         Toggle(isOn: $assistant.previewChanges) {
             if iconOnly { Image(systemName: "eye") } else { Label("Preview", systemImage: "eye") }
         }
-        .toggleStyle(.button).controlSize(Self.touch ? .regular : .small).fixedSize()
-        .frame(minHeight: Self.touch ? actionHeight : nil)
+        .toggleStyle(NativeAssistantChipToggleStyle(height: Self.touch ? 44 : 28)).fixedSize()
         .disabled(assistant.isWorking)
         .help("Preview changes: see what a request will change, then apply it yourself.")
         .accessibilityLabel("Preview changes")
@@ -992,10 +1100,15 @@ struct NativeAssistantPanel: View {
                 }
             }
         } label: {
-            Image(systemName: "plus").frame(width: Self.touch ? 44 : 26, height: Self.touch ? actionHeight : 26).contentShape(Rectangle())
+            Image(systemName: "plus").font(.system(size: 13, weight: .medium)).foregroundStyle(NativeEditorStyle.text)
+                .frame(width: Self.touch ? 44 : 28, height: Self.touch ? 44 : 28)
+                .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: NativeRadius.control))
+                .overlay { RoundedRectangle(cornerRadius: NativeRadius.control).stroke(NativeEditorStyle.controlLine) }
+                .contentShape(Rectangle())
         }
         #if os(macOS)
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        // A plain button menu, so the whole 28-point square is the target, not a 13-point glyph.
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
         #endif
         .help("Choose prompt, script or screenplay, import text, or use a suggestion")
         .accessibilityLabel("Request input and script attachment")
@@ -1314,10 +1427,9 @@ struct NativeAssistantPanel: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(changes.enumerated()), id: \.offset) { _, change in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(change.property).font(.system(size: 10, weight: .medium, design: .monospaced))
-                    Text("Before: \(change.before)\nAfter: \(change.after)")
-                        .font(.system(size: 10, design: .monospaced)).foregroundStyle(NativeEditorStyle.muted)
-                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    ForEach(Array(NativeAssistantChangeText.readable(change).enumerated()), id: \.offset) { _, item in
+                        NativeAssistantChangeRow(layer: nil, change: item).textSelection(.enabled)
+                    }
                 }
             }
         }
@@ -1346,22 +1458,6 @@ private enum NativeAssistantCardMetrics {
     #endif
 }
 
-/// On iPhone, iPad and Mac Catalyst a prominent button draws its label in the panel's pale text
-/// colour, which is hard to read on the gold fill. This gives the label the dark ink, and the
-/// muted colour while the button is disabled.
-private struct NativeAssistantProminentLabel<Content: View>: View {
-    @Environment(\.isEnabled) private var isEnabled
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        #if os(iOS)
-        content().foregroundStyle(isEnabled ? NativeEditorStyle.accentInk : NativeEditorStyle.muted)
-        #else
-        content()
-        #endif
-    }
-}
-
 /// Send or Stop as its icon alone, wide enough to stay a 44-point target. VoiceOver still
 /// reads the title.
 private struct NativeAssistantIconActionStyle: LabelStyle {
@@ -1370,15 +1466,153 @@ private struct NativeAssistantIconActionStyle: LabelStyle {
     }
 }
 
-/// On touch builds the Send or Stop label fills a capsule of at least 44 by 44 points: the
-/// bordered style adds 12 points on each side and 7 above and below. The Mac keeps its row.
-private struct NativeAssistantPrimaryTarget: ViewModifier {
+/// One changed value in plain words: "opacity 1 to 0.85" or "opacity set to 0.85", never "Absent → 0.84999999999999998".
+enum NativeAssistantChangeText {
+    typealias Item = (property: String, before: String, after: String)
+    /// What a value that is absent reads as.
+    static let missing = "not set"
+
+    /// grade.exposure set to 0.3 instead of /grade: Absent → {"exposure":0.2999…}.
+    static func readable(_ change: NativeChangeReceipt.Change) -> [Item] {
+        let property = change.property.split(separator: "/").joined(separator: ".")
+        if change.before == "Absent", let data = change.after.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return object.keys.sorted().map { key in (property: "\(property).\(key)", before: missing, after: value(object[key] as Any)) }
+        }
+        return [(property: property, before: scalar(change.before), after: scalar(change.after))]
+    }
+
+    /// A receipt value as a person reads it: up to three decimals, "not set" for a missing one.
+    static func scalar(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed == "Absent" || trimmed == "null" || trimmed.isEmpty { return missing }
+        if let number = Double(trimmed), number.isFinite { return decimal(number) }
+        return trimmed
+    }
+
+    static func decimal(_ number: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal; formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0; formatter.maximumFractionDigits = 3
+        let rounded = (number * 1000).rounded() / 1000
+        return formatter.string(from: NSNumber(value: rounded == 0 ? 0 : rounded)) ?? "\(number)"
+    }
+
+    private static func value(_ item: Any) -> String {
+        if let number = item as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() { return decimal(number.doubleValue) }
+        if let text = item as? String { return "\"\(text)\"" }
+        if let data = try? JSONSerialization.data(withJSONObject: item, options: [.fragmentsAllowed]), let text = String(data: data, encoding: .utf8) { return text }
+        return "\(item)"
+    }
+
+    /// "opacity 1 to 0.85". A value with nothing before it reads "opacity set to 0.85", never
+    /// "opacity not set to 0.85", which says the opposite. A cleared one reads "opacity cleared, was 1".
+    static func sentence(_ change: Item) -> String {
+        if change.before.isEmpty && change.after.isEmpty { return change.property }
+        if change.before == missing && change.after == missing { return change.property }
+        if change.before == missing { return "\(change.property) set to \(change.after)" }
+        if change.after == missing { return "\(change.property) cleared, was \(change.before)" }
+        return "\(change.property) \(change.before) to \(change.after)"
+    }
+
+    /// Every changed value in a receipt, each with the layer or settings group it belongs to.
+    static func rows(_ receipt: NativeChangeReceipt) -> [(layer: String, change: Item)] {
+        receipt.scopes.flatMap { scope in scope.changes.flatMap(readable).map { (layer: scope.name, change: $0) } }
+            + receipt.clips.flatMap { clip in
+                clip.status == "changed" ? clip.changes.flatMap(readable).map { (layer: clip.name, change: $0) }
+                    : [(layer: clip.name, change: (property: clip.status == "added" ? "added" : "removed", before: "", after: ""))]
+            }
+    }
+
+    /// "2 layers, opacity": how much changed, on one line.
+    static func count(_ receipt: NativeChangeReceipt) -> String {
+        let layers = max(receipt.totalClips, receipt.clips.count), groups = max(receipt.totalScopes, receipt.scopes.count)
+        var parts: [String] = []
+        if layers > 0 { parts.append("\(layers) layer\(layers == 1 ? "" : "s")") }
+        if groups > 0 { parts.append("\(groups) settings group\(groups == 1 ? "" : "s")") }
+        var names: [String] = []
+        for clip in receipt.clips where clip.status == "changed" {
+            for item in clip.changes.flatMap(readable) {
+                let name = item.property.split(separator: ".").last.map(String.init) ?? item.property
+                if !names.contains(name) { names.append(name) }
+            }
+        }
+        if names.count > 3 { parts.append("\(names.count) properties") }
+        else if !names.isEmpty { parts.append(names.joined(separator: ", ")) }
+        return parts.isEmpty ? "Changes" : parts.joined(separator: ", ")
+    }
+}
+
+/// A changed value as one row: the layer first, then the property and its values, in the body
+/// face with tabular numbers. Monospace is kept for timecode.
+struct NativeAssistantChangeRow: View {
+    let layer: String?
+    let change: NativeAssistantChangeText.Item
+
+    var body: some View {
+        let values = NativeAssistantChangeText.sentence(change)
+        (Text(layer.map { "\($0): " } ?? "").foregroundStyle(NativeEditorStyle.text).fontWeight(.medium)
+            + Text(values).foregroundStyle(NativeEditorStyle.muted))
+            .font(.caption).monospacedDigit().fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A small text action in a message row: "Edit request", "1 layer". The label is quiet, the
+/// target is a full control height.
+struct NativeAssistantQuietButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.medium)).labelStyle(.titleAndIcon).lineLimit(1)
+            .foregroundStyle(NativeEditorStyle.muted.opacity(enabled ? 1 : 0.5))
+            .padding(.horizontal, 8)
+            .frame(minHeight: NativeAssistantCardMetrics.touch ? 44 : 28)
+            .background(configuration.isPressed ? NativeEditorStyle.selectionFill : Color.clear, in: RoundedRectangle(cornerRadius: NativeRadius.control))
+            .contentShape(Rectangle())
+    }
+}
+
+/// A title with its icon after it, for a menu drawn as a button.
+struct NativeAssistantTrailingIconStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) { configuration.title; configuration.icon.font(.caption2.weight(.semibold)) }
+    }
+}
+
+/// Preview as a chip: the eye and the word, amber on a small tint when on, with no bezel.
+struct NativeAssistantChipToggleStyle: ToggleStyle {
+    let height: CGFloat
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            configuration.label
+                .font(.caption.weight(.medium)).lineLimit(1)
+                .foregroundStyle(!enabled ? NativeEditorStyle.muted : configuration.isOn ? NativeEditorStyle.accent : NativeEditorStyle.text)
+                .padding(.horizontal, 9)
+                .frame(minWidth: height, minHeight: height)
+                .background(configuration.isOn ? NativeEditorStyle.selectionFill : NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: NativeRadius.control))
+                .overlay { RoundedRectangle(cornerRadius: NativeRadius.control).stroke(configuration.isOn ? Color.clear : NativeEditorStyle.controlLine) }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(configuration.isOn ? [.isSelected] : [])
+    }
+}
+
+/// The working label breathes while a reply is on its way. Reduce Motion holds it still.
+struct NativeAssistantPulse: ViewModifier {
+    let active: Bool
+    @State private var dim = false
+
     func body(content: Content) -> some View {
-        #if os(iOS)
-        content.frame(minWidth: 20, minHeight: 30).contentShape(Rectangle())
-        #else
-        content
-        #endif
+        content.opacity(active && dim ? 0.45 : 1)
+            .onAppear {
+                guard active else { return }
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { dim = true }
+            }
     }
 }
 
@@ -1405,12 +1639,12 @@ private struct NativeAssistantPreviewCard: View {
                         HStack(spacing: 6) {
                             Text(proposal.names[clip.clipID] ?? clip.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
                             Text(clip.status == "added" ? "New" : clip.status == "deleted" ? "Removed" : "Changed").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
-                            Text("\(clip.compositionName) · \(clip.clipID)").font(.caption2).foregroundStyle(NativeEditorStyle.muted).lineLimit(1)
+                            Text(clip.compositionName).font(.caption2).foregroundStyle(NativeEditorStyle.muted).lineLimit(1)
                         }
                         if clip.status == "changed" {
-                            let changes = clip.changes.flatMap(Self.readable)
+                            let changes = clip.changes.flatMap(NativeAssistantChangeText.readable)
                             ForEach(Array(changes.prefix(4).enumerated()), id: \.offset) { _, change in
-                                Text("\(change.property): \(change.before) → \(change.after)").font(.system(size: 10.5, design: .monospaced)).lineLimit(2)
+                                NativeAssistantChangeRow(layer: nil, change: change)
                             }
                             if changes.count > 4 { note("\(changes.count - 4) more properties") }
                         }
@@ -1434,15 +1668,12 @@ private struct NativeAssistantPreviewCard: View {
             }
             HStack(spacing: 8) {
                 // The heights are inside the labels, so the drawn controls are the 44-point targets.
-                Button(action: apply) {
-                    NativeAssistantProminentLabel { Text("Apply").frame(minHeight: NativeAssistantCardMetrics.touch ? 30 : nil) }
-                }.buttonStyle(.borderedProminent).disabled(stale || running)
+                Button(action: apply) { Text("Apply") }
+                    .buttonStyle(NativePrimaryButtonStyle(height: NativeAssistantCardMetrics.touch ? 44 : 30)).disabled(stale || running)
                     .help(running ? "Wait for the assistant to finish" : "Apply these edits as one undoable change")
                     .accessibilityIdentifier("editor.assistant.applyPreview")
-                // Bordered on every platform. On iPhone, iPad and Mac Catalyst the default is plain text.
-                Button(action: discard) {
-                    Text("Discard").frame(minHeight: NativeAssistantCardMetrics.touch ? 30 : nil).contentShape(Rectangle())
-                }.buttonStyle(.bordered)
+                Button(action: discard) { Text("Discard") }
+                    .buttonStyle(NativeSecondaryButtonStyle(height: NativeAssistantCardMetrics.touch ? 44 : 30))
             }
         }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
         .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 8))
@@ -1476,27 +1707,10 @@ private struct NativeAssistantPreviewCard: View {
     private func changeGroup(title: String, changes: [NativeChangeReceipt.Change]) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.system(size: 11, weight: .medium)).fixedSize(horizontal: false, vertical: true)
-            ForEach(Array(changes.flatMap(Self.readable).enumerated()), id: \.offset) { _, change in
-                Text("\(change.property): \(change.before) → \(change.after)").font(.system(size: 10.5, design: .monospaced))
-                    .foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+            ForEach(Array(changes.flatMap(NativeAssistantChangeText.readable).enumerated()), id: \.offset) { _, change in
+                NativeAssistantChangeRow(layer: nil, change: change)
             }
         }
-    }
-
-    /// grade.exposure: Absent → 0.3 instead of /grade: Absent → {"exposure":0.2999…}.
-    static func readable(_ change: NativeChangeReceipt.Change) -> [(property: String, before: String, after: String)] {
-        let property = change.property.split(separator: "/").joined(separator: ".")
-        if change.before == "Absent", let data = change.after.data(using: .utf8), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            return object.keys.sorted().map { key in (property: "\(property).\(key)", before: "Absent", after: value(object[key] as Any)) }
-        }
-        return [(property: property, before: change.before, after: change.after)]
-    }
-
-    private static func value(_ item: Any) -> String {
-        if let number = item as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() { return String(format: "%g", number.doubleValue) }
-        if let text = item as? String { return "\"\(text)\"" }
-        if let data = try? JSONSerialization.data(withJSONObject: item, options: [.fragmentsAllowed]), let text = String(data: data, encoding: .utf8) { return text }
-        return "\(item)"
     }
 }
 
@@ -1518,10 +1732,9 @@ private struct NativeAssistantApplyingCard: View {
                     .font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(applying.error).font(.caption).foregroundStyle(NativeEditorStyle.error).fixedSize(horizontal: false, vertical: true)
-                Text("Edits made before the failure stay in the project. Use Undo this change to remove them together.").font(.caption).foregroundStyle(NativeEditorStyle.muted)
-                Button(action: dismiss) {
-                    Text("Dismiss").frame(minHeight: NativeAssistantCardMetrics.touch ? 44 : nil).contentShape(Rectangle())
-                }.controlSize(.small)
+                Text("Edits made before the failure stay in the project. Use Undo to remove them together.").font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                Button(action: dismiss) { Text("Dismiss") }
+                    .buttonStyle(NativeSecondaryButtonStyle(height: NativeAssistantCardMetrics.touch ? 44 : 30))
             }
         }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
         .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 8))

@@ -152,7 +152,9 @@ def typecheck_view(repo, temp, viewer, projection, model, controls, kit):
     source += block(projection, 'func nativeTimecode(') + '\n'
     for marker in ['enum NativePanel: String, CaseIterable, Identifiable {', 'struct NativeSourceRange: Equatable {', 'struct NativeRenderPreviewCapture {', 'struct NativeDisplayedFrameCapture {', 'struct NativeViewerColorPicker {', 'struct NativeViewerComparison {']:
         source += block(model, marker) + '\n'
-    for marker in ['enum NativeEditorStyle {', 'enum NativeType {', 'enum NativeRadius {', 'struct NativeToolbarButtonStyle: ButtonStyle {', 'struct NativeTimecodeField: View {']:
+    for marker in ['enum NativeEditorStyle {', 'enum NativeType {', 'enum NativeRadius {', 'struct NativeToolbarButtonStyle: ButtonStyle {', 'struct NativeTimecodeField: View {',
+                   'struct NativePrimaryButtonStyle: ButtonStyle {', 'struct NativeSecondaryButtonStyle: ButtonStyle {', 'private struct NativeActionButton: View {', 'struct NativeMenuButtonStyle: MenuStyle {',
+                   'struct NativeMenuPicker: View {', 'struct NativeSegmentedControl<Value: Hashable>: View {', 'enum NativeMotion {']:
         source += block(controls, marker) + '\n'
     source += WINDOW_CONTROLLER_FIXTURE
     source += r'''
@@ -162,6 +164,7 @@ struct NativeDrawingOverlay:View {let model:NativeEditorModel;let mode:NativeDra
 struct NativeMetalViewer:View {let texture:MTLTexture;var body:some View {EmptyView()}}
 @MainActor final class NativeEditorModel:ObservableObject {
  var project:NativeProject?,metalFrame:ReelRenderedFrame?,selectedID:String?,composition:String?
+ var projectMissing=false,projectLoadFailed=false
  var processingContextID=UUID()
  var renderPreviewBackendID:ObjectIdentifier? {nil}
  var projectReadOnlyReason:String? {nil}

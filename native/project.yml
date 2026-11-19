@@ -94,7 +94,8 @@ targets:
         CFBundleDisplayName: Arya
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         NSHumanReadableCopyright: "Copyright © 2026 Rubix Labs"
         ITSAppUsesNonExemptEncryption: false
         LSApplicationCategoryType: public.app-category.video

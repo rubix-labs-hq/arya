@@ -36,7 +36,7 @@ panes = block(view, 'private func desktopPanes(size: CGSize)')
 check('ScrollView' not in panes, 'Desktop editing shell must not scroll as a workaround')
 for field in ['viewerWidth', 'mediaWidth', 'inspectorWidth', 'assistantWidth', 'viewerHeight', 'timelineHeight']:
     check('layout.' + field in panes, 'Actual pane layout must consume the tested ' + field + ' budget')
-check('}.pickerStyle(.segmented).labelsHidden().frame(width: 168)' in viewer, 'Viewer control must hide its visible label rather than squeeze it into one-letter columns')
+check('NativeSegmentedControl(label: "Viewer", selection: $model.showingSource' in viewer and '.frame(width: 168)' in viewer, 'Viewer control must show Timeline and Source whole, with its name only as the accessibility label')
 check('ViewThatFits(in: .horizontal)' in media and '.fixedSize(horizontal: true, vertical: false)' in media, 'Media must choose a menu when the complete noncompressing tab strip cannot fit')
 check('ForEach(sections, id: \\.self) { Text($0).tag($0) }' in media, 'Compact media picker must expose every section')
 check('NativeEditorStyle.minimumControlHeight + 4' in media, 'Media strip must fit native button height with spare vertical space')
@@ -85,9 +85,8 @@ if base.exists():
     # contextLabel and receiptRow changed their wording on purpose (browser editor terms), so they are not compared.
     for marker in ['private var inputPicker:', 'private func showSettings()', 'private func receiptChanges(', 'private var canSendDraft: Bool']:
         check(normalized(block(assistant, marker)) == normalized(block(original_assistant, marker)), 'Assistant project/selection/import/inspection boundary changed: ' + marker)
-    existing_viewer = original_viewer[original_viewer.index('enum NativeViewerGeometry {'):original_viewer.index('private struct NativeSourceViewer: View {')]
-    proposed_viewer = viewer[viewer.index('enum NativeViewerGeometry {'):viewer.index('private struct NativeSourceViewer: View {')]
-    check(proposed_viewer == existing_viewer.replace('}.pickerStyle(.segmented).frame(width: 168)', '}.pickerStyle(.segmented).labelsHidden().frame(width: 168)'), 'Composition geometry/gesture/lifecycle blocks must remain byte-for-byte intact except source picker label')
+    # The viewer around it was restyled (the Timeline and Source control), so the geometry enum itself is compared, exactly.
+    check(block(viewer, 'enum NativeViewerGeometry {') == block(original_viewer, 'enum NativeViewerGeometry {'), 'Composition geometry must remain byte-for-byte intact')
     for marker in ['private func markControls(', 'private var placementControls:']:
         check(block(viewer, marker) == block(original_viewer, marker), 'Source mark/place semantics changed: ' + marker)
     check(block(view, '    private func select(_ panel:') == block(original_view, '    private func select(_ panel:'), 'Workspace routing must remain unchanged')
