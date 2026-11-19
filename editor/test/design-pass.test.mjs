@@ -240,3 +240,20 @@ test('a dialog keeps Tab inside it, takes focus back from outside and closes on 
   assert.match(captions, /doc\.addEventListener\('keydown', key, true\)/)
   assert.match(captions, /if \(opener\?\.isConnected\) opener\.focus\?\.\(\)/, 'and returns to what opened it')
 })
+
+test('the Clear selection chip button is a 44px touch target and the ruler draws its labels at 11px', () => {
+  // Every chip in the composer that holds a button: the selection chip and the reference chips.
+  const holders = [...chat.matchAll(/<div class="([\w -]+)" role="group" aria-label="[^"]+">(?:(?!<\/div>)[\s\S])*?<span class="chip[^"]*"(?:(?!<\/span>)[\s\S])*?<button aria-label=/g)].map(match => match[1])
+  assert.deepEqual(holders, ['assistant-selection-chips', 'refs'])
+  const touch = assistantCSS.slice(assistantCSS.indexOf('@media (pointer: coarse), (max-width: 720px) {'))
+  const rule = touch.slice(0, touch.indexOf('\n}')).split('\n').find(line => /\.chip button \{/.test(line))
+  assert.match(rule, /min-width: 44px; min-height: 44px;/)
+  for (const holder of holders) assert.match(rule.slice(0, rule.indexOf('{')), new RegExp(`\\.${holder}\\b`), `${holder} chips are covered`)
+  // The ruler, drawn into a canvas that records the font of each label.
+  const timeline = read('ui/timeline.js'), from = timeline.indexOf('function drawRuler('), source = timeline.slice(from, timeline.indexOf('\nfunction ', from + 1))
+  const fonts = [], ctx = { fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fill() {}, closePath() {}, save() {}, restore() {}, measureText: () => ({ width: 10 }), fillText() { fonts.push(ctx.font) } }
+  const store = { zoom: 100, scroll: 0, playhead: 0 }
+  new Function('RULER', 'store', 'tx', 'timecode', 'time', `${source}\nreturn drawRuler`)(26, store, t => t * store.zoom, t => `00:00:${String(Math.floor(t)).padStart(2, '0')}:00`, { t: 0 })(ctx, { fps: 30, markers: [], range: null }, { width: 600 })
+  assert.ok(fonts.length > 3, 'the ruler drew its labels')
+  for (const font of fonts) assert.ok(Number(font.match(/(\d+(?:\.\d+)?)px/)[1]) >= 11, font)
+})

@@ -269,7 +269,7 @@
 .chat .assistant-selection-chips .chip { flex-wrap: wrap; gap: 0 5px; padding: 0 7px; border-radius: 12px; }
 .chat .assistant-selection-chips small { color: var(--muted); opacity: 1; font-size: .9em; overflow-wrap: anywhere; }
 /* The remove button keeps a 24px target without making its chip taller than the others. */
-.chat .assistant-composer-card .refs .chip button { min-width: 24px; min-height: 24px; margin-block: -4px; }
+.chat .assistant-composer-card :is(.refs, .assistant-selection-chips) .chip button { min-width: 24px; min-height: 24px; margin-block: -4px; }
 .chat .assistant-preview-toggle { position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 4px; cursor: pointer; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .chat .assistant-preview-toggle input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
 .assistant-switch { flex: none; width: 24px; height: 14px; border-radius: 999px; background: var(--line-2); position: relative; transition: background-color var(--motion-fast); }
@@ -399,7 +399,7 @@
   .chat .assistant-input-help summary { min-width: 44px; }
   .chat .assistant-primary-action button { width: 44px; min-width: 44px; height: 44px; }
   .chat .assistant-field-context { padding-top: 0; }
-  .chat .assistant-composer-card .refs .chip button { min-width: 44px; min-height: 44px; margin-block: -14px; }
+  .chat .assistant-composer-card :is(.refs, .assistant-selection-chips) .chip button { min-width: 44px; min-height: 44px; margin-block: -14px; }
   /* The link keeps a 44px target while its row stays one line tall. */
   .chat-list .msg.user .assistant-edit-request { min-height: 44px; margin-block: -8px -10px; }
   .chat :is(.change-receipt > summary, .receipt-json > summary, .assistant-preview-details > summary) { padding-block: 15px; }

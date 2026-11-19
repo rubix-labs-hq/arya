@@ -335,7 +335,7 @@ function drawRuler(ctx, p, state) {
   const steps = [1 / p.fps, 2 / p.fps, 5 / p.fps, 10 / p.fps, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600]
   const major = steps.find(s => s * store.zoom >= 90) ?? 600
   const minor = steps.filter(s => s < major).reverse().find(s => s * store.zoom >= 10 && Math.abs(major / s - Math.round(major / s)) < 1e-6)
-  ctx.font = '10px ui-monospace, Menlo, monospace'
+  ctx.font = '11px ui-monospace, Menlo, monospace'
   ctx.textBaseline = 'top'
   const t0 = Math.floor(store.scroll / (minor ?? major)) * (minor ?? major)
   for (let t = t0; tx(t) < state.width; t += minor ?? major) {
