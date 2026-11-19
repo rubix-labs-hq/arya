@@ -278,7 +278,7 @@ struct NativeDeliverPanel: View {
                     Button("4K" + proBadge) { chooseSize(long: 3840, short: 2160) }.accessibilityIdentifier("deliver.size.4k")
                     Button("Canvas") { outputOverrides = false }.accessibilityIdentifier("deliver.size.canvas")
                 }
-                .buttonStyle(NativeSecondaryButtonStyle(height: NativeDeliverMetrics.rowHeight))
+                .buttonStyle(NativeSecondaryButtonStyle(height: NativeEditorStyle.compactControlHeight))
                 .accessibilityElement(children: .contain).accessibilityLabel("Output size")
                 // Start from the canvas only when the person turns this on, so the 1080p and 4K
                 // buttons keep the size they chose.
@@ -842,14 +842,4 @@ struct NativeInterchangeImportSheet: View {
             }
         }
     }
-}
-
-
-/// Deliver's small rows share one height: compact on the Mac, a full touch target elsewhere.
-enum NativeDeliverMetrics {
-    #if os(macOS)
-    static let rowHeight: CGFloat = 26
-    #else
-    static let rowHeight: CGFloat = 44
-    #endif
 }

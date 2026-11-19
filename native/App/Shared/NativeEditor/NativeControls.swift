@@ -30,8 +30,11 @@ enum NativeEditorStyle {
     static let playhead = Color(red: 255 / 255, green: 59 / 255, blue: 74 / 255)
     #if os(iOS)
     static let minimumControlHeight: CGFloat = 44
+    /// A small row control, such as a size choice: still a full touch target.
+    static let compactControlHeight: CGFloat = 44
     #else
     static let minimumControlHeight: CGFloat = 40
+    static let compactControlHeight: CGFloat = 26
     #endif
 
     /// Keeps a toggle's on state amber inside a container whose tint is neutral.

@@ -223,6 +223,8 @@ struct NativeViewer: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .caption) private var viewerReadoutHeight: CGFloat = 16
     @State private var canvasZoom = "Fit"
+    /// When the canvas last began waiting for a frame, so its label can hold back 400 ms.
+    @State private var waitingSince = Date()
     @AppStorage("editor.viewer.guides") private var guides = false
     @State private var gesture: GestureSource?
     @State private var attempted = false
@@ -753,7 +755,7 @@ struct NativeViewer: View {
                 } else if let error = model.renderError, !timelineIsEmpty {
                     Text(error).font(.callout).foregroundStyle(.white).multilineTextAlignment(.center).padding()
                 } else if model.project != nil, !timelineIsEmpty {
-                    NativeViewerPlaceholder(size: CGSize(width: model.width * scale, height: model.height * scale), label: "Rendering frame")
+                    NativeViewerPlaceholder(size: CGSize(width: model.width * scale, height: model.height * scale), label: "Rendering frame", since: waitingSince)
                         .transition(.opacity)
                 } else if model.project == nil, model.projectMissing {
                     // Only once the backend has answered that the folder holds no project.
@@ -764,7 +766,7 @@ struct NativeViewer: View {
                     }
                 } else if model.project == nil {
                     // Still opening: the canvas waits quietly and offers nothing to press.
-                    NativeViewerPlaceholder(size: CGSize(width: model.width * scale, height: model.height * scale), label: "Opening project")
+                    NativeViewerPlaceholder(size: CGSize(width: model.width * scale, height: model.height * scale), label: "Opening project", since: waitingSince)
                         .transition(.opacity)
                 }
                 if timelineIsEmpty {
@@ -797,6 +799,7 @@ struct NativeViewer: View {
             }
             // The first frame fades in over the waiting canvas.
             .animation(.easeOut(duration: 0.15), value: model.metalFrame == nil)
+            .onChange(of: model.metalFrame == nil) { _, waiting in if waiting { waitingSince = Date() } }
             .frame(width: geometry.size.width, height: geometry.size.height).coordinateSpace(name: "nativeViewerViewport").clipped()
             .overlay(alignment: .topLeading) {
                 if model.viewerColorPicker != nil {
@@ -1358,24 +1361,22 @@ private struct NativeSourcePlayerView: UIViewRepresentable {
 private struct NativeViewerPlaceholder: View {
     let size: CGSize
     let label: String
-    @State private var showsLabel = false
+    let since: Date
 
     var body: some View {
         Rectangle().fill(NativeEditorStyle.panel)
             .overlay { Rectangle().stroke(NativeEditorStyle.line) }
             .overlay(alignment: .bottomLeading) {
-                HStack(spacing: 7) {
-                    ProgressView().controlSize(.small)
-                    if showsLabel {
-                        Text(label).font(NativeType.helper).foregroundStyle(NativeEditorStyle.muted).transition(.opacity)
-                    }
+                TimelineView(.periodic(from: since, by: 0.2)) { context in
+                    HStack(spacing: 7) {
+                        ProgressView().controlSize(.small)
+                        if context.date.timeIntervalSince(since) >= 0.4 {
+                            Text(label).font(NativeType.helper).foregroundStyle(NativeEditorStyle.muted).transition(.opacity)
+                        }
+                    }.animation(NativeMotion.content, value: context.date.timeIntervalSince(since) >= 0.4)
                 }.padding(10)
             }
             .frame(width: max(0, size.width), height: max(0, size.height))
-            .task {
-                try? await Task.sleep(for: .milliseconds(400))
-                withAnimation(NativeMotion.content) { showsLabel = true }
-            }
             .accessibilityElement(children: .ignore).accessibilityLabel(label)
     }
 }
