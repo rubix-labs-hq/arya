@@ -162,3 +162,11 @@ test('the hosted media panel says where Create music works instead of showing a 
   assert.match(browser, /host\.kind === 'browser-local' \? html`<p class="muted small hosted-note">Create music is available in Arya for Mac\.<\/p>` : html`<button type="button" class="ghost"[^\n]*>Create music…<\/button>`/)
   assert.doesNotMatch(browser, /Music generation (?:requires|needs)/, 'said once, in one line')
 })
+
+test('the hosted project picker has one primary, Create project, and ghost backup actions', () => {
+  const picker = read('browser-local/workspace.js')
+  assert.equal(picker.match(/class="primary"/g).length, 1)
+  assert.match(picker, /<button type="submit" class="primary" disabled=\$\{blocked\}>Create project<\/button>/)
+  assert.match(picker, /<button class="ghost" disabled=\$\{blocked \|\| !state\.project\}[^\n]*>Download project and media backup<\/button>/)
+  assert.match(picker, /<h2 id="browser-project-title">Your browser projects<\/h2><p class="dialog-subtitle">Saved on this device, not uploaded\.<\/p>/)
+})

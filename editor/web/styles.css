@@ -691,7 +691,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible, summary:focus-v
 }
 @media (max-width: 660px) {
   .page.deliver { display: flex; flex-direction: column; overflow: auto; }
-  .deliver-center { order: 0; flex: none; height: 280px; }
+  .deliver-center { order: 0; flex: none; height: 330px; }
   .deliver-settings { order: 1; flex: none; overflow: visible; }
   .deliver-queue { order: 2; flex: none; overflow: visible; }
 }
