@@ -760,7 +760,7 @@ test('the status poll waits for its answer, so a server slower than the interval
   const { refreshAssistantStatus } = new Function('api', 'set', `${strip(read('ui/assistant-status.js')).replace(/^export /gm, '')}\nreturn { refreshAssistantStatus }`)(() => new Promise((resolve, reject) => requests.push({ resolve, reject })), patch => Object.assign(state, patch))
   const mount = () => {
     const effects = []
-    new Function('h', 'htm', 'useEffect', 'useStore', 'useLayout', 'layoutStyle', 'Divider', 'ChatPanel', 'Settings', 'AssistantSharingReview', 'refreshAssistantStatus', 'setInterval', 'clearInterval', `const host = { kind: "http" };\n${strip(app).replace('export async function mountApp', 'async function mountApp')}\nreturn App()`)(
+    new Function('h', 'htm', 'useEffect', 'useStore', 'useLayout', 'layoutStyle', 'Divider', 'ChatPanel', 'Settings', 'AssistantSharingReview', 'refreshAssistantStatus', 'setInterval', 'clearInterval', `const host = { kind: "http" }, onInspectorReveal = () => {};\n${strip(app).replace('export async function mountApp', 'async function mountApp')}\nreturn App()`)(
       h, htm, (run, deps) => effects.push({ run, deps }), () => state, () => ({}), () => ({}), () => null, () => null, () => null, () => null, refreshAssistantStatus, (run, ms) => timers.push({ run, ms }), id => { timers[id - 1].cleared = true })
     return effects.find(effect => /refreshAssistantStatus\(\)/.test(String(effect.run)))
   }
