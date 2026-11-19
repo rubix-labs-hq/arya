@@ -79,6 +79,13 @@ enum NativeRadius {
     static let chip: CGFloat = 4
 }
 
+/// A stored option such as "softLight" or "none" as words for a menu or a label: "Soft Light", "None".
+enum NativeOptionName {
+    static func words(_ token: String) -> String {
+        token.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression).capitalized
+    }
+}
+
 struct NativeToolbarButtonStyle: ButtonStyle {
     var selected = false
 

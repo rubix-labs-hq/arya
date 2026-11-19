@@ -61,19 +61,22 @@ struct NativeLibraryPanel: View {
         let sourceContextID = model.processingContextID
         VStack(alignment: .leading, spacing: 12) {
             Text("Save editable components in this project, then place or apply independent copies.").font(.caption).foregroundStyle(.secondary)
+            // The section name needs the column's width, so the picker's title is spoken, not drawn beside it.
             Picker("Library section", selection: $category) {
                 ForEach(NativeLibraryCategory.allCases) { category in Label(category.name, systemImage: category.icon).tag(category) }
-            }
+            }.labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
             TextField("Search \(category.name.lowercased())", text: $query).textFieldStyle(.roundedBorder)
-            HStack {
-                Label(category.name, systemImage: category.icon).font(.headline)
-                Spacer()
-                Button("Save selected", systemImage: "plus") {
-                    let source = NativeLibraryCapture(project: sourceProject, selected: sourceSelected, composition: sourceComposition, folder: folder?.standardizedFileURL.path, version: version)
-                    guard formHostActive, sourceContextID == model.processingContextID,
-                          source.matches(project: model.project?.fields ?? [:], folder: model.folder?.standardizedFileURL.path, version: model.version) else { return }
-                    formRequest = NativeLibraryFormRequest(contextID: sourceContextID, capture: source, kind: .save(category))
-                }.disabled(model.project == nil || model.busy)
+            let saveSelected = Button("Save selected", systemImage: "plus") {
+                let source = NativeLibraryCapture(project: sourceProject, selected: sourceSelected, composition: sourceComposition, folder: folder?.standardizedFileURL.path, version: version)
+                guard formHostActive, sourceContextID == model.processingContextID,
+                      source.matches(project: model.project?.fields ?? [:], folder: model.folder?.standardizedFileURL.path, version: model.version) else { return }
+                formRequest = NativeLibraryFormRequest(contextID: sourceContextID, capture: source, kind: .save(category))
+            }.disabled(model.project == nil || model.busy)
+            let sectionTitle = Label(category.name, systemImage: category.icon).font(.headline).lineLimit(1)
+            // A narrow column stacks the heading over the button, so neither is cut short.
+            ViewThatFits(in: .horizontal) {
+                HStack { sectionTitle.fixedSize(); Spacer(); saveSelected.fixedSize() }
+                VStack(alignment: .leading, spacing: 8) { sectionTitle; saveSelected }
             }
             HStack {
                 Button(readingImport ? "Reading component…" : "Import component…", systemImage: "square.and.arrow.down") {
@@ -95,7 +98,7 @@ struct NativeLibraryPanel: View {
                     ForEach(items) { item in row(item) }
                 }
                 if items.isEmpty {
-                    ContentUnavailableView(query.isEmpty ? "No saved \(category.name.lowercased())" : "No matching components", systemImage: category.icon,
+                    ContentUnavailableView(query.isEmpty ? "Nothing saved" : "No matches", systemImage: category.icon,
                         description: Text(query.isEmpty ? NativeLibrarySelection.saveReason(category) + " Then choose Save selected." : "Search by a component's name or description."))
                 }
             }
@@ -481,7 +484,14 @@ private struct NativeLibrarySaveSheet: View {
         _category = State(initialValue: initialCategory)
         let capture = request.capture
         let composition = capture.composition.flatMap { (capture.project["comps"] as? [String: Any])?[$0] as? [String: Any] }
-        _name = State(initialValue: capture.selected.map { NativeClip(fields: $0).name } ?? composition?["name"] as? String ?? "")
+        _name = State(initialValue: capture.selected.map { Self.clipName($0, project: capture.project) } ?? composition?["name"] as? String ?? "")
+    }
+
+    /// A composition clip without a label goes by its composition's name, not by its kind.
+    private static func clipName(_ clip: [String: Any], project: [String: Any]) -> String {
+        if clip["kind"] as? String == "comp", (clip["label"] as? String ?? "").isEmpty,
+           let name = ((project["comps"] as? [String: Any])?[clip["comp"] as? String ?? ""] as? [String: Any])?["name"] as? String, !name.isEmpty { return name }
+        return NativeClip(fields: clip).name
     }
 
     private var source: [String: String]? {
@@ -489,6 +499,12 @@ private struct NativeLibrarySaveSheet: View {
     }
     private var compositionSource: [String: String]? {
         NativeLibrarySelection.source(category: .effect, project: capture.project, selected: capture.selected, composition: capture.composition, asComposition: true)
+    }
+    /// The layer or composition the copy is taken from, by name. IDs stay out of the sheet.
+    private var sourceName: String {
+        if source?["clip"] != nil, let selected = capture.selected { return Self.clipName(selected, project: capture.project) }
+        let comps = capture.project["comps"] as? [String: Any]
+        return (source?["composition"].flatMap { comps?[$0] as? [String: Any] })?["name"] as? String ?? ""
     }
     private var savesComposition: Bool { category == .effect && (source?["composition"] != nil || source?["type"] == "composition") }
     private var validName: Bool { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.utf16.count <= 120 }
@@ -509,16 +525,18 @@ private struct NativeLibrarySaveSheet: View {
                     Picker("Effect source", selection: $effectIndex) {
                         Text("Full effect stack, nodes and grade").tag(-1)
                         ForEach(Array(effects.enumerated()), id: \.offset) { index, effect in
-                            Text("\(index + 1). \(effect.string("type"))").tag(index)
+                            Text("\(index + 1). \(NativeOptionName.words(effect.string("type")))").tag(index)
                         }
                     }
                 }
-                if let source {
-                    Text("Source \(source["clip"] ?? source["composition"] ?? "")").font(.caption).foregroundStyle(.secondary)
+                if source != nil {
+                    if !sourceName.isEmpty { Text("Source: \(sourceName)").font(.caption).foregroundStyle(.secondary) }
                     Text("This saves a reusable copy. Its layers, keyframes and media dependencies stay editable.").font(.caption).foregroundStyle(.secondary)
                 } else { Text(NativeLibrarySelection.saveReason(category)).font(.caption).foregroundStyle(.secondary) }
                 if let error { Text(error).font(.caption).foregroundStyle(.secondary) }
             }
+            // The Mac's column form cut the Description label and the footnote at the sheet's edges.
+            .formStyle(.grouped)
             .navigationTitle("Save component")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { onCancellation(request) } }
@@ -558,6 +576,7 @@ private struct NativeLibraryRenameSheet: View {
                 TextField("Description", text: $description, axis: .vertical).lineLimit(2...5)
                 if let error { Text(error).font(.caption).foregroundStyle(.secondary) }
             }
+            .formStyle(.grouped)
             .navigationTitle("Rename component")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { onCancellation(request) } }

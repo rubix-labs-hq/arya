@@ -695,7 +695,7 @@ struct NativeInspector: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(model.selected?.name ?? (model.composition == nil ? "Project" : "Composition"))
                         .font(.system(size: 12, weight: .semibold)).lineLimit(2).truncationMode(.middle)
-                        .help(model.selected.map { "\($0.name) · \($0.id)" } ?? "Canvas format and new layers")
+                        .help(model.selected?.name ?? "Canvas format and new layers")
                     if let clip = model.selected {
                         Text("\(clip.kind.capitalized) · \(nativeTimecode(clip.duration, fps: model.fps))")
                             .font(.caption2).monospacedDigit().foregroundStyle(NativeEditorStyle.muted)
@@ -756,7 +756,7 @@ struct NativeInspector: View {
                 NativeNumberRow("Rotation", value: clip.fields.number("rotation"), range: -180...180, step: 1) { model.update(clip, ["rotation": $0]) }
                 NativeNumberRow("Opacity", value: clip.fields.number("opacity", 1), range: 0...1) { model.update(clip, ["opacity": $0]) }
                 Picker("Blend", selection: Binding(get: { clip.fields.string("blend", "normal") }, set: { model.update(clip, ["blend": $0]) })) {
-                    ForEach(["normal", "add", "screen", "multiply", "overlay", "softLight", "lighten", "darken", "difference", "colorDodge"], id: \.self) { Text($0).tag($0) }
+                    ForEach(["normal", "add", "screen", "multiply", "overlay", "softLight", "lighten", "darken", "difference", "colorDodge"], id: \.self) { Text(NativeOptionName.words($0)).tag($0) }
                 }
                 Button("Reset transform") { model.update(clip, ["x": NSNull(), "y": NSNull(), "scale": NSNull(), "rotation": NSNull(), "opacity": NSNull()]) }
             }.padding(4)
@@ -793,7 +793,7 @@ struct NativeInspector: View {
                 NativeTitleAppearanceControls(model: model, clip: clip)
                 Picker("Align", selection: Binding(get: { title.string("align", "center") }, set: { model.update(clip, ["title": ["align": $0]]) })) { ForEach(["left", "center", "right"], id: \.self) { Text($0.capitalized).tag($0) } }
                 Picker("Animation", selection: Binding(get: { title.string("anim", "none") }, set: { model.update(clip, ["title": ["anim": $0]]) })) {
-                    ForEach(["none", "fade", "rise", "drop", "pop", "slideLeft", "slideRight", "typewriter", "blurIn", "tracking"], id: \.self) { Text($0).tag($0) }
+                    ForEach(["none", "fade", "rise", "drop", "pop", "slideLeft", "slideRight", "typewriter", "blurIn", "tracking"], id: \.self) { Text(NativeOptionName.words($0)).tag($0) }
                 }
             }.padding(4)
         }
@@ -843,7 +843,7 @@ struct NativeInspector: View {
                     }
                 }
                 Picker("Transition", selection: Binding(get: { clip.fields.dictionary("transitionIn").string("type", "none") }, set: { model.edit(["op": "transition", "id": clip.id, "type": $0, "dur": 0.5]) })) {
-                    ForEach(["none", "crossDissolve", "dipBlack", "dipWhite", "wipeLeft", "wipeRight", "wipeUp", "wipeDown", "slideLeft", "slideRight", "pushLeft", "pushRight", "zoomIn", "iris", "blurDissolve"], id: \.self) { Text($0).tag($0) }
+                    ForEach(["none", "crossDissolve", "dipBlack", "dipWhite", "wipeLeft", "wipeRight", "wipeUp", "wipeDown", "slideLeft", "slideRight", "pushLeft", "pushRight", "zoomIn", "iris", "blurDissolve"], id: \.self) { Text(NativeOptionName.words($0)).tag($0) }
                 }
                 if !clip.fields.dictionary("transitionIn").isEmpty {
                     NativeNumberRow("Transition duration", value: clip.fields.dictionary("transitionIn").number("dur", 0.5), range: (2 / model.fps)...max(clip.duration, clip.fields.dictionary("transitionIn").number("dur", 0.5)), showsSlider: false) {

@@ -311,6 +311,8 @@ struct NativeMenuAvailability: Equatable {
     var canCopy = false
     var canPaste = false
     var canMatchFrame = false
+    /// The compact assistant is open, so the View menu can name what Option-Command-A will do.
+    var compactAssistantOpen = false
 }
 
 @MainActor
@@ -384,7 +386,8 @@ final class EditorSession: ObservableObject {
         let model = nativeEditor
         let next = NativeMenuAvailability(hasSelection: !model.selectedIDs.isEmpty,
                                           canCopy: model.canCopyTimelineSelection, canPaste: model.canPasteTimelineClipboard,
-                                          canMatchFrame: model.canRequestMatchFrame)
+                                          canMatchFrame: model.canRequestMatchFrame,
+                                          compactAssistantOpen: model.mobilePanel == .assistant)
         if next != nativeMenu { nativeMenu = next }
     }
 

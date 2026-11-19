@@ -11,6 +11,8 @@ struct ReelMacApp: App {
     @FocusedValue(\.panelOwnsEditingKeys) private var panelOwnsEditingKeys
     /// Option reveals the developer entries of the View menu, as it does in the workspace menu.
     @ObservedObject private var optionKey = NativeOptionKey.shared
+    /// The same stored flag the editor reads, so the menu item names what it will do.
+    @AppStorage("editor.layout.assistantVisible") private var assistantVisible = false
 
     var body: some Scene {
         Window("Arya", id: "main") {
@@ -85,6 +87,11 @@ struct ReelMacApp: App {
                 .disabled(session.folder == nil)
         }
         CommandGroup(after: .toolbar) {
+            // Option-Command-A lives here, not on the toolbar button, so it works after a click on that button.
+            Button(assistantVisible ? "Hide Assistant" : "Show Assistant", action: toggleAssistant)
+                .keyboardShortcut(editorShortcut("a", modifiers: [.command, .option]))
+                .disabled(session.folder == nil || session.useWebEditor)
+            Divider()
             ForEach(NativePanel.allCases) { page in
                 Button("\(page.name) Page") { session.showPage(page.rawValue) }.disabled(session.folder == nil)
             }
@@ -135,6 +142,16 @@ struct ReelMacApp: App {
     /// a panel that handles them, so Delete in the Color graph unlinks a node, not a clip.
     private func timelineKeyShortcut(_ key: KeyEquivalent, modifiers: EventModifiers) -> KeyboardShortcut? {
         panelOwnsEditingKeys == true ? nil : editorShortcut(key, modifiers: modifiers)
+    }
+
+    /// Unlike the Timeline commands this runs while a text field has focus, so the key also
+    /// closes the assistant from its own draft. It waits while a sheet, a modal or Settings is up.
+    private func toggleAssistant() {
+        guard session.folder != nil, session.error == nil, !session.useWebEditor,
+              MacEditorTextCommandGuard.permitsWindowCommand(
+                editorWindowIsKey: appDelegate.editorWindow != nil && NSApp.keyWindow === appDelegate.editorWindow,
+                hasModal: NSApp.modalWindow != nil, hasSheet: appDelegate.editorWindow?.attachedSheet != nil) else { return }
+        session.nativeEditor.assistantToggleRequests += 1
     }
 
     private func performEditorCommand(_ command: MacEditorCommand) {
@@ -246,7 +263,11 @@ enum MacEditorTextCommandGuard {
     // Explicit Timeline menu admission, not a claim that the canvas owns keyboard focus.
     static func permitsTimelineAction(editorWindowIsKey: Bool, hasModal: Bool, hasSheet: Bool,
                                       textSelectable: Bool, textEditable: Bool) -> Bool {
-        editorWindowIsKey && !hasModal && !hasSheet && !textSelectable && !textEditable
+        permitsWindowCommand(editorWindowIsKey: editorWindowIsKey, hasModal: hasModal, hasSheet: hasSheet) && !textSelectable && !textEditable
+    }
+
+    static func permitsWindowCommand(editorWindowIsKey: Bool, hasModal: Bool, hasSheet: Bool) -> Bool {
+        editorWindowIsKey && !hasModal && !hasSheet
     }
 
     static func protects(keyCode: UInt16, characters: String, command: Bool, control: Bool) -> Bool {

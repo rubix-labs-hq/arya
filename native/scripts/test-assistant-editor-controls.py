@@ -70,10 +70,10 @@ final class Model {
 final class Session { var nativeEditor: Model? = Model() }
 final class Controller {
     var session: Session? = Session()
-''' + show + '\n}\n' + block(model, 'enum NativePanel:') + '\n' + block(view, 'enum NativeCompactWorkspaceRouting {') + '''
+''' + show + '\n}\n' + block(model, 'enum NativePanel:') + '\n' + block(view, 'enum NativeCompactWorkspaceRouting {') + '\n' + block(view, 'enum NativeAssistantVisibility {') + '''
 final class ViewController {
     let model: Model
-    var assistantVisible = false, mediaVisible = false, inspectorVisible = false, expanded = false
+    var assistantVisible = false, assistantFocusRequest = false, mediaVisible = false, inspectorVisible = false, expanded = false
     var lastEditingPanel: NativePanel = .edit
     init(_ model: Model) { self.model = model }
     func dismissCompactKeyboard() {}

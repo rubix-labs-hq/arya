@@ -56,4 +56,28 @@ assert 'if next != held { held = next }' in option, 'Publish Option only when it
 assert 'NSEvent.addLocalMonitorForEvents(matching: .flagsChanged' in option, 'The Mac follows its modifier events'
 assert '#elseif targetEnvironment(macCatalyst)' in option and 'button(forKeyCode: .leftAlt)' in option and 'button(forKeyCode: .rightAlt)' in option, 'Mac Catalyst reads Option from the keyboard, not a constant false'
 assert 'return false' not in option
+# Option-Command-A belongs to one menu command. A second shortcut on the toolbar button made the
+# key do nothing right after a click on that button.
+toggle = re.search(r'Button\(assistantVisible \? "Hide Assistant" : "Show Assistant", action: toggleAssistant\)\n\s*\.keyboardShortcut\(editorShortcut\("a", modifiers: \[\.command, \.option\]\)\)\n\s*\.disabled\((.*)\)', app)
+assert toggle and 'session.useWebEditor' in toggle.group(1), 'View > Show Assistant owns Option-Command-A and stays out of the web editor'
+assert '@AppStorage("editor.layout.assistantVisible") private var assistantVisible' in app, 'The menu item reads the stored panel state'
+mac_toggle = app.split('private func toggleAssistant() {', 1)[1].split('\n    }\n', 1)[0]
+assert 'session.error == nil' in mac_toggle and 'permitsWindowCommand(' in mac_toggle and 'attachedSheet' in mac_toggle and 'modalWindow' in mac_toggle, 'Show Assistant waits while a sheet, a modal or another window is up'
+assert 'textEditable' not in mac_toggle, 'Show Assistant still works from the assistant draft'
+desktop = editor_view.split('private func desktopHeaderActions(width: Double) -> some View {', 1)[1].split('#endif', 1)[0]
+assert 'NativeAssistantEntry(' in desktop and '.keyboardShortcut("a"' not in desktop, 'The Mac toolbar button carries no second Option-Command-A'
+assert 'if compact { if model.mobilePanel == .assistant { closeCompactAssistant() } else { select(.assistant, compact: true) } }\n                else { toggleAssistant() }' in editor_view, 'The menu command runs the same toggle as Ask Arya'
+assert editor_view.count('if !assistantVisible { assistantFocusRequest = true }') == 2, 'A page request that opens the assistant focuses its draft'
+# iPad and Mac Catalyst: the same View menu command owns the key, and only an iPhone button keeps it.
+ios = (root / 'native/App/iOS/ReelIOSApp.swift').read_text()
+assert editor_view.count('.keyboardShortcut("a", modifiers: [.command, .option])') == 0, 'No button carries a fixed Option-Command-A'
+assert editor_view.count('.keyboardShortcut(NativeAssistantShortcut.onButton)') == 1, 'Only the compact Ask Arya button may carry the key, and only on an iPhone'
+assert 'static var menuOwnsKey: Bool { UIDevice.current.userInterfaceIdiom != .phone }' in editor_view
+assert 'static var onButton: KeyboardShortcut? { menuOwnsKey ? nil : key }' in editor_view
+ios_commands = ios.split('.commands {', 1)[1].split('\n    }\n', 1)[0]
+assert 'Button(assistantVisible || session.nativeMenu.compactAssistantOpen ? "Hide Assistant" : "Show Assistant", action: toggleAssistant)' in ios_commands
+assert '.keyboardShortcut(session.useWebEditor || !NativeAssistantShortcut.menuOwnsKey ? nil : NativeAssistantShortcut.key)' in ios_commands, 'The iOS menu owns the key except on an iPhone or in the web editor'
+ios_toggle = ios.split('private func toggleAssistant() {', 1)[1].split('\n    }\n', 1)[0]
+assert 'presentation.sheet == nil' in ios_toggle and 'NativeAssistantShortcut.permits(' in ios_toggle and 'session.error == nil' in ios_toggle, 'The iOS command waits while something is presented'
+assert 'compactAssistantOpen: model.mobilePanel == .assistant' in session
 print('Mac menu state checks passed.')

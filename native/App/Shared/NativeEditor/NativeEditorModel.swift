@@ -136,11 +136,29 @@ enum NativeStatusText {
         // The editor core writes commit lines in lower case, such as "moved c1 to 2s on V1". A line that
         // starts with a capital was written for people, so its paths and names stay exactly as they are.
         guard let first = line.unicodeScalars.first, CharacterSet.lowercaseLetters.contains(first) || CharacterSet.decimalDigits.contains(first) else { return sentence(line) }
+        // Lines that quote a name the person chose. The name is printed once, in curly quotes, without the ID beside it.
+        if let parts = capture(#"^new composition \S+ "(.*)"$"#) { return "New composition “\(parts[0])”." }
+        if let parts = capture(#"^saved (title|composition|effect|transition|motion) "(.*)" as \S+$"#) { return "Saved \(parts[0]) “\(parts[1])” to the library." }
+        if let parts = capture(#"^applied library item "(.*?)"(?: to (\S+))?$"#) {
+            return "Applied library item “\(parts[0])”\(parts[1].isEmpty ? "" : " to \(name(parts[1], names) ?? "a clip")")."
+        }
+        if let parts = capture(#"^renamed library item \S+ to "(.*)"$"#) { return "Renamed a library item to “\(parts[0])”." }
+        if let parts = capture(#"^removed library item "(.*)"$"#) { return "Removed library item “\(parts[0])”." }
+        // Title text and marker labels may hold line breaks or quotes of their own.
+        func quoted(_ text: String) -> String { text.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: " ") }
+        if let parts = capture(#"^added title \S+ "([\s\S]*)"$"#) {
+            let text = quoted(parts[0])
+            return text.isEmpty ? "Added a title." : "Added title “\(text)”."
+        }
+        if let parts = capture(#"^marker \S+ "([\s\S]*)" at (-?[0-9.]+)s$"#) {
+            let label = quoted(parts[0])
+            return label.isEmpty ? "Added a marker at \(parts[1])s." : "Added marker “\(label)” at \(parts[1])s."
+        }
         // The core logs the exact cut time, such as 3.0333333s. Round it as the timeline does.
         if let parts = capture(#"^bladed (\S+) at (-?[0-9.]+)s → (\S+)$"#), let at = Double(parts[1]) {
-            return sentence(replacingIDs(in: "bladed \(parts[0]) at \(String(format: "%.2f", at)) s → \(parts[2])", names))
+            return sentence(replacingIDs(in: "bladed \(parts[0]) at \(String(format: "%.2f", at)) s → \(parts[2])", names, project: project))
         }
-        return sentence(replacingIDs(in: line, names))
+        return sentence(replacingIDs(in: line, names, project: project))
     }
 
     /// The commit summary for clips moved by `delta` seconds, such as Moved “Interview” +0.04 s.
@@ -219,7 +237,7 @@ enum NativeStatusText {
     private static let fileTypes = "mov|mp4|m4v|mkv|avi|webm|mxf|mts|m2ts|mpe?g|3gp|wmv|braw|r3d|wav|mp3|m4a|aac|aif|aiff|flac|ogg|opus|caf|png|jpe?g|heic|heif|avif|gif|tiff?|webp|bmp|svg|psd|exr|dpx|dng|cube|3dl|srt|vtt|json|xml|fcpxml|edl|otio|txt|pdf|zip"
 
     /// Replaces project IDs such as c12, c12a or V2 with names. IDs no longer in the project become plain nouns.
-    private static func replacingIDs(in line: String, _ names: [String: String]) -> String {
+    private static func replacingIDs(in line: String, _ names: [String: String], project: [String: Any]? = nil) -> String {
         guard let regex = try? NSRegularExpression(pattern: #"\b([A-Za-z]{1,2})\d+[a-z]?\b"#),
               let fileEnding = try? NSRegularExpression(pattern: #"^\.(?:\#(fileTypes))(?![A-Za-z0-9\[])"#, options: .caseInsensitive) else { return line }
         let text = line as NSString
@@ -234,13 +252,24 @@ enum NativeStatusText {
             if lead.filter({ $0 == "\"" }).count % 2 == 1 { return false }
             return lead.filter({ $0 == "“" }).count <= lead.filter({ $0 == "”" }).count
         }
+        let matches = regex.matches(in: line, range: NSRange(location: 0, length: text.length)).filter { isReference($0.range) }
+        // Clip IDs are unique across timelines and track IDs are not. A line that names a clip
+        // gets its track names from the one timeline that holds that clip.
+        var local: [String: String] = [:]
+        if let project {
+            let mentioned = Set(matches.map { text.substring(with: $0.range) })
+            let comps = project.dictionary("comps")
+            let timelines = [project.objects("tracks")] + comps.keys.sorted().map { (comps[$0] as? [String: Any] ?? [:]).objects("tracks") }
+            let holding = timelines.filter { $0.contains { $0.objects("clips").contains { mentioned.contains($0.string("id")) } } }
+            if holding.count == 1 { for track in holding[0] where !track.string("name").isEmpty { local[track.string("id")] = "“\(track.string("name"))”" } }
+        }
         var result = line
-        for match in regex.matches(in: line, range: NSRange(location: 0, length: text.length)).reversed() where isReference(match.range) {
+        for match in matches.reversed() {
             guard let range = Range(match.range, in: line), let prefixRange = Range(match.range(at: 1), in: line),
                   let target = Range(match.range, in: result) else { continue }
             let id = String(line[range])
             let replacement: String
-            if let known = name(id, names) { replacement = known }
+            if let known = local[id] ?? name(id, names) { replacement = known }
             else {
                 switch String(line[prefixRange]) {
                 case "c", "Lc": replacement = "a clip"
@@ -647,6 +676,9 @@ final class NativeEditorModel: ObservableObject {
     @Published var composition: String? { didSet { discardRenderPreview(redraw: false); viewerComparison = nil; selectedID = nil; seek(0) } }
     @Published var panel: NativePanel = .edit { didSet { if oldValue != panel { discardRenderPreview() }; if panel == .color { if let metalFrame { frame = try? metalFrame.cgImage() }; requestFrame() } } }
     @Published var requestedWorkspace: NativePanel?
+    /// Counted up by the menu bar's Show Assistant command. The editor view answers each change with the
+    /// same toggle as Ask Arya. A count cannot stick, so a press with no editor on screen is dropped.
+    @Published var assistantToggleRequests = 0
     @Published var time: Double = 0
     @Published var zoom: Double = 80
     @Published private(set) var playing = false

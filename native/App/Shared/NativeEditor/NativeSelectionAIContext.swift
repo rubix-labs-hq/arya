@@ -17,6 +17,8 @@ struct NativeFigmaImportCapture {
 struct NativeSelectionAIContext: Identifiable {
     let id = UUID()
     let label: String
+    /// The timeline the layers come from, by name, for the sheet. The references keep the ID.
+    let scopeName: String
     let refs: [String: Any]
     let suggestions: [String]
     let folder: String?
@@ -83,7 +85,8 @@ struct NativeSelectionAIContext: Identifiable {
         }
         guard bounded(refs) else { return nil }
         let capture = NativeLibraryCapture(project: project, selected: selected, composition: composition, folder: folder, version: version ?? -1)
-        return NativeSelectionAIContext(label: label, refs: refs, suggestions: suggestions, folder: folder, projectCapture: capture)
+        let scopeName = scope == "main" ? "Main timeline" : (comps[scope] as? [String: Any])?["name"] as? String ?? "Composition"
+        return NativeSelectionAIContext(label: label, scopeName: scopeName.isEmpty ? "Composition" : scopeName, refs: refs, suggestions: suggestions, folder: folder, projectCapture: capture)
     }
 
     static func figmaNode(_ clip: [String: Any]) -> String? {

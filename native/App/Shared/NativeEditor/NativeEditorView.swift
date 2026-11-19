@@ -483,6 +483,10 @@ struct NativeEditorView: View {
             .onChange(of: model.requestedWorkspace) { _, _ in
                 showRequestedWorkspace(compact: compact)
             }
+            .onChange(of: model.assistantToggleRequests) { _, _ in
+                if compact { if model.mobilePanel == .assistant { closeCompactAssistant() } else { select(.assistant, compact: true) } }
+                else { toggleAssistant() }
+            }
             .onChange(of: model.panel) { previous, next in
                 if compact {
                     if !NativeCompactWorkspaceRouting.inlineWorkspaces.contains(next) {
@@ -494,6 +498,8 @@ struct NativeEditorView: View {
                     return
                 }
                 if next == .assistant {
+                    // A page request opens the assistant like Ask Arya does, with its draft focused.
+                    if !assistantVisible { assistantFocusRequest = true }
                     assistantVisible = true
                     model.panel = NativePanel.workflow.contains(previous) ? previous : lastEditingPanel
                 } else if NativePanel.workflow.contains(next) {
@@ -1184,8 +1190,9 @@ struct NativeEditorView: View {
             Button { settingsVisible = true } label: { Image(systemName: "gearshape") }
                 .keyboardShortcut(",", modifiers: [.command])
                 .help("Settings (⌘,)").accessibilityLabel("Settings")
+            // The menu bar's Show Assistant command owns Option-Command-A on the Mac. A second
+            // shortcut on this button made the key do nothing right after a click on it.
             NativeAssistantEntry(assistant: session.assistant, open: assistantVisible, action: toggleAssistant)
-                .keyboardShortcut("a", modifiers: [.command, .option])
                 .padding(.horizontal, 4)
             workspaceMenu(compact: false)
         }.buttonStyle(NativeDesktopChromeButtonStyle())
@@ -1316,10 +1323,10 @@ struct NativeEditorView: View {
                         select(.assistant, compact: true)
                     }
                         .accessibilityIdentifier("editor.compactAssistant")
-                        .keyboardShortcut("a", modifiers: [.command, .option])
+                        .keyboardShortcut(NativeAssistantShortcut.onButton)
                 } else {
+                // On an iPad and on Mac Catalyst the View menu owns Option-Command-A, as on the Mac.
                 NativeAssistantEntry(assistant: session.assistant, open: assistantVisible, action: toggleAssistant)
-                    .keyboardShortcut("a", modifiers: [.command, .option])
                     .padding(.horizontal, 4)
                 }
                 workspaceMenu(compact: compact)
@@ -1457,6 +1464,7 @@ struct NativeEditorView: View {
 
     private func select(_ panel: NativePanel, compact: Bool = false) {
         if panel == .assistant && !compact {
+            if !assistantVisible { assistantFocusRequest = true }
             assistantVisible = true
             return
         }
@@ -1618,6 +1626,25 @@ private struct NativeSettingsCategoryControl: View {
 enum NativeDeveloperOptions {
     static func visible(optionHeld: Bool, webEditorInUse: Bool, developerDefault: Bool = UserDefaults.standard.bool(forKey: "editor.developerMenu")) -> Bool {
         optionHeld || webEditorInUse || developerDefault
+    }
+}
+
+/// Who owns Option-Command-A. A shortcut on a button stopped working once right after a click on
+/// that button, so wherever there is a menu bar or a command list the View menu owns the key.
+/// An iPhone has neither, so there the compact Ask Arya button keeps it. One owner, never two.
+@MainActor
+enum NativeAssistantShortcut {
+    static let key = KeyboardShortcut("a", modifiers: [.command, .option])
+    #if os(iOS)
+    static var menuOwnsKey: Bool { UIDevice.current.userInterfaceIdiom != .phone }
+    #else
+    static let menuOwnsKey = true
+    #endif
+    static var onButton: KeyboardShortcut? { menuOwnsKey ? nil : key }
+    /// The View menu command runs only with nothing presented over the editor. The compact
+    /// assistant may itself be the one sheet, and then the command closes it.
+    static func permits(presented: Int, compactAssistantOpen: Bool) -> Bool {
+        presented == 0 || presented == 1 && compactAssistantOpen
     }
 }
 
