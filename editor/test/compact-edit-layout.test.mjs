@@ -70,15 +70,15 @@ function fixture(t, { saved = defaults, width = 1200, focusDocument = null, open
     disconnect() { this.connected = false }
   }
   const localStorage = { getItem: () => JSON.stringify(persisted), setItem: (_key, value) => { persisted = JSON.parse(value); writes.push(copy(persisted)) } }
-  const layout = new Function('deps', `const { h, htm, useState, useReducer, useRef, useEffect, ResizeObserver, localStorage } = deps;\n${layoutSource}\nreturn { useLayout, useCompactEditPanel, useWorkspaceWidth, editPaneSizes, editGridColumns, Divider, LayoutMenu, revealInspector };`)(
+  const set = patch => { mutations.push(copy(patch)); Object.assign(state, patch); if (patch.settingsOpen === true) onSettingsOpen() }
+  const layout = new Function('deps', `const { h, htm, useState, useReducer, useRef, useEffect, ResizeObserver, localStorage } = deps;\n${layoutSource}\nreturn { useLayout, useCompactEditPanel, useWorkspaceWidth, editPaneSizes, editGridColumns, Divider, LayoutMenu, revealInspector, onInspectorReveal };`)(
     { h, htm, useState, useReducer, useRef, useEffect, ResizeObserver, localStorage })
   const components = Object.fromEntries(['Browser', 'Inspector', 'Viewer', 'Timeline', 'Toolbar', 'ScrollTabs'].map(name => [name, function component() {}]))
-  const set = patch => { mutations.push(copy(patch)); Object.assign(state, patch); if (patch.settingsOpen === true) onSettingsOpen() }
   const api = async (route, body) => { requests.push({ route, body }); if (requestOverride) return requestOverride(route, body, state); return route === '/api/recovery' ? { protocol: 1, version: state.version, observed: { status: 'valid', writable: true }, snapshots: [] } : { project: state.project, version: state.version + 1 } }
   const registry = { pages: [{ id: 'motion', label: 'Motion', order: 30, key: '⇧3', component: () => null }] }
   const phone = new Function('deps', `const { h, htm, useState, useRef, useEffect, matchMedia, useStore, viewProject } = deps;\n${phoneSource}\nreturn { PhonePanelControls, usePhoneLayout, compactPanelToPhone, phonePanelToCompact };`)(
     { h, htm, useState, useRef, useEffect, matchMedia, useStore: () => state, viewProject: () => state.openComp == null ? state.project : state.project.comps[state.openComp] })
-  const app = new Function('deps', `const { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, PhonePanelControls, usePhoneLayout, compactPanelToPhone, phonePanelToCompact, useStore, store, set, api, duration, timecode, registry, host, openProjectRecovery, useLayout, useCompactEditPanel, useWorkspaceWidth, editPaneSizes, editGridColumns, Divider, LayoutMenu, Browser, Inspector, Viewer, Timeline, Toolbar, ScrollTabs, assistantState, assistantActivity, moveHistory } = deps;\n${appSource}\nreturn { TopBar, EditPage };`)(
+  const app = new Function('deps', `const { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, PhonePanelControls, usePhoneLayout, compactPanelToPhone, phonePanelToCompact, useStore, store, set, api, duration, timecode, registry, host, openProjectRecovery, useLayout, useCompactEditPanel, useWorkspaceWidth, editPaneSizes, editGridColumns, Divider, LayoutMenu, onInspectorReveal, Browser, Inspector, Viewer, Timeline, Toolbar, ScrollTabs, assistantState, assistantActivity, moveHistory } = deps;\n${appSource}\nreturn { TopBar, EditPage };`)(
     { Icon, h, htm, useState, useRef, useEffect, matchMedia, document, ...phone, useStore: () => state, store: state, set, api, duration, timecode, registry, host: { kind: 'http' }, openProjectRecovery: openRecovery, ...layout, ...components, assistantState, assistantActivity,
       moveHistory: new Function('store', 'api', 'set', 'toast', `${moveHistorySource}\nreturn moveHistory`)(state, api, set, message => toasts.push(message)) })
   function render(name) {
@@ -190,7 +190,29 @@ test('the existing processing action can reveal the compact Inspector', t => {
   const f = fixture(t, { width: 390, saved: { ...defaults, showInspector: false } }); f.pick('Media'); const before = copy(f.state)
   f.layout.revealInspector(); const tree = f.edit()
   assert.equal(tree.props['data-compact-panel'], 'inspector'); assert.equal(componentCount(tree, f.components.Inspector), 1)
-  assert.deepEqual(f.persisted(), { ...defaults, showInspector: true }); assert.equal(f.writes.length, 1); assert.deepEqual(f.state, before)
+  assert.deepEqual(f.persisted(), { ...defaults, showInspector: true }); assert.equal(f.writes.length, 1); assert.deepEqual(f.state, { ...before, sideTab: 'inspector' })
+})
+// innerWidth is what the shell reads to decide whether the assistant shares the inspector's column.
+function windowWidth(t, width) { const had = Object.hasOwn(globalThis, 'innerWidth'), old = globalThis.innerWidth; globalThis.innerWidth = width; t.after(() => { if (had) globalThis.innerWidth = old; else delete globalThis.innerWidth }) }
+test('revealing the Inspector brings its side tab forward while the assistant shares the column', t => {
+  windowWidth(t, 1280)
+  const f = fixture(t, { viewportWidth: 1280 }); Object.assign(f.state, { chatOpen: true, sideTab: 'assistant' })
+  const shared = f.edit()
+  assert.equal(cls(shared, 'side-assistant'), true); assert.equal(pane(shared, 'inspector').props.hidden, true)
+  f.layout.revealInspector(); const tree = f.edit()
+  assert.equal(f.state.sideTab, 'inspector'); assert.equal(cls(tree, 'side-inspector'), true)
+  assert.equal(pane(tree, 'inspector').props.hidden, false); assert.equal(componentCount(tree, f.components.Inspector), 1)
+})
+test('a landscape phone at 932 by 430 is the phone layout, with no shared side column for the tab rules to match', t => {
+  windowWidth(t, 932)
+  const f = fixture(t, { viewportWidth: 932, viewportHeight: 430 }); Object.assign(f.state, { chatOpen: true, sideTab: 'inspector' })
+  const tree = f.edit()
+  assert.equal(cls(tree, 'phone-edit'), true); assert.equal(cls(tree, 'side-assistant') || cls(tree, 'side-inspector'), false)
+  const css = fs.readFileSync(path.join(candidate, 'web/ui/assistant.css'), 'utf8')
+  const mid = css.slice(css.indexOf('@media (min-width: 901px) and (max-width: 1439px) {')); const block = mid.slice(0, mid.indexOf('\n}'))
+  const tabs = block.split('\n').filter(line => /side-tabs[^{]*\{[^}]*display: grid/.test(line))
+  assert.equal(tabs.length, 1)
+  for (const selector of tabs[0].slice(0, tabs[0].indexOf('{')).split(/,(?![^(]*\))/)) assert.match(selector, /\.side-(assistant|inspector)\b/, `${selector.trim()} would show the tabs on a phone`)
 })
 test('selection context follows the current composition without editing the selected title', t => {
   const f = fixture(t, { width: 390 })

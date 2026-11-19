@@ -66,7 +66,9 @@ test('between 901 and 1439px an open assistant takes the inspector column and th
   assert.match(store, /if \(next\.chatOpen === true && !Object\.hasOwn\(next, 'sideTab'\)\) store\.sideTab = 'assistant'/)
   assert.match(chat, /<div class="side-tabs" role="tablist" aria-label="Side panel">/)
   const mid = mediaBlock(assistantCSS, '(min-width: 901px) and (max-width: 1439px)')
-  assert.match(mid, /\.main:has\(> \.page\.edit\) > \.chat\.panel \{ width: 320px; \}/)
+  assert.match(mid, /\.main:has\(> \.page\.edit\.side-assistant\) > \.chat\.panel \{ width: 320px; \}/)
+  // Every rule for the shared column waits for the class the page sets when it shares it, so CSS and the layout code agree.
+  for (const line of mid.split('\n').filter(line => /side-tabs|chat\.panel|divider-chat/.test(line))) for (const selector of line.slice(0, line.indexOf('{')).split(/,(?![^(]*\))/)) assert.match(selector, /side-tabs button|\.side-(assistant|inspector)\b/, selector.trim())
   assert.match(mid, /\.main:has\(> \.page\.edit\.side-inspector\) > :is\(\.chat, \.workspace-divider\.divider-chat\) \{ display: none; \}/, 'the assistant stays mounted behind the Inspector tab')
   assert.match(mid, /\.tl-toolbar \{ flex-wrap: nowrap; \}/, 'the timeline toolbar keeps to one row')
   assert.match(assistantCSS, /\n\.side-tabs \{ display: none; \}/)

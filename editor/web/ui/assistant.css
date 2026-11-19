@@ -364,12 +364,14 @@
   .chat .assistant-preview-first, .chat .assistant-input-tools > .assistant-input-help { display: none; }
 }
 /* Between 901 and 1439px the assistant takes the inspector's column on the Edit page, at 320px, and a
-   two-tab strip switches the column between them. Media, viewer and timeline keep their places. */
+   two-tab strip switches the column between them. Media, viewer and timeline keep their places.
+   The page carries side-assistant or side-inspector only while it shares the column, so a landscape
+   phone and the hosted build, which lay out differently at these widths, show no tabs. */
 .side-tabs { display: none; }
 @media (min-width: 901px) and (max-width: 1439px) {
-  .main:has(> .page.edit) > .chat.panel { width: 320px; }
-  .main:has(> .page.edit) > .workspace-divider.divider-chat { display: none; }
-  .main:has(> .page.edit) > .chat .side-tabs, .page.edit.side-inspector .side-tabs { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 6px 6px 0; padding: 2px; background: var(--input); border: 1px solid var(--line); border-radius: 8px; }
+  .main:has(> .page.edit.side-assistant) > .chat.panel { width: 320px; }
+  .main:has(> .page.edit.side-assistant) > .workspace-divider.divider-chat { display: none; }
+  .main:has(> .page.edit.side-assistant) > .chat .side-tabs, .page.edit.side-inspector .side-tabs { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 6px 6px 0; padding: 2px; background: var(--input); border: 1px solid var(--line); border-radius: 8px; }
   .side-tabs button { min-height: 28px; border-color: transparent; background: transparent; color: var(--muted); font-weight: 500; }
   .side-tabs button.on { background: var(--selection-fill); border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
   .page.edit.side-inspector .edit-inspector-pane { flex-direction: column; gap: 6px; }
