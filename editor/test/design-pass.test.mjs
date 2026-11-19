@@ -154,5 +154,5 @@ test('dialogs share one shell, and Captions from a transcript leads with the tas
 test('the hosted media panel says where Create music works instead of showing a disabled button', () => {
   const browser = read('ui/browser.js')
   assert.match(browser, /host\.kind === 'browser-local' \? html`<p class="muted small hosted-note">Create music is available in Arya for Mac\.<\/p>` : html`<button type="button" class="ghost"[^\n]*>Create music…<\/button>`/)
-  assert.doesNotMatch(browser, /Music generation requires the native app/)
+  assert.doesNotMatch(browser, /Music generation (?:requires|needs)/, 'said once, in one line')
 })
