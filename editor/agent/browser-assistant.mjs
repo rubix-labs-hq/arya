@@ -78,7 +78,8 @@ export function confinedFile(root, value) {
   let actual
   try { actual = fs.realpathSync(existing) } catch { throw failure('Agent files cannot use unresolved symbolic links.') }
   if (actual !== base && !actual.startsWith(base + path.sep)) throw failure('Agent files cannot follow a link outside the project.')
-  return path.join(actual, path.relative(existing, file))
+  const resolved = path.join(actual, path.relative(existing, file))
+  return path.join(path.resolve(root), path.relative(base, resolved))
 }
 
 // A preview step's path names a processing route, not a file. Only the listed routes are

@@ -422,7 +422,7 @@ function resolveMedia(rel) {
     catch (error) { if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR' || path.dirname(folder) === folder) throw new Error(`media outside the project: ${rel}`) }
   }
   const root = fs.realpathSync(ROOT)
-  if (real === root || real.startsWith(root + path.sep)) return real
+  if (real === root || real.startsWith(root + path.sep)) return path.join(ROOT, path.relative(root, real))
   // A registered path or a symlink may reach media, LUTs or fonts elsewhere, but never another kind of file.
   // Return the checked real path, so a symlink swapped in afterwards is not followed.
   if (EXTERNAL_FILE_EXT.test(real) && (!fs.existsSync(real) || fs.statSync(real).isFile() && transportStreamOrOther(real))) return real
