@@ -1,10 +1,12 @@
 // Native exports use the viewer's compositor and audio graph. Mediabunny encodes
 // and muxes the result; the app writes each chunk to its temporary export file.
 import { AudioBufferSource, CanvasSource, Mp4OutputFormat, Output, Quality, StreamTarget, canEncodeAudio, canEncodeVideo } from '/vendor/mediabunny/dist/bundles/mediabunny.min.mjs'
+import { buildDecoderPlans } from '/core/processing-export.js'
 import { api, host } from '../host.js'
 import { AudioEngine } from './audio.js'
 import { Compositor } from './compositor.js'
-import { Media } from './media.js'
+import { neededVideos } from './frame.js'
+import { frameCenter, Media } from './media.js'
 import { Player } from './player.js'
 import { loadLuts } from './worker.js'
 import { NativeExportDrain, waitNativeAdmission } from './native-export-admission.js'
@@ -61,8 +63,8 @@ export async function runNativeExport(project, job) {
   let output, r, failure, receipt
   const drain = new NativeExportDrain()
   let progress = 0, lastCheck = -Infinity
-  let rejectCancellation, pollBusy = false
-  const cancellation = new Promise((_, reject) => { rejectCancellation = reject })
+  let rejectCancellation, pollBusy = false, cancelled = false
+  const cancellation = new Promise((_, reject) => { rejectCancellation = err => { cancelled = true; reject(err) } })
   const wait = operation => drain.wait(operation, cancellation)
   // Poll separately from encoding so Cancel also interrupts an encoder's pending add.
   const poll = setInterval(async () => {
@@ -139,6 +141,10 @@ export async function runNativeExport(project, job) {
         }
       }
       if (video) {
+        if (typeof r.media.planDecoders === 'function') {
+          const plans = await wait(buildDecoderPlans(job.spec, project, neededVideos, frameCenter, { check: () => { if (cancelled) throw new Error('cancelled') } }))
+          await wait(r.media.planDecoders(plans))
+        }
         for (let i = 0; i < frames; i++) {
           await check(0.1 + 0.85 * i / frames)
           await wait(r.player.renderExact(range.in + (i + 0.0001) / fps))

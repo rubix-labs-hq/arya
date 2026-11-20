@@ -23,6 +23,11 @@ function createHandler({ secret, liveMode = true, log = console.info } = {}) {
     if (!secret) return reply(503, { error: 'receiver_not_configured' });
     const signature = req.headers['stripe-signature'];
     if (typeof signature !== 'string') return reply(400, { error: 'invalid_signature' });
+    const declaredLength = req.headers['content-length'];
+    if (declaredLength !== undefined) {
+      const length = Number(declaredLength);
+      if (!Number.isSafeInteger(length) || length < 0 || length > MAX_BODY_BYTES) return reply(413, { error: 'payload_too_large' });
+    }
     const chunks = [];
     let size = 0;
     try {

@@ -70,7 +70,10 @@ test('another site may open the editor page but not load media or call the API',
   assert.equal((await s.raw('/api/project', { ...crossSite, 'sec-fetch-site': 'same-site' })).status, 403)
   for (const route of ['/api/project', '/media?path=media%2Fclip.mp4']) assert.equal((await s.raw(route, navigation)).status, 403, route)
   const page = await s.raw('/', navigation)
-  assert.equal(page.status, 200); assert.equal(page.headers['content-security-policy'], "frame-ancestors 'none'")
+  assert.equal(page.status, 200)
+  assert.match(page.headers['content-security-policy'], /\bframe-ancestors 'none'/)
+  assert.match(page.headers['content-security-policy'], /\bdefault-src 'self'/)
+  assert.match(page.headers['content-security-policy'], /\bobject-src 'none'/)
   assert.notEqual((await s.raw('/api/figma/callback?code=x&state=y', navigation)).status, 403)
   assert.equal((await s.raw('/?worker=1', navigation)).status, 403, 'a query can turn the page into a render worker')
   assert.equal((await s.raw('/api/project', { 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' })).status, 200)
@@ -180,4 +183,16 @@ test('a Figma asset redirect cannot move to another host', { skip: process.platf
   assert.equal(reached, 0, 'no redirect target was contacted')
   assert.match(body, /refusing a redirect from 127\.0\.0\.1:\d+ to localhost:\d+/)
   assert.match(body, /refusing a redirect from 127\.0\.0\.1:\d+ to 127\.0\.0\.1:\d+/, 'another port on the same host is refused too')
+})
+
+test('server refuses invalid port arguments before binding', async t => {
+  const { root } = await folder(t)
+  for (const badPort of ['not-a-port', '-1', '70000']) {
+    const child = spawn(process.execPath, [fileURLToPath(new URL('../server.mjs', import.meta.url)), '--root', root, '--port', badPort], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stderr = ''
+    child.stderr.on('data', d => { stderr += d })
+    const [code] = await once(child, 'exit')
+    assert.notEqual(code, 0, badPort)
+    assert.match(stderr, /Invalid port/, badPort)
+  }
 })

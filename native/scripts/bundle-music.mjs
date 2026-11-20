@@ -35,5 +35,15 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   if (at < 0 || !args[at + 1]) throw new Error('usage: bundle-music.mjs --out <arya-music.js> [--source <music-score.js>]')
   const src = srcAt >= 0 ? args[srcAt + 1] : fileURLToPath(new URL('../../editor/core/music-score.js', import.meta.url))
   const out = args[at + 1], bundle = bundleMusic(fs.readFileSync(src, 'utf8'))
-  fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true }); fs.writeFileSync(out, bundle)
+  fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true })
+  if (!fs.existsSync(out) || fs.readFileSync(out, 'utf8') !== bundle) {
+    const tmp = `${out}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
+    try {
+      fs.writeFileSync(tmp, bundle)
+      fs.renameSync(tmp, out)
+    } catch (error) {
+      try { fs.unlinkSync(tmp) } catch {}
+      throw error
+    }
+  }
 }

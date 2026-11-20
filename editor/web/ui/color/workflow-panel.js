@@ -30,7 +30,7 @@ export function LUTWorkflowPanel({ clip, node }) {
   useEffect(() => { let active = true; api('/api/luts').then(r => { if (active && Array.isArray(r?.luts)) setLuts(r.luts) }).catch(() => {}); return () => { active = false } }, [panel.inspected?.path, state.root])
   const attempt = task => task.catch(() => {})
   const target = lutTarget(clip, node)
-  return html`<div class="node-panel" aria-label="LUT and reference tools">
+  return html`<div class="palette" aria-label="LUT and reference tools">
     <div class="hint">Target: ${target ? `${shownClipName(viewProject(), clip)} · ${target.kind === 'clipGrade' ? 'primary grade' : node.label || `${TYPE_LABEL[node.type] ?? node.type} node`}` : 'Choose a primary, corrector or LUT node on a visual clip.'}</div>
     <div class="field"><label>Import CUBE</label><input type="file" accept=".cube" disabled=${panel.busy || caps.cubeImport !== true} onChange=${e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) attempt(workflow.current.importCube(file)) }} /></div>
     ${caps.cubeImport !== true ? html`<div class="hint">This backend does not support CUBE import.</div>` : null}

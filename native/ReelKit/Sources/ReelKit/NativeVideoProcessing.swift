@@ -36,7 +36,7 @@ public enum NativeVideoProcessing {
         let asset=AVURLAsset(url:file)
         guard let track=try await asset.loadTracks(withMediaType:.video).first else { throw ReelBackend.APIError("This processing needs a video source.") }
         let formats=try await track.load(.formatDescriptions),characteristics=try await track.load(.mediaCharacteristics)
-        let extensions=formats.first.map { CMFormatDescriptionGetExtensions($0) as! [String:Any] } ?? [:]
+        let extensions=formats.first.flatMap { CMFormatDescriptionGetExtensions($0) as? [String:Any] } ?? [:]
         let value=extensions[kCMFormatDescriptionExtension_TransferFunction as String] as? String
         var color=[AVVideoColorPrimariesKey:extensions[kCMFormatDescriptionExtension_ColorPrimaries as String] as? String ?? AVVideoColorPrimaries_ITU_R_709_2,AVVideoTransferFunctionKey:value ?? AVVideoTransferFunction_ITU_R_709_2,AVVideoYCbCrMatrixKey:extensions[kCMFormatDescriptionExtension_YCbCrMatrix as String] as? String ?? AVVideoYCbCrMatrix_ITU_R_709_2]
         // Format descriptions also return opaque values such as "YCbCrMatrix#5".
@@ -63,6 +63,7 @@ public enum NativeVideoProcessing {
 
     public static func scenes(_ file: URL, threshold: Double = 10) async throws -> [Double] {
         let asset=AVURLAsset(url:file), length=try await asset.load(.duration).seconds
+        guard length.isFinite, length > 0, threshold.isFinite else { throw ReelBackend.APIError("Scene analysis needs a video with a finite duration and threshold.") }
         guard let track=try await asset.loadTracks(withMediaType:.video).first else { throw ReelBackend.APIError("Scene analysis needs video.") }
         let fps=max(1,min(60,Double(try await track.load(.nominalFrameRate))))
         let generator=AVAssetImageGenerator(asset:asset)
@@ -72,6 +73,7 @@ public enum NativeVideoProcessing {
         for frame in 0..<Int(ceil(length*fps)) {
             try Task.checkCancellation()
             let t=Double(frame)/fps, image=try await generator.image(at:CMTime(seconds:t,preferredTimescale:60000)).image
+            guard image.width > 0, image.height > 0 else { continue }
             let pixels=try rgba(image), bins=32
             var histogram=[Double](repeating:0,count:bins*3)
             for i in stride(from:0,to:pixels.count,by:4) { for ch in 0..<3 { histogram[ch*bins+Int(pixels[i+ch])*bins/256]+=1 } }
@@ -186,7 +188,10 @@ public enum NativeVideoProcessing {
                 progress((mode=="stabilize" ? 0.3:0)+0.6*Double(frame+1)/Double(frames))
             }
             input.markAsFinished(); writer.endSession(atSourceTime:CMTime(seconds:length,preferredTimescale:60000))
-            await withCheckedContinuation { continuation in writer.finishWriting { continuation.resume() } }
+            try await withTaskCancellationHandler {
+                await withCheckedContinuation { continuation in writer.finishWriting { continuation.resume() } }
+                try Task.checkCancellation()
+            } onCancel: { writer.cancelWriting() }
             guard writer.status == .completed else { throw writer.error ?? ReelBackend.APIError("Cannot finish the processed video.") }
             try Task.checkCancellation()
             if !(try await asset.loadTracks(withMediaType:.audio)).isEmpty {
@@ -279,7 +284,9 @@ public enum NativeVideoProcessing {
     }
 
     static func interpolateHDR(_ left:CIImage,_ right:CIImage,forward:[Float],backward:[Float],fraction:Double,context:CIContext) throws -> CIImage {
-        let width=Int(left.extent.width),height=Int(left.extent.height),count=width*height*4
+        let width=Int(left.extent.width),height=Int(left.extent.height)
+        guard width>0,height>0,fraction.isFinite else { throw ReelBackend.APIError("HDR optical flow needs valid non-empty dimensions and fraction.") }
+        let count=width*height*4
         guard Int(right.extent.width)==width,Int(right.extent.height)==height,forward.count==width*height*2,backward.count==forward.count,Double(count)*Float64(MemoryLayout<Float>.stride)*4.5<=Double(NativeAudioMixer.memoryLimitBytes) else { throw ReelBackend.APIError("HDR optical flow exceeds the device's memory budget or has mismatched dimensions.") }
         var a=[Float](repeating:0,count:count),b=a,out=a
         a.withUnsafeMutableBytes { context.render(left,toBitmap:$0.baseAddress!,rowBytes:width*16,bounds:left.extent,format:.RGBAf,colorSpace:NativeHDR.workingSpace) }
@@ -291,7 +298,7 @@ public enum NativeVideoProcessing {
 
     public static func interpolate(_ left: CGImage, _ right: CGImage, forward: [Float], backward: [Float], fraction: Double) throws -> CGImage {
         let width=left.width,height=left.height
-        guard right.width==width,right.height==height,forward.count==width*height*2,backward.count==forward.count else { throw ReelBackend.APIError("The optical flow dimensions do not match.") }
+        guard width>0,height>0,fraction.isFinite,right.width==width,right.height==height,forward.count==width*height*2,backward.count==forward.count else { throw ReelBackend.APIError("The optical flow dimensions do not match.") }
         let a=try rgba(left), b=try rgba(right); var out=[UInt8](repeating:0,count:a.count)
         func sample(_ data:[UInt8],_ x:Double,_ y:Double,_ ch:Int)->Double {
             let sx=max(0,min(Double(width-1),x)),sy=max(0,min(Double(height-1),y)),ix=Int(sx),iy=Int(sy),fx=sx-Double(ix),fy=sy-Double(iy)
@@ -310,6 +317,10 @@ public enum NativeVideoProcessing {
     }
 
     public static func timeStretch(_ source: NativeAudioProcessing.PCM, speed: Double) throws -> NativeAudioProcessing.PCM {
+        guard source.count > 0, !source.channels.isEmpty, source.channels.allSatisfy({ $0.count == source.count }), speed.isFinite, speed > 0 else { throw ReelBackend.APIError("Invalid audio source or speed for time stretching.") }
+        let targetFrames = (Double(source.count)/speed).rounded()
+        guard targetFrames.isFinite, targetFrames >= 1, targetFrames <= Double(Int.max / 4) else { throw ReelBackend.APIError("The retimed audio length is out of range.") }
+        let count = Int(targetFrames)
         guard let format=AVAudioFormat(commonFormat:.pcmFormatFloat32,sampleRate:Double(source.rate),channels:AVAudioChannelCount(source.channels.count),interleaved:false), let input=AVAudioPCMBuffer(pcmFormat:format,frameCapacity:AVAudioFrameCount(source.count)) else { throw ReelBackend.APIError("Cannot allocate the retimed audio.") }
         input.frameLength=AVAudioFrameCount(source.count)
         for ch in source.channels.indices { source.channels[ch].withUnsafeBufferPointer { data in input.floatChannelData![ch].update(from:data.baseAddress!,count:source.count) } }
@@ -319,7 +330,6 @@ public enum NativeVideoProcessing {
         try engine.enableManualRenderingMode(.offline,format:format,maximumFrameCount:4096)
         player.scheduleBuffer(input,at:nil,options:[]); try engine.start(); player.play()
         defer { player.stop(); engine.stop(); engine.disableManualRenderingMode() }
-        let count=Int((Double(source.count)/speed).rounded())
         var channels=source.channels.map { _ in [Float](); }; channels=channels.map { var a=$0; a.reserveCapacity(count); return a }
         guard let buffer=AVAudioPCMBuffer(pcmFormat:engine.manualRenderingFormat,frameCapacity:4096) else { throw ReelBackend.APIError("Cannot allocate the audio render buffer.") }
         var attempts=0
@@ -327,8 +337,12 @@ public enum NativeVideoProcessing {
             try Task.checkCancellation()
             let n=AVAudioFrameCount(min(4096,count-channels[0].count)), status=try engine.renderOffline(n,to:buffer)
             if status == .success || status == .insufficientDataFromInputNode {
-                for ch in channels.indices { channels[ch].append(contentsOf:UnsafeBufferPointer(start:buffer.floatChannelData![ch],count:Int(buffer.frameLength))) }
-                attempts=0
+                if buffer.frameLength == 0 {
+                    attempts+=1; if attempts>100 { throw ReelBackend.APIError("The audio time stretcher produced no samples.") }
+                } else {
+                    for ch in channels.indices { channels[ch].append(contentsOf:UnsafeBufferPointer(start:buffer.floatChannelData![ch],count:Int(buffer.frameLength))) }
+                    attempts=0
+                }
             } else if status == .cannotDoInCurrentContext { attempts+=1; if attempts>100 { throw ReelBackend.APIError("The audio time stretcher stalled.") } }
             else { throw ReelBackend.APIError("The audio time stretcher failed.") }
         }

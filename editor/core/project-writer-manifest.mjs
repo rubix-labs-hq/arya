@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 
-export const SOURCE_SHA256 = 'bceb89c07c47bcc7894defae89b8b83c4c8fa3873547eb37484043b1d258c0ff'
+export const SOURCE_SHA256 = 'e90ebef7df8b436e2c8f7593f7121e6e23bc606e4fde8ec527427012e9e4136d'
 export const JOURNAL_SHA256 = 'f44fb747dc2b3dbc357d6cb3a5235004ea6718b8c14d7c6aaf215eb3849efa4a'
 export const JOURNAL_DEPENDENCIES = {"project-recovery.mjs": "d25de3f5c63d75440ce660517276d539d48e13110af75839df85342b890a60f3", "output-path.js": "b0379597c9b7526f99f05f2d28754637e579eefb0f78bdfe05b5e27f6d6d1822", "native-recovery-policy.js": "1d7dee6285505d333599b317259f79a18788c0ffef2e59f9641fb5cd32be3175", "transcript-draft-store.mjs": "1026617d3ce23116c082ddcfacc6aab72d358c951915212f7dee326e69bf8b1f"}
 export const CAPABILITY = { ok: true, protocol: 1, testHooks: false, platform: 'darwin', metadata: 'acl-xattr-mode-owner-group', publicationLock: 'recovery-flock-v1', expectedIdentity: 'main-device-inode-v1', journalExec: 'recovery-flock-v1', journalPrivacy: 'empty-directory-acl-v1', draftJournalPrivacy: 'retained-private-stage-v1' }

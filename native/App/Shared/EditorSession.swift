@@ -616,6 +616,10 @@ final class EditorSession: ObservableObject {
         open(url)
     }
 
+    func forgetRecent(_ recent: ProjectBookmarks.Recent) {
+        recents = ProjectBookmarks.forget(recent)
+    }
+
     /// Makes `url` a project folder with a new empty project named after it, then opens it.
     #if os(macOS)
     func create(at url: URL, width: Int = 1920, height: Int = 1080, fps: Double = 30) {

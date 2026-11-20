@@ -81,7 +81,7 @@ struct NativeColorPanel: View {
                     if let clip = model.selected, clip.kind != "audio" {
                         // Wheels first, as on Resolve's Color page: scopes, then the primaries,
                         // curves and qualifiers, then the node graph.
-                        #if os(iOS)
+                        #if os(iOS) && !targetEnvironment(macCatalyst)
                         let wide = geometry.size.width >= 484
                         mobileGradeTarget(clip)
                         if wide { scopeControls(width: geometry.size.width) }
@@ -125,7 +125,10 @@ struct NativeColorPanel: View {
 
     private var sessionWorkspace: some View {
         selectionWorkspace
-        .sheet(item: $savingPreset) { destination in NativeColorPresetSaveSheet(model: model, session: session, destination: destination, currentNode: nodeID, save: saveNodePreset) }
+        .sheet(item: $savingPreset) { destination in
+            NativeColorPresetSaveSheet(model: model, session: session, destination: destination, currentNode: nodeID, save: saveNodePreset)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+        }
         .onChange(of: session.sessionID) { _, _ in resetColorSession() }
         .onChange(of: curveChannel) { _, _ in invalidateGradePreview() }
         .onChange(of: palette) { _, _ in invalidateGradePreview() }
@@ -236,7 +239,7 @@ struct NativeColorPanel: View {
         let actionCapture = NativeColorWorkflowCapture.capture(model: model, session: session, node: nodeID, renderedVersion: model.version)
         let canGrade = clip.nodes.isEmpty || ["primary", "corrector"].contains(node?.string("type") ?? "")
         VStack(alignment: .leading, spacing: 12) {
-            #if os(iOS)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             Menu {
                 ForEach(["Primaries", "Curves", "Look", "Node"], id: \.self) { item in
                     Button(item) { palette = item }.disabled(item != "Node" && !canGrade)
@@ -262,9 +265,9 @@ struct NativeColorPanel: View {
                 Text("Adjustment clips render their primary grade. Their node graph does not render yet.").font(.system(size: 11)).foregroundStyle(NativeEditorStyle.accent)
             }
             if canGrade && palette == "Primaries" {
-                #if os(iOS)
-                // An iPad inspector has room for all four wheels; a phone shows one at a time.
-                if width >= 460 { primaryGrid(clip, grade: grade, primary: primary, width: width) }
+                #if os(iOS) && !targetEnvironment(macCatalyst)
+                // An iPad inspector has room for a 2x2 wheel grid; a narrow phone shows one at a time.
+                if width >= 300 { primaryGrid(clip, grade: grade, primary: primary, width: width) }
                 else { mobilePrimaries(clip, grade: grade, primary: primary) }
                 #else
                 primaryGrid(clip, grade: grade, primary: primary, width: width)
@@ -294,15 +297,18 @@ struct NativeColorPanel: View {
                             .buttonStyle(NativeToolbarButtonStyle(selected: grade.string("look", "none") == look))
                     }
                 }
-                Picker("Inspect LUT", selection: Binding(get: { inspectedLUT?.path ?? grade.string("lut") }, set: { path in
-                    if let actionCapture {
-                        if path.isEmpty { clearGradeLUT(clip, primary: primary, capture: actionCapture) }
-                        else { inspectColorLUT(path, capture: actionCapture) }
+                LabeledContent {
+                    Picker("Inspect LUT", selection: Binding(get: { inspectedLUT?.path ?? grade.string("lut") }, set: { path in
+                        if let actionCapture {
+                            if path.isEmpty { clearGradeLUT(clip, primary: primary, capture: actionCapture) }
+                            else { inspectColorLUT(path, capture: actionCapture) }
+                        }
+                    })) {
+                        Text("None").tag("")
+                        ForEach(luts, id: \.self) { Text(($0 as NSString).lastPathComponent).tag($0) }
                     }
-                })) {
-                    Text("None").tag("")
-                    ForEach(luts, id: \.self) { Text(($0 as NSString).lastPathComponent).tag($0) }
-                }
+                    .labelsHidden()
+                } label: { Text("Inspect LUT").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                 if !grade.string("lut").isEmpty {
                     gradeControl("LUT mix", "lutMix", grade, default: 1, range: 0...1, clip: clip, primary: primary)
                 } else if luts.isEmpty {
@@ -744,7 +750,7 @@ struct NativeColorPanel: View {
                     Text("Choose an unlocked visual clip or an unlocked video track, and enter valid look settings.").font(.caption).foregroundStyle(NativeEditorStyle.muted)
                 }
                 if matchingLook { Button("Cancel match") { cancelReferenceLook() }.buttonStyle(NativeToolbarButtonStyle()) }
-                TextField("Describe the look for your agent", text: $lookPrompt, axis: .vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
+                TextField("Describe the look for Arya", text: $lookPrompt, axis: .vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
                 Button("Open look prompt in Assistant") {
                     model.assistantDraft = lookPrompt + "\nCreate a reusable editable LUT with /api/looks/match using numeric grade controls. Inspect the current frame and the reference image when provided. Apply it to the selected visual clip or an adjustment layer and verify the result with the scopes."
                     model.assistantInputKind = "prompt"; model.panel = .assistant
@@ -2073,7 +2079,7 @@ private struct NativeColorCurveEditor: View {
                     }
                 }
                 .contentShape(Rectangle())
-                #if os(macOS)
+                #if os(macOS) || targetEnvironment(macCatalyst)
                 // A Mac scroll wheel never produces a drag, so the pointer keeps press-and-drag to add.
                 .gesture(DragGesture(minimumDistance: 0).onChanged { gesture in
                     if dragging == nil {
@@ -2122,17 +2128,20 @@ private struct NativeColorCurveEditor: View {
                 }
                 .coordinateSpace(name: curveSpace)
                 #endif
-            }.frame(height: 220)
+            }.frame(height: NativeEditorStyle.touchControls ? 168 : 220)
                 .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 5))
                 .overlay { RoundedRectangle(cornerRadius: 5).stroke(NativeEditorStyle.line) }
                 .accessibilityLabel("\(channel == "master" ? "Master" : channel.uppercased()) color curve")
                 .accessibilityHint(NativeCurveHit.hint)
-            Picker("Point", selection: Binding(get: { selected ?? -1 }, set: { selected = $0 < 0 ? nil : $0 })) {
-                Text("Select a point").tag(-1)
-                ForEach(Array(values.enumerated()), id: \.offset) { index, point in
-                    Text(String(format: "Point %d · %.3f, %.3f", index + 1, point[0], point[1])).tag(index)
+            LabeledContent {
+                Picker("Point", selection: Binding(get: { selected ?? -1 }, set: { selected = $0 < 0 ? nil : $0 })) {
+                    Text("Select a point").tag(-1)
+                    ForEach(Array(values.enumerated()), id: \.offset) { index, point in
+                        Text(String(format: "Point %d · %.3f, %.3f", index + 1, point[0], point[1])).tag(index)
+                    }
                 }
-            }.font(.system(size: 11))
+                .labelsHidden().font(.system(size: 11))
+            } label: { Text("Point").font(.system(size: 11)).foregroundStyle(NativeEditorStyle.muted) }
             if let selected, values.indices.contains(selected) {
                 NativeGestureNumberRow("Input", value: values[selected][0], range: 0...1, step: 0.001, showsSlider: false, begin: begin, preview: { number, context in if let next = changedPoint(selected, coordinate: 0, value: number) { preview(next, context) } }, end: end) { number, context in editPoint(selected, coordinate: 0, value: number, context: context) }
                 NativeGestureNumberRow("Output", value: values[selected][1], range: 0...1, step: 0.001, showsSlider: false, begin: begin, preview: { number, context in if let next = changedPoint(selected, coordinate: 1, value: number) { preview(next, context) } }, end: end) { number, context in editPoint(selected, coordinate: 1, value: number, context: context) }

@@ -18,7 +18,7 @@ import { Icon } from './icons.js'
 const html = htm.bind(h)
 
 /** A number you can type or drag horizontally on the label to scrub. */
-export function Num({ label, value, step = 1, min, max, unit = '', digits = 2, onChange, onCommit, keyframe, refId }) {
+export function Num({ label, ariaLabel, value, step = 1, min, max, unit = '', digits = 2, onChange, onCommit, keyframe, refId }) {
   const [text, setText] = useState(null)
   const clamp = v => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v))
   const startScrub = e => {
@@ -35,17 +35,19 @@ export function Num({ label, value, step = 1, min, max, unit = '', digits = 2, o
     const up = () => {
       removeEventListener('pointermove', move)
       removeEventListener('pointerup', up)
+      removeEventListener('pointercancel', up)
       if (last !== v0) (onCommit ?? onChange)?.(last)
     }
     addEventListener('pointermove', move)
     addEventListener('pointerup', up)
+    addEventListener('pointercancel', up)
   }
   const shown = typeof value === 'number' ? (Number.isInteger(step) && Number.isInteger(value) ? String(value) : value.toFixed(digits)) : value ?? ''
 
   return html`
     <div class="field num">
       <label onPointerDown=${startScrub} title=${`Drag to scrub (⇧ ×10, ⌥ fine).${refId ? ' ⌥-click: attach a reference to your assistant' : ''}`}>${label}</label>
-      <input aria-label=${label} value=${text ?? shown} onFocus=${e => (setText(shown), e.target.select())} onInput=${e => setText(e.target.value)}
+      <input aria-label=${ariaLabel ?? label} value=${text ?? shown} onFocus=${e => (setText(shown), e.target.select())} onInput=${e => setText(e.target.value)}
         onKeyDown=${e => {
           e.stopPropagation()
           if (e.key === 'Enter') e.target.blur()
@@ -147,25 +149,39 @@ function Field({ clip, path, label, step = 0.01, min, max, unit, digits = 2, fal
 function CurveEditor({ clip }) {
   const props = Object.keys(clip.anim ?? {})
   const [prop, setProp] = useState(props[0])
+  const wrap = useRef(null)
   const cv = useRef(null)
+  const [width, setWidth] = useState(300)
   const [drag, setDrag] = useState(null)
   const [selKey, setSelKey] = useState(null)
   const t = useTime()
   const p = viewProject()
+  useEffect(() => {
+    const el = wrap.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      const w = Math.max(160, Math.floor(el.clientWidth))
+      if (w > 0) setWidth(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [props.length > 0])
   const active = props.includes(prop) ? prop : props[0]
   const keys = sortedKeys((drag?.keys) ?? clip.anim?.[active])
-  const W = 300
+  const W = width
   const H = 140
   const vals = keys.map(k => k[1])
-  let lo = Math.min(...vals)
-  let hi = Math.max(...vals)
-  if (hi - lo < 1e-6) {
-    lo -= 1
-    hi += 1
+  let lo = drag?.lo ?? Math.min(...vals)
+  let hi = drag?.hi ?? Math.max(...vals)
+  if (drag?.lo === undefined) {
+    if (hi - lo < 1e-6) {
+      lo -= 1
+      hi += 1
+    }
+    const pad = (hi - lo) * 0.15
+    lo -= pad
+    hi += pad
   }
-  const pad = (hi - lo) * 0.15
-  lo -= pad
-  hi += pad
   const X = tt => 8 + (tt / clip.dur) * (W - 16)
   const Y = v => H - 10 - ((v - lo) / (hi - lo)) * (H - 20)
 
@@ -188,7 +204,7 @@ function CurveEditor({ clip }) {
     }
     if (!keys.length) return
     const tmp = { ...clip, anim: { ...clip.anim, [active]: keys } }
-    ctx.strokeStyle = '#f5b942'
+    ctx.strokeStyle = '#efbc68'
     ctx.lineWidth = 2
     ctx.beginPath()
     for (let i = 0; i <= 200; i++) {
@@ -202,7 +218,7 @@ function CurveEditor({ clip }) {
       ctx.save()
       ctx.translate(X(k[0]), Y(k[1]))
       ctx.rotate(Math.PI / 4)
-      ctx.fillStyle = i === selKey ? '#fff' : '#ffd84d'
+      ctx.fillStyle = i === selKey ? '#fff' : '#efbc68'
       ctx.fillRect(-4.5, -4.5, 9, 9)
       ctx.restore()
     })
@@ -228,7 +244,7 @@ function CurveEditor({ clip }) {
     setSelKey(i)
     if (e.button === 2) return
     e.currentTarget.setPointerCapture(e.pointerId)
-    setDrag({ i, keys })
+    setDrag({ i, keys, lo, hi })
   }
   const move = e => {
     if (!drag) return
@@ -236,7 +252,7 @@ function CurveEditor({ clip }) {
     const k2 = drag.keys.map(k => [...k])
     const tt = Math.max(0, Math.min(clip.dur, ((x - 8) / (W - 16)) * clip.dur))
     k2[drag.i][0] = Math.round(tt * p.fps) / p.fps
-    k2[drag.i][1] = Math.round((lo + ((H - 10 - y) / (H - 20)) * (hi - lo)) * 1000) / 1000
+    k2[drag.i][1] = Math.round((drag.lo + ((H - 10 - y) / (H - 20)) * (drag.hi - drag.lo)) * 1000) / 1000
     setDrag({ ...drag, keys: k2 })
   }
   const up = () => {
@@ -259,12 +275,12 @@ function CurveEditor({ clip }) {
   }
 
   return html`
-    <div class="curve">
+    <div class="curve" ref=${wrap}>
       <div class="row gap">
         <select value=${active} onChange=${e => setProp(e.target.value)}>${props.map(pp => html`<option value=${pp}>${pp}</option>`)}</select>
         ${selKey !== null && keys[selKey] ? html`<span class="muted">key ${selKey + 1}: ${keys[selKey][0].toFixed(2)}s = ${keys[selKey][1]} · ${Array.isArray(keys[selKey][2]) ? 'custom' : keys[selKey][2] ?? 'linear'}</span>` : html`<span class="muted">drag keys · right-click for easing</span>`}
       </div>
-      <canvas ref=${cv} style=${{ width: `${W}px`, height: `${H}px` }} onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onContextMenu=${menu}></canvas>
+      <canvas ref=${cv} style=${{ width: '100%', height: `${H}px` }} onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${up} onContextMenu=${menu}></canvas>
       <div class="ease-row">${['linear', 'in', 'out', 'inOut', 'smooth', 'backOut', 'expoOut'].map(name => html`
         <button class="ease-btn" title=${`Apply ${name} to every key`} onClick=${() => edit(keys.map((_, i) => ({ op: 'keyframe_ease', id: clip.id, prop: active, index: i, ease: name })))}>
           <svg viewBox="0 0 24 24" width="22" height="22"><path d=${Array.from({ length: 21 }, (_, i) => `${i ? 'L' : 'M'}${2 + i}, ${22 - easeFn(name, i / 20) * 20}`).join(' ')} fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
@@ -351,11 +367,13 @@ function EffectsTab({ clip }) {
     <${Prop} clip=${clip} prop="blur" label="Blur (animatable)" step=${0.5} min=${0} digits=${1} />
     ${fx.map((e, i) => html`
       <${Section} title=${e.type} extra=${html`<span class="row gap"><input type="checkbox" aria-label=${`Enable ${e.type}`} checked=${e.enabled !== false} onClick=${ev => ev.stopPropagation()} onChange=${ev => edit({ op: 'effect', id: clip.id, index: i, enabled: ev.target.checked })} /><button class="ghost tiny" onClick=${ev => (ev.stopPropagation(), edit({ op: 'effect', id: clip.id, remove: i }))}>✕</button></span>`}>
-        ${Object.entries(e.params ?? {}).map(([k, v]) =>
-          typeof v === 'number'
-            ? html`<${Num} label=${k} value=${v} step=${v >= 4 ? 1 : 0.01} min=${0} onCommit=${nv => edit({ op: 'effect', id: clip.id, index: i, params: { [k]: nv } })} />`
-            : html`<div class="field"><label>${k}</label><select value=${v} onChange=${ev => edit({ op: 'effect', id: clip.id, index: i, params: { [k]: ev.target.value } })}><option>x</option><option>y</option></select></div>`,
-        )}
+        ${Object.entries(e.params ?? {}).map(([k, v]) => {
+          const def = EFFECTS[e.type]?.[k]
+          const step = typeof def === 'number' && Number.isInteger(def) && def >= 4 ? 1 : 0.01
+          return typeof v === 'number'
+            ? html`<${Num} label=${k} value=${v} step=${step} min=${0} onCommit=${nv => edit({ op: 'effect', id: clip.id, index: i, params: { [k]: nv } })} />`
+            : html`<div class="field"><label>${k}</label><select value=${v} onChange=${ev => edit({ op: 'effect', id: clip.id, index: i, params: { [k]: ev.target.value } })}><option>x</option><option>y</option></select></div>`
+        })}
       </${Section}>`)}
   `
 }
@@ -482,7 +500,7 @@ function CompInspector({ id }) {
 }
 
 function ProjectInspector() {
-  if (store.openComp && store.project.comps?.[store.openComp]) return html`<${CompInspector} id=${store.openComp} />`
+  if (store.openComp && store.project.comps?.[store.openComp]) return html`<${CompInspector} key=${store.openComp} id=${store.openComp} />`
   const p = viewProject()
   const presets = [['1920x1080', '1080p HD'], ['3840x2160', '4K UHD'], ['2160x3840', '4K 9:16 vertical'], ['1280x720', '720p'], ['1080x1920', '9:16 vertical'], ['1080x1080', '1:1 square'], ['1080x1350', '4:5 portrait'], ['2560x1080', '21:9 wide']]
   const [name, setName] = useState(null)
@@ -516,7 +534,7 @@ export function Inspector() {
     const m = p.markers.find(mm => mm.id === s.selMarker)
     if (m) return html`<div class="panel inspector"><${MarkerInspector} m=${m} /></div>`
 
-    return html`<div class="panel inspector"><${ProjectInspector} /></div>`
+    return html`<div class="panel inspector"><${ProjectInspector} key=${s.root} /></div>`
   }
   const { clip, track } = found
   const tabs = [
@@ -539,12 +557,12 @@ export function Inspector() {
         ${/* Where the clip is, not its stored id. The id is on the Info tab. */ null}
         <span class="muted" title=${`Clip id ${clip.id}`}>${s.selection.length > 1 ? clipName(clip) : `${track.id} at ${timecode(clip.start, p.fps)}`}</span>
         <span class="grow"></span>
-        <button class="ghost tiny inspector-ref" title="Reference this clip to the Assistant (⌥-click works anywhere)" aria-label="Reference this clip to the Assistant" onClick=${() => addRef({ kind: 'clip', id: clip.id, label: `${clip.id} ${clip.label ?? clip.title?.text ?? String(clip.src ?? clip.kind).split('/').pop()}` })}><${Icon} name="attach" /></button>
+        ${store.caps?.host === 'browser-local' ? null : html`<button class="ghost tiny inspector-ref" title="Reference this clip to the Assistant (⌥-click works anywhere)" aria-label="Reference this clip to the Assistant" onClick=${() => addRef({ kind: 'clip', id: clip.id, label: `${clip.id} ${clip.label ?? clip.title?.text ?? String(clip.src ?? clip.kind).split('/').pop()}` })}><${Icon} name="attach" /></button>`}
       </div>
       ${registry.inspectorActions.filter(action => action.when?.(clip, track) ?? true).map(action => h(action.component, { key: action.id, clip, track }))}
       <${ScrollTabs} tabs=${tabs} value=${tab} onChange=${inspectorTab => set({ inspectorTab })} label="Inspector tabs" small=${true} overflow="menu" />
       <div class="inspector-body" tabIndex="0" aria-label=${`${tabs.find(([id]) => id === tab)?.[1] ?? 'Clip'} controls`}>
-        ${plugged && tab === plugged.id ? h(plugged.component, { clip, track }) : tab === 'video' ? html`<${VideoTab} clip=${clip} />` : tab === 'title' ? html`<${TitleTab} clip=${clip} />` : tab === 'shape' ? html`<${ShapeAppearance} key=${clip.id} clip=${clip} />` : tab === 'audio' ? html`<${AudioTab} clip=${clip} />` : tab === 'effects' ? html`<${EffectsTab} clip=${clip} />` : html`<${InfoTab} clip=${clip} track=${track} />`}
+        ${plugged && tab === plugged.id ? h(plugged.component, { clip, track }) : tab === 'video' ? html`<${VideoTab} clip=${clip} />` : tab === 'title' ? html`<${TitleTab} key=${clip.id} clip=${clip} />` : tab === 'shape' ? html`<${ShapeAppearance} key=${clip.id} clip=${clip} />` : tab === 'audio' ? html`<${AudioTab} clip=${clip} />` : tab === 'effects' ? html`<${EffectsTab} clip=${clip} />` : html`<${InfoTab} key=${clip.id} clip=${clip} track=${track} />`}
       </div>
     </div>
   `
@@ -571,7 +589,7 @@ function MarkerInspector({ m }) {
       <div class="field"><label>Kind</label><select value=${m.kind ?? 'marker'} onChange=${e => update({ kind: e.target.value })}><option>marker</option><option>chapter</option><option>todo</option></select></div>
       <div class="field"><label>Color</label><input type="color" value=${m.color ?? '#f5b942'} onChange=${e => update({ color: e.target.value })} /></div>
       <textarea class="note" rows="3" placeholder="Note" value=${m.note ?? ''} onKeyDown=${e => e.stopPropagation()} onChange=${e => update({ note: e.target.value })}></textarea>
-      <div class="row gap"><button class="ghost" onClick=${() => player.seek(m.t)}>Go to</button><button class="ghost" onClick=${() => addRef({ kind: 'marker', id: m.id, label: `marker "${m.label}"`, comp, context })}>Reference to Assistant</button><button class="ghost danger" onClick=${deleteMarker}>Delete</button></div>
+      <div class="row gap"><button class="ghost" onClick=${() => player.seek(m.t)}>Go to</button>${store.caps?.host === 'browser-local' ? null : html`<button class="ghost" onClick=${() => addRef({ kind: 'marker', id: m.id, label: `marker "${m.label}"`, comp, context })}>Reference to Assistant</button>`}<button class="ghost danger" onClick=${deleteMarker}>Delete</button></div>
     </div>
   `
 }

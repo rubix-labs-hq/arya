@@ -19,8 +19,8 @@ function reportImport(receipt, notify) {
   } else {
     notify(`Imported ${receipt.count} file${receipt.count === 1 ? '' : 's'}`)
   }
-  for (const item of receipt.failures.slice(0, 3)) notify(`${item.name || 'Music'}: ${item.error}`, 'error')
-  for (const item of receipt.warnings.slice(0, 3)) notify(`${item.name || 'Music'}: ${item.message}`, 'info')
+  for (const item of receipt.failures.slice(0, 3)) notify(`${item.name || 'Media file'}: ${item.error}`, 'error')
+  for (const item of receipt.warnings.slice(0, 3)) notify(`${item.name || 'Media file'}: ${item.message}`, 'info')
 }
 
 function reportFailure(error, notify) {
@@ -41,7 +41,7 @@ export async function importMediaPaths(paths, { request, notify, expectedCount }
 }
 
 /** Uploaded files can fail probing. Success reports only the later import result. */
-export async function uploadMediaFiles(files, { upload, request, notify, assets = {} } = {}) {
+export async function uploadMediaFiles(files, { upload, request, notify, assets = {}, local = false } = {}) {
   if (!files.length) return null
   const paths = []
   let failed = 0
@@ -57,11 +57,11 @@ export async function uploadMediaFiles(files, { upload, request, notify, assets 
       continue
     }
     try {
-      notify(`Uploading ${file.name}…`)
+      notify(local ? `Copying ${file.name} to browser storage…` : `Uploading ${file.name}…`)
       const result = await upload(file)
-      if (result?.error) throw new Error(`Could not upload ${file.name}: ${result.error}`)
+      if (result?.error) throw new Error(`${local ? 'Could not copy' : 'Could not upload'} ${file.name}: ${result.error}`)
       if (typeof result?.path !== 'string' || !result.path.length) {
-        throw new Error(`Could not upload ${file.name}. The upload service did not return a file.`)
+        throw new Error(local ? `Could not copy ${file.name}. Browser storage did not return a file.` : `Could not upload ${file.name}. The upload service did not return a file.`)
       }
       paths.push(result.path)
     } catch (error) {

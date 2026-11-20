@@ -314,8 +314,8 @@ int main(int argc,char **argv) {
     if(strcmp(argv[1],"inspect")==0) {
         stage="inspect";oldfd=openat(rootfd,"reel.project.json",O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);if(oldfd<0)fail();
         struct stat st;if(fstat(oldfd,&st)<0)fail();require(S_ISREG(st.st_mode) && st.st_size>=0 && (uint64_t)st.st_size<=MAX_DATA);
-        CC_SHA256_CTX hash;CC_SHA256_Init(&hash);unsigned char bytes[65536],digest[CC_SHA256_DIGEST_LENGTH];ssize_t count;
-        while((count=read(oldfd,bytes,sizeof(bytes)))!=0){if(count<0 && errno==EINTR)continue;if(count<0)fail();CC_SHA256_Update(&hash,bytes,(CC_LONG)count);}
+        CC_SHA256_CTX hash;CC_SHA256_Init(&hash);unsigned char bytes[65536],digest[CC_SHA256_DIGEST_LENGTH];ssize_t count;size_t total=0;
+        while((count=read(oldfd,bytes,sizeof(bytes)))!=0){if(count<0 && errno==EINTR)continue;if(count<0)fail();total+=(size_t)count;require(total<=MAX_DATA);CC_SHA256_Update(&hash,bytes,(CC_LONG)count);}
         struct stat after,named;if(fstat(oldfd,&after)<0 || fstatat(rootfd,"reel.project.json",&named,AT_SYMLINK_NOFOLLOW)<0)fail();require(unchanged(&st,&after) && same_inode(&st,&named));
         CC_SHA256_Final(digest,&hash);char hex[65];for(int i=0;i<32;i++)sprintf(hex+i*2,"%02x",digest[i]);
         fprintf(stdout,"{\"ok\":true,\"protocol\":1,\"testHooks\":%s,\"sha256\":\"%s\"}\n",TEST_HOOKS,hex);cleanup();return 0;

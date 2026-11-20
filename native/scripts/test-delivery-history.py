@@ -17,6 +17,7 @@ if not names:
     raise SystemExit('No actual delivery XCTest cases found')
 platform = Path(subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-platform-path'], text=True).strip())
 frameworks = platform / 'Developer/Library/Frameworks'
+private_frameworks = platform / 'Developer/Library/PrivateFrameworks'
 swift_support = platform / 'Developer/usr/lib'
 if not (frameworks / 'XCTest.framework').is_dir():
     raise SystemExit('Installed Xcode XCTest framework is required; no tools are installed automatically')
@@ -28,7 +29,11 @@ with tempfile.TemporaryDirectory(prefix='arya-delivery-swift-') as directory:
         '\n'.join(f'suite.addTest(DeliveryHistoryTests(selector: #selector(DeliveryHistoryTests.{name})))' for name in names) +
         f'\nsuite.run()\nguard let result = suite.testRun, result.executionCount == {len(names)}, result.skipCount == 0, result.totalFailureCount == 0 else {{ fatalError("Delivery fixtures did not all pass") }}\n')
     binary = temp / 'delivery-history-tests'
-    subprocess.run(['swiftc', '-j1', '-I', str(swift_support), '-L', str(swift_support), '-Xlinker', '-rpath', '-Xlinker', str(swift_support), '-F', str(frameworks), '-Xlinker', '-rpath', '-Xlinker', str(frameworks), '-module-cache-path', str(temp/'module-cache'), '-o', str(binary),
+    rpaths = ['-I', str(swift_support), '-L', str(swift_support), '-Xlinker', '-rpath', '-Xlinker', str(swift_support),
+              '-F', str(frameworks), '-Xlinker', '-rpath', '-Xlinker', str(frameworks)]
+    if private_frameworks.is_dir():
+        rpaths += ['-F', str(private_frameworks), '-Xlinker', '-rpath', '-Xlinker', str(private_frameworks)]
+    subprocess.run(['swiftc', '-j1', *rpaths, '-module-cache-path', str(temp/'module-cache'), '-o', str(binary),
         str(kit/'Sources/ReelKit/ProjectFolder.swift'), str(kit/'Sources/ReelKit/JSON.swift'),
         str(kit/'Sources/ReelKit/NativeDeliveryHistory.swift'), str(test_source), str(main)], check=True, timeout=120)
     subprocess.run([str(binary)], check=True, timeout=60)

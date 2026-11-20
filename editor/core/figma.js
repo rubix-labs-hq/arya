@@ -73,7 +73,11 @@ export function parseFigmaUrl(text) {
   if (!m) return null
   let nodeId = null
   const q = /[?&]node-id=([^&#]+)/.exec(m[4] ?? '')
-  if (q) nodeId = decodeURIComponent(q[1].replace(/\+/g, ' ')).replace(/-/g, ':')
+  if (q) {
+    let raw = q[1].replace(/\+/g, ' ')
+    try { raw = decodeURIComponent(raw) } catch {}
+    nodeId = raw.replace(/-/g, ':')
+  }
 
   return { fileKey: m[2] ?? m[1], nodeId }
 }
@@ -940,8 +944,13 @@ const TAG_TYPES = {
   'regular-polygon': 'REGULAR_POLYGON', polygon: 'REGULAR_POLYGON', slice: 'SLICE', canvas: 'CANVAS', page: 'CANVAS',
 }
 
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' }
-const decode = s => s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) => (e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITIES[e] ?? m))
+const ENTITIES = Object.assign(Object.create(null), { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' })
+const decode = s => s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e) => {
+  if (e[0] !== '#') return Object.hasOwn(ENTITIES, e) ? ENTITIES[e] : m
+  const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))
+  if (!Number.isInteger(code) || code < 0 || code > 0x10ffff) return m
+  try { return String.fromCodePoint(code) } catch { return m }
+})
 
 /** A small, forgiving XML reader: elements, attributes, text; comments and declarations skipped. */
 export function parseXml(src) {

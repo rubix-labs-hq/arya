@@ -146,12 +146,14 @@ struct NativeAudioEffects: View {
     }
     private struct Parameter { let key: String; let name: String; let value: Double; let range: ClosedRange<Double> }
     private static let types = ["eq", "compressor", "gate", "deesser", "limiter", "reverb", "delay", "gain"]
+    private static let typeNames = ["eq": "EQ", "deesser": "De-esser"]
     private static let bandTypeNames = ["lowshelf": "Low Shelf", "peaking": "Peak", "highshelf": "High Shelf", "lowpass": "Low Pass", "highpass": "High Pass", "notch": "Notch"]
+    private static func displayName(_ type: String) -> String { typeNames[type] ?? type.capitalized }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(effects.enumerated()), id: \.offset) { index, effect in
-                DisclosureGroup(effect.string("type").capitalized) {
+                DisclosureGroup(Self.displayName(effect.string("type"))) {
                     let params = effect.dictionary("params")
                     Toggle("Enabled", isOn: Binding(get: { effect.flag("enabled", true) }, set: { update(index, ["enabled": $0]) }))
                     ForEach(Array(parameters(effect.string("type")).enumerated()), id: \.offset) { _, parameter in
@@ -175,7 +177,7 @@ struct NativeAudioEffects: View {
                 }
             }
             Menu("Add audio effect") {
-                ForEach(Self.types, id: \.self) { type in Button(type.capitalized) { publish(NativeAudioEffectEdit.adding(effects, effect: ["type": type, "enabled": true, "params": [:]])) } }
+                ForEach(Self.types, id: \.self) { type in Button(Self.displayName(type)) { publish(NativeAudioEffectEdit.adding(effects, effect: ["type": type, "enabled": true, "params": [:]])) } }
             }
         }
     }

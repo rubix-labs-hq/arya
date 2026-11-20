@@ -158,9 +158,9 @@ function TransformOverlay({ p, rect }) {
   }
 
   return html`
-    <div class="xform" style=${style} onPointerDown=${e => start(e, 'move')} onPointerMove=${move} onPointerUp=${end}>
-      ${['nw', 'ne', 'sw', 'se'].map(c => html`<div class=${`xh ${c}`} onPointerDown=${e => start(e, 'scale')} onPointerMove=${move} onPointerUp=${end}></div>`)}
-      <div class="xrot" onPointerDown=${e => start(e, 'rotate')} onPointerMove=${move} onPointerUp=${end}></div>
+    <div class="xform" style=${style} onPointerDown=${e => start(e, 'move')} onPointerMove=${move} onPointerUp=${end} onPointerCancel=${() => setDrag(null)}>
+      ${['nw', 'ne', 'sw', 'se'].map(c => html`<div class=${`xh ${c}`} onPointerDown=${e => start(e, 'scale')} onPointerMove=${move} onPointerUp=${end} onPointerCancel=${() => setDrag(null)}></div>`)}
+      <div class="xrot" onPointerDown=${e => start(e, 'rotate')} onPointerMove=${move} onPointerUp=${end} onPointerCancel=${() => setDrag(null)}></div>
       ${drag ? html`<div class="xinfo">${drag.mode === 'move' ? `${Math.round(drag.q.x)}, ${Math.round(drag.q.y)}` : drag.mode === 'scale' ? `${Math.round(drag.q.s * 100)}%` : `${drag.q.r}°`}</div>` : null}
     </div>
   `
@@ -233,7 +233,7 @@ export function Viewer({ compact }) {
         </select>
         <button class=${s.overlays.safe ? 'on' : ''} title="Safe areas" aria-label="Safe areas" aria-pressed=${!!s.overlays.safe} onClick=${() => set({ overlays: { ...s.overlays, safe: !s.overlays.safe } })}><${Icon} name="safe-area" /></button>
         <button class=${s.overlays.grid ? 'on' : ''} title="Rule of thirds" aria-label="Rule of thirds grid" aria-pressed=${!!s.overlays.grid} onClick=${() => set({ overlays: { ...s.overlays, grid: !s.overlays.grid } })}><${Icon} name="grid" /></button>
-        <button title="Reference this frame to your assistant (⌥-click a point in the frame for a pixel)" aria-label="Reference this frame to your assistant" onClick=${() => addRef({ kind: 'frame', id: time.t.toFixed(3), label: `frame ${timecode(time.t, p.fps)}` })}><${Icon} name="attach" /></button>
+        ${backendHost.kind === 'browser-local' ? null : html`<button title="Reference this frame to your assistant (⌥-click a point in the frame for a pixel)" aria-label="Reference this frame to your assistant" onClick=${() => addRef({ kind: 'frame', id: time.t.toFixed(3), label: `frame ${timecode(time.t, p.fps)}` })}><${Icon} name="attach" /></button>`}
       </div>
       <div class="viewer-stage" ref=${stage} onPointerDown=${shown ? undefined : onStageDown} onDblClick=${() => player.toggle()}>
         <div class="canvas-host" ref=${host} style=${{ left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` }}></div>
@@ -288,7 +288,7 @@ export function Transport({ p, locked = false }) {
               if (e.key === 'Escape') setEditing(false)
               e.stopPropagation()
             }} onBlur=${() => setEditing(false)} />`
-          : html`<span class="tc" onClick=${() => { setDraft(timecode(t, p.fps)); setEditing(true) }} title="Click to type a timecode">${timecode(t, p.fps)}</span>`}
+          : html`<span class="tc" role="button" tabIndex="0" aria-label="Edit playhead timecode" onClick=${() => { setDraft(timecode(t, p.fps)); setEditing(true) }} onKeyDown=${e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDraft(timecode(t, p.fps)); setEditing(true) } }} title="Click to type a timecode">${timecode(t, p.fps)}</span>`}
         <span class="tc-dur">/ ${timecode(duration(p), p.fps)}</span>
       </div>
       <div class="buttons">
@@ -401,7 +401,7 @@ function SourceViewer({ compact } = {}) {
 
   useEffect(() => {
     const onKey = e => {
-      if (e.defaultPrevented || e.metaKey || e.ctrlKey || store.settingsOpen || store.viewerMode !== 'source' || e.target.closest?.('input, textarea, select, [contenteditable], [role="dialog"], [role="alertdialog"], dialog')) return
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || store.settingsOpen || store.showKeys || store.assistantSharingReviewOpen || store.viewerMode !== 'source' || e.target.closest?.('input, textarea, select, [contenteditable], [role="dialog"], [role="alertdialog"], dialog')) return
       // As in keys.js: a focused control keeps Space and Enter; I, O and the placement keys still work.
       if ((e.key === ' ' || e.key === 'Enter') && e.target.closest?.('button, summary, a[href], [role="button"], [role="tab"]')) return
       const v = video.current
@@ -440,7 +440,7 @@ function SourceViewer({ compact } = {}) {
         <span class="muted">${asset.width ? `${asset.width}×${asset.height}` : ''} ${asset.fps ? `${asset.fps}fps` : ''} ${asset.codec ?? ''}</span>
       </div>
       <div class="viewer-stage src">
-        ${isImage ? html`<img class="src-media" src=${url} />` : audioOnly ? html`<div class="empty-hint" onClick=${toggle}><span style="font-size:40px">♪</span><br />${mediaDisplayName(src.src, asset)}<br /><span class="muted">Audio source</span></div><audio ref=${video} src=${url} preload="auto"></audio>` : html`<video class="src-media" ref=${video} src=${url} controls=${false} onClick=${toggle}></video>`}
+        ${isImage ? html`<img class="src-media" src=${url} alt=${mediaDisplayName(src.src, asset)} />` : audioOnly ? html`<div class="empty-hint" onClick=${toggle}><span style="font-size:40px">♪</span><br />${mediaDisplayName(src.src, asset)}<br /><span class="muted">Audio source</span></div><audio ref=${video} src=${url} preload="auto"></audio>` : html`<video class="src-media" ref=${video} src=${url} controls=${false} onClick=${toggle}></video>`}
       </div>
       ${isImage ? null : html`
         <div class="src-scrub" onPointerDown=${e => {
@@ -448,9 +448,10 @@ function SourceViewer({ compact } = {}) {
           const go = ev => seek(Math.max(0, Math.min(dur, ((ev.clientX - r.left) / r.width) * dur)))
           go(e)
           const mv = ev => go(ev)
-          const up = () => (removeEventListener('pointermove', mv), removeEventListener('pointerup', up))
+          const up = () => (removeEventListener('pointermove', mv), removeEventListener('pointerup', up), removeEventListener('pointercancel', up))
           addEventListener('pointermove', mv)
           addEventListener('pointerup', up)
+          addEventListener('pointercancel', up)
         }}>
           <div class="src-range" style=${{ left: pct(src.in ?? 0), width: pct((src.out ?? dur) - (src.in ?? 0)) }}></div>
           <div class="src-head" style=${{ left: pct(t) }}></div>

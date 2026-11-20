@@ -31,7 +31,8 @@ function fakeServer(on: On, bridge: unknown[] = []) {
   on('ui.status', () => ({ value: undefined }) as never)
   on('http.fetch', async (_$, e) => {
     const u = new URL(e.url)
-    const body = e.init?.body ? JSON.parse(e.init.body) : undefined
+    const rawBody = e.init?.body
+    const body = typeof rawBody === 'string' ? JSON.parse(rawBody) : undefined
     calls.push({ url: u.pathname, body })
     const ok = (data: unknown) => ({ value: { status: 200, ok: true, headers: {}, text: JSON.stringify(data) } })
     if (u.port !== '4870') return { value: { status: 404, ok: false, headers: {}, text: '' } }
@@ -130,7 +131,7 @@ describe('reel mod', () => {
     await $.session.start({ cwd: ROOT, surface: 'terminal', isInteractive: true })
     state.pid = 5151
     await clock.advance(5000)
-    const res = await $.command.run({ command: 'reel', args: 'status' })
+    const res = await $.command.run({ command: 'reel', args: 'status', origin: { kind: 'composer' } })
     expect(res.text).toContain('Editor at http://127.0.0.1:4870/')
   })
 
@@ -140,7 +141,7 @@ describe('reel mod', () => {
     const release = holdNextState()
     await clock.advance(5000)
     state.pid = 5151
-    await $.command.run({ command: 'reel', args: 'restart' })
+    await $.command.run({ command: 'reel', args: 'restart', origin: { kind: 'composer' } })
     release()
     await clock.settle()
     const ui = await $.ui.mount({

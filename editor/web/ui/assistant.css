@@ -420,6 +420,7 @@
   /* The sheet is 62dvh. Larger text can grow it up to the top bar, so Send stays on screen. */
   .main > .chat.panel:not(.assistant-unavailable) { height: auto; min-height: min(62dvh, calc(100dvh - var(--topbar-height) - 6px)); max-height: calc(100dvh - var(--topbar-height) - 6px); }
   .main > .chat.assistant-unavailable { height: auto; max-height: calc(100dvh - var(--topbar-height) - 6px); }
+  .app:has(> .browser-workspace) .main > .chat.panel { max-height: calc(100dvh - var(--topbar-height) - 62px); }
   .assistant-unavailable .chat-list { flex: 0 1 auto; }
   .chat .composer textarea { font-size: max(16px, 1em); }
   .chat .assistant-composer-content { display: flex; align-items: center; gap: 4px; max-height: none; overflow: auto hidden; padding: 0; scrollbar-width: none; }

@@ -1401,14 +1401,29 @@ public actor ReelBackend {
                 try await context.lease.wait()
                 try await self.activateProcessingJob(id, context: context)
                 try await ProcessingScope.$context.withValue(context) {
-                    let prepared = try await self.prepareExportAudioRange(snapshot, from: from, to: to)
+                    let preset = specBody["preset"] as? String ?? "h264-high"
+                    let needsAudio = preset != "gif" && preset != "png-seq"
                     let renderer = try await self.freshNativeRenderer()
-                    let rendered = try await NativeAudioMixer.render(plan: .raw(prepared.plan), folder: folder)
-                    let pcm = try await NativeAudioProcessing.cancellableTask { try prepared.window.trim(rendered) }
-                    try Task.checkCancellation()
-                    try await self.validateProcessingContext(context)
-                    try NativeAudioProcessing.write(pcm, to: Self.exportFile(temp, folder: folder))
-                    _ = try await renderer.export(project: snapshot, spec: spec, audioURL: temp, outputPublication: publication, beforePublish: {}, publishOutput: { publication in
+                    let exportAudioURL: URL?
+                    if needsAudio {
+                        let prepared = try await self.prepareExportAudioRange(snapshot, from: from, to: to)
+                        let rendered = try await NativeAudioMixer.render(plan: .raw(prepared.plan), folder: folder)
+                        let pcm = try await NativeAudioProcessing.cancellableTask { try prepared.window.trim(rendered) }
+                        try Task.checkCancellation()
+                        try await self.validateProcessingContext(context)
+                        let audioFile = try Self.exportFile(temp, folder: folder)
+                        if preset == "audio-wav" || preset.hasPrefix("prores-") {
+                            try NativeAudioProcessing.writeFloat32(pcm, to: audioFile)
+                        } else {
+                            try NativeAudioProcessing.write(pcm, to: audioFile)
+                        }
+                        exportAudioURL = temp
+                    } else {
+                        try Task.checkCancellation()
+                        try await self.validateProcessingContext(context)
+                        exportAudioURL = nil
+                    }
+                    _ = try await renderer.export(project: snapshot, spec: spec, audioURL: exportAudioURL, outputPublication: publication, beforePublish: {}, publishOutput: { publication in
                         try await self.publishNativeExportOutput(id, publication: publication)
                     }) { progress in Task { await self.processingProgress(id, progress) } }
                 }

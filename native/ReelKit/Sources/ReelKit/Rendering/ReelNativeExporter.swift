@@ -43,11 +43,20 @@ extension ReelMetalRenderer {
         guard from.isFinite && to.isFinite && to > from && fps.isFinite && fps > 0 && fps <= 240 else { throw ReelRenderingError("invalid export range or frame rate") }
         let frames = max(1, Int(((to - from) * fps).rounded()))
         var paths = Set<String>()
-        if !b.string("preset", "h264-high").hasPrefix("audio-") {
-            for i in 0..<frames {
-                try Task.checkCancellation()
-                let plan = try JSON.parse(core.framePlan(project: project, at: from + Double(i) / fps)) as? [String: Any] ?? [:]
-                paths.formUnion(lutPaths(plan))
+        if !b.string("preset", "h264-high").hasPrefix("audio-"), projectHasLUT(p) {
+            if frames <= 240 {
+                for i in 0..<frames {
+                    try Task.checkCancellation()
+                    let plan = try JSON.parse(core.framePlan(project: project, at: from + Double(i) / fps)) as? [String: Any] ?? [:]
+                    paths.formUnion(lutPaths(plan))
+                }
+            } else {
+                paths.formUnion(activeRangeLUTPaths(p, from: from, to: to))
+                for index in Set([0, frames - 1]) {
+                    try Task.checkCancellation()
+                    let plan = try JSON.parse(core.framePlan(project: project, at: from + Double(index) / fps)) as? [String: Any] ?? [:]
+                    paths.formUnion(lutPaths(plan))
+                }
             }
         }
         releaseCaches()
@@ -64,7 +73,11 @@ extension ReelMetalRenderer {
         let fps = b.number("fps", p.number("fps", 30)), width = b.int("width", p.int("width", 1920))
         guard from.isFinite && to.isFinite && to > from && fps.isFinite && fps > 0 && fps <= 240 && width >= 2 && width <= 16384 else { throw ReelRenderingError("invalid export range, frame rate or width") }
         let hdr = try NativeHDR.transfer(b)
-        let hdrMaximum = hdr == nil ? 1 : NativeHDR.relativeMaximum(nits: b.number("maxLuminance", 1000), context: hdrContext)
+        let hdrPeak = b.number("maxLuminance", 1000)
+        if hdr != nil {
+            guard hdrPeak.isFinite, hdrPeak >= 100, hdrPeak <= 10000 else { throw ReelRenderingError("Invalid HDR mastering luminance") }
+        }
+        let hdrMaximum = hdr == nil ? 1 : NativeHDR.relativeMaximum(nits: hdrPeak, context: hdrContext)
         if hdr != nil && preset != "hevc" && !preset.hasPrefix("prores-") { throw ReelRenderingError("HDR export requires HEVC or Apple ProRes") }
         let ext: String
         switch preset {
@@ -110,11 +123,18 @@ extension ReelMetalRenderer {
             let audioOnly = preset.hasPrefix("audio-")
             if audioOnly && audio == nil { throw ReelRenderingError("audio export requires the native mixed audio file") }
             let writer = try AVAssetWriter(outputURL: folder.output(part.path), fileType: audioOnly ? (preset == "audio-wav" ? .wav : .m4a) : ext == "mov" ? .mov : .mp4)
-            var video: AVAssetWriterInput?, adaptor: AVAssetWriterInputPixelBufferAdaptor?
+            var video: AVAssetWriterInput?, adaptor: AVAssetWriterInputPixelBufferAdaptor?, exportHeight: Int?
             if !audioOnly {
                 let codec: AVVideoCodecType = preset == "hevc" ? .hevc : preset == "prores-422" ? .proRes422 : preset == "prores-422hq" ? .proRes422HQ : preset == "prores-4444" ? .proRes4444 : .h264
-                let height = b.int("height", max(2, Int((Double(width) * p.number("height", 1080) / p.number("width", 1920) / 2).rounded()) * 2))
+                let pWidth = p.number("width", 1920), pHeight = p.number("height", 1080)
+                guard pWidth.isFinite, pHeight.isFinite, pWidth > 0, pHeight > 0 else { throw ReelRenderingError("invalid project dimensions") }
+                let expectedHeight = Double(width) * pHeight / pWidth
+                let height = b.int("height", max(2, Int((expectedHeight / 2).rounded()) * 2))
                 guard height >= 2 && height <= 16384 else { throw ReelRenderingError("invalid export height") }
+                if b["height"] != nil, abs(Double(height) - expectedHeight) > 1.5 {
+                    throw ReelRenderingError("custom export height must match the project aspect ratio")
+                }
+                exportHeight = height
                 var settings: [String: Any] = [AVVideoCodecKey: codec, AVVideoWidthKey: width, AVVideoHeightKey: height, AVVideoColorPropertiesKey: [AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2, AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2, AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2]]
                 if !preset.hasPrefix("prores") { settings[AVVideoCompressionPropertiesKey] = [AVVideoAverageBitRateKey: b.int("bitrate", max(1_000_000, width * height * (preset == "h264-web" ? 4 : 8))), AVVideoExpectedSourceFrameRateKey: fps, AVVideoMaxKeyFrameIntervalKey: max(1, Int(fps * 2))] }
                 if let hdr { settings = try NativeHDR.settings(settings, transfer: hdr, body: b) }
@@ -139,9 +159,9 @@ extension ReelMetalRenderer {
                     if let video, let adaptor {
                         for i in 0..<frames {
                             try Task.checkCancellation()
-                            let frame = try await hdr == nil ? render(project: project, at: from + Double(i) / fps, width: width) : renderHDR(project: project, at: from + Double(i) / fps, width: width)
+                            let frame = try await hdr == nil ? render(project: project, at: from + Double(i) / fps, width: width, height: exportHeight) : renderHDR(project: project, at: from + Double(i) / fps, width: width, height: exportHeight)
                             guard frame.height == (adaptor.sourcePixelBufferAttributes?[kCVPixelBufferHeightKey as String] as? Int) else { throw ReelRenderingError("custom export height must match the project aspect ratio") }
-                            while !video.isReadyForMoreMediaData { try Task.checkCancellation(); if writer.status == .failed { throw writer.error! }; try await Task.sleep(nanoseconds: 1_000_000) }
+                            while !video.isReadyForMoreMediaData { try Task.checkCancellation(); if writer.status == .failed { throw writer.error ?? ReelRenderingError("native video encoder failed") }; try await Task.sleep(nanoseconds: 1_000_000) }
                             let buffer = try hdr.map { try NativeHDR.encode(frame.pixelBuffer, transfer: $0, maximum: hdrMaximum, context: hdrContext, alpha: preset == "prores-4444") } ?? frame.pixelBuffer
                             guard adaptor.append(buffer, withPresentationTime: CMTime(seconds: Double(i) / fps, preferredTimescale: 600000)) else { throw writer.error ?? ReelRenderingError("native encoder rejected frame \(i)") }
                             progress(Double(i + 1) / Double(frames))
@@ -152,7 +172,10 @@ extension ReelMetalRenderer {
                 }
                 writer.endSession(atSourceTime: CMTime(seconds: Double(frames) / fps, preferredTimescale: 600000))
                 _ = try folder.output(part.path)
-                await writer.finishWriting()
+                try await withTaskCancellationHandler {
+                    await writer.finishWriting()
+                    try Task.checkCancellation()
+                } onCancel: { writer.cancelWriting() }
                 guard writer.status == .completed else { throw writer.error ?? ReelRenderingError("native export did not finish") }
             } catch { writer.cancelWriting(); throw error }
         }
@@ -184,9 +207,66 @@ private func appendNativeAudio(_ url: URL, to input: AVAssetWriterInput, writer:
     defer { reader.cancelReading() }
     while let sample = output.copyNextSampleBuffer() {
         try Task.checkCancellation()
-        while !input.isReadyForMoreMediaData { try Task.checkCancellation(); if writer.status == .failed { throw writer.error! }; try await Task.sleep(nanoseconds: 1_000_000) }
+        while !input.isReadyForMoreMediaData { try Task.checkCancellation(); if writer.status == .failed { throw writer.error ?? ReelRenderingError("native audio encoder failed") }; try await Task.sleep(nanoseconds: 1_000_000) }
         guard input.append(sample) else { throw writer.error ?? ReelRenderingError("native encoder rejected mixed audio") }
     }
-    guard reader.status != .failed else { throw reader.error! }
+    guard reader.status != .failed else { throw reader.error ?? ReelRenderingError("could not finish reading mixed audio") }
     input.markAsFinished()
+}
+
+private func projectHasLUT(_ value: Any) -> Bool {
+    if let object = value as? [String: Any] {
+        for (key, item) in object {
+            if key == "lut", let path = item as? String, !path.isEmpty { return true }
+            if projectHasLUT(item) { return true }
+        }
+    } else if let array = value as? [Any] {
+        for item in array { if projectHasLUT(item) { return true } }
+    }
+    return false
+}
+
+private func activeRangeLUTPaths(_ project: [String: Any], from: Double, to: Double) -> Set<String> {
+    var paths = Set<String>()
+    let comps = project["comps"] as? [String: Any] ?? [:]
+    var visitedComps = Set<String>()
+    func addGrade(_ grade: [String: Any]) {
+        if let path = grade["lut"] as? String, !path.isEmpty { paths.insert(path) }
+    }
+    func inspectClip(_ clip: [String: Any]) {
+        guard !clip.isEmpty, !["null", "audio", "caption"].contains(clip.string("kind")) else { return }
+        let nodes = clip.object("nodes"), list = nodes["list"] as? [[String: Any]] ?? []
+        if clip.string("kind") == "adjustment" || list.isEmpty { addGrade(clip.object("grade")) }
+        else {
+            for node in list {
+                let type = node.string("type")
+                if node["enabled"] as? Bool == false && type != "source" { continue }
+                if ["source", "primary", "corrector", "key", "lut"].contains(type) { addGrade(node.object("grade")) }
+            }
+        }
+        if clip.string("kind") == "comp" {
+            let compID = clip.string("comp")
+            if !compID.isEmpty, visitedComps.insert(compID).inserted, let comp = comps[compID] as? [String: Any] {
+                inspectTracks(comp["tracks"] as? [[String: Any]] ?? [], range: nil)
+            }
+        }
+    }
+    func inspectTracks(_ tracks: [[String: Any]], range: (Double, Double)?) {
+        let videoTracks = tracks.filter { $0.string("kind", "video") != "audio" }
+        let hasSolo = videoTracks.contains { $0["solo"] as? Bool == true }
+        for track in videoTracks {
+            if track["enabled"] as? Bool == false { continue }
+            if hasSolo && track["solo"] as? Bool != true { continue }
+            for clip in track["clips"] as? [[String: Any]] ?? [] {
+                if let (startBound, endBound) = range {
+                    let clipStart = clip.number("start"), clipDur = clip.number("dur")
+                    let transPad = clip.object("transitionIn").number("dur") + clip.object("transitionOut").number("dur") + 1
+                    if clipStart + clipDur + transPad < startBound || clipStart - transPad > endBound { continue }
+                }
+                inspectClip(clip)
+            }
+        }
+    }
+    inspectTracks(project["tracks"] as? [[String: Any]] ?? [], range: (from, to))
+    return paths
 }

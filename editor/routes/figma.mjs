@@ -26,6 +26,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { figmaAssets, figmaToOps, mcpToNodes, parseFigmaUrl, placeCompOps, smartAnimateOps } from '../core/figma.js'
 import { guardedOutput } from '../core/output-path.js'
@@ -92,9 +93,9 @@ function authHeaders(auth) {
 async function figmaFetch(pathname, { auth, query, method = 'GET', headers = {}, body } = {}) {
   const qs = query ? `?${new URLSearchParams(query)}` : ''
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch(`${apiBase()}${pathname}${qs}`, { method, headers: { ...(auth ? authHeaders(auth) : {}), ...headers }, body, signal: AbortSignal.timeout(90000) })
+    const res = await fetch(`${apiBase()}${pathname}${qs}`, { method, headers: { ...(auth ? authHeaders(auth) : {}), ...headers }, body, redirect: 'error', signal: AbortSignal.timeout(90000) })
     if (res.status === 429 && attempt === 0) {
-      await res.arrayBuffer().catch(() => {})
+      await res.body?.cancel().catch(() => {})
       const header = res.headers.get('retry-after')
       const wait = Math.min(10, header !== null && Number.isFinite(Number(header)) ? Math.max(0, Number(header)) : 2)
       await sleep(wait * 1000)
@@ -206,12 +207,40 @@ export default function figmaRoutes(ctx) {
   }
 
   const figmaHost = host => host === 'figma.com' || host.endsWith('.figma.com') || host === 'figma-alpha-api.s3.us-west-2.amazonaws.com'
+  const allowedAssetUrl = u => {
+    if (u.username || u.password) return false
+    const testBase = process.env.REEL_FIGMA_API_BASE ? (() => { try { return new URL(apiBase()) } catch { return null } })() : null
+    const loopback = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(u.hostname)
+    if (u.protocol === 'https:') return figmaHost(u.hostname) || Boolean(testBase && testBase.protocol === 'https:' && u.hostname === testBase.hostname)
+    if (u.protocol === 'http:' && loopback) return true
+    return false
+  }
+  async function readBoundedBytes(res) {
+    const declared = Number(res.headers.get('content-length') ?? 0)
+    if (declared > MAX_IMAGE_BYTES) {
+      await res.body?.cancel().catch(() => {})
+      throw new Error('an image from Figma is larger than 100 MB')
+    }
+    if (!res.body) return Buffer.alloc(0)
+    const chunks = []
+    let total = 0
+    for await (const chunk of res.body) {
+      total += chunk.length
+      if (total > MAX_IMAGE_BYTES) {
+        await res.body.cancel().catch(() => {})
+        throw new Error('an image from Figma is larger than 100 MB')
+      }
+      chunks.push(chunk)
+    }
+    return Buffer.concat(chunks, total)
+  }
 
-  /** Bytes of an asset: https, http on this machine (the Figma desktop MCP serves there), data: URL or a local file. */
+  /** Bytes of an asset: https (Figma hosts), http on Figma Desktop MCP (3845), data: URL or a local file in the project. */
   async function fetchBytes(source) {
     if (typeof source !== 'string') throw new Error('an asset must be a URL, data: URL or file path')
     const s = source
     if (s.startsWith('data:')) {
+      if (s.length > Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 1024) throw new Error('an image from Figma is larger than 100 MB')
       const m = /^data:([\w/+.-]+)?(;base64)?,(.*)$/s.exec(s)
       if (!m) throw new Error('unreadable data: URL')
 
@@ -219,32 +248,42 @@ export default function figmaRoutes(ctx) {
     }
     if (/^https?:\/\//i.test(s)) {
       // No credentials: Figma's image URLs are pre-signed, and the token must never leave for another host.
-      // Redirects are followed by hand so every hop passes the same https-or-loopback check.
+      // Redirects are followed by hand so every hop passes the same host allowlist check.
       let u = new URL(s)
       const origin = u.host
+      const initialLoopback = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(u.hostname)
       for (let hop = 0; ; hop++) {
         const loopback = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(u.hostname)
         if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) throw new Error(`refusing to download over ${u.protocol.replace(':', '')} from ${u.hostname}`)
+        if (hop > 0 && loopback && !initialLoopback) throw new Error(`refusing a redirect from ${origin} to ${u.host}`)
         // A redirect may stay on the asset's host or move to Figma's own hosts, never elsewhere.
         if (hop > 0 && u.host !== origin && !(u.protocol === 'https:' && figmaHost(u.hostname))) throw new Error(`refusing a redirect from ${origin} to ${u.host}`)
+        if (!allowedAssetUrl(u)) throw new Error(`refusing to download from ${u.host}`)
         const res = await fetch(u, { signal: AbortSignal.timeout(120000), redirect: 'manual' })
         if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
-          await res.arrayBuffer().catch(() => {})
+          await res.body?.cancel().catch(() => {})
           if (hop >= 4) throw new Error('too many redirects downloading an image')
           u = new URL(res.headers.get('location'), u)
           continue
         }
-        if (!res.ok) throw new Error(`downloading an image failed (${res.status} from ${u.hostname})`)
-        if (Number(res.headers.get('content-length') ?? 0) > MAX_IMAGE_BYTES) throw new Error('an image from Figma is larger than 100 MB')
-
-        return Buffer.from(await res.arrayBuffer())
+        if (!res.ok) {
+          await res.body?.cancel().catch(() => {})
+          throw new Error(`downloading an image failed (${res.status} from ${u.hostname})`)
+        }
+        return readBoundedBytes(res)
       }
     }
-    const abs = s.startsWith('file://') ? new URL(s).pathname : path.isAbsolute(s) ? s : path.join(ctx.ROOT, s)
+    const abs = s.startsWith('file://') ? fileURLToPath(s) : path.isAbsolute(s) ? s : path.join(ctx.ROOT, s)
     ctx.checkAgentFile?.(abs)
-    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) throw new Error(`no such asset file: ${s}`)
+    const rootReal = fs.realpathSync(ctx.ROOT)
+    let fileReal
+    try { fileReal = fs.realpathSync(abs) } catch { throw new Error(`no such asset file: ${s}`) }
+    if (fileReal !== rootReal && !fileReal.startsWith(rootReal + path.sep)) throw new Error('local Figma assets must stay inside the project folder')
+    const info = fs.statSync(fileReal)
+    if (!info.isFile()) throw new Error(`no such asset file: ${s}`)
+    if (info.size > MAX_IMAGE_BYTES) throw new Error('an image from Figma is larger than 100 MB')
 
-    return fs.readFileSync(abs)
+    return fs.readFileSync(fileReal)
   }
 
   /** Saves an image under media/figma/<key>/ named by node and content, so re-imports reuse files. */
@@ -412,7 +451,7 @@ export default function figmaRoutes(ctx) {
   }
 
   const callbackPage = (title, text, ok) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title>
-<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f0f12;color:#e6e6ec;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}main{max-width:420px;padding:24px}h1{font-size:18px;margin:0 0 8px;color:${ok ? '#f5b942' : '#ff5f57'}}p{margin:0;color:#b7b7c2}</style></head>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#151615;color:#f2f0e9;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}main{max-width:420px;padding:24px}h1{font-size:18px;margin:0 0 8px;color:${ok ? '#efbc68' : '#f28b7a'}}p{margin:0;color:#b5b8ae}</style></head>
 <body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(text)}</p></main></body></html>`
 
   async function finishOAuth(url) {
@@ -421,8 +460,8 @@ export default function figmaRoutes(ctx) {
     const state = url.searchParams.get('state') ?? ''
     const code = url.searchParams.get('code') ?? ''
     const flow = pending.get(state)
-    if (!flow || !code) return { ok: false, title: 'This sign-in link is not valid', text: 'It expired or was already used. Start again from Arya\'s Figma tab.' }
     pending.delete(state)
+    if (!flow || !code || Date.now() - flow.at > 10 * 60 * 1000) return { ok: false, title: 'This sign-in link is not valid', text: 'It expired or was already used. Start again from Arya\'s Figma tab.' }
     const app = appConfig()
     if (!app) return { ok: false, title: 'Figma is not configured', text: 'The Figma app settings are missing.' }
     try {
@@ -582,7 +621,12 @@ export default function figmaRoutes(ctx) {
   const raw = async (req, res, url) => {
     if (url.pathname !== '/api/figma/callback' || req.method !== 'GET') return false
     const r = await finishOAuth(url)
-    ctx.send(res, r.ok ? 200 : 400, callbackPage(r.title, r.text, r.ok), { 'content-type': 'text/html; charset=utf-8' })
+    ctx.send(res, r.ok ? 200 : 400, callbackPage(r.title, r.text, r.ok), {
+      'content-type': 'text/html; charset=utf-8',
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+      'referrer-policy': 'no-referrer',
+      'x-content-type-options': 'nosniff',
+    })
 
     return true
   }

@@ -78,7 +78,8 @@ export function confinedFile(root, value) {
   let actual
   try { actual = fs.realpathSync(existing) } catch { throw failure('Agent files cannot use unresolved symbolic links.') }
   if (actual !== base && !actual.startsWith(base + path.sep)) throw failure('Agent files cannot follow a link outside the project.')
-  return file
+  const resolved = path.join(actual, path.relative(existing, file))
+  return path.join(path.resolve(root), path.relative(base, resolved))
 }
 
 // A preview step's path names a processing route, not a file. Only the listed routes are
@@ -98,7 +99,7 @@ function checkProposal(root, body) {
 
 function checkFiles(root, value, key = '', depth = 0) {
   if (depth > 40) throw failure('Tool arguments are nested too deeply.')
-  if (typeof value === 'string' && ['src', 'path', 'dir', 'proxy', 'out'].includes(key)) confinedFile(root, value)
+  if (typeof value === 'string' && ['src', 'path', 'dir', 'proxy', 'out', 'lut'].includes(key)) confinedFile(root, value)
   if (Array.isArray(value)) {
     for (const child of value) {
       if (typeof child === 'string' && ['srcs', 'paths'].includes(key)) confinedFile(root, child)

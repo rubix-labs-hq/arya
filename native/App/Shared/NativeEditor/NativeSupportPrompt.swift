@@ -83,6 +83,7 @@ struct NativeSupportPromptCard: View {
             NavigationStack {
                 NativeProView(store: .shared).toolbar { Button("Done") { supportVisible = false } }
             }
+            .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
         }
         #endif
     }
@@ -96,10 +97,14 @@ struct NativeSupportPromptCard: View {
         .foregroundStyle(NativeEditorStyle.accentInk)
         .accessibilityHint(Self.hint)
         .accessibilityIdentifier("supportPrompt.tip")
-        Button("Not now") { choose(.notNow) }
+        Button { choose(.notNow) } label: {
+            Text("Not now").frame(minHeight: NativeEditorStyle.compactControlHeight - 12)
+        }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("supportPrompt.later")
-        Button("Don't ask again") { choose(.never) }
+        Button { choose(.never) } label: {
+            Text("Don't ask again").frame(minHeight: NativeEditorStyle.compactControlHeight)
+        }
             .buttonStyle(.borderless)
             .font(.footnote)
             .foregroundStyle(NativeEditorStyle.muted)

@@ -18,14 +18,14 @@ const CSS = `
 .shorts-note { color:var(--muted); font-size:12px; line-height:1.45; }
 .shorts-list { display:flex; flex-direction:column; gap:8px; }
 .shorts-card { border:1px solid var(--line); border-radius:9px; padding:8px; display:flex; flex-direction:column; gap:7px; }
-.shorts-card.chosen { border-color:#f5b94280; }
+.shorts-card.chosen { border-color:#efbc6880; }
 .shorts-card input[type=text] { width:100%; }
 .shorts-card .row { flex-wrap:wrap; }
 .shorts-card .shorts-range { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
 .shorts-range label { font-size:11px; color:var(--muted); }
 .shorts-range input { width:100%; font-variant-numeric:tabular-nums; }
 .shorts-evidence { margin:0; padding:0; border:0; max-height:110px; overflow:auto; font-size:12px; line-height:1.5; white-space:pre-wrap; }
-.shorts-review { padding:9px; border:1px solid #f5b94260; border-radius:9px; font-size:12px; line-height:1.5; }
+.shorts-review { padding:9px; border:1px solid #efbc6860; border-radius:9px; font-size:12px; line-height:1.5; }
 .shorts-tab .error { color:#ff8b83; }
 .shorts-tab button { min-height:32px; }
 @media(pointer:coarse) { .shorts-tab button,.shorts-tab input,.shorts-tab select { min-height:44px; } }

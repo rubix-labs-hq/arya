@@ -114,10 +114,13 @@ final class NativeSourceSamplingTests: XCTestCase {
             let buffer = try XCTUnwrap(raw)
             CVPixelBufferLockBaseAddress(buffer, [])
             let pixels = CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self), stride = CVPixelBufferGetBytesPerRow(buffer)
-            for y in 0..<height { for x in 0..<width {
-                let offset = y * stride + x * 4, level: UInt8 = x % 2 == 0 ? 0 : 255
+            for x in 0..<width {
+                let offset = x * 4, level: UInt8 = x % 2 == 0 ? 0 : 255
                 pixels[offset] = level; pixels[offset + 1] = level; pixels[offset + 2] = level; pixels[offset + 3] = 255
-            } }
+            }
+            for y in 1..<height {
+                memcpy(pixels.advanced(by: y * stride), pixels, width * 4)
+            }
             CVPixelBufferUnlockBaseAddress(buffer, [])
             guard adaptor.append(buffer, withPresentationTime: CMTime(value: Int64(frame), timescale: 10)) else { throw writer.error ?? ReelRenderingError("Fixture frame append failed") }
         }

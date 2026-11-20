@@ -49,7 +49,7 @@ export function PresetsSection({ clip }) {
       </div>
       ${c.kind === 'title' ? html`
         <h4>Text animators</h4>
-        <div class="hint">Typewriter and Tracking act per character; the others move the whole line. Per-character transforms need renderer support (see the Motion page notes).</div>
+        <div class="hint">Typewriter and Tracking animate per character; the others animate the whole title.</div>
         <div class="mo-anim-grid">
           ${TEXT_ANIMATORS.map(a => html`<button class=${`tiny ${(c.title?.anim ?? 'none') === a.anim ? 'on' : ''}`} title=${a.hint} onClick=${() => edit({ op: 'update', id: c.id, set: { title: { anim: a.anim } } }, `text animator ${a.label}`)}>${a.label}${a.perChar ? ' ·' : ''}</button>`)}
         </div>` : null}

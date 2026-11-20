@@ -522,7 +522,7 @@ export class AudioEngine {
   }
 
   preload(p) {
-    for (const item of planLeaves(planAudio(p, 0))) { const pending = this.loadLeaf(item); if (host.kind === 'browser-local') pending.catch(error => host.browser.emit('import', { state: 'failed', error: `Audio preview: ${error.message}` })) }
+    for (const item of planLeaves(planAudio(p, 0))) { const pending = this.loadLeaf(item); if (host.kind === 'browser-local') pending.catch(error => console.warn('Audio preview preload failed:', error?.message ?? error)) }
   }
 
   /** Whether a track is audible given mute/solo across tracks. */

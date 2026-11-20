@@ -19,7 +19,10 @@ struct NativeSelectionAIAction: View {
         }
         .accessibilityLabel(title).help(title)
         .disabled(model.selected == nil && model.composition == nil)
-        .sheet(item: $context) { context in NativeSelectionAIIntent(model: model, assistant: assistant, context: context) }
+        .sheet(item: $context) { context in
+            NativeSelectionAIIntent(model: model, assistant: assistant, context: context)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+        }
         .onChange(of: model.folder) { _, _ in context = nil }
     }
 }
@@ -62,7 +65,9 @@ private struct NativeSelectionAIIntent: View {
                         NavigationLink {
                             NativeAssistantSettings(assistant: assistant).navigationTitle("Assistant settings")
                         } label: {
-                            Label("Set up assistant", systemImage: "sparkles").frame(minHeight: 44)
+                            Label("Set up assistant", systemImage: "sparkles")
+                                .foregroundStyle(NativeEditorStyle.accentInk)
+                                .frame(minHeight: 44)
                         }.buttonStyle(.borderedProminent).tint(NativeEditorStyle.accent)
                             .accessibilityIdentifier("askAI.setUpAssistant")
                     }
@@ -94,7 +99,10 @@ private struct NativeSelectionAIIntent: View {
                 }
             }
         }.frame(minWidth: 320, minHeight: 360)
-        .sheet(isPresented: $reviewingSharing) { NativeAssistantSharingReview(assistant: assistant) }
+        .sheet(isPresented: $reviewingSharing) {
+            NativeAssistantSharingReview(assistant: assistant)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+        }
     }
 
     private func reject(_ message: String) { error = message; model.status = message }

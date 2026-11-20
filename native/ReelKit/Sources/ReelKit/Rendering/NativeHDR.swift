@@ -28,9 +28,9 @@ enum NativeHDR {
         guard codec == .hevc || codec == .proRes422 || codec == .proRes422HQ || codec == .proRes4444 else { throw ReelRenderingError("HDR requires HEVC or Apple ProRes") }
         result[AVVideoColorPropertiesKey] = [AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_2020, AVVideoTransferFunctionKey: transfer.av, AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_2020]
         if codec == .hevc { compression[AVVideoProfileLevelKey] = kVTProfileLevel_HEVC_Main10_AutoLevel }
+        let peak = body.number("maxLuminance", 1000), minimum = body.number("minLuminance", 0.005)
+        guard peak.isFinite, minimum.isFinite, peak >= 100, peak <= 10000, minimum >= 0, minimum < peak else { throw ReelRenderingError("Invalid HDR mastering luminance") }
         if transfer == .pq {
-            let peak = body.number("maxLuminance", 1000), minimum = body.number("minLuminance", 0.005)
-            guard peak.isFinite, minimum.isFinite, peak >= 100, peak <= 10000, minimum >= 0, minimum < peak else { throw ReelRenderingError("Invalid HDR mastering luminance") }
             var mastering = Data()
             for xy: UInt16 in [8500, 39850, 6550, 2300, 35400, 14600, 15635, 16450] { append(xy, to: &mastering) }
             append(UInt32((peak * 10000).rounded()), to: &mastering); append(UInt32((minimum * 10000).rounded()), to: &mastering)
@@ -78,9 +78,12 @@ enum NativeHDR {
     }
 
     static func linear(_ rgba: [Float]) -> [Float] {
-        let alpha = rgba[3]
-        let color = CGColor(colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, components: rgba.map(CGFloat.init))!
-        let converted = color.converted(to: workingSpace, intent: .relativeColorimetric, options: nil)!.components!
+        guard rgba.count >= 4 else { return [0, 0, 0, 0] }
+        let alpha = rgba[3].isFinite ? max(0, min(1, rgba[3])) : 0
+        let components = rgba.prefix(3).map { CGFloat($0.isFinite ? $0 : 0) } + [CGFloat(alpha)]
+        guard let color = CGColor(colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, components: components),
+              let converted = color.converted(to: workingSpace, intent: .relativeColorimetric, options: nil)?.components,
+              converted.count >= 3 else { return [0, 0, 0, alpha] }
         return converted.prefix(3).map { Float($0) * alpha } + [alpha]
     }
 
@@ -98,6 +101,7 @@ enum NativeHDR {
             .replacingOccurrences(of: "c = clamp(c, 0.0, 1.0);", with: "c = max(c, float3(0.0));")
             .replacingOccurrences(of: "return float4(clamp(c, 0.0, 1.0) * a, a);", with: "return float4(max(c, float3(0.0)) * a, a);")
             .replacingOccurrences(of: "return min(float3(1.0), b + s);", with: "return b + s;")
+            .replacingOccurrences(of: "min(float3(1.0), a.rgb + b.rgb * uAmount)", with: "a.rgb + b.rgb * uAmount")
             .replacingOccurrences(of: "clamp(a.rgb + (a.rgb - b.rgb) * uAmount * 2.0, 0.0, a.a)", with: "max(a.rgb + (a.rgb - b.rgb) * uAmount * 2.0, float3(0.0))")
     }
 }
@@ -136,8 +140,8 @@ final class NativeHDRDecoder {
 }
 
 extension ReelMetalRenderer {
-    public func renderHDR(project: String, at: Double, comp: String? = nil, width: Int? = nil) async throws -> ReelRenderedFrame {
-        try await NativeHDR.$rendering.withValue(true) { try await render(project: project, at: at, comp: comp, width: width) }
+    public func renderHDR(project: String, at: Double, comp: String? = nil, width: Int? = nil, height: Int? = nil) async throws -> ReelRenderedFrame {
+        try await NativeHDR.$rendering.withValue(true) { try await render(project: project, at: at, comp: comp, width: width, height: height) }
     }
 
     public func renderHDRPreview(project: String, operations: String, at: Double, comp: String? = nil, width: Int? = nil) async throws -> ReelRenderedFrame {
@@ -151,7 +155,8 @@ extension ReelMetalRenderer {
             guard let function = library.makeFunction(name: "reel_\(field)") else { throw ReelRenderingError("missing HDR Metal kernel") }
             hdrPipelines[field] = try device.makeComputePipelineState(function: function)
         }
-        return hdrPipelines[name]!
+        guard let pipeline = hdrPipelines[name] else { throw ReelRenderingError("missing HDR Metal kernel \(name)") }
+        return pipeline
     }
 
     func hdrVideo(_ src: String, url: URL, time: Double, maximum: Int, sampling: NativeSourceSampling? = nil) async throws -> MTLTexture {

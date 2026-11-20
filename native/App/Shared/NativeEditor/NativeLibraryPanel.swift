@@ -607,6 +607,7 @@ private struct NativeLibraryRemoveSheet: View {
                 Text("Placed layers and their media remain in the project. You can undo this removal.")
                 if let error { Text(error).font(.caption).foregroundStyle(.secondary) }
             }
+            .formStyle(.grouped)
             .navigationTitle("Remove component")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { onCancellation(request) } }

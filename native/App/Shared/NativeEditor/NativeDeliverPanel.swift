@@ -56,20 +56,20 @@ private struct NativeDeliveryHistoryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack { Text("Saved exports").font(.subheadline.weight(.semibold)); Spacer(); Button("Refresh files") { Task { await refresh() } } }
-            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.orange) }
-            ForEach(warnings, id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
+            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(NativeEditorStyle.warning) }
+            ForEach(warnings, id: \.self) { Text($0).font(.caption).foregroundStyle(NativeEditorStyle.warning) }
             if loading { Text("Loading saved exports…").font(.caption).foregroundStyle(.secondary) }
             if !loading && rows.isEmpty && error.isEmpty { Text("No saved exports found in this project.").font(.caption).foregroundStyle(.secondary) }
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 VStack(alignment: .leading, spacing: 5) {
                     Text(row.string("output")).font(.caption.weight(.semibold)).lineLimit(2)
                     Text(row.string("provenance") == "completed" ? "Completed export" : "Existing output · completion not recorded").font(.caption2).foregroundStyle(.secondary)
-                    if !row.flag("available") { Text(row.string("problem")).font(.caption).foregroundStyle(.orange) }
+                    if !row.flag("available") { Text(row.string("problem")).font(.caption).foregroundStyle(NativeEditorStyle.warning) }
                     ViewThatFits(in: .horizontal) {
                         HStack { buttons(row) }
                         VStack(alignment: .leading) { buttons(row) }
                     }
-                }.padding(8).background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                }.padding(8).background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 6))
             }
             if rows.contains(where: { $0.string("provenance") == "completed" }) { supportLink }
         }
@@ -83,6 +83,7 @@ private struct NativeDeliveryHistoryView: View {
                 } else { Text("The project changed. Choose the export again.") }
                 Button("Done") { share = nil }
             }.padding(24)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
         }
     }
     // BEGIN SUPPORT EXPORT LINK
@@ -100,6 +101,7 @@ private struct NativeDeliveryHistoryView: View {
                     NavigationStack {
                         NativeProView(store: proStore).toolbar { Button("Done") { supportVisible = false } }
                     }
+                    .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
                 }
         }
         #elseif ARYA_DIRECT_DISTRIBUTION
@@ -113,7 +115,8 @@ private struct NativeDeliveryHistoryView: View {
     @ViewBuilder private func buttons(_ row: [String: Any]) -> some View {
         ForEach(actions, id: \.self) { action in
             Button(action == "share" ? "Share export" : action == "open" ? "Open" : "Show in Finder") { Task { await access(row, action: action) } }
-                .font(.caption).disabled(!row.flag("available"))
+                .buttonStyle(NativeSecondaryButtonStyle(height: NativeEditorStyle.compactControlHeight))
+                .disabled(!row.flag("available"))
         }
     }
     @MainActor private func refresh() async {
@@ -181,7 +184,7 @@ struct NativeExportRepeatGuard {
 struct NativeDeliverPanel: View {
     @ObservedObject var model: NativeEditorModel
     @ObservedObject var session: EditorSession
-    @State private var preset = "h264"
+    @State private var preset = "h264-high"
     @State private var transfer = "sdr"
     @State private var name = "Export"
     @State private var starting = false
@@ -203,7 +206,7 @@ struct NativeDeliverPanel: View {
     private var presets: [String] { model.capabilities.dictionary("export")["presets"] as? [String] ?? model.capabilities["presets"] as? [String] ?? [] }
     /// Readable names for the backend preset ids. Unknown ids show as they are.
     static func presetName(_ id: String) -> String {
-        ["h264-high": "H.264 High quality", "h264-web": "H.264 for web", "h264-fast": "H.264 fast draft", "hevc": "HEVC (H.265)",
+        ["h264": "H.264", "h264-high": "H.264 High quality", "h264-web": "H.264 for web", "h264-fast": "H.264 fast draft", "hevc": "HEVC (H.265)",
          "prores-422": "Apple ProRes 422", "prores-422hq": "Apple ProRes 422 HQ", "prores-4444": "Apple ProRes 4444",
          "gif": "Animated GIF", "png-seq": "PNG sequence", "audio-m4a": "Audio only, AAC (.m4a)", "audio-wav": "Audio only, WAV"][id] ?? id
     }
@@ -262,21 +265,33 @@ struct NativeDeliverPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 // The phone sheet already shows Deliver as its title.
                 if model.mobilePanel != .deliver { Text("Deliver").font(.headline) }
-                TextField("File name", text: $name).textFieldStyle(.plain).modifier(NativeInputField())
-                Picker("Preset", selection: $preset) { ForEach(presets, id: \.self) { Text(Self.presetName($0) + ($0.hasPrefix("prores-") ? proBadge : "")).tag($0) } }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("File name").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted)
+                    TextField("File name", text: $name).textFieldStyle(.plain).modifier(NativeInputField())
+                }
+                LabeledContent {
+                    Picker("Preset", selection: $preset) { ForEach(presets, id: \.self) { Text(Self.presetName($0) + ($0.hasPrefix("prores-") ? proBadge : "")).tag($0) } }
+                        .labelsHidden()
+                } label: { Text("Preset").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                 if hdrAvailable {
-                    Picker("Color delivery", selection: $transfer) {
-                        Text("SDR Rec.709").tag("sdr")
-                        if hdrTransfers.contains("pq") { Text("HDR10 PQ" + proBadge).tag("pq") }
-                        if hdrTransfers.contains("hlg") { Text("HDR HLG" + proBadge).tag("hlg") }
-                    }
+                    LabeledContent {
+                        Picker("Color delivery", selection: $transfer) {
+                            Text("SDR Rec.709").tag("sdr")
+                            if hdrTransfers.contains("pq") { Text("HDR10 PQ" + proBadge).tag("pq") }
+                            if hdrTransfers.contains("hlg") { Text("HDR HLG" + proBadge).tag("hlg") }
+                        }
+                        .labelsHidden()
+                    } label: { Text("Color delivery").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                     if transfer != "sdr" { Text("10-bit Rec.2020. HDR playback requires a compatible display.").font(.caption).foregroundStyle(.secondary) }
                 }
                 Text(model.project?.compositions.first(where: { $0.id == model.composition })?.name ?? "Main timeline").font(.subheadline.weight(.semibold))
-                Picker("Export scope", selection: $exportScope) {
-                    Text(model.composition == nil ? "Whole timeline" : "Whole composition").tag("whole")
-                    if activeRange != nil { Text("Marked in/out range").tag("range") }
-                }
+                LabeledContent {
+                    Picker("Export scope", selection: $exportScope) {
+                        Text(model.composition == nil ? "Whole timeline" : "Whole composition").tag("whole")
+                        if activeRange != nil { Text("Marked in/out range").tag("range") }
+                    }
+                    .labelsHidden()
+                } label: { Text("Export scope").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                 let range = exportScope == "range" ? activeRange : nil
                 Text("\(nativeTimecode(range?.lowerBound ?? 0, fps: model.fps)) to \(nativeTimecode(range?.upperBound ?? model.duration, fps: model.fps))")
                     .font(.system(.caption, design: .monospaced)).foregroundStyle(NativeEditorStyle.muted)
@@ -302,7 +317,7 @@ struct NativeDeliverPanel: View {
                     NativeNumberRow("Output frame rate", value: outputFPS, range: 1...120, step: 1, showsSlider: false) { outputFPS = $0 }
                 }
                 if let size = outputSize { Text("\(size.width) × \(size.height) · \((outputOverrides ? outputFPS : model.fps).formatted()) fps").font(.caption).foregroundStyle(NativeEditorStyle.muted) }
-                if let outputError { Text(outputError).font(.caption).foregroundStyle(.orange) }
+                if let outputError { Text(outputError).font(.caption).foregroundStyle(NativeEditorStyle.warning) }
                 if needsPro {
                     Text("Exports above 1080p, Apple ProRes and HDR are part of Arya Pro. Choose 1080p, or get Arya Pro.")
                         .font(.caption).foregroundStyle(NativeEditorStyle.muted)
@@ -314,8 +329,24 @@ struct NativeDeliverPanel: View {
                     .accessibilityIdentifier("deliver.export")
                 Button("Save current frame") { still() }.disabled(model.metalFrame == nil)
                     .buttonStyle(NativeSecondaryButtonStyle(fill: true))
+                if let lastFile {
+                    ShareLink(item: lastFile) {
+                        Label("Share saved file", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(NativeSecondaryButtonStyle(fill: true))
+                }
                 #if os(iOS)
-                if !mobileExport.message.isEmpty { Text(mobileExport.message).font(.caption).foregroundStyle(.secondary) }
+                if !mobileExport.message.isEmpty {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: mobileExport.message.lowercased().contains("saved") || mobileExport.message.lowercased().contains("finished") ? "checkmark.circle.fill" : "info.circle")
+                            .foregroundStyle(mobileExport.message.lowercased().contains("saved") || mobileExport.message.lowercased().contains("finished") ? NativeEditorStyle.success : NativeEditorStyle.accent)
+                            .accessibilityHidden(true)
+                        Text(mobileExport.message).font(.caption).foregroundStyle(NativeEditorStyle.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 6))
+                }
                 if mobileExport.pending {
                     Button("Resume queued export") { mobileExport.resume() }.disabled(!mobileExport.canResume)
                     Button("Discard queued export", role: .destructive) { mobileExport.discard(); repeatGuard.reset() }.disabled(!mobileExport.canResume)
@@ -323,17 +354,22 @@ struct NativeDeliverPanel: View {
                 #endif
                 NativeRenderQueue(model: model)
                 NativeDeliveryHistoryView(model: model, session: session)
-                if let lastFile { ShareLink(item: lastFile) { Label("Share saved file", systemImage: "square.and.arrow.up") } }
                 Divider()
                 Text("Timeline and subtitles").font(.subheadline)
                 Button { importSheet = NativeInterchangeSheetDestination() } label: { Label("Import timeline or subtitles", systemImage: "square.and.arrow.down") }
                     .buttonStyle(NativeToolbarButtonStyle()).disabled(model.project == nil || model.busy)
-                Picker("Format", selection: $interchange) { Text("OpenTimelineIO").tag("otio"); Text("Final Cut Pro XML").tag("fcpxml"); Text("CMX 3600 EDL").tag("edl"); Text("SubRip subtitles").tag("srt"); Text("WebVTT subtitles").tag("vtt") }
+                LabeledContent {
+                    Picker("Format", selection: $interchange) { Text("OpenTimelineIO").tag("otio"); Text("Final Cut Pro XML").tag("fcpxml"); Text("CMX 3600 EDL").tag("edl"); Text("SubRip subtitles").tag("srt"); Text("WebVTT subtitles").tag("vtt") }
+                        .labelsHidden()
+                } label: { Text("Format").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                 if interchange == "edl" {
-                    Picker("Video track", selection: $edlTrack) {
-                        Text("Bottom video track").tag("")
-                        ForEach(model.tracks.filter { $0.kind == "video" }) { Text($0.name).tag($0.id) }
-                    }
+                    LabeledContent {
+                        Picker("Video track", selection: $edlTrack) {
+                            Text("Bottom video track").tag("")
+                            ForEach(model.tracks.filter { $0.kind == "video" }) { Text($0.name).tag($0.id) }
+                        }
+                        .labelsHidden()
+                    } label: { Text("Video track").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                     Text("EDL describes one video track. Titles, shapes and nested compositions are omitted; transitions become cuts. Export each track separately.").font(.caption).foregroundStyle(.secondary)
                 }
                 Button("Export timeline or subtitles") {
@@ -346,19 +382,24 @@ struct NativeDeliverPanel: View {
                         model.status = (["Saved \(lastFile!.lastPathComponent)"] + (result["warnings"] as? [String] ?? [])).joined(separator: " ")
                     }
                 }
+                .buttonStyle(NativeSecondaryButtonStyle(fill: true))
             }.nativePanelPadding()
         }
-        .sheet(item: $importSheet) { _ in NativeInterchangeImportSheet(model: model, session: session) }
+        .sheet(item: $importSheet) { _ in
+            NativeInterchangeImportSheet(model: model, session: session)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+        }
         #if os(iOS)
         .sheet(isPresented: $proVisible) {
             NavigationStack {
                 NativeProView(store: proStore, reason: "Arya Pro exports this video at full quality. Editing and 1080p export stay free.")
                     .toolbar { Button("Done") { proVisible = false } }
             }
+            .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
         }
         #endif
-        .onAppear { if !presets.contains(preset) { preset = presets.first ?? "h264" } }
-        .onChange(of: presets) { _, values in if !values.contains(preset) { preset = values.first ?? "h264" } }
+        .onAppear { if !presets.contains(preset) { preset = presets.first ?? "h264-high" } }
+        .onChange(of: presets) { _, values in if !values.contains(preset) { preset = values.first ?? "h264-high" } }
         .onChange(of: preset) { _, _ in if !hdrAvailable { transfer = "sdr" } }
         .onChange(of: hdrAvailable) { _, available in if !available { transfer = "sdr" } }
         .onChange(of: session.sessionID) { _, _ in lastFile = nil; starting = false; edlTrack = "" }
@@ -425,6 +466,7 @@ struct NativeDeliverPanel: View {
             if let comp = model.composition { body["comp"] = comp }
             let result = try await model.call("/api/frame", body)
             lastFile = try model.mediaURL(result.string("path", result.string("file")))
+            if let saved = lastFile { model.status = "Saved frame \(saved.lastPathComponent)." }
         }
     }
 }

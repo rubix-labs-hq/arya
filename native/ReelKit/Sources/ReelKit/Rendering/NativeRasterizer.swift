@@ -21,7 +21,9 @@ struct NativeRasterizer {
     }
 
     func title(_ t: [String: Any], state: [String: Any], scale: Double) throws -> NativeRaster {
-        let size = t.number("size", 96) * scale
+        guard scale.isFinite, scale > 0 else { throw ReelRenderingError("invalid title raster scale") }
+        let size = max(1, t.number("size", 96) * scale)
+        guard size.isFinite else { throw ReelRenderingError("invalid title font size") }
         let name = t.string("font", "Avenir Next")
         let weight = t.number("weight", t.flag("bold") ? 700 : 600)
         let variation: [NSNumber: NSNumber] = [NSNumber(value: 0x77676874): NSNumber(value: weight), NSNumber(value: 0x6f70737a): 14]
@@ -91,8 +93,10 @@ struct NativeRasterizer {
             mask.setFillColor(CGColor(gray: 0, alpha: 1)); mask.setShouldSmoothFonts(true); mask.setAllowsFontSmoothing(true)
             mask.setAllowsFontSubpixelPositioning(true); mask.setShouldSubpixelPositionFonts(true); mask.setAllowsFontSubpixelQuantization(false); mask.setShouldSubpixelQuantizeFonts(false)
             for (i, text) in visible.enumerated() {
-                for run in CTLineGetGlyphRuns(line(text)) as! [CTRun] {
-                    let count = CTRunGetGlyphCount(run), runFont = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+                for run in CTLineGetGlyphRuns(line(text)) as? [CTRun] ?? [] {
+                    let count = CTRunGetGlyphCount(run)
+                    guard count > 0, let rawFont = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName], CFGetTypeID(rawFont as CFTypeRef) == CTFontGetTypeID() else { continue }
+                    let runFont = rawFont as! CTFont
                     var glyphs = [CGGlyph](repeating: 0, count: count), positions = [CGPoint](repeating: .zero, count: count)
                     CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &glyphs); CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
                     for j in positions.indices {
@@ -184,19 +188,21 @@ struct NativeRasterizer {
     func shapePath(_ shape: [String: Any]) -> (CGPath, Double, Double) {
         let p = CGMutablePath(), type = shape.string("type", "rect")
         if type == "rect" || type == "ellipse" {
-            let w = shape.number("width", type == "rect" ? 400 : 300), h = shape.number("height", type == "rect" ? 240 : 300)
+            let w = max(0, shape.number("width", type == "rect" ? 400 : 300)), h = max(0, shape.number("height", type == "rect" ? 240 : 300))
             let rect = CGRect(x: -w / 2, y: -h / 2, width: w, height: h)
-            if type == "ellipse" { p.addEllipse(in: rect) } else { let r = min(shape.number("radius"), min(w, h) / 2); p.addRoundedRect(in: rect, cornerWidth: r, cornerHeight: r) }
-            return (p, w / 2, h / 2)
+            if type == "ellipse" { p.addEllipse(in: rect) } else { let r = max(0, min(shape.number("radius"), min(w, h) / 2)); p.addRoundedRect(in: rect, cornerWidth: r, cornerHeight: r) }
+            return (p, max(1, w / 2), max(1, h / 2))
         }
-        if type == "line" { let w = shape.number("width", 600); p.move(to: CGPoint(x: -w / 2, y: 0)); p.addLine(to: CGPoint(x: w / 2, y: 0)); return (p, w / 2, 1) }
+        if type == "line" { let w = max(0, shape.number("width", 600)); p.move(to: CGPoint(x: -w / 2, y: 0)); p.addLine(to: CGPoint(x: w / 2, y: 0)); return (p, max(1, w / 2), 1) }
         if type == "star" || type == "polygon" {
-            let n = max(3, shape.int(type == "star" ? "points" : "sides", type == "star" ? 5 : 6)), r = shape.number("radius", 180), ri = shape.number("innerRadius", r * 0.45), steps = type == "star" ? n * 2 : n
+            let n = max(3, shape.int(type == "star" ? "points" : "sides", type == "star" ? 5 : 6)), r = max(0, shape.number("radius", 180)), ri = max(0, shape.number("innerRadius", r * 0.45)), steps = type == "star" ? n * 2 : n
             for i in 0..<steps { let a = -Double.pi / 2 + Double(i) * Double.pi * 2 / Double(steps), rr = type == "star" && i % 2 == 1 ? ri : r; let q = CGPoint(x: cos(a) * rr, y: sin(a) * rr); if i == 0 { p.move(to: q) } else { p.addLine(to: q) } }
-            p.closeSubpath(); return (p, r, r)
+            p.closeSubpath(); return (p, max(1, r), max(1, r))
         }
-        let path = shape.object("path"), points = path["vertices"] as? [[Double]] ?? [], ins = path["in"] as? [[Double]] ?? [], outs = path["out"] as? [[Double]] ?? []
-        func tangent(_ a: [[Double]], _ i: Int) -> [Double] { i < a.count ? a[i] : [0, 0] }
+        let path = shape.object("path")
+        let points = (path["vertices"] as? [[Double]] ?? []).filter { $0.count >= 2 && $0[0].isFinite && $0[1].isFinite }
+        let ins = path["in"] as? [[Double]] ?? [], outs = path["out"] as? [[Double]] ?? []
+        func tangent(_ a: [[Double]], _ i: Int) -> [Double] { i < a.count && a[i].count >= 2 && a[i][0].isFinite && a[i][1].isFinite ? a[i] : [0, 0] }
         func segment(_ prev: Int, _ next: Int) { let a = points[prev], b = points[next], o = tangent(outs, prev), n = tangent(ins, next); p.addCurve(to: CGPoint(x: b[0], y: b[1]), control1: CGPoint(x: a[0] + o[0], y: a[1] + o[1]), control2: CGPoint(x: b[0] + n[0], y: b[1] + n[1])) }
         for (i, q) in points.enumerated() { if i == 0 { p.move(to: CGPoint(x: q[0], y: q[1])) } else { segment(i - 1, i) } }
         if path["closed"] as? Bool != false && points.count > 2 { segment(points.count - 1, 0); p.closeSubpath() }
@@ -252,26 +258,30 @@ struct NativeRasterizer {
 
     func pathLength(_ shape:[String:Any]) -> Double {
         let type=shape.string("type","rect")
-        if type == "rect" {return 2*(shape.number("width",400)+shape.number("height",240))}
-        if type == "ellipse" {let a=shape.number("width",300)/2,b=shape.number("height",300)/2; return Double.pi*(3*(a+b)-sqrt((3*a+b)*(a+3*b)))}
-        if type == "line" {return shape.number("width",600)}
-        if type == "polygon" || type == "star" {let r=shape.number("radius",180),n=type == "star" ? shape.number("points",5)*2 : shape.number("sides",6);return n*2*r*sin(Double.pi/n)*(type == "star" ? 0.8 : 1)}
-        let points=shape.object("path")["vertices"] as? [[Double]] ?? []
+        if type == "rect" {return max(0,2*(shape.number("width",400)+shape.number("height",240)))}
+        if type == "ellipse" {let a=max(0,shape.number("width",300)/2),b=max(0,shape.number("height",300)/2); return Double.pi*(3*(a+b)-sqrt(max(0,(3*a+b)*(a+3*b))))}
+        if type == "line" {return max(0,shape.number("width",600))}
+        if type == "polygon" || type == "star" {let r=max(0,shape.number("radius",180)),n=max(3,type == "star" ? shape.number("points",5)*2 : shape.number("sides",6));return n*2*r*sin(Double.pi/n)*(type == "star" ? 0.8 : 1)}
+        let points=(shape.object("path")["vertices"] as? [[Double]] ?? []).filter { $0.count >= 2 && $0[0].isFinite && $0[1].isFinite }
         return zip(points,points.dropFirst()).reduce(0.0){sum,pair in sum+hypot(pair.1[0]-pair.0[0],pair.1[1]-pair.0[1])}*1.1
     }
 
     func paint(_ fill: [String: Any], context ctx: CGContext, hw: Double, hh: Double, bounds: CGRect? = nil) {
         let g = fill.object("gradient")
         if g.isEmpty { ctx.setFillColor(cgColor(fill.string("color", "#ffffff"))); ctx.fill(bounds ?? CGRect(x: -hw - 1024, y: -hh - 1024, width: hw * 2 + 2048, height: hh * 2 + 2048)); return }
-        let stops = g["stops"] as? [[Any]] ?? [[0, "#ffffff"], [1, "#000000"]]
+        let rawStops = (g["stops"] as? [[Any]] ?? [[0, "#ffffff"], [1, "#000000"]]).filter { $0.count >= 2 }
+        let stops = rawStops.count >= 2 ? rawStops : [[0, "#ffffff"], [1, "#000000"]]
         let colors = stops.map { cgColor($0[1] as? String ?? "#ffffff") }, locations = stops.map { CGFloat(($0[0] as? NSNumber)?.doubleValue ?? 0) }
         guard let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!, colors: colors as CFArray, locations: locations) else { return }
         let angle = g.number("angle", g.string("type") == "radial" ? 0 : 90) * Double.pi / 180
         if g.string("type") == "radial" {
             let center = g.floats("center", [0, 0]), r = Float(g.number("radius",max(hw,hh))), radius = g.floats("radius", [r,r])
-            ctx.translateBy(x: Double(center[0]), y: Double(center[1])); ctx.rotate(by: angle); ctx.scaleBy(x: Double(max(1e-6,radius[0])), y: Double(max(1e-6,radius.count > 1 ? radius[1] : radius[0]))); ctx.drawRadialGradient(gradient, startCenter: .zero, startRadius: 0, endCenter: .zero, endRadius: 1, options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+            let cx = center.count > 0 ? Double(center[0]) : 0, cy = center.count > 1 ? Double(center[1]) : 0
+            let rx = max(1e-6, radius.count > 0 ? Double(radius[0]) : Double(r)), ry = max(1e-6, radius.count > 1 ? Double(radius[1]) : rx)
+            ctx.translateBy(x: cx, y: cy); ctx.rotate(by: angle); ctx.scaleBy(x: rx, y: ry); ctx.drawRadialGradient(gradient, startCenter: .zero, startRadius: 0, endCenter: .zero, endRadius: 1, options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
         } else {
             let a = g.floats("from", [Float(-cos(angle) * hw), Float(-sin(angle) * hh)]), b = g.floats("to", [Float(cos(angle) * hw), Float(sin(angle) * hh)])
+            guard a.count >= 2, b.count >= 2 else { return }
             ctx.drawLinearGradient(gradient, start: CGPoint(x: Double(a[0]), y: Double(a[1])), end: CGPoint(x: Double(b[0]), y: Double(b[1])), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
         }
     }

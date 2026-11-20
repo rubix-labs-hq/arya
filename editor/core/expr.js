@@ -18,6 +18,7 @@
 
 const MAX_LEN = 2000
 const MAX_STEPS = 20000
+const MAX_DEPTH = 64
 
 function tokenize(src) {
   const out = []
@@ -72,12 +73,17 @@ export function parse(src) {
   if (cache.has(src)) return cache.get(src)
   const toks = tokenize(src)
   let p = 0
+  let depth = 0
+  const enter = fn => {
+    if (++depth > MAX_DEPTH) throw new Error('expression nested too deeply')
+    try { return fn() } finally { depth-- }
+  }
   const peek = v => toks[p] && toks[p].t === 'op' && toks[p].v === v
   const eat = v => {
     if (!peek(v)) throw new Error(`expected "${v}"`)
     p++
   }
-  const expr = () => cond()
+  const expr = () => enter(cond)
   const cond = () => {
     const test = or()
     if (peek('?')) {
@@ -104,7 +110,7 @@ export function parse(src) {
     if (peek('-') || peek('!') || peek('+')) {
       const op = toks[p++].v
 
-      return { k: 'un', op, arg: unary() }
+      return { k: 'un', op, arg: enter(unary) }
     }
 
     return pow()
@@ -308,6 +314,7 @@ export function evaluate(src, ctx) {
         return num(ev(n.test)) ? ev(n.a) : ev(n.b)
       case 'call': {
         if (n.name === 'layer') {
+          if (!n.args.length) throw new Error('layer() needs a layer name')
           const name = ev(n.args[0])
 
           return ctx.layer?.(String(name)) ?? {}
@@ -318,7 +325,7 @@ export function evaluate(src, ctx) {
         return fn(...n.args.map(a => {
           const v = ev(a)
 
-          return typeof v === 'string' ? v : num(v)
+          return n.name === 'loopOut' && typeof v === 'string' ? v : num(v)
         }))
       }
       case 'member': {

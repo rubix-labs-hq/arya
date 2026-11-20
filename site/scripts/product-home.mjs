@@ -31,11 +31,11 @@ export const assistantCopy = {
   link: ['/install/#accounts', 'How assistant sign-in works'],
   // The "AI assistant" row of What works where: Mac app, local browser editor, hosted browser editor.
   editions: [
-    `Connect your own ${assistantProviders} account. Ordinary timeline edits with a change receipt and Undo.`,
-    `Connect your own ${assistantProviders} account through the local server.`,
+    `Sign in with ChatGPT, or connect your own ${assistantProviders} account. Ordinary timeline edits with a change receipt and Undo.`,
+    `Sign in with ChatGPT, or connect your own ${assistantProviders} account through the local server.`,
     'Not available in the hosted browser editor.',
   ],
-  faq: ['Do I need an AI subscription?', `No. Editing, grading, motion, audio and export all work without an assistant. Connecting your own ${assistantProviders} account is optional.`],
+  faq: ['Do I need an AI subscription?', `No. Editing, grading, motion, audio and export all work without an assistant. Connecting ChatGPT or your own ${assistantProviders} account is optional.`],
 };
 
 // Arya Pro in the App Store edition. Every Pro sentence on the site comes from here and shows only
@@ -157,13 +157,13 @@ export function productHome({ button, link, faq, stage, shots, figures, native, 
   // A clip the native app exported. It plays only when the visitor starts it.
   const clipFigure = id => {
     const clip = native.clips[id];
-    return `<figure class="chapter-figure figure-clip"><video controls playsinline preload="none" loading="lazy" poster="${clip.poster}" width="${clip.width}" height="${clip.height}" aria-label="${clip.description}"><source src="${clip.src}" type="video/mp4"><a href="${clip.src}">Open the exported clip</a></video><figcaption><span class="plate-label">${clip.label}</span> ${clip.caption} ${native.projects?.[clip.project] || ''}</figcaption></figure>`;
+    return `<figure class="chapter-figure figure-clip"><video controls playsinline preload="none" poster="${clip.poster}" width="${clip.width}" height="${clip.height}" aria-label="${clip.description}"><source src="${clip.src}" type="video/mp4"><a href="${clip.src}">Open the exported clip</a></video><figcaption><span class="plate-label">${clip.label}</span> ${clip.caption} ${native.projects?.[clip.project] || ''}</figcaption></figure>`;
   };
   const launchFilm = film && releaseReady && mobileURL && publicSource
     ? `<section class="launch-film" id="film" aria-labelledby="launch-film-heading">
 <div class="wrap">
 <div class="section-head"><h2 id="launch-film-heading">${launchFilmCopy.heading}</h2><p>${launchFilmCopy.lead}</p></div>
-<figure class="launch-film-figure"><video controls playsinline preload="none" loading="lazy" poster="${film.poster}" width="${launchFilmCopy.width}" height="${launchFilmCopy.height}" aria-label="${launchFilmCopy.description}"><source src="${film.src}" type="video/mp4"><a href="${film.src}">Download the launch film</a></video></figure>
+<figure class="launch-film-figure"><video controls playsinline preload="none" poster="${film.poster}" width="${launchFilmCopy.width}" height="${launchFilmCopy.height}" aria-label="${launchFilmCopy.description}"><source src="${film.src}" type="video/mp4"><a href="${film.src}">Download the launch film</a></video></figure>
 </div>
 </section>
 `

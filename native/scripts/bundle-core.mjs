@@ -239,15 +239,26 @@ async function parityCases() {
   }
 }
 
+function writeAtomic(target, content) {
+  const tmp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`
+  try {
+    fs.writeFileSync(tmp, content)
+    fs.renameSync(tmp, target)
+  } catch (error) {
+    try { fs.unlinkSync(tmp) } catch {}
+    throw error
+  }
+}
+
 async function main() {
   if (!args.out) throw new Error('usage: bundle-core.mjs --out <file> [--parity <file>]')
   fs.mkdirSync(path.dirname(path.resolve(args.out)), { recursive: true })
   const text = bundle()
   // Write only on change, so Xcode does not see a fresh resource on every build.
-  if (!fs.existsSync(args.out) || fs.readFileSync(args.out, 'utf8') !== text) fs.writeFileSync(args.out, text)
+  if (!fs.existsSync(args.out) || fs.readFileSync(args.out, 'utf8') !== text) writeAtomic(args.out, text)
   if (args.parity) {
     fs.mkdirSync(path.dirname(path.resolve(args.parity)), { recursive: true })
-    fs.writeFileSync(args.parity, `${JSON.stringify(await parityCases(), null, 1)}\n`)
+    writeAtomic(args.parity, `${JSON.stringify(await parityCases(), null, 1)}\n`)
   }
 }
 

@@ -94,9 +94,11 @@ public actor AgentBridge {
         var receivedRoute = false
         var handledCalls = Set<String>()
         let deadline = Date().addingTimeInterval(1800)
+        var runStarted = false
         do {
             try await authorize()
             try Task.checkCancellation()
+            runStarted = true
             let started = try await request("POST", "/v1/runs", body: body)
             guard started["id"] as? String == id else { throw Failure.invalidResponse }
             try Task.checkCancellation()
@@ -188,6 +190,7 @@ public actor AgentBridge {
             }
             throw Failure.timeout
         } catch {
+            guard runStarted else { throw error }
             // The cleanup task has its own cancellation state, so it can stop this run after its caller cancels.
             let configuration = configuration, transport = transport
             let confirmed = await Task.detached {

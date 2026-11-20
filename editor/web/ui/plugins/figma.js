@@ -35,7 +35,7 @@ const CSS = `
 .fig .card { all: unset; box-sizing: border-box; cursor: pointer; border-radius: 6px; padding: 3px; border: 1px solid transparent; display: block; min-width: 0; }
 .fig .card:hover { background: #ffffff08; }
 .fig .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.fig .card[aria-pressed=true] { border-color: var(--accent); background: #f5b94210; }
+.fig .card[aria-pressed=true] { border-color: var(--accent); background: #efbc6814; }
 .fig .thumb { aspect-ratio: 16/9; border-radius: 5px; background: repeating-conic-gradient(#16161b 0% 25%, #111115 0% 50%) 50% / 12px 12px; position: relative; display: grid; place-items: center; overflow: hidden; }
 .fig .thumb img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 .fig .thumb .kind { position: absolute; left: 4px; top: 3px; background: #000b; color: var(--muted); font-size: 11px; padding: 0 4px; border-radius: 3px; letter-spacing: 0.03em; }
@@ -77,7 +77,11 @@ function Account({ status, onStatus }) {
   const [error, setError] = useState('')
   const [pendingUrl, setPendingUrl] = useState(null)
   const poll = useRef(null)
-  useEffect(() => () => clearInterval(poll.current), [])
+  const mounted = useRef(true)
+  useEffect(() => () => {
+    mounted.current = false
+    clearInterval(poll.current)
+  }, [])
 
   const saveToken = async e => {
     e?.preventDefault()
@@ -85,13 +89,14 @@ function Account({ status, onStatus }) {
     setError('')
     try {
       const s = await api('/api/figma/token', { token })
+      if (!mounted.current) return
       setToken('')
       onStatus({ ...status, ...s })
       toast(`Figma connected as ${s.handle}`)
     } catch (err) {
-      setError(errorText(err))
+      if (mounted.current) setError(errorText(err))
     } finally {
-      setBusy(false)
+      if (mounted.current) setBusy(false)
     }
   }
 
@@ -100,8 +105,10 @@ function Account({ status, onStatus }) {
     setError('')
     try {
       const result = await api('/api/figma/oauth/start')
+      if (!mounted.current) return
       if (result.started) {
         const s = await api('/api/figma/status')
+        if (!mounted.current) return
         onStatus(s)
         setPendingUrl(null)
         if (s.connected) toast(`Figma connected as ${s.handle}`)
@@ -116,6 +123,7 @@ function Account({ status, onStatus }) {
       clearInterval(poll.current)
       poll.current = setInterval(async () => {
         const s = await api('/api/figma/status').catch(() => null)
+        if (!mounted.current) { clearInterval(poll.current); return }
         if (s?.connected) {
           clearInterval(poll.current)
           setPendingUrl(null)
@@ -128,15 +136,19 @@ function Account({ status, onStatus }) {
         }
       }, 1500)
     } catch (err) {
-      setError(errorText(err))
+      if (mounted.current) setError(errorText(err))
     } finally {
-      setBusy(false)
+      if (mounted.current) setBusy(false)
     }
   }
 
   const disconnect = async () => {
-    await api('/api/figma/disconnect', {})
-    onStatus({ ...status, connected: false, handle: null, method: null })
+    try {
+      await api('/api/figma/disconnect', {})
+      if (mounted.current) onStatus({ ...status, connected: false, handle: null, method: null })
+    } catch (err) {
+      if (mounted.current) setError(errorText(err))
+    }
   }
 
   if (!status) return html`<div class="hint">Checking Figma…</div>`

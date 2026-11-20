@@ -62,10 +62,12 @@ function Wheel({ label, field, target, range, masterRange }) {
     const up = () => {
       el.removeEventListener('pointermove', move)
       el.removeEventListener('pointerup', up)
+      el.removeEventListener('pointercancel', up)
       edit(opsFor(nx, ny, master), `${label} wheel on ${target.name}`)
     }
     el.addEventListener('pointermove', move)
     el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', up)
   }
 
   return html`
@@ -183,7 +185,7 @@ function CurvesEditor({ target }) {
     <div class="curves">
       <div class="seg">${['master', 'r', 'g', 'b'].map(k => html`<button class=${channel === k ? 'on' : ''} style=${{ color: colors[k] }} onClick=${() => setChannel(k)}>${k === 'master' ? 'Y' : k.toUpperCase()}</button>`)}
         <button class="ghost tiny" onClick=${() => edit(ops(null))}>Reset</button></div>
-      <canvas ref=${cv} style=${{ width: `${S}px`, height: `${S}px` }} onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onContextMenu=${e => e.preventDefault()} title="Click to add a point, drag to shape, right-click to remove"></canvas>
+      <canvas ref=${cv} style=${{ width: `${S}px`, height: `${S}px` }} onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${up} onContextMenu=${e => e.preventDefault()} title="Click to add a point, drag to shape, right-click to remove"></canvas>
     </div>
   `
 }
@@ -311,7 +313,7 @@ function computeScopes(cvs, kind) {
     ctx.arc(W / 2, H / 2, S, 0, Math.PI * 2)
     ctx.stroke()
     // Skin tone line (~123°).
-    ctx.strokeStyle = '#f5b94266'
+    ctx.strokeStyle = '#efbc6866'
     ctx.beginPath()
     ctx.moveTo(W / 2, H / 2)
     const a = (-123 * Math.PI) / 180
@@ -333,10 +335,15 @@ function Scopes() {
   useEffect(() => {
     let id = 0
     let last = 0
+    let lastT = NaN, lastKind = null, lastProject = null, lastShown = null, lastSize = ''
     const loop = ts => {
       id = requestAnimationFrame(loop)
-      if (ts - last < (store.playing ? 120 : 250)) return
+      const sizeKey = `${comp.size[0]}x${comp.size[1]}`
+      const changed = time.t !== lastT || store.scopes.kind !== lastKind || store.project !== lastProject || Boolean(store.previewShown) !== lastShown || sizeKey !== lastSize
+      if (!store.playing && !changed) return
+      if (!changed && ts - last < 120) return
       last = ts
+      lastT = time.t; lastKind = store.scopes.kind; lastProject = store.project; lastShown = Boolean(store.previewShown); lastSize = sizeKey
       if (cv.current) computeScopes(cv.current, store.scopes.kind)
     }
     id = requestAnimationFrame(loop)
@@ -382,7 +389,10 @@ function ClipStrip() {
 function StripThumb({ clip }) {
   const [meta, setMeta] = useState(null)
   useEffect(() => {
-    if (clip.src) api(`/api/strip?quality=high&src=${encodeURIComponent(clip.src)}`).then(d => !d.error && setMeta(d)).catch(() => {})
+    let active = true
+    setMeta(null)
+    if (clip.src) api(`/api/strip?quality=high&src=${encodeURIComponent(clip.src)}`).then(d => active && !d.error && setMeta(d)).catch(() => {})
+    return () => { active = false }
   }, [clip.src])
   if (!meta) return html`<div class="strip-thumb"></div>`
   const idx = Math.min(meta.count - 1, Math.floor(((clip.in ?? 0) + clip.dur / 2) / (meta.interval || 1)))
@@ -443,8 +453,10 @@ function GradeControls({ clip, target }) {
         <div class="grade-look">
           <h4 class="grade-group-title">Look and LUT</h4>
           <div class="look-grid">${LOOKS.map(l => html`<button class=${`ghost tiny ${(g.look ?? 'none') === l ? 'on' : ''}`} onClick=${() => upd({ look: l === 'none' ? null : l }, `look ${l} on ${target.name}`)}>${l}</button>`)}</div>
-          <div class="field"><label>LUT</label><select value=${g.lut ?? ''} onChange=${e => upd({ lut: e.target.value || null }, `LUT on ${target.name}`)}><option value="">None</option>${luts.map(l => html`<option value=${l}>${l.split('/').pop()}</option>`)}</select></div>
-          ${g.lut ? slider('LUT mix', 'lutMix', 0, 1, 0.01, 1) : html`<div class="hint">Import and inspect .cube files with LUT & reference.</div>`}
+          ${store.caps?.host === 'browser-local' && !luts.length && !g.lut
+            ? html`<div class="hint">LUT import needs Arya for Mac or the local editor.</div>`
+            : html`<div class="field"><label>LUT</label><select value=${g.lut ?? ''} onChange=${e => upd({ lut: e.target.value || null }, `LUT on ${target.name}`)}><option value="">None</option>${luts.map(l => html`<option value=${l}>${l.split('/').pop()}</option>`)}</select></div>
+          ${g.lut ? slider('LUT mix', 'lutMix', 0, 1, 0.01, 1) : html`<div class="hint">Import and inspect .cube files with LUT & reference.</div>`}`}
         </div>
       </section>
       <section class="grade-group grade-curve" aria-label="Curves and grade actions">
@@ -457,7 +469,7 @@ function GradeControls({ clip, target }) {
             <button class="ghost tiny" disabled=${!store.gradeClipboard} onClick=${() => (primary ? replaceGrade(selectedOr(clip), store.gradeClipboard, 'pasted grade') : edit(target.replace(store.gradeClipboard), `pasted grade on ${target.name}`))}>Paste grade</button>
             ${primary ? html`<button class="ghost tiny" onClick=${() => replaceGrade(viewProject().tracks.flatMap(t => t.clips.filter(c => c.kind === 'video' || c.kind === 'image').map(c => c.id)), clip.grade ?? null, 'applied grade to every clip')}>Apply to all</button>` : null}
             <button class="ghost tiny danger" onClick=${() => edit(target.replace(null), `reset the grade on ${target.name}`)}>Reset</button>
-            <button class="ghost tiny grade-ref" title="Add this grade to the Assistant context" onClick=${() => addRef(primary ? { kind: 'clip', id: clip.id, label: `${clip.id} grade` } : target.ref('grade'))}><${Icon} name="attach" size=${14} />Reference to Assistant</button>
+            ${store.caps?.host === 'browser-local' ? null : html`<button class="ghost tiny grade-ref" title="Add this grade to the Assistant context" onClick=${() => addRef(primary ? { kind: 'clip', id: clip.id, label: `${clip.id} grade` } : target.ref('grade'))}><${Icon} name="attach" size=${14} />Reference to Assistant</button>`}
           </div>
         </div>
       </section>

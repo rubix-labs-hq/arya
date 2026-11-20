@@ -37,7 +37,7 @@ const css = `
 .trk-note { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
 .trk-note.warn { color: #f0a35e; }
 .trk-seg { display: flex; gap: 4px; }
-.trk-seg button.on { background: #f5b9421a; border-color: #f5b94266; color: var(--accent); }
+.trk-seg button.on { background: #efbc681a; border-color: #efbc6866; color: var(--accent); }
 `
 if (typeof document !== 'undefined' && !document.getElementById('trk-style')) {
   const el = document.createElement('style')
@@ -434,16 +434,16 @@ function TrackOverlay({ p, rect }) {
 
   return html`
     <div class=${`trk-layer ${drawing ? 'draw' : ''}`} style=${{ left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px`, pointerEvents: drawing ? 'auto' : 'none' }}
-      onPointerDown=${down} onPointerMove=${move} onPointerUp=${up}>
+      onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${() => setDrag(null)}>
       <svg width=${rect.w} height=${rect.h}>
-        ${paths.map(pts => html`<polyline points=${pts} fill="none" stroke="#f5b942" stroke-width="1.5" stroke-opacity="0.85" />`)}
+        ${paths.map(pts => html`<polyline points=${pts} fill="none" stroke="#efbc68" stroke-width="1.5" stroke-opacity="0.85" />`)}
         ${shown.map(b => html`<polygon points=${boxPoly(kNow, b)} fill="none" stroke=${b.score >= 0.8 ? '#3fb950' : '#f0a35e'} stroke-width="1.5" />`)}
         ${shown.map(b => {
           const [x, y] = screen(kNow, b.x, b.y)
 
           return html`<g><line x1=${x - 6} y1=${y} x2=${x + 6} y2=${y} stroke="#fff" /><line x1=${x} y1=${y - 6} x2=${x} y2=${y + 6} stroke="#fff" /></g>`
         })}
-        ${drag ? html`<rect x=${Math.min(drag.x0, drag.x1)} y=${Math.min(drag.y0, drag.y1)} width=${Math.abs(drag.x1 - drag.x0)} height=${Math.abs(drag.y1 - drag.y0)} fill="#f5b94222" stroke="#f5b942" stroke-dasharray="4 3" />` : null}
+        ${drag ? html`<rect x=${Math.min(drag.x0, drag.x1)} y=${Math.min(drag.y0, drag.y1)} width=${Math.abs(drag.x1 - drag.x0)} height=${Math.abs(drag.y1 - drag.y0)} fill="#efbc6822" stroke="#efbc68" stroke-dasharray="4 3" />` : null}
       </svg>
       <div class="trk-hud">${hud}</div>
     </div>
@@ -544,17 +544,36 @@ const stabOf = id => store.stab?.[id]
 const setStab = (id, patch) => set(s => ({ stab: { ...(s.stab ?? {}), [id]: { ...(s.stab?.[id] ?? {}), ...patch } } }))
 
 async function analyzeMotion(p, c) {
+  const origin = { root: store.root, version: store.version, project: store.project, comp: store.openComp, id: c.id, src: c.src,
+    clip: JSON.stringify(c), asset: JSON.stringify(p.assets?.[c.src]), canvas: JSON.stringify([p.width, p.height, p.fps]) }
+  const contextCurrent = () => {
+    const current = viewProject()
+    return store.root === origin.root && store.version === origin.version && store.project === origin.project && store.openComp === origin.comp
+      && JSON.stringify(viewClip(current, origin.id)?.clip) === origin.clip && JSON.stringify(current?.assets?.[origin.src]) === origin.asset
+      && JSON.stringify([current?.width, current?.height, current?.fps]) === origin.canvas
+  }
   const inf = info(p, c)
   const ks = [...Array(inf.n).keys()]
   const aw = Math.min(inf.W, 640)
   const ah = Math.max(2, Math.round((inf.H * aw) / inf.W))
+  let stale = false
+  const accept = () => {
+    if (!stale && stabOf(c.id)?.busy?.id === id && contextCurrent()) return true
+    if (!stale) {
+      stale = true
+      client.cancel(id)
+      if (stabOf(c.id)?.busy?.id === id) setStab(c.id, { busy: null })
+    }
+    return false
+  }
   const { id, promise } = client.run(
     { type: 'motion', url: mediaUrl(p, c.src), frames: ks.map(k => ({ k, s: sourceFrame(p, c, k, inf.assetFps) })), width: aw, height: ah, srcWidth: inf.W, srcHeight: inf.H },
-    (done, total) => setStab(c.id, { busy: { id, done, total } }),
+    (done, total) => { if (accept()) setStab(c.id, { busy: { id, done, total } }) },
   )
   setStab(c.id, { busy: { id, done: 0, total: ks.length }, steps: null, key: null })
   try {
     const r = await promise
+    if (!accept()) return
     if (r.cancelled) {
       setStab(c.id, { busy: null })
 
@@ -565,6 +584,7 @@ async function analyzeMotion(p, c) {
     setStab(c.id, { busy: null, steps, key: `${c.src}|${c.in}|${c.dur}|${c.speed ?? 1}|${c.reverse ? 1 : 0}` })
     toast(weak ? `Analyzed ${steps.length} frames; ${weak} had few trackable points` : `Analyzed ${steps.length} frames`)
   } catch (error) {
+    if (!accept()) return
     setStab(c.id, { busy: null })
     toast(error.message, 'error')
   }
@@ -593,7 +613,7 @@ async function startRender(path, body, label) {
 }
 
 function deshake(c) {
-  if (store.caps.processing?.deshake === false) return toast('Open the browser editor to render deshake', 'error')
+  if (store.caps.processing?.deshake === false) return toast(store.caps.host === 'browser-local' ? 'Deshake rendering needs Arya for Mac or the local editor.' : 'Open the browser editor to render deshake', 'error')
   const src = c.deshake?.src ?? c.src
   const inPoint = c.deshake?.in ?? c.in ?? 0
 
@@ -649,7 +669,7 @@ function StabilizeTab({ clip }) {
         <div class="row gap"><button onClick=${apply}>Apply stabilization</button><button class="ghost" onClick=${clear}>Remove</button></div>
       ` : st.steps ? html`<div class="trk-note warn">The clip changed since the analysis: analyze again.</div>` : null}
       <h4 style=${{ margin: '10px 0 2px' }}>Render with ffmpeg deshake</h4>
-      <div class="trk-note">${canRender ? "Renders the clip's range through ffmpeg deshake into media/stabilized/ and swaps it in (one undo restores the original)." : 'Open the browser editor to render deshake. Keyframe stabilization is available above.'}</div>
+      <div class="trk-note">${canRender ? "Renders the clip's range through ffmpeg deshake into media/stabilized/ and swaps it in (one undo restores the original)." : s.caps.host === 'browser-local' ? 'Deshake rendering needs Arya for Mac or the local editor. Keyframe stabilization is available above.' : 'Open the browser editor to render deshake. Keyframe stabilization is available above.'}</div>
       ${clip.deshake ? html`
         <div class="kv"><span>Source</span><b title=${clip.src}>${String(clip.src).split('/').pop()}</b></div>
         <div class="row gap"><button class="ghost" onClick=${() => edit({ op: 'update', id: clip.id, set: { src: clip.deshake.src, in: clip.deshake.in, deshake: null } }, `original media back on ${clip.id}`)}>Back to the original</button></div>
@@ -662,7 +682,7 @@ function StabilizeTab({ clip }) {
 // ---------------------------------------------------------------- speed: optical flow
 
 function opticalFlow(c, speed) {
-  if (store.caps.analysis?.opticalFlow === false) return toast('Open the browser editor to render optical-flow slow motion', 'error')
+  if (store.caps.analysis?.opticalFlow === false) return toast(store.caps.host === 'browser-local' ? 'Optical-flow slow motion needs Arya for Mac or the local editor.' : 'Open the browser editor to render optical-flow slow motion', 'error')
   const orig = c.retime ? { src: c.retime.src, in: c.retime.in, speed: c.retime.speed } : { src: c.src, in: c.in ?? 0, speed: c.speed ?? 1 }
   if (c.reverse || c.freeze !== undefined) return toast('Optical flow needs a forward, unfrozen clip', 'error')
   if (!(speed < 1)) return toast('Optical flow is for slow motion (below 100%)', 'error')
@@ -687,11 +707,11 @@ function SpeedTab({ clip }) {
       <div class="field"><label>Slow motion</label>
         <div class="trk-seg">
           <button class=${!flow ? 'on' : ''} onClick=${() => frameBlending(clip)}>Frame blending</button>
-          <button class=${flow ? 'on' : ''} disabled=${!canFlow || !(speed < 1) || flow} title=${!canFlow ? 'Open the browser editor to render optical flow' : speed < 1 ? 'Render interpolated frames (ffmpeg minterpolate)' : 'Slow the clip below 100% first'} onClick=${() => opticalFlow(clip, speed)}>Optical flow</button>
+          <button class=${flow ? 'on' : ''} disabled=${!canFlow || !(speed < 1) || flow} title=${!canFlow ? (s.caps.host === 'browser-local' ? 'Optical-flow slow motion needs Arya for Mac or the local editor' : 'Open the browser editor to render optical flow') : speed < 1 ? 'Render interpolated frames (ffmpeg minterpolate)' : 'Slow the clip below 100% first'} onClick=${() => opticalFlow(clip, speed)}>Optical flow</button>
         </div>
       </div>
       <div class="trk-note">${flow ? `Playing ${String(clip.src).split('/').pop()}, rendered with motion-compensated interpolation from ${String(clip.retime.src).split('/').pop()}.` : speed < 1 ? 'Frame blending repeats source frames. Optical flow renders new in-between frames.' : 'Optical flow applies to slow motion. Pick a speed below to render one:'}</div>
-      ${!canFlow ? html`<div class="trk-note">Open the browser editor to render optical-flow slow motion.</div>` : null}
+      ${!canFlow ? html`<div class="trk-note">${s.caps.host === 'browser-local' ? 'Optical-flow slow motion needs Arya for Mac or the local editor.' : 'Open the browser editor to render optical-flow slow motion.'}</div>` : null}
       <div class="row gap">${[0.5, 0.25].map(sp => html`<button class="ghost" disabled=${!canFlow} onClick=${() => opticalFlow(clip, sp)}>Optical flow ${sp * 100}%</button>`)}</div>
       <${RenderJob} path="/api/retime" clip=${clip} />
     </div>

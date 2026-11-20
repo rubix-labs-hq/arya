@@ -2,6 +2,10 @@ import { clipEnd, compDuration, compView, duration, gainAt, hasAudio, valueAt } 
 import { activeFx, eqBands, fxParams, legacyEqBands, masterChain } from './audio-fx.js'
 
 const STEP = 1 / 50
+const finiteDbGain = db => {
+  const value = Number.isFinite(db) ? Math.max(-120, Math.min(48, db)) : 0
+  return 10 ** (value / 20)
+}
 
 function curve(from, to, read, animated) {
   if (!animated) return { from, step: STEP, values: [read(from)] }
@@ -36,7 +40,7 @@ function scope(p, A, B, from, to, depth) {
       let end = Math.min(to, Math.max(A + B * c.start, A + B * clipEnd(c)))
       if (!(end > f)) continue
       const item = { id: c.id, from: f, to: end, chain: [] }
-      const speed = c.speed > 0 ? c.speed : 1
+      const speed = Number.isFinite(c.speed) && c.speed > 0 ? c.speed : 1
       if (c.kind === 'comp' && p.comps?.[c.comp]) {
         item.kind = 'comp'
         // Comp second tau = in + local * speed, mirrored to len - tau when reversed (compTime in render-plan.js).
@@ -78,7 +82,7 @@ function scope(p, A, B, from, to, depth) {
       item.pan = curve(f, end, t => Math.max(-1, Math.min(1, valueAt(p, c, 'pan', local(t)) ?? 0)), Boolean(c.anim?.pan || c.expr?.pan))
       items.push(item)
     }
-    if (items.length) buses.push({ id: track.id, chain: effects(track.fx), gain: 10 ** ((track.volume ?? 0) / 20), pan: track.pan ?? 0, items })
+    if (items.length) buses.push({ id: track.id, chain: effects(track.fx), gain: finiteDbGain(track.volume ?? 0), pan: Number.isFinite(track.pan) ? Math.max(-1, Math.min(1, track.pan)) : 0, items })
   }
   return buses
 }
@@ -90,6 +94,6 @@ export function audioPlan(p, from = 0, to = duration(p)) {
   return {
     from, to, rate: 48000,
     buses: scope(p, 0, 1, from, to, 0),
-    master: { chain: effects(master.fx), gain: 10 ** (master.volume / 20), limiter: master.limiter ? { type: 'limiter', params: fxParams(master.limiter), curves: {} } : null },
+    master: { chain: effects(master.fx), gain: finiteDbGain(master.volume), limiter: master.limiter ? { type: 'limiter', params: fxParams(master.limiter), curves: {} } : null },
   }
 }

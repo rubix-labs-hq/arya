@@ -87,6 +87,7 @@ export async function preparePublicOutput({ repoRoot = defaultRoot, outputRoot =
     { src: '/(.*)', headers: { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', ...(indexing ? {} : { 'X-Robots-Tag': 'noindex, nofollow' }), 'Cache-Control': 'no-store', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()' }, continue: true },
     { src: '/((?!editor(?:/|$)).*)', headers: { 'Content-Security-Policy': marketing }, continue: true },
     { src: '/editor(?:/.*)?', headers: { 'Content-Security-Policy': editor, 'X-Robots-Tag': 'noindex, nofollow' }, continue: true },
+    { src: '/assets/(.*)', headers: { 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400' }, continue: true },
     { handle: 'filesystem' }, { src: '/.*', dest: '/404.html', status: 404 },
   ]
   await mkdir(output)

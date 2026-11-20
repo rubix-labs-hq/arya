@@ -107,7 +107,8 @@ enum NativeAudioAutomation {
 
     private struct LimiterSupports {
         private let channels: Int
-        private let phases: [[Double]]
+        private let phaseCount: Int
+        private let flatPhases: [Double]
         private let margin: Double
         private var prefixes: [Double]
         private var ceilings: [Double]
@@ -116,76 +117,158 @@ enum NativeAudioAutomation {
         init(audio: [[Float]], gains: [Double], phases: [[Double]], margin: Double,
              top: (Int) throws -> Double) throws {
             let taps = NativeAudioAutomation.limiterTaps
-            channels = audio.count; self.phases = phases; self.margin = margin
+            channels = audio.count; phaseCount = phases.count; self.margin = margin
+            var flat = [Double](repeating: 0, count: phases.count * taps)
+            for p in 0..<phases.count {
+                for j in 0..<taps { flat[p * taps + j] = phases[p][j] }
+            }
+            flatPhases = flat
             prefixes = [Double](repeating: 0, count: taps * audio.count * phases.count * (taps + 1))
             ceilings = [Double](repeating: 0, count: taps)
             ceilingHistory = [Double](repeating: try top(0), count: taps)
             for k in 0..<taps { try reset(k, audio: audio, gains: gains, top: top) }
         }
 
-        private func offset(_ slot: Int, _ channel: Int, _ phase: Int) -> Int {
-            (slot * channels * phases.count + channel * phases.count + phase) * (NativeAudioAutomation.limiterTaps + 1)
-        }
-
         mutating func reset(_ k: Int, audio: [[Float]], gains: [Double], top: (Int) throws -> Double) throws {
             let taps = NativeAudioAutomation.limiterTaps, slot = k % taps
             ceilingHistory[slot] = try top(k)
-            ceilings[slot] = (ceilingHistory.min() ?? 1) / margin
-            let channels = self.channels, phases = self.phases, phaseCount = phases.count
+            var minCeiling = ceilingHistory[0]
+            var cIdx = 1
+            while cIdx < taps {
+                minCeiling = min(minCeiling, ceilingHistory[cIdx])
+                cIdx += 1
+            }
+            ceilings[slot] = minCeiling / margin
+            let channels = self.channels, phaseCount = self.phaseCount, stride = taps + 1, gainCount = gains.count
             prefixes.withUnsafeMutableBufferPointer { storage in
                 let prefix = storage.baseAddress!
-                for ch in 0..<channels { for p in phases.indices {
-                    let base = (slot * channels * phaseCount + ch * phaseCount + p) * (taps + 1)
-                    prefix.advanced(by: base).pointee = 0
-                    for j in 0..<taps {
-                        let index = k - j
-                        let value = index >= 0 && index < gains.count ? Double(audio[ch][index]) * gains[index] : 0
-                        prefix.advanced(by: base + j + 1).pointee = prefix.advanced(by: base + j).pointee + phases[p][j] * value
+                flatPhases.withUnsafeBufferPointer { phaseStorage in
+                    let phasePtr = phaseStorage.baseAddress!
+                    gains.withUnsafeBufferPointer { gainStorage in
+                        let gainPtr = gainStorage.baseAddress!
+                        var ch = 0
+                        while ch < channels {
+                            audio[ch].withUnsafeBufferPointer { audioStorage in
+                                let audioPtr = audioStorage.baseAddress!
+                                var p = 0
+                                while p < phaseCount {
+                                    let base = (slot * channels * phaseCount + ch * phaseCount + p) * stride
+                                    let pBase = p * taps
+                                    prefix[base] = 0
+                                    var acc = 0.0
+                                    var j = 0
+                                    while j < taps {
+                                        let index = k - j
+                                        let value = index >= 0 && index < gainCount ? Double(audioPtr[index]) * gainPtr[index] : 0
+                                        acc = acc + phasePtr[pBase + j] * value
+                                        prefix[base + j + 1] = acc
+                                        j += 1
+                                    }
+                                    p += 1
+                                }
+                            }
+                            ch += 1
+                        }
                     }
-                } }
+                }
             }
         }
 
         func maximumIncrease(at i: Int, audio: [[Float]], proposed: Double) -> Double {
             guard proposed > 0 else { return 0 }
-            let taps = NativeAudioAutomation.limiterTaps
+            let taps = NativeAudioAutomation.limiterTaps, stride = taps + 1
+            let channels = self.channels, phaseCount = self.phaseCount
+            let s0 = Double(audio[0][i])
+            let s1 = channels > 1 ? Double(audio[1][i]) : 0.0
             return prefixes.withUnsafeBufferPointer { storage in
                 let prefix = storage.baseAddress!
-                var increase = proposed
-                for j in 0..<taps { for ch in 0..<channels { for p in phases.indices {
-                    let slope = phases[p][j] * Double(audio[ch][i])
-                    if slope == 0 { continue }
-                    let slot = (i + j) % taps, base = offset(slot, ch, p)
-                    var leftMin = prefix.advanced(by: base).pointee, leftMax = prefix.advanced(by: base).pointee
-                    for k in 0...j {
-                        let value = prefix.advanced(by: base + k).pointee
-                        leftMin = min(leftMin, value); leftMax = max(leftMax, value)
+                return flatPhases.withUnsafeBufferPointer { phaseStorage in
+                    let phasePtr = phaseStorage.baseAddress!
+                    return ceilings.withUnsafeBufferPointer { ceilingStorage in
+                        let ceilingPtr = ceilingStorage.baseAddress!
+                        var increase = proposed
+                        var j = 0
+                        while j < taps {
+                            let slot = (i + j) % taps
+                            let slotCeiling = ceilingPtr[slot]
+                            let slotBase = slot * channels * phaseCount
+                            var ch = 0
+                            while ch < channels {
+                                let sample = ch == 0 ? s0 : s1
+                                if sample != 0 {
+                                    let chBase = slotBase + ch * phaseCount
+                                    var p = 0
+                                    while p < phaseCount {
+                                        let slope = phasePtr[p * taps + j] * sample
+                                        if slope != 0 {
+                                            let base = (chBase + p) * stride
+                                            var leftMin = prefix[base], leftMax = leftMin
+                                            var k = 0
+                                            while k <= j {
+                                                let value = prefix[base + k]
+                                                leftMin = min(leftMin, value); leftMax = max(leftMax, value)
+                                                k += 1
+                                            }
+                                            var rightMin = prefix[base + j + 1], rightMax = rightMin
+                                            k = j + 1
+                                            while k <= taps {
+                                                let value = prefix[base + k]
+                                                rightMin = min(rightMin, value); rightMax = max(rightMax, value)
+                                                k += 1
+                                            }
+                                            // These two sums bound every retained contiguous interval containing this sample.
+                                            let upper = rightMax - leftMin, lower = rightMin - leftMax
+                                            let allowed = slope > 0 ? (slotCeiling - upper) / slope : (-slotCeiling - lower) / slope
+                                            increase = min(increase, max(0, allowed))
+                                            if increase == 0 { return 0 }
+                                        }
+                                        p += 1
+                                    }
+                                }
+                                ch += 1
+                            }
+                            j += 1
+                        }
+                        return increase
                     }
-                    var rightMin = prefix.advanced(by: base + j + 1).pointee, rightMax = rightMin
-                    for k in (j + 1)...taps {
-                        let value = prefix.advanced(by: base + k).pointee
-                        rightMin = min(rightMin, value); rightMax = max(rightMax, value)
-                    }
-                    // These two sums bound every retained contiguous interval containing this sample.
-                    let upper = rightMax - leftMin, lower = rightMin - leftMax
-                    let allowed = slope > 0 ? (ceilings[slot] - upper) / slope : (-ceilings[slot] - lower) / slope
-                    increase = min(increase, max(0, allowed))
-                    if increase == 0 { return increase }
-                } } }
-                return increase
+                }
             }
         }
 
         mutating func increase(at i: Int, audio: [[Float]], by step: Double) {
-            let taps = NativeAudioAutomation.limiterTaps
-            let channels = self.channels, phases = self.phases, phaseCount = phases.count
+            let taps = NativeAudioAutomation.limiterTaps, stride = taps + 1
+            let channels = self.channels, phaseCount = self.phaseCount
+            let s0 = Double(audio[0][i])
+            let s1 = channels > 1 ? Double(audio[1][i]) : 0.0
             prefixes.withUnsafeMutableBufferPointer { storage in
                 let prefix = storage.baseAddress!
-                for j in 0..<taps { for ch in 0..<channels { for p in phases.indices {
-                    let base = ((i + j) % taps * channels * phaseCount + ch * phaseCount + p) * (taps + 1)
-                    let delta = phases[p][j] * Double(audio[ch][i]) * step
-                    for k in (j + 1)...taps { prefix.advanced(by: base + k).pointee += delta }
-                } } }
+                flatPhases.withUnsafeBufferPointer { phaseStorage in
+                    let phasePtr = phaseStorage.baseAddress!
+                    var j = 0
+                    while j < taps {
+                        let slotBase = ((i + j) % taps) * channels * phaseCount
+                        var ch = 0
+                        while ch < channels {
+                            let sample = ch == 0 ? s0 : s1
+                            if sample != 0 {
+                                let chBase = slotBase + ch * phaseCount
+                                var p = 0
+                                while p < phaseCount {
+                                    let delta = phasePtr[p * taps + j] * sample * step
+                                    let base = (chBase + p) * stride
+                                    var k = j + 1
+                                    while k <= taps {
+                                        prefix[base + k] += delta
+                                        k += 1
+                                    }
+                                    p += 1
+                                }
+                            }
+                            ch += 1
+                        }
+                        j += 1
+                    }
+                }
             }
         }
     }

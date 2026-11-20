@@ -79,7 +79,7 @@ export const BAND_DEFAULTS = { type: 'peaking', freq: 1000, gain: 0, q: 1 }
 
 /** A new effect of a type with default parameters. */
 export function newFx(type, params = {}) {
-  const spec = FX_TYPES[type]
+  const spec = Object.hasOwn(FX_TYPES, type) ? FX_TYPES[type] : null
   if (!spec) throw new Error(`unknown audio effect ${type}`)
   const base = Object.fromEntries(Object.entries(spec.params).map(([k, d]) => [k, d.default]))
   if (type === 'eq') base.bands = []
@@ -89,12 +89,13 @@ export function newFx(type, params = {}) {
 
 /** An effect's parameters with defaults filled in and non-numbers replaced by defaults. */
 export function fxParams(fx) {
-  const spec = FX_TYPES[fx?.type]
+  const spec = fx?.type && Object.hasOwn(FX_TYPES, fx.type) ? FX_TYPES[fx.type] : null
   if (!spec) return {}
   const out = {}
   for (const [k, d] of Object.entries(spec.params)) {
-    const v = Number(fx.params?.[k])
-    out[k] = Number.isFinite(v) && fx.params?.[k] !== null && fx.params?.[k] !== '' ? v : d.default
+    const raw = fx.params?.[k]
+    const v = typeof raw === 'boolean' || raw === null || raw === '' ? Number.NaN : Number(raw)
+    out[k] = Number.isFinite(v) ? Math.max(d.min, Math.min(d.max, v)) : d.default
   }
 
   return out
@@ -106,9 +107,9 @@ export function eqBands(fx) {
 
   return list.slice(0, MAX_EQ_BANDS).map(b => {
     const type = EQ_BAND_TYPES.includes(b?.type) ? b.type : 'peaking'
-    const num = (v, d) => (Number.isFinite(Number(v)) && v !== null ? Number(v) : d)
+    const num = (v, d) => (typeof v !== 'boolean' && v !== null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : d)
 
-    return { type, freq: Math.max(10, Math.min(22000, num(b?.freq, 1000))), gain: num(b?.gain, 0), q: Math.max(0.05, Math.min(30, num(b?.q, type === 'lowpass' || type === 'highpass' ? Math.SQRT1_2 : 1))) }
+    return { type, freq: Math.max(10, Math.min(22000, num(b?.freq, 1000))), gain: Math.max(-36, Math.min(36, num(b?.gain, 0))), q: Math.max(0.05, Math.min(30, num(b?.q, type === 'lowpass' || type === 'highpass' ? Math.SQRT1_2 : 1))) }
   })
 }
 
@@ -125,7 +126,7 @@ export function legacyEqBands(eq) {
 
 /** The effects of a chain that process audio, in order: known types, not bypassed. */
 export function activeFx(list) {
-  return (Array.isArray(list) ? list : []).map((fx, index) => ({ fx, index })).filter(({ fx }) => fx && FX_TYPES[fx.type] && fx.enabled !== false)
+  return (Array.isArray(list) ? list : []).map((fx, index) => ({ fx, index })).filter(({ fx }) => fx && typeof fx.type === 'string' && Object.hasOwn(FX_TYPES, fx.type) && fx.enabled !== false)
 }
 
 /** Latency (seconds) an effect adds; only the limiter's lookahead delays audio. */
@@ -204,7 +205,8 @@ export const PRESETS = {
 
 /** Master volume (dB) that moves a measured mix to a loudness target, keeping the change sane. */
 export function loudnessGain(measured, target, current = 0) {
-  if (!Number.isFinite(measured)) return current
+  const base = Number.isFinite(current) ? current : 0
+  if (!Number.isFinite(measured) || !Number.isFinite(target)) return base
 
-  return Math.round(Math.max(-40, Math.min(40, current + (target - measured))) * 10) / 10
+  return Math.round(Math.max(-40, Math.min(40, base + (target - measured))) * 10) / 10
 }

@@ -86,6 +86,7 @@ export function MotionOverlay({ p: view, rect }) {
   const [hover, setHover] = useState(null) // frame point under the pointer while a pen is open
   const penRef = useRef(null)
   penRef.current = pen
+  const finishPenRef = useRef(null)
 
   // Enter finishes an open pen path, Escape cancels it.
   useEffect(() => {
@@ -93,14 +94,17 @@ export function MotionOverlay({ p: view, rect }) {
       const pn = penRef.current
       if (!pn || e.target.closest?.('input, textarea, select')) return
       if (e.key === 'Escape') setPen(null)
-      else if (e.key === 'Enter') finishPen(pn, false)
+      else if (e.key === 'Enter') finishPenRef.current?.(pn, false)
       else return
       e.preventDefault()
       e.stopImmediatePropagation()
     }
     window.addEventListener('keydown', onKey, true)
 
-    return () => window.removeEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      cancelPreview()
+    }
   }, [])
 
   // A tool change drops an unfinished pen path.
@@ -166,6 +170,7 @@ export function MotionOverlay({ p: view, rect }) {
     }
     await addAndSelect(addPenShapeOps(view, pn.points, closed, time.t, style()), 'pen path')
   }
+  finishPenRef.current = finishPen
 
   // ------------------------------------------------------------ pointer handling
 
@@ -533,9 +538,16 @@ export function MotionOverlay({ p: view, rect }) {
   const hint = pen ? 'Click to add points, drag for curves. Click the first point to close, Enter to leave it open, Esc to cancel.' : tool === 'm-mask' && !single ? 'Select one layer, then draw a mask on it.' : null
   const cursor = { 'm-shape': 'crosshair', 'm-pen': 'crosshair', 'm-mask': 'crosshair', 'm-anchor': 'move' }[tool] ?? 'default'
 
+  const onCancel = () => {
+    if (!drag.current) return
+    drag.current = null
+    cancelPreview()
+    redraw(x => x + 1)
+  }
+
   return html`
     <div class="mo-overlay">
-      <svg ref=${svg} class="mo-svg" style=${{ cursor }} onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${onUp} onPointerLeave=${() => setHover(null)} onDblClick=${onDbl}>
+      <svg ref=${svg} class="mo-svg" style=${{ cursor }} onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${onUp} onPointerCancel=${onCancel} onPointerLeave=${() => setHover(null)} onDblClick=${onDbl}>
         ${layers}${ghosts}${handles}
       </svg>
       ${info}

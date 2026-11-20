@@ -249,15 +249,30 @@ private struct MixContext {
             }
             func value(_ key: String, _ i: Int, _ fallback: Double) -> Double { at(key, time(i), fallback) }
             switch type {
-            case "gain": for i in 0..<count { let g = Float(pow(10,value("gain",i,0)/20)); audio[0][i] *= g; audio[1][i] *= g }
+            case "gain":
+                for i in 0..<count {
+                    if i % 8192 == 0 { try Task.checkCancellation() }
+                    let g = Float(pow(10, value("gain", i, 0) / 20))
+                    audio[0][i] *= g; audio[1][i] *= g
+                }
             case "eq":
                 for (index, band) in (p["bands"] as? [[String: Any]] ?? []).enumerated() {
+                    let prefix = "bands.\(index)."
+                    let bandType = band["type"] as? String ?? "peaking"
+                    let freqCurve = MixCurve(curves[prefix + "freq"], fallback: (band["freq"] as? NSNumber)?.doubleValue ?? 1000)
+                    let gainCurve = MixCurve(curves[prefix + "gain"], fallback: (band["gain"] as? NSNumber)?.doubleValue ?? 0)
+                    let qCurve = MixCurve(curves[prefix + "q"], fallback: (band["q"] as? NSNumber)?.doubleValue ?? 0.70710678)
+                    let isStatic = freqCurve.constant != nil && gainCurve.constant != nil && qCurve.constant != nil
                     var filters = [Biquad.identity, Biquad.identity]
+                    if isStatic {
+                        let fixed = Biquad.make(bandType, fs: Double(rate), freq: freqCurve.constant!, gain: gainCurve.constant!, q: qCurve.constant!)
+                        for ch in 0..<2 { filters[ch].set(fixed) }
+                    }
                     for i in 0..<count {
-                        if i % 128 == 0 {
-                            let prefix = "bands.\(index)."
-                            func bval(_ key: String,_ fallback: Double) -> Double { MixCurve(curves[prefix+key],fallback:(band[key] as? NSNumber)?.doubleValue ?? fallback).at(time(i)) }
-                            let next = Biquad.make(band["type"] as? String ?? "peaking",fs:Double(rate),freq:bval("freq",1000),gain:bval("gain",0),q:bval("q",0.70710678))
+                        if i % 8192 == 0 { try Task.checkCancellation() }
+                        if !isStatic && i % 128 == 0 {
+                            let t = time(i)
+                            let next = Biquad.make(bandType, fs: Double(rate), freq: freqCurve.at(t), gain: gainCurve.at(t), q: qCurve.at(t))
                             for ch in 0..<2 { filters[ch].set(next) }
                         }
                         for ch in 0..<2 { audio[ch][i] = Float(filters[ch].next(Double(audio[ch][i]))) }

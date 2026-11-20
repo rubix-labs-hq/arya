@@ -6,9 +6,15 @@ import { applyOps } from '/core/project.js'
 import { edit, set, store } from '../store.js'
 
 let base = null
+let baseRoot = null
 
 /** Shows ops applied to the project as it was when the drag began. */
 export function preview(ops) {
+  if (store.previewShown) return
+  if (baseRoot !== store.root) {
+    base = null
+    baseRoot = store.root
+  }
   base ??= store.project
   try {
     set({ project: applyOps(base, scope(ops)).project })
@@ -19,16 +25,18 @@ export function preview(ops) {
 
 /** Puts the pre-drag project back and commits ops through edit(). */
 export function commit(ops, summary) {
-  if (base) set({ project: base })
+  if (base && baseRoot === store.root) set({ project: base })
   base = null
+  baseRoot = null
 
   return ops?.length ? edit(ops, summary) : null
 }
 
 /** Ends a drag without saving anything. */
 export function cancel() {
-  if (base) set({ project: base })
+  if (base && baseRoot === store.root) set({ project: base })
   base = null
+  baseRoot = null
 }
 
 // edit() scopes ops to the open composition; the preview has to do the same.

@@ -284,6 +284,8 @@ async function webCodecsFixture({ mutate = false, audioOnly = false } = {}) {
       throw new Error('Unexpected fixture API: '+url)
     }
     export {NativeExportDrain,waitNativeAdmission} from ${JSON.stringify(file('editor/web/engine/native-export-admission.js'))};
+    export {buildDecoderPlans} from ${JSON.stringify(file('editor/core/processing-export.js'))};
+    export const neededVideos=()=>[],frameCenter=(t,fps)=>t;
     export {compView} from ${JSON.stringify(file('editor/core/project.js'))};
     export {loadLuts} from ${JSON.stringify(asModule(`import {parseCube} from ${JSON.stringify(file('editor/core/cube-lut.js'))};import {framePlan} from ${JSON.stringify(file('editor/core/render-plan.js'))};\n${workerSource}`))};`)
   const source=(await fs.readFile(path.join(engine,'export-webcodecs.js'),'utf8')).replace(/^import .* from .*$/gm,line=>line.replace(/from .*$/,`from ${JSON.stringify(helper)}`))

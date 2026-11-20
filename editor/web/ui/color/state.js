@@ -10,6 +10,7 @@ import { graphOf } from './graph.js'
 
 /** Live preview of ops without a server round trip; edit() commits them. */
 export function preview(ops) {
+  if (store.previewShown) return
   try {
     set({ project: applyOps(store.project, ops).project })
   } catch {}

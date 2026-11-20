@@ -22,7 +22,7 @@ export function gradeUniforms(grade) {
   const look = LOOK_PRESETS[grade.look ?? 'none'] ?? {}
   const g = { ...look, ...grade }
   const u = {
-    exposure: (g.exposure ?? 0) + (g.brightness !== undefined ? Math.log2(1 + g.brightness) : 0),
+    exposure: (g.exposure ?? 0) + (g.brightness !== undefined && Number.isFinite(g.brightness) ? Math.log2(Math.max(1e-6, 1 + g.brightness)) : 0),
     contrast: (look.contrast ?? 1) * (grade.contrast ?? 1),
     pivot: g.pivot ?? 0.435,
     saturation: (look.saturation ?? 1) * (grade.saturation ?? 1),

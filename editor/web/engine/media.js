@@ -100,6 +100,11 @@ export class Media {
 
   image(url) {
     let im = this.images.get(url)
+    if (im) {
+      this.images.delete(url)
+      this.images.set(url, im)
+      return im
+    }
     if (!im) {
       const el = new Image()
       el.crossOrigin = 'anonymous'
@@ -124,6 +129,12 @@ export class Media {
       })
       el.src = url
       this.images.set(url, im)
+      while (this.images.size > 64) {
+        const [oldKey, old] = this.images.entries().next().value
+        old.cancel?.()
+        old.el.removeAttribute('src')
+        this.images.delete(oldKey)
+      }
     }
 
     return im
@@ -282,11 +293,21 @@ export class Media {
   title(clipId, title, scale, state) {
     const key = JSON.stringify([title, scale, state.chars ?? -1, state.tracking ?? 0])
     let entry = this.titles.get(clipId)
-    if (entry?.key === key) return entry.canvas
+    if (entry?.key === key) {
+      this.titles.delete(clipId)
+      this.titles.set(clipId, entry)
+      return entry.canvas
+    }
     const canvas = entry?.canvas ?? document.createElement('canvas')
     drawTitle(canvas, title, scale, state)
     canvas.dirty = true
+    this.titles.delete(clipId)
     this.titles.set(clipId, { canvas, key })
+    while (this.titles.size > 64) {
+      const [oldKey, old] = this.titles.entries().next().value
+      old.canvas.width = old.canvas.height = 0
+      this.titles.delete(oldKey)
+    }
 
     return canvas
   }

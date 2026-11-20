@@ -222,7 +222,7 @@ function Welcome() {
     setBusy(true)
     try {
       const r = await api('/api/new', body)
-      set({ project: r.project, version: r.version })
+      set({ project: r.project, version: r.version, ...(r.root ? { root: r.root } : {}), history: historyDepth(r.history) })
     } catch (e) {
       toast(e.message, 'error')
     }
@@ -258,7 +258,12 @@ function KeysSheet() {
     return () => { if (opener?.getClientRects().length) opener.focus() }
   }, [])
   const keyboard = event => {
-    if (event.key === 'Escape' || event.key === '?') return
+    if (event.key === 'Escape' || event.key === '?') {
+      event.preventDefault()
+      event.stopPropagation()
+      set({ showKeys: false })
+      return
+    }
     event.stopPropagation()
     if (event.key === 'Tab') {
       event.preventDefault()
@@ -292,6 +297,7 @@ function App() {
   // Ask again sooner while the first account check is still running, so "Checking" ends when the check does.
   const checkingAssistant = !s.assistantStatusError && s.assistantStatus?.loading === true && s.assistantStatus.checkedAt === null
   useEffect(() => {
+    if (host.kind === 'browser-local') return
     // One poll at a time. A newer request makes refreshAssistantStatus drop the older answer, so overlapping polls would never hear a slow server.
     let waiting = false
     const poll = () => {

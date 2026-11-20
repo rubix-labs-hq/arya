@@ -1,5 +1,6 @@
 .browser-workspace { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 5px 12px; border-bottom: 1px solid var(--line); background: var(--panel); min-width: 0; }
 .browser-workspace button, .browser-project-dialog button { min-height: 44px; }
+.browser-storage-warn { color: var(--accent); font-size: 12px; }
 .browser-save-state { color: var(--muted); font-size: 12px; flex: 1; min-width: 140px; }
 .browser-project-dialog { width: min(760px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; }
 .browser-project-dialog p { line-height: 1.5; white-space: pre-line; }

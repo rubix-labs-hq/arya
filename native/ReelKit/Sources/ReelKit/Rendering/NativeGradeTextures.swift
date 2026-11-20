@@ -22,8 +22,12 @@ public enum ReelLUTInspection {
 
 extension ReelMetalRenderer {
     func curveTexture(_ curves: [String: Any]) throws -> MTLTexture {
+        let key = JSON(any: ["master": curves["master"] ?? [], "r": curves["r"] ?? [], "g": curves["g"] ?? [], "b": curves["b"] ?? []]).text
+        if let cached = curveCache[key] { return cached }
         func spline(_ value: Any?) -> (Double) -> Double {
-            guard var points = value as? [[Double]], !points.isEmpty else { return { $0 } }
+            guard let rawPoints = value as? [[Double]] else { return { $0 } }
+            var points = rawPoints.filter { $0.count >= 2 && $0[0].isFinite && $0[1].isFinite }
+            guard !points.isEmpty else { return { $0 } }
             points.sort { $0[0] < $1[0] }
             if points[0][0] > 0 { points.insert([0, 0], at: 0) }
             if points.last![0] < 1 { points.append([1, 1]) }
@@ -39,8 +43,9 @@ extension ReelMetalRenderer {
             tangents.append(slopes[n - 2])
             return { (x: Double) -> Double in
                 if x <= points[0][0] { return points[0][1] }; if x >= points[n - 1][0] { return points[n - 1][1] }
-                var i = 0; while x > points[i + 1][0] { i += 1 }
+                var i = 0; while i + 1 < n - 1 && x > points[i + 1][0] { i += 1 }
                 let h: Double = points[i + 1][0] - points[i][0]
+                guard h > 1e-12 else { return points[i + 1][1] }
                 let t: Double = (x - points[i][0]) / h
                 let t2: Double = t * t
                 let t3: Double = t2 * t
@@ -55,9 +60,18 @@ extension ReelMetalRenderer {
         }
         let master = spline(curves["master"]), channels = ["r", "g", "b"].map { spline(curves[$0]) }
         var bytes = [UInt8](repeating: 255, count: 256 * 4)
-        for i in 0..<256 { for ch in 0..<3 { bytes[i * 4 + ch] = UInt8(max(0, min(255, Int((channels[ch](master(Double(i) / 255)) * 255).rounded())))) } }
+        for i in 0..<256 {
+            let m = master(Double(i) / 255)
+            for ch in 0..<3 {
+                let sample = channels[ch](m.isFinite ? m : Double(i) / 255)
+                let scaled = sample.isFinite ? (sample * 255).rounded() : Double(i)
+                bytes[i * 4 + ch] = UInt8(max(0, min(255, Int(scaled))))
+            }
+        }
         let out = try texture(256, 1, format: .rgba8Unorm)
         bytes.withUnsafeBytes { out.replace(region: MTLRegionMake2D(0, 0, 256, 1), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: 1024) }
+        if curveCache.count >= 32 { curveCache.removeAll() }
+        curveCache[key] = out
         return out
     }
 

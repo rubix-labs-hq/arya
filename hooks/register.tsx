@@ -135,31 +135,41 @@ async function call($: $, path: string, body?: unknown): Promise<Record<string, 
   return data
 }
 
-async function stateAt($: $, p: number): Promise<{ root?: string; editors?: number; version?: number; pid?: number } | null> {
+async function probePort($: $, p: number): Promise<{ occupied: boolean; state: { root?: string; editors?: number; version?: number; pid?: number } | null }> {
   try {
     const res = await $.http.fetch(`http://127.0.0.1:${p}/api/state`)
-
-    return res.ok ? (JSON.parse(res.text) as { root?: string }) : null
+    if (!res.ok) return { occupied: true, state: null }
+    try {
+      const data = JSON.parse(res.text) as { root?: string; editors?: number; version?: number; pid?: number }
+      return { occupied: true, state: typeof data?.root === 'string' ? data : null }
+    } catch {
+      return { occupied: true, state: null }
+    }
   } catch {
-    return null
+    return { occupied: false, state: null }
   }
+}
+
+async function stateAt($: $, p: number): Promise<{ root?: string; editors?: number; version?: number; pid?: number } | null> {
+  return (await probePort($, p)).state
 }
 
 /** Finds this project's running server, or starts one on a free port. */
 async function ensureServer($: $): Promise<ReelServer> {
+  let free: number | null = null
   for (let p = BASE_PORT; p < BASE_PORT + 20; p++) {
-    const st = await stateAt($, p)
-    if (st?.root === root) {
+    const probed = await probePort($, p)
+    if (probed.state?.root === root) {
       port = p
-      const server = { port: p, url: url('/'), isRunning: true, editors: st.editors ?? 0, version: st.version ?? 0, pid: st.pid }
+      const server = { port: p, url: url('/'), isRunning: true, editors: probed.state.editors ?? 0, version: probed.state.version ?? 0, pid: probed.state.pid }
       await update($, serverAtom, () => server)
       watchServer($)
 
       return server
     }
+    if (!probed.occupied && free === null) free = p
   }
-  let free = BASE_PORT
-  while (free < BASE_PORT + 20 && (await stateAt($, free))) free++
+  if (free === null) throw new Error(`ports ${BASE_PORT}–${BASE_PORT + 19} are all in use; close another Arya editor or local service first`)
   port = free
   const editor = `${$.plugin.root}/editor/server.mjs`
   await $.process.run(['/bin/mkdir', '-p', `${root}/.reel`])
@@ -196,6 +206,16 @@ async function note($: $, who: ReelLogEntry['who'], text: string) {
   await update($, log, list => [...list, { who, text }].slice(-20))
 }
 
+async function restartServer($: $) {
+  const prevPort = (await read($, serverAtom))?.port ?? port
+  await stopServer($)
+  for (let i = 0; i < 10; i++) {
+    if (!(await stateAt($, prevPort))) break
+    await pause($, 0.1)
+  }
+  return openEditor($)
+}
+
 async function openEditor($: $) {
   const server = await ensureServer($)
   await claudeStatus($, 'idle')
@@ -213,7 +233,18 @@ async function registerTools($: $) {
 /** Keeps the pane's server status current. It reads /api/state only and accepts it only for this project. */
 async function refreshServer($: $) {
   const server = await read($, serverAtom)
-  if (!server) return
+  if (!server) {
+    for (let p = BASE_PORT; p < BASE_PORT + 20; p++) {
+      const st = await stateAt($, p)
+      if (st?.root === root) {
+        port = p
+        await update($, serverAtom, current => current ?? { port: p, url: url('/'), isRunning: true, editors: st.editors ?? 0, version: st.version ?? 0, pid: st.pid })
+        watchServer($)
+        return
+      }
+    }
+    return
+  }
   const st = await stateAt($, server.port)
   // A server for this project answers here, even if another session restarted it under a new pid.
   const next = st?.root === root ? { ...server, isRunning: true, editors: st.editors ?? 0, version: st.version ?? 0, pid: st.pid } : { ...server, isRunning: false }
@@ -261,7 +292,7 @@ async function describeRefs($: $, refs: readonly ReelRef[]): Promise<string[]> {
       lines.push(`- clip ${ref.id} on ${found?.track.id ?? '?'}${found?.comp ? ` in composition ${found.comp}` : ''}: ${JSON.stringify(found?.clip)}${detail ? `\n  ${detail.replace(/\n/g, '\n  ')}` : ''}`)
     } else if (ref.kind === 'frame' || ref.kind === 'time' || ref.kind === 'scope') {
       // ids: "12.5", "12.5@640,360" (frame point), "V1@12.5" (track time), "waveform@12.5"
-      const parts = ref.id.split('@')
+      const parts = ref.id.split('@').filter(Boolean)
       const numeric = parts.map(Number).find(n => Number.isFinite(n))
       const point = ref.kind === 'frame' ? parts[1] : undefined
       let shot = ''
@@ -347,9 +378,9 @@ async function runTool($: $, name: string, input: Record<string, unknown>): Prom
       const job = (await call($, '/api/export', { preset: input.preset ?? 'h264-high', name: input.name, width: input.width, range })) as { id: string }
       // Long-polls the server: time inside a $ call does not count against the hook's budget.
       for (let i = 0; i < 80; i++) {
-        const j = (await call($, `/api/jobs/wait?id=${job.id}&timeout=25000`)) as { state: string; output?: string; error?: string; progress?: number }
+        const j = (await call($, `/api/jobs/wait?id=${encodeURIComponent(job.id)}&timeout=25000`)) as { state: string; output?: string; error?: string; progress?: number }
         if (j.state === 'done') return `Exported ${root}/${j.output}`
-        if (j.state === 'failed') throw new Error(j.error ?? 'render failed')
+        if (j.state === 'failed' || j.state === 'cancelled') throw new Error(j.error ?? (j.state === 'cancelled' ? 'render cancelled' : 'render failed'))
         await claudeStatus($, 'working', `rendering ${Math.round((j.progress ?? 0) * 100)}%…`)
       }
       throw new Error('render still running after 30 minutes; check the Deliver page')
@@ -411,6 +442,8 @@ export const register: Register = (on, options) => {
   })
 
   on('session.end', async ($, e, next) => {
+    statusTimer?.cancel()
+    statusTimer = null
 
     return next(e)
   })
@@ -430,9 +463,15 @@ export const register: Register = (on, options) => {
 
         return { text: `Arya is ${(await read($, isOn)) ? 'on' : 'off'}. ${server?.isRunning ? `Editor at ${server.url} (${server.editors} open).` : 'Editor server not running.'}` }
       }
+      if (!['', 'open', 'on', 'restart'].includes(verb)) {
+        return { text: `Unknown /reel subcommand "${verb}". Usage: /reel [on|off|open|restart|status]`, exitCode: 1 }
+      }
       if (verb === 'restart') {
-        await stopServer($)
-        await pause($, 0.4)
+        if (!(await read($, isOn))) await setOn($, true)
+        const server = await restartServer($)
+        await $.ui.open({ id: PANE, title: 'Arya' })
+
+        return { text: `Arya editor restarted at ${server.url} (project: ${root}).` }
       }
       if (!(await read($, isOn))) await setOn($, true)
       const server = await openEditor($)
@@ -445,7 +484,9 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.check', async ($, e, next) => {
-    if (typeof e.tool === 'string' && e.tool.startsWith(TOOL_PREFIX) && (await read($, isOn))) return { decision: 'allow', reason: 'Arya editor tool' }
+    try {
+      if (typeof e.tool === 'string' && e.tool.startsWith(TOOL_PREFIX) && (await read($, isOn))) return { decision: 'allow', reason: 'Arya editor tool' }
+    } catch {}
 
     return next(e)
   })
@@ -453,34 +494,39 @@ export const register: Register = (on, options) => {
   on('tool.call', async ($, e, next) => {
     const tool = String(e.tool)
     if (!tool.startsWith(TOOL_PREFIX)) return next(e)
-    if (!(await read($, isOn))) return { deny: 'The Arya editor is turned off. The user can run /reel on to enable it.' }
-    await update($, isWorking, () => true)
     try {
-      return { result: await runTool($, tool.slice(TOOL_PREFIX.length), e as Record<string, unknown>) }
+      if (!(await read($, isOn))) return { deny: 'The Arya editor is turned off. The user can run /reel on to enable it.' }
+      await update($, isWorking, () => true)
+      const { tool: _tool, ...input } = e as Record<string, unknown>
+      return { result: await runTool($, tool.slice(TOOL_PREFIX.length), input) }
     } catch (error) {
       return { isError: true, result: `Arya: ${error instanceof Error ? error.message : String(error)}` }
     } finally {
-      await update($, isWorking, () => false)
-      await claudeStatus($, 'idle')
+      await update($, isWorking, () => false).catch(() => {})
+      await claudeStatus($, 'idle').catch(() => {})
     }
   })
 
   on('prompt.submit', async ($, e, next) => {
-    if (!(await read($, isOn))) return next(e)
-    const fromEditor = e.origin.kind === 'plugin' && e.origin.name === 'reel'
-    const context = [...(e.context ?? [])]
-    if (!fromEditor) {
-      // @c3, @m1, @V2 in a typed prompt attach that item from the editor's project.
-      const ids = [...e.text.matchAll(/@([cm]\d+a?|[VA]\d+)\b/g)].map(m => m[1]!)
-      if (ids.length) {
-        try {
-          const refs: ReelRef[] = ids.map(id => ({ kind: /^[VA]/.test(id) ? 'track' : id.startsWith('m') ? 'marker' : 'clip', id, label: id }))
-          context.push(`Arya editor references:\n${(await describeRefs($, refs)).join('\n')}`)
-        } catch {}
+    try {
+      if (!(await read($, isOn))) return next(e)
+      const fromEditor = e.origin.kind === 'plugin' && e.origin.name === 'reel'
+      const context = [...(e.context ?? [])]
+      if (!fromEditor) {
+        // @c3, @m1, @V2 in a typed prompt attach that item from the editor's project.
+        const ids = [...e.text.matchAll(/(?:^|[\s(])@([cm]\d+a?|[VA]\d+)\b/g)].map(m => m[1]!)
+        if (ids.length) {
+          try {
+            const refs: ReelRef[] = ids.map(id => ({ kind: /^[VA]/.test(id) ? 'track' : id.startsWith('m') ? 'marker' : 'clip', id, label: id }))
+            context.push(`Arya editor references:\n${(await describeRefs($, refs)).join('\n')}`)
+          } catch {}
+        }
       }
-    }
 
-    return next(context.length === (e.context?.length ?? 0) ? e : { ...e, context })
+      return next(context.length === (e.context?.length ?? 0) ? e : { ...e, context })
+    } catch {
+      return next(e)
+    }
   })
 
   // ---------------------------------------------------------------- launcher pane
@@ -503,7 +549,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" gap={1}>
-          <Text bold color="#f5b942">
+          <Text bold color="#efbc68">
             🎬 ARYA
           </Text>
           <Text dimColor>{server?.isRunning ? `editor at ${server.url}` : 'editor not running'}</Text>
@@ -514,17 +560,17 @@ export const register: Register = (on, options) => {
         </Text>
         <Box flexDirection="row" gap={1}>
           <Button key="open" label="Open editor" variant="primary" hotkey="o" onPress={() => void openEditor($).catch(err => $.ui.toast(`Arya: ${String(err)}`))} />
-          <Button key="restart" label="Restart server" onPress={() => void stopServer($).then(() => openEditor($)).catch(err => $.ui.toast(`Arya: ${String(err)}`))} />
+          <Button key="restart" label="Restart server" onPress={() => void restartServer($).catch(err => $.ui.toast(`Arya: ${String(err)}`))} />
           <Button key="off" label="Turn off" dimColor onPress={() => void setOn($, false)} />
         </Box>
         <Box flexDirection="column">
-          {entries.slice(-6).map(entry => (
-            <Text dimColor wrap="truncate">
+          {entries.slice(-6).map((entry, idx) => (
+            <Text key={`${idx}-${entry.who}-${entry.text}`} dimColor wrap="truncate">
               {entry.who === 'claude' ? '✦' : entry.who === 'you' ? '•' : '·'} {entry.text}
             </Text>
           ))}
         </Box>
-        <Text dimColor>The editor's ✦ Claude panel talks to this session. ⌥-click anything in the editor to attach it.</Text>
+        <Text dimColor>Use Arya tools from Claude Code, or type @c1/@V1/@m1 in prompts to attach project items.</Text>
       </Box>
     )
   })

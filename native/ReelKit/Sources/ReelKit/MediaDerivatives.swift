@@ -233,9 +233,14 @@ public enum MediaDerivatives {
             try Task.checkCancellation()
             guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
             let length = CMBlockBufferGetDataLength(block)
-            var samples = [Int16](repeating: 0, count: length / 2)
-            samples.withUnsafeMutableBytes { raw in
-                _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: raw.baseAddress!)
+            let copyBytes = (length / 2) * 2
+            guard copyBytes > 0 else { continue }
+            var samples = [Int16](repeating: 0, count: copyBytes / 2)
+            let copyStatus = samples.withUnsafeMutableBytes { raw in
+                CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: copyBytes, destination: raw.baseAddress!)
+            }
+            guard copyStatus == kCMBlockBufferNoErr else {
+                throw Failed(message: "could not copy audio samples from \(file.lastPathComponent)")
             }
             if channelGain != 1 {
                 for i in samples.indices {

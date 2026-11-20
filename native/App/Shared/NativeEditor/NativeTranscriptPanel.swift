@@ -1041,20 +1041,36 @@ struct NativeTranscriptPanel: View {
                 }
                 passageControls
                 Divider()
-                Picker("Caption style", selection: $captionStyle) {
-                    Text("Plain").tag("plain"); Text("Boxed").tag("boxed"); Text("Word highlight").tag("karaoke"); Text("One word").tag("word")
-                }.disabled(transcript.busy)
+                LabeledContent {
+                    Picker("Caption style", selection: $captionStyle) {
+                        Text("Plain").tag("plain"); Text("Boxed").tag("boxed"); Text("Word highlight").tag("karaoke"); Text("One word").tag("word")
+                    }.labelsHidden().disabled(transcript.busy)
+                } label: { Text("Caption style").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                 captionControls
                 Divider()
                 Text("Build short clips").font(.headline)
                 TextField("Find moments about…", text: $clipQuery).textFieldStyle(.roundedBorder).disabled(transcript.busy)
-                HStack {
-                    TextField("Minimum seconds", value: $minimum, format: .number).textFieldStyle(.roundedBorder)
-                    TextField("Maximum seconds", value: $maximum, format: .number).textFieldStyle(.roundedBorder)
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Min seconds").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                        TextField("Minimum seconds", value: $minimum, format: .number).textFieldStyle(.roundedBorder)
+                            #if os(iOS)
+                            .keyboardType(.decimalPad)
+                            #endif
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Max seconds").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                        TextField("Maximum seconds", value: $maximum, format: .number).textFieldStyle(.roundedBorder)
+                            #if os(iOS)
+                            .keyboardType(.decimalPad)
+                            #endif
+                    }
                 }.disabled(transcript.busy)
-                Picker("Output format", selection: $format) {
-                    Text("9:16 vertical").tag("vertical"); Text("1:1 square").tag("square"); Text("16:9 landscape").tag("landscape")
-                }.disabled(transcript.busy)
+                LabeledContent {
+                    Picker("Output format", selection: $format) {
+                        Text("9:16 vertical").tag("vertical"); Text("1:1 square").tag("square"); Text("16:9 landscape").tag("landscape")
+                    }.labelsHidden().disabled(transcript.busy)
+                } label: { Text("Output format").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                 Toggle("Include editable captions", isOn: $includeShortCaptions).disabled(transcript.busy)
                 Button("Suggest clips") {
                     transcript.perform(model: model, session: session) { token, backend in
@@ -1076,9 +1092,21 @@ struct NativeTranscriptPanel: View {
                             if value { transcript.selectedCandidates.insert(index) } else { transcript.selectedCandidates.remove(index) }
                         }))
                         TextField("Clip \(index + 1) name", text: Binding(get: { transcript.candidates.indices.contains(index) ? transcript.candidates[index].string("name") : "" }, set: { transcript.updateCandidate(index, key: "name", value: $0) })).textFieldStyle(.roundedBorder)
-                        HStack {
-                            TextField("Source start seconds", value: Binding(get: { transcript.candidates.indices.contains(index) ? transcript.candidates[index].number("from") : 0 }, set: { transcript.updateCandidate(index, key: "from", value: $0) }), format: .number).textFieldStyle(.roundedBorder)
-                            TextField("Source end seconds", value: Binding(get: { transcript.candidates.indices.contains(index) ? transcript.candidates[index].number("to") : 0 }, set: { transcript.updateCandidate(index, key: "to", value: $0) }), format: .number).textFieldStyle(.roundedBorder)
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Start (s)").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                                TextField("Source start seconds", value: Binding(get: { transcript.candidates.indices.contains(index) ? transcript.candidates[index].number("from") : 0 }, set: { transcript.updateCandidate(index, key: "from", value: $0) }), format: .number).textFieldStyle(.roundedBorder)
+                                    #if os(iOS)
+                                    .keyboardType(.decimalPad)
+                                    #endif
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("End (s)").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                                TextField("Source end seconds", value: Binding(get: { transcript.candidates.indices.contains(index) ? transcript.candidates[index].number("to") : 0 }, set: { transcript.updateCandidate(index, key: "to", value: $0) }), format: .number).textFieldStyle(.roundedBorder)
+                                    #if os(iOS)
+                                    .keyboardType(.decimalPad)
+                                    #endif
+                            }
                         }
                         Button("Preview edited range") {
                             if transcript.previewShortRange(index, model: model, session: session) {
@@ -1258,7 +1286,7 @@ struct NativeTranscriptPanel: View {
                         transcript.message = "Lifted the passage and its linked audio. Undo restores the edit."
                     }
                 }.disabled(model.selected?.source != transcript.source)
-                Button("Ask agent about passage") {
+                Button("Ask Arya about passage") {
                     model.assistantDraft = "Edit this source passage, \(transcript.source), from \(from) to \(to) seconds: \(transcript.words[first...last].map(\.text).joined(separator: " "))"
                     model.panel = .assistant
                     #if os(iOS)

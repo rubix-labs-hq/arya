@@ -260,7 +260,7 @@ function drawClip(ctx, p, c, row, state) {
   // Keyframes.
   if (c.anim) {
     const keys = new Set(Object.values(c.anim).flatMap(k => k.map(kk => kk[0])))
-    ctx.fillStyle = '#ffd84d'
+    ctx.fillStyle = '#efbc68'
     for (const k of keys) {
       const kx = x + k * store.zoom
       ctx.save()
@@ -294,13 +294,13 @@ function drawClip(ctx, p, c, row, state) {
   const age = hl ? (performance.now() - hl) / 2500 : 1
   if (age < 1) {
     roundRect(ctx, x - 1, y - 1, w + 2, hgt + 2, 6)
-    ctx.strokeStyle = `rgba(214, 140, 255, ${1 - age})`
+    ctx.strokeStyle = `rgba(239, 188, 104, ${1 - age})`
     ctx.lineWidth = 3
     ctx.stroke()
     state.animating = true
   }
   roundRect(ctx, x + 0.5, y + 0.5, w - 1, hgt - 1, 5)
-  ctx.strokeStyle = sel ? '#f5b942' : '#00000080'
+  ctx.strokeStyle = sel ? '#efbc68' : '#00000080'
   ctx.lineWidth = sel ? 2 : 1
   ctx.stroke()
   // Transition into this clip.
@@ -309,7 +309,7 @@ function drawClip(ctx, p, c, row, state) {
     const cx = x
     ctx.save()
     const tsel = store.selection.includes(`tr:${c.id}`)
-    ctx.fillStyle = tsel ? '#f5b942dd' : '#ffffffcc'
+    ctx.fillStyle = tsel ? '#efbc68dd' : '#ffffffcc'
     ctx.beginPath()
     ctx.moveTo(cx - d / 2, y + 2)
     ctx.lineTo(cx + d / 2, y + hgt - 2)
@@ -354,9 +354,9 @@ function drawRuler(ctx, p, state) {
   if (p.range) {
     const x0 = tx(p.range.in)
     const x1 = tx(p.range.out)
-    ctx.fillStyle = '#f5b94233'
+    ctx.fillStyle = '#efbc6833'
     ctx.fillRect(x0, 0, x1 - x0, RULER)
-    ctx.fillStyle = '#f5b942'
+    ctx.fillStyle = '#efbc68'
     ctx.fillRect(x0, 0, 2, RULER)
     ctx.fillRect(x1 - 2, 0, 2, RULER)
   }
@@ -418,8 +418,8 @@ function drawAll(canvas, state) {
   for (const row of rows) for (const c of row.track.clips) drawClip(ctx, p, c, row, state)
   if (state.marquee) {
     const m = state.marquee
-    ctx.fillStyle = '#f5b94218'
-    ctx.strokeStyle = '#f5b942aa'
+    ctx.fillStyle = '#efbc6818'
+    ctx.strokeStyle = '#efbc68aa'
     ctx.fillRect(Math.min(m.x0, m.x1), Math.min(m.y0, m.y1), Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0))
     ctx.strokeRect(Math.min(m.x0, m.x1), Math.min(m.y0, m.y1), Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0))
   }
@@ -930,7 +930,7 @@ function TrackHeader({ row, p }) {
       onContextMenu=${e => {
         e.preventDefault()
         openMenu(e.clientX, e.clientY, [
-          { label: 'Reference track to Assistant', hint: '⌥-click', run: () => addRef({ kind: 'track', id: t.id, label: `track ${t.id} ${t.name ?? ''}` }) },
+          ...(store.caps?.host === 'browser-local' ? [] : [{ label: 'Reference track to Assistant', hint: '⌥-click', run: () => addRef({ kind: 'track', id: t.id, label: `track ${t.id} ${t.name ?? ''}` }) }]),
           { label: 'Rename…', run: () => { const name = prompt('Track name', t.name ?? t.id); if (name) edit({ op: 'update_track', id: t.id, set: { name } }) } },
           { label: 'Close gaps', run: () => edit({ op: 'close_gaps', track: t.id }) },
           { label: 'Taller', run: () => set(s => ({ trackHeight: { ...s.trackHeight, [t.id]: Math.min(200, stepFrom + 24) } })) },
@@ -969,9 +969,11 @@ export function clipMenu(p, hit, t) {
     // Linked selection can include partners on locked tracks; edits must leave those out.
     const unlockedIds = ids.filter(id => !p.tracks.some(tt => tt.locked && tt.clips.some(x => x.id === id)))
     items.push(
-      ...(store.caps?.host === 'browser-local' ? [] : [{ label: 'Reference to Assistant', hint: '⌥-click', run: () => ids.forEach(id => { const cc = p.tracks.flatMap(tt => tt.clips).find(x => x.id === id); if (cc) addRef({ kind: 'clip', id, label: `${id} ${cc.label ?? cc.title?.text ?? mediaDisplayName(cc.src ?? cc.kind, p.assets?.[cc.src])}` }) }) },
-      { label: 'Ask the Assistant about this clip…', run: () => { addRef({ kind: 'clip', id: c.id, label: `${c.id}` }); set({ chatOpen: true, chatCollapsed: false }); setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50) } }]),
-      { sep: true },
+      ...(store.caps?.host === 'browser-local' ? [] : [
+        { label: 'Reference to Assistant', hint: '⌥-click', run: () => ids.forEach(id => { const cc = p.tracks.flatMap(tt => tt.clips).find(x => x.id === id); if (cc) addRef({ kind: 'clip', id, label: `${id} ${cc.label ?? cc.title?.text ?? mediaDisplayName(cc.src ?? cc.kind, p.assets?.[cc.src])}` }) }) },
+        { label: 'Ask the Assistant about this clip…', run: () => { addRef({ kind: 'clip', id: c.id, label: `${c.id}` }); set({ chatOpen: true, chatCollapsed: false }); setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50) } },
+        { sep: true },
+      ]),
       { label: 'Blade at playhead', hint: '⌘B', run: () => edit({ op: 'blade', at: time.t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: 'Blade here', run: () => edit({ op: 'blade', at: t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: 'Duplicate', run: () => edit({ op: 'duplicate', id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
@@ -1006,13 +1008,13 @@ export function clipMenu(p, hit, t) {
     items.push({ label: 'Remove transition', run: () => edit({ op: 'transition', id: hit.clip.id, type: 'none' }) })
   } else if (hit.marker) {
     items.push(
-      { label: 'Reference marker to Assistant', run: () => addRef({ kind: 'marker', id: hit.marker.id, label: `marker "${hit.marker.label}"`, comp, context }) },
+      ...(store.caps?.host === 'browser-local' ? [] : [{ label: 'Reference marker to Assistant', run: () => addRef({ kind: 'marker', id: hit.marker.id, label: `marker "${hit.marker.label}"`, comp, context }) }]),
       { label: 'Rename…', run: () => { const label = prompt('Marker', hit.marker.label); if (label !== null) editMarker({ op: 'update_marker', id: hit.marker.id, set: { label } }) } },
       { label: 'Delete marker', danger: true, run: () => editMarker({ op: 'delete_marker', id: hit.marker.id }) },
     )
   } else {
     items.push(
-      { label: 'Reference this moment to Assistant', run: () => addRef({ kind: 'time', id: String(t), label: `time ${timecode(t, p.fps)}` }) },
+      ...(store.caps?.host === 'browser-local' ? [] : [{ label: 'Reference this moment to Assistant', run: () => addRef({ kind: 'time', id: String(t), label: `time ${timecode(t, p.fps)}` }) }]),
       { label: 'Add marker here', run: () => editMarker({ op: 'marker', t, label: '' }) },
       { label: 'Paste here', hint: '⌘V', disabled: !store.clipboard, run: () => edit({ op: 'paste', at: t, clips: store.clipboard }) },
       { label: 'Add title here', run: () => edit({ op: 'add_title', start: t, text: 'Title' }) },
