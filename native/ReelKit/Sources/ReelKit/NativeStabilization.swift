@@ -20,7 +20,8 @@ public enum NativeStabilization {
             image(CIImage(cgImage:source),frame:frame)
         }
         public func image(_ base:CIImage,frame:Int) -> CIImage {
-            let rect=base.extent,m=corrections[frame]
+            guard !corrections.isEmpty else { return base }
+            let rect=base.extent,m=corrections[max(0,min(corrections.count-1,frame))]
             let warped:CIImage
             if abs(m.columns.0.z)+abs(m.columns.1.z)<1e-9 {
                 let transform=CGAffineTransform(a:m.columns.0.x/m.columns.2.z,b:m.columns.0.y/m.columns.2.z,c:m.columns.1.x/m.columns.2.z,d:m.columns.1.y/m.columns.2.z,tx:m.columns.2.x/m.columns.2.z,ty:m.columns.2.y/m.columns.2.z)
@@ -62,6 +63,7 @@ public enum NativeStabilization {
             try Task.checkCancellation()
             var average=simd_double3x3(0),total=0.0
             for j in max(0,i-radius)...min(camera.count-1,i+radius) { if j % 128 == 0 { try Task.checkCancellation() }; let weight=exp(-Double((j-i)*(j-i))/(2*sigma*sigma));average+=camera[j]*weight;total+=weight }
+            guard total.isFinite, total > 0 else { throw invalidPath }
             average*=1/total
             average=try validated(average,width:width,height:height)
             let correction=average*simd_inverse(camera[i]),identity=matrix_identity_double3x3

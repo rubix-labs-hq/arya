@@ -79,7 +79,11 @@ struct NativeDrawingOverlay: View {
                 points = []; source = nil; attempted = false; model.drawing = nil
             })
         }
+        #if os(macOS) || targetEnvironment(macCatalyst)
+        .accessibilityLabel("\(mode.name). Draw on the canvas.")
+        #else
         .accessibilityLabel("\(mode.name). Draw with your finger or Apple Pencil.")
+        #endif
     }
 
     private func apply(size: CGSize) {

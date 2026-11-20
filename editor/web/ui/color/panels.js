@@ -7,7 +7,7 @@ import htm from 'htm'
 import { BLEND_MODES, timecode } from '/core/project.js'
 import { canvas } from '../engine-host.js'
 import { Num } from '../inspector.js'
-import { api, edit, set, store, time, toast, useStore } from '../store.js'
+import { api, edit, set, store, time, toast, useStore, viewProject } from '../store.js'
 import { BUILTIN_PRESETS } from './presets.js'
 import { defaultWindow, FULL_QUALIFIER, fullWindow, graphOf, inputSlots, nodeTitle, planBypass, planPreset, planRename, presetFromClip, TYPE_LABEL } from './graph.js'
 import { nodeOps, preview } from './state.js'
@@ -43,10 +43,12 @@ function RangeBar({ label, value, min, max, wrap, gradient, digits = 2, onChange
     const up = () => {
       removeEventListener('pointermove', move)
       removeEventListener('pointerup', up)
+      removeEventListener('pointercancel', up)
       onCommit(cur)
     }
     addEventListener('pointermove', move)
     addEventListener('pointerup', up)
+    addEventListener('pointercancel', up)
   }
   const a = frac(lo) * 100
   const b = frac(hi) * 100
@@ -207,7 +209,7 @@ export function PresetsPanel({ clip, ids }) {
   const saved = Object.values(s.project.nodePresets ?? {})
   const apply = preset => {
     try {
-      const clips = s.project.tracks.flatMap(t => t.clips).filter(c => ids.includes(c.id))
+      const clips = viewProject().tracks.flatMap(t => t.clips).filter(c => ids.includes(c.id))
       edit(clips.flatMap(c => planPreset(c, preset)), `applied the ${preset.name} nodes to ${ids.join(', ')}`)
     } catch (error) {
       toast(error.message, 'error')
@@ -253,7 +255,7 @@ export function grabStill(clip) {
   if (store.previewShown) { toast('The viewer shows the assistant preview. Go back to the project to grab a still.', 'error'); return null }
   try {
     const url = canvas.toDataURL('image/jpeg', 0.9)
-    const p = store.project
+    const p = typeof viewProject === 'function' ? viewProject() : store.project
     const still = { id: `s${Date.now().toString(36)}`, url, at: time.t, clip: clip?.id ?? null, label: `${clip?.id ?? 'frame'} · ${timecode(time.t, p.fps)}` }
     set({ stills: [...(store.stills ?? []), still].slice(-24) })
 
@@ -279,8 +281,8 @@ export function GalleryPanel({ clip }) {
       <div class="stills">
         ${stills.map(st => html`
           <div class=${`still ${s.wipe?.id === st.id ? 'on' : ''}`} key=${st.id}>
-            <img src=${st.url} onClick=${() => set({ wipe: s.wipe?.id === st.id ? null : { id: st.id, pos: s.wipe?.pos ?? 0.5 } })} title="Split-screen compare with the viewer" />
-            <div class="still-meta"><span>${st.label}</span><button class="ghost tiny" title="Remove" onClick=${() => set({ stills: stills.filter(x => x.id !== st.id), wipe: s.wipe?.id === st.id ? null : s.wipe })}>✕</button></div>
+            <button type="button" class="still-btn" aria-pressed=${s.wipe?.id === st.id} aria-label=${`Compare still ${st.label}`} onClick=${() => set({ wipe: s.wipe?.id === st.id ? null : { id: st.id, pos: s.wipe?.pos ?? 0.5 } })} title="Split-screen compare with the viewer"><img src=${st.url} alt=${`Still frame ${st.label}`} /></button>
+            <div class="still-meta"><span>${st.label}</span><button class="ghost tiny" title="Remove" aria-label=${`Remove still ${st.label}`} onClick=${() => set({ stills: stills.filter(x => x.id !== st.id), wipe: s.wipe?.id === st.id ? null : s.wipe })}>✕</button></div>
           </div>`)}
       </div>
     </div>

@@ -238,14 +238,36 @@ export function Divider({ field, axis = 'horizontal', label, reverse = false, si
 export function LayoutMenu() {
   const l = useLayout()
   const [open, setOpen] = useState(false)
-  return html`<div class="workspace-layout-menu"><button class="ghost" aria-label="Customize workspace" title="Layout" aria-expanded=${open} onClick=${() => setOpen(!open)}><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M9.5 4.5v15M9.5 12h11" /></svg><span class="entry-text">Layout</span></button>
+  const wrap = useRef(null), trigger = useRef(null)
+  const close = ({ restore = false } = {}) => {
+    setOpen(false)
+    if (restore && trigger.current?.isConnected) trigger.current.focus()
+  }
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return
+    const onDown = e => { if (!wrap.current?.contains(e.target)) close() }
+    const onKey = e => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        close({ restore: true })
+      }
+    }
+    window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [open])
+  return html`<div class="workspace-layout-menu" ref=${wrap}><button ref=${trigger} class="ghost" aria-label="Customize workspace" title="Layout" aria-expanded=${open} onClick=${() => setOpen(!open)}><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M9.5 4.5v15M9.5 12h11" /></svg><span class="entry-text">Layout</span></button>
     ${open ? html`<div class="workspace-options" role="dialog" aria-label="Workspace layout">
       <p class="hint compact-layout-note">Compact Edit keeps Viewer, Media, Inspector and the timeline available. The layout settings below apply to wider workspaces.</p>
       <div class="row gap"><button onClick=${() => save(defaults)}>Default</button><button onClick=${() => save({ ...defaults, upper: 65, showMedia: false, showInspector: false })}>Review</button><button onClick=${() => save({ ...defaults, upper: 40, media: 200, inspector: 280 })}>Editing</button></div>
       ${[['showMedia', 'Media bin'], ['showInspector', 'Inspector'], ['showTimeline', 'Timeline']].map(([field, label]) => html`<label><input type="checkbox" checked=${l[field]} onChange=${e => save({ [field]: e.target.checked })} /> ${label}</label>`)}
       <label>Media position <select value=${l.mediaSide} onChange=${e => save({ mediaSide: e.target.value })}><option value="left">Left</option><option value="right">Right</option></select></label>
       <p class="hint desktop-layout-note">Drag a divider to resize. Arrow keys resize a focused divider. Double-click a divider to reset it. This layout is saved on this device.</p>
-      <button onClick=${() => setOpen(false)}>Done</button>
+      <button onClick=${() => close({ restore: true })}>Done</button>
     </div>` : null}
   </div>`
 }

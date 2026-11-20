@@ -28,7 +28,7 @@ enum NativeEditorStyle {
     static let clipAdjustment = Color(red: 122 / 255, green: 106 / 255, blue: 58 / 255)
     static let clipComposition = Color.purple
     static let playhead = Color(red: 255 / 255, green: 59 / 255, blue: 74 / 255)
-    #if os(iOS)
+    #if os(iOS) && !targetEnvironment(macCatalyst)
     static let minimumControlHeight: CGFloat = 44
     #else
     static let minimumControlHeight: CGFloat = 40
@@ -58,7 +58,7 @@ enum NativeEditorStyle {
 
 // Typography and density: docs/design/arya-product-system.md.
 enum NativeType {
-    #if os(iOS)
+    #if os(iOS) && !targetEnvironment(macCatalyst)
     private static var controlSize: CGFloat { UIDevice.current.userInterfaceIdiom == .pad ? 13 : 14 }
     static let groupLabel = Font.system(size: 11, weight: .semibold)
     static let helper = Font.system(size: 12)
@@ -102,7 +102,7 @@ struct NativeToolbarButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                #if os(iOS)
+                #if os(iOS) && !targetEnvironment(macCatalyst)
                 .font(.subheadline.weight(selected ? .semibold : .medium))
                 .lineLimit(nil)
                 .multilineTextAlignment(.center)
@@ -234,7 +234,7 @@ struct NativeSegmentedControl<Value: Hashable>: View {
                     Text(option.title).lineLimit(1)
                         #if os(iOS) && !targetEnvironment(macCatalyst)
                         .font(.subheadline.weight(selected ? .semibold : .regular))
-                        .frame(maxWidth: fill ? .infinity : nil, minHeight: 36)
+                        .frame(maxWidth: fill ? .infinity : nil, minHeight: 40)
                         #else
                         .font(selected ? NativeType.controlEmphasis : NativeType.control)
                         .frame(maxWidth: fill ? .infinity : nil, minHeight: 22)
@@ -323,7 +323,7 @@ struct NativeNumberRow: View {
 
     var body: some View {
         VStack(spacing: 3) {
-            #if os(iOS)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             let layout = dynamicTypeSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
                 : AnyLayout(HStackLayout(spacing: 12))

@@ -15,6 +15,11 @@ struct NativeGettingStartedView: View {
                     "Choose New Project on the start screen or in the File menu. Choose the name and location for its folder. To return to an existing project, choose Open Project and select its whole folder, or choose a recent project.",
                     "Choose File > Import Media to copy video, audio or images into the open project. In Media, preview a source and add it to the timeline. Select a clip to edit its properties. Use Undo and Redo to revise an edit, then use Deliver to export."
                 ])
+                #elseif targetEnvironment(macCatalyst)
+                section("Start a project on Mac", [
+                    "Choose New Project on the start screen or in the File menu. Enter a name, choose the video format and create the project. Open Project lets you select an existing project folder.",
+                    "Choose File > Import Media or open Media to copy video, audio or images into the open project. Review the copied source in Media and add it to the timeline. Select a clip to edit its properties. Use Undo and Redo to revise an edit, then use Deliver to export."
+                ])
                 #else
                 section("Start a project on iPhone or iPad", [
                     "Choose New Project on the start screen. Enter a name, choose the video format and create the project. Arya saves it in its Projects folder in Files. Open Project lets you select an existing project folder.",
@@ -48,11 +53,19 @@ struct NativeGettingStartedView: View {
                         "Choose an available model and review what you share before your first request. Nothing else needs to be installed. You can manage usage or sign out in the same settings."
                     ])
                 }
+                #if targetEnvironment(macCatalyst)
+                section("Other assistant connections", [
+                    "Mac App Store builds do not launch local command-line tools directly. To use Claude Code or Codex subscriptions, connect to a companion on a trusted Mac with a reachable HTTPS address.",
+                    "Ask that Mac owner for the full address and current pairing token. Review the address, enter the token privately and choose Connect companion in Assistant settings. An address link alone does not connect your Mac. Check the account and model results before sending a request.",
+                    "Remote hosting is a separate setup. Starting a local companion does not create a remote HTTPS address. You can continue manual editing without connecting a companion."
+                ])
+                #else
                 section("Other assistant connections", [
                     "Claude Code and Codex do not run on iPhone or iPad. To use those subscriptions, connect to a companion on a trusted Mac with a reachable HTTPS address.",
                     "Ask that Mac owner for the full address and current pairing token. Review the address, enter the token privately and choose Connect companion in Assistant settings. An address link alone does not connect your device. Check the account and model results before sending a request.",
                     "Remote hosting is a separate setup. Starting the local Mac companion does not create a remote HTTPS address. You can continue manual editing without connecting a companion."
                 ])
+                #endif
                 #endif
                 section("Review what you share", [
                     "Before Send, review the provider, model and project information in the AI sharing prompt. That information leaves your device for the selected provider or companion. Account access, remaining usage and charges depend on that service.",
@@ -152,6 +165,7 @@ struct NativeGettingStartedSheet: View {
         #if os(macOS)
         .frame(minWidth: 420, idealWidth: 640, minHeight: 480, idealHeight: 680)
         #endif
+        .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
     }
 }
 

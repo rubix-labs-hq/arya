@@ -168,7 +168,25 @@ function paint(ctx, fill, hw, hh) {
   return fill.color ?? '#ffffff'
 }
 
+const MAX_CACHE = 64
 const shapeCache = new Map()
+
+function cachePut(cache, key, value) {
+  cache.delete(key)
+  cache.set(key, value)
+  while (cache.size > MAX_CACHE) {
+    const [oldKey, old] = cache.entries().next().value
+    if (old?.canvas) old.canvas.width = old.canvas.height = 0
+    cache.delete(oldKey)
+  }
+}
+
+export function clearShapeCaches() {
+  for (const entry of shapeCache.values()) if (entry?.canvas) entry.canvas.width = entry.canvas.height = 0
+  shapeCache.clear()
+  for (const entry of maskCache.values()) if (entry?.canvas) entry.canvas.width = entry.canvas.height = 0
+  maskCache.clear()
+}
 
 /**
  * A canvas holding the shape drawn at `scale` (layer px → canvas px), plus the layer
@@ -177,7 +195,11 @@ const shapeCache = new Map()
 export function shapeCanvas(key, shape, scale) {
   const sig = JSON.stringify([shape, scale])
   const cached = shapeCache.get(key)
-  if (cached?.sig === sig) return cached
+  if (cached?.sig === sig) {
+    shapeCache.delete(key)
+    shapeCache.set(key, cached)
+    return cached
+  }
   const { path, hw, hh } = shapePath(shape)
   const sw = shape.stroke?.width ?? 0
   const pad = sw / 2 + 2
@@ -213,7 +235,7 @@ export function shapeCanvas(key, shape, scale) {
   }
   canvas.dirty = true
   const entry = { sig, canvas, w: canvas.width / k, h: canvas.height / k }
-  shapeCache.set(key, entry)
+  cachePut(shapeCache, key, entry)
 
   return entry
 }
@@ -245,7 +267,11 @@ export function maskCanvas(p, c, key, local, w, h, scale) {
   const size = rasterSize(w, h, k, { surfaces: 3 })
   const sig = JSON.stringify([resolved, w, h, k])
   const cached = maskCache.get(key)
-  if (cached?.sig === sig) return cached.canvas
+  if (cached?.sig === sig) {
+    maskCache.delete(key)
+    maskCache.set(key, cached)
+    return cached.canvas
+  }
   const canvas = cached?.canvas ?? document.createElement('canvas')
   canvas.width = size.w
   canvas.height = size.h
@@ -299,7 +325,7 @@ export function maskCanvas(p, c, key, local, w, h, scale) {
     ctx.globalAlpha = 1
   }
   canvas.dirty = true
-  maskCache.set(key, { sig, canvas })
+  cachePut(maskCache, key, { sig, canvas })
 
   return canvas
 }

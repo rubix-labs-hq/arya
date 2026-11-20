@@ -80,6 +80,23 @@ const directDownload = document.querySelector('[data-direct-download]');
 const releaseAction = document.querySelector('#release-action');
 const releaseDetails = document.querySelector('#release-details');
 const currentDownload = document.querySelector('#release-action a');
+const copyChecksum = document.querySelector('#copy-checksum');
+if (copyChecksum && typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function') {
+  copyChecksum.hidden = false;
+  let copyTimer = 0;
+  copyChecksum.addEventListener('click', async () => {
+    const value = document.querySelector('#release-checksum')?.textContent?.trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      copyChecksum.textContent = 'Copied';
+      clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => { copyChecksum.textContent = 'Copy SHA-256'; }, 2000);
+    } catch {
+      copyChecksum.textContent = 'Copy failed';
+    }
+  });
+}
 // The generated links also work without JavaScript. While refreshing their destinations,
 // send early clicks to the release information instead of an installer that may be stale.
 if (directDownload) directDownload.href = '/download/#mac';
@@ -103,6 +120,7 @@ const configLoad=fetch('/config.json',{cache:'no-store',signal:configController.
     document.querySelector('#release-state')?.replaceChildren(document.createTextNode(`Version ${config.release.version}`));
     document.querySelector('#release-description')?.replaceChildren(document.createTextNode('Free to edit and export in every format the Mac app supports.'));
     document.querySelector('#release-checksum')?.replaceChildren(document.createTextNode(config.release.sha256));
+    document.querySelector('#release-verify')?.replaceChildren(document.createTextNode(`shasum -a 256 Arya-${config.release.version}.dmg`));
     document.querySelector('#release-size')?.replaceChildren(document.createTextNode(config.release.size ? ` · ${config.release.size}` : ''));
     if (releaseDetails) releaseDetails.hidden = false;
     if (releaseAction) {

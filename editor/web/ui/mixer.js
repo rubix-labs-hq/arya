@@ -25,12 +25,12 @@ const trackOp = (id, fields, composition) => ({ op: 'update_track', id, comp: co
 const db = lin => (lin > 0 ? 20 * Math.log10(lin) : -96)
 
 function Meter({ get }) {
+  const s = useStore()
   const cv = useRef(null)
   useEffect(() => {
     let id = 0
     const peakHold = { v: -96, t: 0 }
-    const draw = () => {
-      id = requestAnimationFrame(draw)
+    const paint = () => {
       const c = cv.current
       if (!c) return
       const ctx = c.getContext('2d')
@@ -57,17 +57,25 @@ function Meter({ get }) {
       ctx.fillStyle = peakHold.v > -0.5 ? '#ff5f57' : '#ffffffaa'
       ctx.fillRect(0, y(peakHold.v), W, 1)
     }
-    id = requestAnimationFrame(draw)
+    const draw = () => {
+      id = 0
+      paint()
+      if (store.playing || peakHold.v > -90) id = requestAnimationFrame(draw)
+    }
+    paint()
+    if (store.playing) id = requestAnimationFrame(draw)
 
-    return () => cancelAnimationFrame(id)
-  }, [])
+    return () => {
+      if (id) cancelAnimationFrame(id)
+    }
+  }, [get, s.playing])
 
   return html`<canvas ref=${cv} class="meter" width="14" height="220"></canvas>`
 }
 
 function Strip({ track, p, editing, onEdit }) {
   const vol = track.volume ?? 0
-  const preview = v => set({ project: applyOps(store.project, [trackOp(track.id, { volume: v }, p.compId)]).project })
+  const preview = v => { if (store.previewShown) return; set({ project: applyOps(store.project, [trackOp(track.id, { volume: v }, p.compId)]).project }) }
 
   return html`
     <div class=${`strip ${track.muted ? 'muted' : ''} ${editing ? 'active' : ''}`}>
@@ -132,7 +140,7 @@ function MasterStrip({ p, editing, onEdit }) {
   const vol = Number(m.volume) || 0
   const lim = m.limiter ?? {}
   const limOn = Boolean(m.limiter) && lim.enabled !== false
-  const preview = v => set({ project: applyOps(store.project, [{ op: 'project', set: { master: { volume: v } } }]).project })
+  const preview = v => { if (store.previewShown) return; set({ project: applyOps(store.project, [{ op: 'project', set: { master: { volume: v } } }]).project }) }
 
   return html`
     <div class=${`strip master ${editing ? 'active' : ''}`}>

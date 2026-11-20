@@ -98,6 +98,9 @@ function waitingText(job, jobs) {
 // One line under a job's bar. A failed job shows the server's own sentence, which is written for the person reading it.
 function jobStatus(job, jobs) {
   if (job.state === 'done') return `done in ${((job.finished - job.created) / 1000).toFixed(1)}s`
+  if (job.state === 'cancelled') return 'Cancelled'
+  if (job.state === 'cancelling') return 'Cancelling…'
+  if (job.state === 'committing') return 'Saving export…'
   if (job.state === 'failed') return job.error || 'The render could not finish. Try again.'
   // The server drops the reason when the worker takes the job, so a reason means it has not started.
   return ['queued', 'running'].includes(job.state) && waitingText(job, jobs) || `${Math.round((job.progress ?? 0) * 100)}%`
@@ -112,6 +115,7 @@ export function DeliverPage() {
   const [name, setName] = useState(p.name)
   const [width, setWidth] = useState(null)
   const [fps, setFps] = useState(null)
+  useEffect(() => { setName(p.name); setWidth(null); setFps(null) }, [s.root, s.openComp])
   const [dismissed, setDismissed] = useState({ root: s.root, ids: [] })
   // The range choice lives in the store, so leaving Deliver or picking a preset keeps it.
   const rangeMode = deliverRangeMode(s.deliverRange, { root: s.root, comp: s.openComp, range: p.range })
@@ -200,6 +204,7 @@ export function DeliverPage() {
         ${/* Pinned under the settings: what will render, then the one primary action. */ null}
         <div class="deliver-actions"><span class="muted small deliver-range-note">${rangeMode === 'range' ? 'In → Out' : 'Entire timeline'} · ${timecode(range.in, p.fps)} to ${timecode(range.out, p.fps)}</span><button class="primary deliver-render" disabled=${requestPending} aria-busy=${requestPending} onClick=${render}><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor" stroke="none" /></svg>${renderRequest.phase === 'stale-pending' ? 'Waiting for previous request…' : renderRequest.phase === 'pending' ? 'Preparing render…' : renderRequest.phase === 'failed' ? 'Retry render' : 'Render'}</button></div>
         ${renderRequest.phase === 'failed' ? html`<div class="hint" role="alert">Render could not start: ${renderRequest.error} Retry when you’re ready.</div>` : null}
+        ${host.kind === 'browser-local' && (range.out - range.in <= 0 || range.out - range.in > 300) ? html`<div class="hint" role="note">${range.out - range.in <= 0 ? 'Add media or mark a non-empty In → Out range before rendering.' : 'This range is longer than the five-minute hosted beta export limit. Mark a shorter In → Out range.'}</div>` : null}
         <div class="hint">${host.kind === 'browser-local' ? 'Your browser renders the GPU compositor and audio mix, then saves the completed file on this device. Use Download in Saved exports. Keep this tab open during rendering. The hosted beta supports exports up to five minutes. Available presets depend on the browser codecs.' : native ? 'Renders use the viewer compositor and audio mixer. WebCodecs encodes the file and Arya saves it in your project. For ProRes, GIF or PNG sequences, turn off View > Web Editor and render from the Deliver page.' : 'Renders use the same compositor as the viewer, in a background browser, encoded by ffmpeg.'}</div>
         ${registry.deliver.length ? html`<h3>Interchange</h3><div class="row gap wrap">${registry.deliver.map(a => html`<button class="ghost" onClick=${() => a.run(p)}>${a.label}</button>`)}</div>` : null}
       </div>
@@ -215,8 +220,8 @@ export function DeliverPage() {
             <div class="row gap">
               <span class="muted small">${jobStatus(j, s.jobs)}</span>
               <span class="grow"></span>
-              ${j.state === 'running' || j.state === 'queued' ? html`<button class="ghost tiny" onClick=${() => api('/api/jobs/cancel', { id: j.id })}>Cancel</button>` : null}
-              ${j.state === 'failed' ? html`${requestedSpecs.has(j.id) ? html`<button class="ghost tiny" disabled=${requestPending} onClick=${() => retry(j)}>Retry</button>` : null}<button class="ghost tiny" onClick=${() => dismiss(j.id)}>Dismiss</button>` : null}
+              ${j.state === 'running' || j.state === 'queued' ? html`<button class="ghost tiny" onClick=${() => api('/api/jobs/cancel', { id: j.id }).catch(error => toast(error.message, 'error'))}>Cancel</button>` : null}
+              ${j.state === 'failed' || j.state === 'cancelled' ? html`${requestedSpecs.has(j.id) ? html`<button class="ghost tiny" disabled=${requestPending} onClick=${() => retry(j)}>Retry</button>` : null}<button class="ghost tiny" onClick=${() => dismiss(j.id)}>Dismiss</button>` : null}
               ${j.deliveryWarning ? html`<span class="hint">${j.deliveryWarning}</span>` : null}
             </div>
           </div>`)}

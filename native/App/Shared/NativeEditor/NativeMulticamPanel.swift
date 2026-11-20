@@ -460,8 +460,12 @@ struct NativeMulticamControls: View {
     var body: some View {
         GroupBox("Multicam") {
             VStack(alignment: .leading, spacing: 8) {
+                #if os(macOS) || targetEnvironment(macCatalyst)
                 Text("Click an angle to cut at the playhead. Option 1–9 selects an angle. Cuts commit immediately and pause playback. Frame previews sample playback at most twice a second.").font(.caption2).foregroundStyle(.secondary)
-                if angles.count > 9 { Text("Native multicam controls support up to 9 angles. Open this larger clip in the browser editor.").font(.caption2).foregroundStyle(.secondary) }
+                #else
+                Text("Tap an angle to cut at the playhead. Cuts commit immediately and pause playback. Frame previews sample playback at most twice a second.").font(.caption2).foregroundStyle(.secondary)
+                #endif
+                if angles.count > 9 { Text("Native multicam controls show the first 9 angles.").font(.caption2).foregroundStyle(.secondary) }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 115))], spacing: 6) {
                     ForEach(Array(angles.prefix(9).enumerated()), id: \.offset) { index, angle in
                         Button { action { try $0.cut(fields: $1, at: model.time, angle: index) } } label: {
@@ -473,9 +477,12 @@ struct NativeMulticamControls: View {
                         }.buttonStyle(.plain).keyboardShortcut(KeyEquivalent(Array("123456789")[index]), modifiers: [.option])
                     }
                 }
-                Picker("Audio angle", selection: Binding(get: { NativeMulticamPlanning.index(clip.fields.number("audioAngle"), count: angles.count) ?? 0 }, set: { index in action { try $0.audio(fields: $1, angle: index) } })) {
-                    ForEach(Array(angles.prefix(9).enumerated()), id: \.offset) { index, angle in Text("\(index + 1) · \(angle.string("label", "Angle \(index + 1)"))").tag(index) }
-                }
+                LabeledContent {
+                    Picker("Audio angle", selection: Binding(get: { NativeMulticamPlanning.index(clip.fields.number("audioAngle"), count: angles.count) ?? 0 }, set: { index in action { try $0.audio(fields: $1, angle: index) } })) {
+                        ForEach(Array(angles.prefix(9).enumerated()), id: \.offset) { index, angle in Text("\(index + 1) · \(angle.string("label", "Angle \(index + 1)"))").tag(index) }
+                    }
+                    .labelsHidden()
+                } label: { Text("Audio angle").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                 Text(hasLinkedAudio ? "A linked audio track carries the selected angle." : clip.fields.flag("mute") ? "This multicam clip is muted." : "This clip plays the selected audio angle directly.").font(.caption2).foregroundStyle(.secondary)
                 if !hasLinkedAudio, clip.fields.flag("mute") { Button("Enable selected audio angle") { action { try $0.audio(fields: $1, angle: NativeMulticamPlanning.index(clip.fields.number("audioAngle"), count: angles.count) ?? 0) } } }
                 ForEach(Array(angles.prefix(9).enumerated()), id: \.offset) { index, angle in

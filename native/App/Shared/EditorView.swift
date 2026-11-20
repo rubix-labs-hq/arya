@@ -37,15 +37,13 @@ struct ContentView: View {
                     EditorView(session: session).ignoresSafeArea()
                 } else {
                     NativeEditorView(session: session, model: session.nativeEditor, openFolder: openFolder, newProject: newProject)
-                        #if os(macOS)
-                        // Files dragged from Finder import like File > Import Media.
+                        // Files dragged from Finder or Files import like Import Media.
                         .dropDestination(for: URL.self) { urls, _ in
                             let files = urls.filter(\.isFileURL)
                             guard !files.isEmpty, session.projectReadOnlyReason == nil else { return false }
                             session.importFiles(files)
                             return true
                         }
-                        #endif
                 }
             } else {
                 #if os(iOS)
@@ -60,6 +58,7 @@ struct ContentView: View {
         .tint(NativeEditorStyle.accent)
         .sheet(item: $session.projectRecoveryRequest) { request in
             NativeProjectRecoverySheet(session: session, request: request)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
         }
         .alert("Arya", isPresented: Binding(get: { session.error != nil }, set: { if !$0 { session.error = nil } })) {
             // A failed open keeps its folder, so the way on is in the alert that reports it.
@@ -97,7 +96,7 @@ struct NativeProjectRecoverySheet: View {
                     }
                 }
                 if session.recoveringProject { ProgressView("Restoring saved project…") }
-                if let error = session.projectRecoveryError { Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
+                if let error = session.projectRecoveryError { Text(error).foregroundStyle(NativeEditorStyle.error).fixedSize(horizontal: false, vertical: true) }
             }
             .navigationTitle("Recover saved project")
             .toolbar {
@@ -224,6 +223,9 @@ private struct NativeWelcomeTypography: ViewModifier {
 struct StartView: View {
     @ObservedObject var session: EditorSession
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+    #endif
     @State private var gettingStartedVisible = false
     var openFolder: () -> Void
     var newProject: () -> Void
@@ -233,7 +235,7 @@ struct StartView: View {
     #endif
 
     private var visibleRecents: [ProjectBookmarks.Recent] {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         NativeRecentProjectPresentation.visible(session.recents, mobile: true)
         #else
         NativeRecentProjectPresentation.visible(session.recents, mobile: false)
@@ -241,12 +243,12 @@ struct StartView: View {
     }
 
     private func recentLocation(_ recent: ProjectBookmarks.Recent) -> String {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         let mobile = true
         let homePath: String? = nil
         #else
         let mobile = false
-        let homePath = NSHomeDirectoryForUser(NSUserName())
+        let homePath: String? = NSHomeDirectory()
         #endif
         return NativeRecentProjectPresentation.location(
             path: recent.path,
@@ -265,9 +267,7 @@ struct StartView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(NativeEditorStyle.accent)
-        #if os(iOS)
         .foregroundStyle(NativeEditorStyle.accentInk)
-        #endif
         .keyboardShortcut("n")
         .accessibilityLabel("New Arya project")
         .accessibilityHint("Create a project to start editing")
@@ -324,6 +324,16 @@ struct StartView: View {
                         .buttonStyle(.borderless).foregroundStyle(NativeEditorStyle.accent)
                         #endif
                         .accessibilityIdentifier("welcome.gettingStarted")
+                        #if os(macOS)
+                        Button { openSettings() } label: {
+                            Label("Assistant settings", systemImage: "gearshape")
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless).foregroundStyle(NativeEditorStyle.accent)
+                        .accessibilityHint("Connect accounts and choose assistant models before opening a project.")
+                        .accessibilityIdentifier("welcome.assistantSettings")
+                        #endif
                         #if os(iOS)
                         if let openAssistantSettings {
                             Button(action: openAssistantSettings) {
@@ -376,6 +386,9 @@ struct StartView: View {
                                         .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
+                                    .contextMenu {
+                                        Button("Remove from Recents", role: .destructive) { session.forgetRecent(recent) }
+                                    }
                                     .accessibilityLabel("Open \(recent.name). Last location: \(location)")
                                     if recent.id != visibleRecents.last?.id { Divider() }
                                 }
@@ -395,7 +408,10 @@ struct StartView: View {
         }
         .background(NativeEditorStyle.background)
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $gettingStartedVisible) { NativeGettingStartedSheet() }
+        .sheet(isPresented: $gettingStartedVisible) {
+            NativeGettingStartedSheet()
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+        }
     }
 }
 
@@ -450,13 +466,19 @@ struct NativeNewProjectSheet: View {
                     Text("\(format.width) × \(format.height)").foregroundStyle(.secondary)
                 }
                 Section("Location") {
+                    #if targetEnvironment(macCatalyst)
+                    Label("On this Mac", systemImage: "folder")
+                    Text("Saved in Arya’s Projects folder. You can move the project folder later.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    #else
                     Label("On this device", systemImage: "folder")
                     Text("Saved in Arya’s Projects folder in Files. You can move the project folder later.")
                         .font(.footnote).foregroundStyle(.secondary)
+                    #endif
                 }
                 if let failure {
                     Section {
-                        Text(failure).foregroundStyle(.red)
+                        Text(failure).foregroundStyle(NativeEditorStyle.error)
                             .accessibilityIdentifier("newProject.error")
                             .accessibilityFocused($errorFocused)
                     }

@@ -45,6 +45,10 @@ public final class ChatGPTLoopbackListener: @unchecked Sendable {
         self.listener = listener; self.port = port; self.queue = queue; self.handler = handler
     }
 
+    deinit {
+        stop()
+    }
+
     public static let live: Factory = { handler in try await start(handler) }
 
     public static func start(_ handler: @escaping Handler) async throws -> ChatGPTLoopbackListener {
@@ -54,32 +58,76 @@ public final class ChatGPTLoopbackListener: @unchecked Sendable {
         parameters.allowLocalEndpointReuse = false
         let listener = try NWListener(using: parameters)
         let queue = DispatchQueue(label: "app.reel.chatgpt.loopback")
-        final class Once: @unchecked Sendable { let lock = NSLock(); var done = false
-            func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true } }
-        let once = Once()
+        final class StartupState: @unchecked Sendable {
+            let lock = NSLock()
+            var done = false
+            weak var owner: ChatGPTLoopbackListener?
+            var bound = false
+            var pendingConnections: [NWConnection] = []
+            var failedBeforeBind = false
+            func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
+            func enqueueOrOwner(_ connection: NWConnection) -> (bound: Bool, owner: ChatGPTLoopbackListener?) {
+                lock.lock(); defer { lock.unlock() }
+                if bound { return (true, owner) }
+                if pendingConnections.count < ChatGPTLoopbackListener.maximumConnections {
+                    pendingConnections.append(connection)
+                } else {
+                    connection.cancel()
+                }
+                return (false, nil)
+            }
+            func markFailedOrOwner() -> (bound: Bool, owner: ChatGPTLoopbackListener?) {
+                lock.lock(); defer { lock.unlock() }
+                if bound { return (true, owner) }
+                failedBeforeBind = true
+                return (false, nil)
+            }
+            func bind(_ instance: ChatGPTLoopbackListener) -> ([NWConnection], Bool) {
+                lock.lock(); defer { lock.unlock() }
+                owner = instance
+                bound = true
+                let queued = pendingConnections
+                pendingConnections.removeAll()
+                return (queued, failedBeforeBind)
+            }
+        }
+        let startup = StartupState()
         let port: UInt16 = try await withCheckedThrowingContinuation { continuation in
             listener.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
-                    guard once.claim() else { return }
+                    guard startup.claim() else { return }
                     if let port = listener.port?.rawValue, port != 0 { continuation.resume(returning: port) }
                     else { listener.cancel(); continuation.resume(throwing: ChatGPTAccountError("Arya could not open a local sign-in port. Try again.", code: "chatgpt_listener")) }
-                case .failed, .cancelled:
-                    guard once.claim() else { return }
+                case .failed:
+                    if startup.claim() {
+                        continuation.resume(throwing: ChatGPTAccountError("Arya could not open a local sign-in port. Try again.", code: "chatgpt_listener"))
+                    } else {
+                        let (_, owner) = startup.markFailedOrOwner()
+                        owner?.fail()
+                    }
+                case .cancelled:
+                    guard startup.claim() else { return }
                     continuation.resume(throwing: ChatGPTAccountError("Arya could not open a local sign-in port. Try again.", code: "chatgpt_listener"))
                 default: break
                 }
             }
-            listener.newConnectionHandler = { _ in }
+            listener.newConnectionHandler = { connection in
+                let (isBound, owner) = startup.enqueueOrOwner(connection)
+                if isBound {
+                    guard let owner else { connection.cancel(); return }
+                    owner.accept(connection)
+                }
+            }
             listener.start(queue: queue)
         }
         let result = ChatGPTLoopbackListener(listener: listener, port: port, queue: queue, handler: handler)
-        listener.newConnectionHandler = { [weak result] connection in
-            guard let result else { connection.cancel(); return }
-            result.accept(connection)
-        }
-        listener.stateUpdateHandler = { [weak result] state in
-            if case .failed = state { result?.fail() }
+        let (queued, failedEarly) = startup.bind(result)
+        if failedEarly {
+            queued.forEach { $0.cancel() }
+            result.fail()
+        } else {
+            for connection in queued { result.accept(connection) }
         }
         return result
     }

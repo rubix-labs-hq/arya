@@ -13,7 +13,7 @@ export async function storeMediaUpload(root, request, query, { maxBytes = DEFAUL
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('Invalid upload size limit')
   const rawName = query.get('name') ?? 'upload.bin', relative = query.get('dir') ?? 'media'
   if (rawName.length > 4096 || rawName.includes('\0') || relative.length > 1024 || relative.includes('\0') || relative.includes('\\') || !/^media(?:\/[^/.][^/]*)*$/.test(relative) || relative.split('/').some(part => part === '..')) throw new Error('Uploads must use the project media folder')
-  let name = path.basename(rawName).replace(/[^\w.\- ]+/g, '_').trim()
+  let name = path.basename(rawName).replace(/[^\w.\- ]+/g, '_').trim().replace(/^\.+/, '')
   if (!name || name === '.' || name === '..') name = 'upload.bin'
   const parsed = path.parse(name)
   name = parsed.name.slice(0, 160) + parsed.ext.slice(0, 40)

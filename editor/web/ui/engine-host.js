@@ -5,6 +5,7 @@ import { AudioEngine } from '../engine/audio.js'
 import { Compositor } from '../engine/compositor.js'
 import { Media } from '../engine/media.js'
 import { Player } from '../engine/player.js'
+import { clearShapeCaches } from '../engine/shapes.js'
 import { loadLuts } from '../engine/worker.js'
 import { api, drawnProject, previewProject, set, setTime, store, subscribe } from './store.js'
 import { host } from '../host.js'
@@ -36,6 +37,11 @@ export function applyQuality() {
   comp.resize(Math.max(2, Math.round((p.width * s) / 2) * 2), Math.max(2, Math.round((p.height * s) / 2) * 2))
 }
 
+comp.onContextRestored = () => {
+  applyQuality()
+  player.requestExact()
+}
+
 let lastRoot = null
 let lastProject = null
 let lastQuality = null
@@ -43,7 +49,7 @@ let lastView = null
 let lastSeek = null
 subscribe(() => {
   if (host.kind === 'browser-local' && store.root !== lastRoot) {
-    lastRoot = store.root; player.pause(); media.reset(); audio.stop(); audio.buffers.clear(); comp.clearLuts(); lastProject = null; lastView = null
+    lastRoot = store.root; player.pause(); media.reset(); audio.stop(); audio.buffers.clear(); comp.clearLuts(); comp.clearTextures(); clearShapeCaches(); lastProject = null; lastView = null
   }
   const p = drawnProject()
   if (p !== lastView && p && lastView && p.compId !== lastView.compId) {

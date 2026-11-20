@@ -222,43 +222,106 @@ public enum NativeAudioProcessing {
     }
 
     public static func write(_ pcm: PCM, to file: URL) throws {
-        guard pcm.count > 0, pcm.channels.allSatisfy({ $0.count == pcm.count }) else { throw ReelBackend.APIError("The processed audio is empty or has uneven channels.") }
-        var bytes = Data(capacity: pcm.count * pcm.channels.count * 2)
-        for i in 0..<pcm.count {
-            if i % 8192 == 0 { try Task.checkCancellation() }
-            for channel in pcm.channels {
-                let sample = channel[i].isFinite ? max(-1, min(1, channel[i])) : 0
-                var value = Int16((sample * (sample >= 0 ? 32767 : 32768)).rounded()).littleEndian
-                bytes.append(Data(bytes: &value, count: 2))
+        let channelCount = pcm.channels.count
+        guard pcm.count > 0, channelCount > 0, pcm.channels.allSatisfy({ $0.count == pcm.count }),
+              pcm.count <= Int(UInt32.max - 44) / (channelCount * 2) else {
+            throw ReelBackend.APIError("The processed audio is empty or has uneven channels.")
+        }
+        let dataBytes = pcm.count * channelCount * 2
+        var out = MediaDerivatives.wavHeader(dataBytes: dataBytes, sampleRate: pcm.rate, channels: channelCount)
+        let headerSize = out.count
+        out.count = headerSize + dataBytes
+        try out.withUnsafeMutableBytes { raw in
+            guard let dst = raw.baseAddress?.assumingMemoryBound(to: UInt8.self).advanced(by: headerSize) else { return }
+            var offset = 0
+            for i in 0..<pcm.count {
+                if i % 8192 == 0 { try Task.checkCancellation() }
+                for channel in pcm.channels {
+                    let sample = channel[i].isFinite ? max(-1, min(1, channel[i])) : 0
+                    let bits = UInt16(bitPattern: Int16((sample * (sample >= 0 ? 32767 : 32768)).rounded()))
+                    dst[offset] = UInt8(truncatingIfNeeded: bits)
+                    dst[offset + 1] = UInt8(truncatingIfNeeded: bits >> 8)
+                    offset += 2
+                }
             }
         }
-        try (MediaDerivatives.wavHeader(dataBytes: bytes.count, sampleRate: pcm.rate, channels: pcm.channels.count) + bytes).write(to: file, options: .atomic)
+        try Task.checkCancellation()
+        try out.write(to: file, options: .atomic)
+    }
+
+    private static func float32WAVHeader(frames: Int, sampleRate: Int, channels: Int, dataBytes: Int) -> Data {
+        var header = Data()
+        header.reserveCapacity(58)
+        func u32(_ value: Int) { var word = UInt32(value).littleEndian; withUnsafeBytes(of: &word) { header.append(contentsOf: $0) } }
+        func u16(_ value: Int) { var word = UInt16(value).littleEndian; withUnsafeBytes(of: &word) { header.append(contentsOf: $0) } }
+        header.append(contentsOf: "RIFF".utf8); u32(50 + dataBytes)
+        header.append(contentsOf: "WAVEfmt ".utf8); u32(18); u16(3); u16(channels); u32(sampleRate)
+        u32(sampleRate * channels * 4); u16(channels * 4); u16(32); u16(0)
+        header.append(contentsOf: "fact".utf8); u32(4); u32(frames)
+        header.append(contentsOf: "data".utf8); u32(dataBytes)
+        return header
+    }
+
+    /// High-precision Float32 WAV writer for 24-bit export intermediates (ProRes and WAV delivery).
+    public static func writeFloat32(_ pcm: PCM, to file: URL) throws {
+        let channelCount = pcm.channels.count
+        guard pcm.count > 0, (1...2).contains(channelCount), (4000...192000).contains(pcm.rate),
+              pcm.channels.allSatisfy({ $0.count == pcm.count }),
+              pcm.count <= Int(UInt32.max - 50) / (channelCount * 4) else {
+            throw ReelBackend.APIError("The processed audio is empty, has uneven channels, or exceeds the WAV size limit.")
+        }
+        let dataBytes = pcm.count * channelCount * 4
+        var out = float32WAVHeader(frames: pcm.count, sampleRate: pcm.rate, channels: channelCount, dataBytes: dataBytes)
+        let headerSize = out.count
+        out.count = headerSize + dataBytes
+        try out.withUnsafeMutableBytes { raw in
+            guard let dst = raw.baseAddress?.assumingMemoryBound(to: UInt8.self).advanced(by: headerSize) else { return }
+            var offset = 0
+            for i in 0..<pcm.count {
+                if i % 8192 == 0 { try Task.checkCancellation() }
+                for channel in pcm.channels {
+                    let sample: Float = channel[i].isFinite ? max(-1, min(1, channel[i])) : 0
+                    let bits = sample.bitPattern
+                    dst[offset] = UInt8(truncatingIfNeeded: bits)
+                    dst[offset + 1] = UInt8(truncatingIfNeeded: bits >> 8)
+                    dst[offset + 2] = UInt8(truncatingIfNeeded: bits >> 16)
+                    dst[offset + 3] = UInt8(truncatingIfNeeded: bits >> 24)
+                    offset += 4
+                }
+            }
+        }
+        try Task.checkCancellation()
+        try out.write(to: file, options: .atomic)
     }
 
     /// Cleanup intermediates retain Float32 samples, including headroom above full scale.
     /// The shared PCM16 writer remains the delivery and video-mux writer.
     public static func writeCleanup(_ pcm: PCM, to file: URL) throws {
-        guard pcm.count > 0, (1...2).contains(pcm.channels.count), (4000...192000).contains(pcm.rate),
-              pcm.channels.allSatisfy({ $0.count == pcm.count }), pcm.count <= Int(UInt32.max - 50) / (pcm.channels.count * 4) else { throw ReelBackend.APIError("Cleanup needs equally sized mono or stereo channels within the WAV size limit.") }
-        var bytes = Data(capacity: pcm.count * pcm.channels.count * 4)
-        for i in 0..<pcm.count {
-            if i % 8192 == 0 { try Task.checkCancellation() }
-            for channel in pcm.channels {
-                guard channel[i].isFinite else { throw ReelBackend.APIError("Cleanup contains a non-finite sample.") }
-                var value = channel[i].bitPattern.littleEndian
-                bytes.append(Data(bytes: &value, count: 4))
+        let channelCount = pcm.channels.count
+        guard pcm.count > 0, (1...2).contains(channelCount), (4000...192000).contains(pcm.rate),
+              pcm.channels.allSatisfy({ $0.count == pcm.count }), pcm.count <= Int(UInt32.max - 50) / (channelCount * 4) else { throw ReelBackend.APIError("Cleanup needs equally sized mono or stereo channels within the WAV size limit.") }
+        let dataBytes = pcm.count * channelCount * 4
+        var out = float32WAVHeader(frames: pcm.count, sampleRate: pcm.rate, channels: channelCount, dataBytes: dataBytes)
+        let headerSize = out.count
+        out.count = headerSize + dataBytes
+        try out.withUnsafeMutableBytes { raw in
+            guard let dst = raw.baseAddress?.assumingMemoryBound(to: UInt8.self).advanced(by: headerSize) else { return }
+            var offset = 0
+            for i in 0..<pcm.count {
+                if i % 8192 == 0 { try Task.checkCancellation() }
+                for channel in pcm.channels {
+                    guard channel[i].isFinite else { throw ReelBackend.APIError("Cleanup contains a non-finite sample.") }
+                    let bits = channel[i].bitPattern
+                    dst[offset] = UInt8(truncatingIfNeeded: bits)
+                    dst[offset + 1] = UInt8(truncatingIfNeeded: bits >> 8)
+                    dst[offset + 2] = UInt8(truncatingIfNeeded: bits >> 16)
+                    dst[offset + 3] = UInt8(truncatingIfNeeded: bits >> 24)
+                    offset += 4
+                }
             }
         }
-        var header = Data()
-        func u32(_ value: Int) { var word = UInt32(value).littleEndian; header.append(Data(bytes: &word, count: 4)) }
-        func u16(_ value: Int) { var word = UInt16(value).littleEndian; header.append(Data(bytes: &word, count: 2)) }
-        header.append(contentsOf: "RIFF".utf8); u32(50 + bytes.count)
-        header.append(contentsOf: "WAVEfmt ".utf8); u32(18); u16(3); u16(pcm.channels.count); u32(pcm.rate)
-        u32(pcm.rate * pcm.channels.count * 4); u16(pcm.channels.count * 4); u16(32); u16(0)
-        header.append(contentsOf: "fact".utf8); u32(4); u32(pcm.count)
-        header.append(contentsOf: "data".utf8); u32(bytes.count)
         try Task.checkCancellation()
-        try (header + bytes).write(to: file, options: .atomic)
+        try out.write(to: file, options: .atomic)
     }
 
     /// Cancels the worker and waits for it to stop before releasing its captured PCM.

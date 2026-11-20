@@ -23,7 +23,9 @@ public enum MediaProbe {
         if let still = try probeImage(url, size: size) { return still }
         if ["wav", "aif", "aiff", "caf"].contains(url.pathExtension.lowercased()) {
             let audio = try AVAudioFile(forReading: url)
-            return .object([("duration", .number(Double(audio.length) / audio.fileFormat.sampleRate)), ("hasVideo", false), ("hasAudio", true), ("channels", .int(Int(audio.fileFormat.channelCount))), ("codec", .string(audioCodecName(audio.fileFormat.streamDescription.pointee.mFormatID))), ("size", .number(Double(size)))])
+            let rate = audio.fileFormat.sampleRate
+            guard rate.isFinite, rate > 0 else { throw Unreadable(path: url.lastPathComponent, reason: "audio file has no valid sample rate") }
+            return .object([("duration", .number(Double(audio.length) / rate)), ("hasVideo", false), ("hasAudio", true), ("channels", .int(Int(audio.fileFormat.channelCount))), ("codec", .string(audioCodecName(audio.fileFormat.streamDescription.pointee.mFormatID))), ("size", .number(Double(size)))])
         }
 
         let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: false])
@@ -43,10 +45,12 @@ public enum MediaProbe {
         if let video {
             let (natural, transform, rate, formats) = try await video.load(.naturalSize, .preferredTransform, .nominalFrameRate, .formatDescriptions)
             rotation = degrees(transform)
-            width = Double(abs(natural.width)).rounded()
-            height = Double(abs(natural.height)).rounded()
-            if rotation % 180 != 0 { swap(&width, &height) }
-            if rate > 0 { fps = (Double(rate) * 1000).rounded() / 1000 }
+            if natural.width.isFinite, natural.height.isFinite {
+                width = Double(abs(natural.width)).rounded()
+                height = Double(abs(natural.height)).rounded()
+                if rotation % 180 != 0 { swap(&width, &height) }
+            }
+            if rate.isFinite, rate > 0 { fps = (Double(rate) * 1000).rounded() / 1000 }
             if let format = formats.first {
                 let fourcc = CMFormatDescriptionGetMediaSubType(format)
                 codec = videoCodecName(fourcc)
@@ -61,7 +65,7 @@ public enum MediaProbe {
                 if let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee { channels = Int(asbd.mChannelsPerFrame) }
             }
         }
-        let seconds = duration.isNumeric ? (duration.seconds * 1000).rounded() / 1000 : nil
+        let seconds = duration.isNumeric && duration.seconds.isFinite ? (duration.seconds * 1000).rounded() / 1000 : nil
         return JSON.compact([
             ("duration", JSON.num(seconds)),
             ("width", JSON.num(width)),
@@ -108,7 +112,9 @@ public enum MediaProbe {
 
     /// The clockwise display rotation in degrees (0, 90, 180, 270) a track's transform applies.
     static func degrees(_ t: CGAffineTransform) -> Int {
+        guard t.a.isFinite, t.b.isFinite else { return 0 }
         let angle = atan2(Double(t.b), Double(t.a)) * 180 / .pi
+        guard angle.isFinite else { return 0 }
         let snapped = Int((angle / 90).rounded()) * 90
         return ((snapped % 360) + 360) % 360
     }

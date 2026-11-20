@@ -158,6 +158,24 @@ final class NativeExportTests: XCTestCase {
         do { _ = try await task.value; XCTFail("cancelled export succeeded") } catch is CancellationError {} catch { XCTFail("wrong cancellation error \(error)") }
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("renders/cancelled.mp4").path))
     }
+
+    func testExportRejectsMismatchedAspectHeightAndInvalidHDRLuminance() async throws {
+        let root = try Support.tempFolder("export-validation"), folder = ProjectFolder(root: root), core = try ReelCore(scriptURL: Support.core())
+        let project = try core.applyOps(project: core.newProject(name: "Validate", options: #"{"width":160,"height":90,"fps":10}"#), ops: #"[{"op":"add_color","dur":0.5}]"#).project
+        let renderer = try ReelMetalRenderer(folder: folder, coreScriptURL: Support.core())
+        do {
+            _ = try await renderer.export(project: project, spec: ReelNativeExportSpec(body: #"{"width":160,"height":160,"to":0.3}"#))
+            XCTFail("mismatched aspect height must fail")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("aspect ratio"), error.localizedDescription)
+        }
+        do {
+            _ = try await renderer.export(project: project, spec: ReelNativeExportSpec(body: #"{"preset":"hevc","hdr":"hlg","maxLuminance":50,"to":0.3}"#))
+            XCTFail("invalid HLG maxLuminance must fail")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("HDR mastering luminance"), error.localizedDescription)
+        }
+    }
 }
 
 private func fourCC(_ value: FourCharCode) -> String { String(bytes: [UInt8((value >> 24) & 255), UInt8((value >> 16) & 255), UInt8((value >> 8) & 255), UInt8(value & 255)], encoding: .ascii) ?? "" }

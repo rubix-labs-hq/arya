@@ -1465,9 +1465,25 @@ final class NativeAssistant: ObservableObject {
         case .text(let text):
             partialReply = String((partialReply + text).prefix(128_000))
             progress = "Generating a response"
-        case .tool(let name): progress = name == "reel_frame" ? "Inspecting a rendered frame" : "Using \(name) to read or edit the project"
+        case .tool(let name): progress = Self.toolProgressLabel(name)
         }
         publish()
+    }
+
+    private static func toolProgressLabel(_ name: String) -> String {
+        switch name {
+        case "reel_frame": return "Inspecting a rendered frame"
+        case "reel_get": return "Reading the timeline and project"
+        case "reel_edit": return "Editing the timeline"
+        case "reel_import": return "Importing media"
+        case "reel_analyze": return "Analyzing media"
+        case "reel_render": return "Rendering the timeline"
+        case "reel_figma": return "Reading or importing from Figma"
+        case "reel_interchange": return "Handling timeline interchange or captions"
+        case "reel_new": return "Creating a new project"
+        case "reel_api": return "Reading or editing the project"
+        default: return "Reading or editing the project"
+        }
     }
 
     private func receiveRoute(_ value: JSON, clientID: UUID) {
@@ -2039,11 +2055,7 @@ private struct NativeChatGPTProminentTitle: View {
     let title: String
 
     var body: some View {
-        #if os(iOS)
         Text(title).foregroundStyle(isEnabled ? NativeEditorStyle.accentInk : NativeEditorStyle.muted)
-        #else
-        Text(title)
-        #endif
     }
 }
 
@@ -3221,10 +3233,12 @@ struct NativeAssistantSharingReview: View {
                         Text("Provider and companion retention depend on their services. Allowing sharing does not confirm model access, remaining usage or price. You can withdraw in Assistant settings. Withdrawal stops further sends and requests Stop; data already received cannot be recalled.")
                             .font(.caption).foregroundStyle(.secondary)
                         if !message.isEmpty { Text(message).foregroundStyle(.secondary) }
-                        Button("Allow sharing") {
+                        Button {
                             do { try assistant.allowSharing(reviewID: review.id); dismiss() }
                             catch { message = error.localizedDescription }
-                        }.buttonStyle(.borderedProminent).frame(minHeight: 44)
+                        } label: {
+                            Text("Allow sharing").foregroundStyle(NativeEditorStyle.accentInk)
+                        }.buttonStyle(.borderedProminent).tint(NativeEditorStyle.accent).frame(minHeight: 44)
                         Text("After allowing, review your draft and press Send or Ask AI. No request is sent by this button.")
                             .font(.caption).foregroundStyle(.secondary)
                         Button("Don't allow", role: .cancel) { assistant.declineSharing(reviewID: review.id); dismiss() }.frame(minHeight: 44)
@@ -3239,6 +3253,7 @@ struct NativeAssistantSharingReview: View {
         #if os(macOS)
         .frame(minWidth: 360, minHeight: 460)
         #endif
+        .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
     }
 }
 

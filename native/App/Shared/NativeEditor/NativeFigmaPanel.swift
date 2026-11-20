@@ -211,9 +211,13 @@ private struct NativeFigmaConnection: View {
             }
             Spacer()
             Button { settings = true } label: { Image(systemName: "gearshape") }
+                .accessibilityLabel("Figma account settings")
+                .help("Figma account settings")
         }
         .sheet(isPresented: $settings) {
-            NavigationStack { NativeFigmaSettings(figma: figma).navigationTitle("Figma account").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { settings = false } } } }.frame(minWidth: 320, minHeight: 350)
+            NavigationStack { NativeFigmaSettings(figma: figma).navigationTitle("Figma account").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { settings = false } } } }
+                .frame(minWidth: 320, minHeight: 350)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
         }
     }
 }

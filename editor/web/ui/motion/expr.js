@@ -30,8 +30,16 @@ export function ExpressionRow({ view, clip, prop, scale = 1 }) {
   const t = useTime()
   const saved = clip.expr?.[prop] ?? ''
   const [text, setText] = useState(null)
-  const [ref, setRef] = useState(false)
+  const [ref, setRef] = useState(null)
   const input = useRef(null)
+  const toggleRef = e => {
+    if (ref) return setRef(null)
+    const r = e.currentTarget.getBoundingClientRect()
+    const w = Math.min(460, Math.max(220, innerWidth - 16))
+    const left = Math.max(8, Math.min(r.left, innerWidth - w - 8))
+    const openAbove = r.bottom + 270 > innerHeight && r.top > 270
+    setRef({ left, top: openAbove ? Math.max(8, r.top - 266) : Math.min(innerHeight - 268, r.bottom + 6), width: w })
+  }
   const src = text ?? saved
   const err = src.trim() ? check(src) : null
   const local = Math.max(0, Math.min(clip.dur, t - clip.start))
@@ -52,7 +60,7 @@ export function ExpressionRow({ view, clip, prop, scale = 1 }) {
     const at = el?.selectionStart ?? cur.length
     const end = el?.selectionEnd ?? at
     setText(cur.slice(0, at) + snippet + cur.slice(end))
-    setRef(false)
+    setRef(null)
     setTimeout(() => el?.focus(), 0)
   }
 
@@ -71,10 +79,10 @@ export function ExpressionRow({ view, clip, prop, scale = 1 }) {
         }}
         onBlur=${save} />
       <span class=${`mt-expr-status ${err ? 'bad' : 'ok'}`} title=${err ?? ''}>${err ? err : src.trim() ? `→ ${fmt(result)}` : 'no expression'}</span>
-      <button class="ghost tiny" title="Expression reference" onClick=${() => setRef(!ref)}>ƒx</button>
+      <button class="ghost tiny" title="Expression reference" aria-expanded=${Boolean(ref)} onClick=${toggleRef}>ƒx</button>
       ${saved ? html`<button class="ghost tiny" title="Remove the expression" onClick=${() => (edit({ op: 'expression', id: clip.id, prop, expr: null }), setText(null))}>✕</button>` : null}
       <button class="ghost tiny" title="Hide the expression field" onClick=${() => mset({ exprOpen: { ...ms().exprOpen, [`${clip.id}|${prop}`]: false } })}>▴</button>
-      ${ref ? html`<div class="mt-expr-ref">${EXPR_REFERENCE.map(([code, note]) => html`<div class="mt-expr-ref-item" onPointerDown=${e => (e.preventDefault(), insert(code))}><code>${code}</code><span>${note}</span></div>`)}</div>` : null}
+      ${ref ? html`<div class="mt-expr-ref" style=${{ left: `${ref.left}px`, top: `${ref.top}px`, width: `${ref.width}px` }}>${EXPR_REFERENCE.map(([code, note]) => html`<div class="mt-expr-ref-item" onPointerDown=${e => (e.preventDefault(), insert(code))}><code>${code}</code><span>${note}</span></div>`)}</div>` : null}
     </div>
   `
 }

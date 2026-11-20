@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { applyOps, duration, ease, newProject, valueAt } from '../core/project.js'
+import { framePlan } from '../core/render-plan.js'
 
 function base() {
   const p = newProject('t')
@@ -153,4 +154,57 @@ test('keyframes interpolate with easing', () => {
   assert.equal(valueAt(p, c, 'scale', 1), 1.5)
   assert.ok(valueAt(p, c, 'scale', 0.5) < 1.25)
   assert.ok(Math.abs(ease('linear', 0.3) - 0.3) < 1e-4)
+})
+
+test('update ignores prototype pollution keys in nested objects', () => {
+  const payload = JSON.parse('{"grade":{"__proto__":{"polluted":true},"exposure":0.2},"constructor":{"prototype":{"polluted":true}}}')
+  const p = applyOps(base(), [{ op: 'update', id: 'c1', set: payload }]).project
+  assert.equal(({}).polluted, undefined)
+  assert.equal(p.tracks[0].clips[0].grade.exposure, 0.2)
+  assert.equal(Object.hasOwn(p.tracks[0].clips[0].grade, '__proto__'), false)
+})
+
+test('freeze works inside nested compositions and marks frozen clip silent', () => {
+  const p = base()
+  p.comps = {
+    nested: {
+      width: 1920, height: 1080, fps: 30,
+      tracks: [{ id: 'V1', kind: 'video', clips: [{ id: 'n1', kind: 'video', src: 'a.mp4', start: 0, dur: 4, in: 0, speed: 1 }] }],
+    },
+  }
+  const frozen = applyOps(p, [{ op: 'freeze', id: 'n1', comp: 'nested', at: 1, dur: 2 }]).project
+  assert.deepEqual(frozen.tracks, p.tracks)
+  const clips = frozen.comps.nested.tracks[0].clips
+  assert.equal(clips.length, 3)
+  assert.equal(clips[1].start, 1)
+  assert.equal(clips[1].dur, 2)
+  assert.equal(clips[1].freeze, 1)
+  assert.equal(clips[2].start, 3)
+  assert.throws(() => applyOps(p, [{ op: 'freeze', id: 'n1', comp: 'nested', at: Number.NaN, dur: 1 }]), /finite/)
+  assert.throws(() => applyOps(p, [{ op: 'freeze', id: 'n1', comp: 'nested', at: 1, dur: 0 }]), /positive/)
+})
+
+test('delete_range rejects non-finite bounds and treats empty spans as a no-op', () => {
+  const original = base()
+  assert.throws(() => applyOps(original, [{ op: 'delete_range', from: Number.NaN, to: 2 }]), /finite/)
+  assert.throws(() => applyOps(original, [{ op: 'delete_range', from: 1, to: Infinity }]), /finite/)
+  const empty = applyOps(original, [{ op: 'delete_range', from: 2, to: 1 }])
+  assert.deepEqual(empty.project.tracks, original.tracks)
+  assert.match(empty.log.at(-1), /empty range/)
+})
+
+test('framePlan computes finite parentMatrix when a parented child scales to zero', () => {
+  const p = applyOps(base(), [
+    { op: 'add_shape', track: 'V2', start: 0, dur: 4, shape: { type: 'rect', width: 100, height: 100 }, set: { x: 100, y: 50 } },
+    { op: 'update', id: 'c1', set: { x: 200, y: 100 } },
+  ]).project
+  const child = p.tracks.find(t => t.id === 'V2').clips[0]
+  const parented = applyOps(p, [
+    { op: 'parent', id: child.id, parent: 'c1' },
+    { op: 'update', id: child.id, set: { scale: 0 } },
+  ]).project
+  const plan = framePlan(parented, 1)
+  const item = plan.layers.find(l => l.clip?.id === child.id)?.clip
+  assert.ok(item)
+  assert.ok(item.editTransform.parentMatrix.every(Number.isFinite), `expected finite parentMatrix, got ${item.editTransform.parentMatrix}`)
 })

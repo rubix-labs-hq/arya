@@ -67,7 +67,9 @@ final class ReelNodePlaneCollector {
 extension ReelMetalRenderer {
     func clip(_ c: [String: Any], view: [String: Any], width: Int, height: Int, matte: MTLTexture? = nil, geometry: ReelDrawGeometryCollector? = nil, command: MTLCommandBuffer) async throws -> MTLTexture {
         if c.isEmpty || ["null", "audio", "caption"].contains(c.string("kind")) { return try clear(width, height) }
-        let vw = view.number("width", Double(width)), vh = view.number("height", Double(height)), scale = Double(width) / vw
+        let vw = view.number("width", Double(width)), vh = view.number("height", Double(height))
+        guard vw.isFinite, vh.isFinite, vw > 0, vh > 0 else { throw ReelRenderingError("invalid viewport dimensions") }
+        let scale = Double(width) / vw
         let source: MTLTexture
         var sw = vw, sh = vh, titleWrapped = false
         switch c.string("kind") {
@@ -86,17 +88,36 @@ extension ReelMetalRenderer {
             source = try rasterSource(drawn.image); sw = drawn.width; sh = drawn.height
         case "comp":
             let inner = c.object("composition")
-            let fit = c.string("fit") == "cover" ? max(vw / inner.number("width"), vh / inner.number("height")) : min(vw / inner.number("width"), vh / inner.number("height"))
-            let size = try NativeRenderResolution.raster(width: inner.number("width"), height: inner.number("height"), scale: scale * fit)
+            let innerW = inner.number("width"), innerH = inner.number("height")
+            guard innerW.isFinite, innerH.isFinite, innerW > 0, innerH > 0 else { throw ReelRenderingError("invalid nested composition dimensions") }
+            let fit = c.string("fit") == "cover" ? max(vw / innerW, vh / innerH) : min(vw / innerW, vh / innerH)
+            let size = try NativeRenderResolution.raster(width: innerW, height: innerH, scale: scale * fit)
             source = try await composition(inner, width: size.width, height: size.height, command: command)
-            sw = inner.number("width") * fit; sh = inner.number("height") * fit
+            sw = innerW * fit; sh = innerH * fit
         case "image", "video", "multicam":
             let src = c.string("src"), url = try folder.resolve(src)
             let movieSampling = NativeSourceSampling(canvasWidth: vw, canvasHeight: vh, outputWidth: width, outputHeight: height, cover: c.string("fit") == "cover", matrix: c.floats("matrix", [1, 0, 0, 1, Float(vw / 2), Float(vh / 2)]))
             if c.string("kind") == "image" {
-                let key = "\(src):\(max(width, height)):\(NativeHDR.rendering)"
+                let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+                let stamp = "\((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0):\((attrs?[.size] as? NSNumber)?.int64Value ?? 0)"
+                let assetObj = c.object("asset"), assetW = assetObj.number("width"), assetH = assetObj.number("height")
+                var maxSide = max(width, height)
+                if assetW > 0, assetH > 0 {
+                    maxSide = try movieSampling.maximum(sourceWidth: assetW, sourceHeight: assetH, baseline: maxSide)
+                }
+                let key = "\(src):\(stamp):\(maxSide):\(NativeHDR.rendering)"
                 if let cached = imageCache[key] { source = cached } else {
-                    guard let input = CGImageSourceCreateWithURL(url as CFURL, nil), let image = CGImageSourceCreateThumbnailAtIndex(input, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: max(width, height)] as CFDictionary) else { throw ReelRenderingError("could not decode image \(src)") }
+                    guard let input = CGImageSourceCreateWithURL(url as CFURL, nil) else { throw ReelRenderingError("could not decode image \(src)") }
+                    if !(assetW > 0 && assetH > 0),
+                       let props = CGImageSourceCopyPropertiesAtIndex(input, 0, nil) as? [CFString: Any],
+                       var imgW = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+                       var imgH = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
+                       imgW > 0, imgH > 0 {
+                        let orientation = (props[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+                        if orientation >= 5 { swap(&imgW, &imgH) }
+                        maxSide = try movieSampling.maximum(sourceWidth: imgW, sourceHeight: imgH, baseline: maxSide)
+                    }
+                    guard let image = CGImageSourceCreateThumbnailAtIndex(input, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: maxSide] as CFDictionary) else { throw ReelRenderingError("could not decode image \(src)") }
                     source = try rasterSource(image); if imageCache.count >= 8 { imageCache.removeAll() }; imageCache[key] = source
                 }
             } else if NativeHDR.rendering {
@@ -108,6 +129,7 @@ extension ReelMetalRenderer {
                 let fps = c.object("asset").number("fps", view.number("fps", 30)), time = (floor(c.number("srcTime") * fps + 0.001) + 0.5) / fps
                 source = !decoder.hasAlpha && decoder.transform == .identity ? try videoTexture(decoder.buffer(at: time), command: command) : try upload(decoder.frame(at: time, maximum: max(1920, max(width, height)), sampling: movieSampling))
             }
+            guard source.width > 0, source.height > 0 else { throw ReelRenderingError("decoded media has zero dimensions") }
             let fit = c.string("fit") == "cover" ? max(vw / Double(source.width), vh / Double(source.height)) : min(vw / Double(source.width), vh / Double(source.height))
             sw = Double(source.width) * fit; sh = Double(source.height) * fit
         default: throw ReelRenderingError("unsupported clip source \(c.string("kind"))")
@@ -136,8 +158,14 @@ extension ReelMetalRenderer {
     }
 
     func draw(_ src: MTLTexture, target: MTLTexture, matrix: [Float], layerWidth: Double, layerHeight: Double, viewport: [Double], opacity: Double = 1, crop: [String: Any] = [:], grade: [String: Any] = [:], key: [String: Any] = [:], fx: [String: Any] = [:], mask: MTLTexture? = nil, matte: MTLTexture? = nil, matteMode: String = "alpha", qualifier: [String: Any] = [:], window: [String: Any] = [:], time: Double = 0, command: MTLCommandBuffer) throws {
+        guard matrix.count >= 6, viewport.count >= 2, viewport[0].isFinite, viewport[1].isFinite, viewport[0] > 0, viewport[1] > 0 else {
+            throw ReelRenderingError("invalid layer transform or viewport")
+        }
         let m = matrix, determinant = m[0] * m[3] - m[1] * m[2], d = abs(determinant) < 1e-9 ? Float(1e-9) : determinant
-        var u: [String: [Float]] = ["uInv0": [m[3] / d, -m[1] / d, -m[2] / d, m[0] / d], "uInv1": [(m[2] * m[5] - m[3] * m[4]) / d, (m[1] * m[4] - m[0] * m[5]) / d, Float(layerWidth), Float(layerHeight)], "uOpacity": [Float(opacity)], "uCrop": [Float(crop.number("l")), Float(crop.number("r")), Float(crop.number("t")), Float(crop.number("b"))], "uSrcSize": [Float(src.width), Float(src.height)], "uViewSize": viewport.map(Float.init), "uViewport": [Float(target.width), Float(target.height)], "uQuadPx": [Float(layerWidth) * Float(target.width) / Float(viewport[0]), Float(layerHeight) * Float(target.height) / Float(viewport[1])], "uAspect": [Float(viewport[0] / viewport[1])], "uGrade": [grade.isEmpty ? 0 : 1], "uKeyOn": [key.isEmpty ? 0 : 1], "uMaskOn": [mask == nil ? 0 : 1], "uMatteOn": [matte == nil ? 0 : 1], "uMatteMode": [Float(["alpha": 0, "alphaInverted": 1, "luma": 2, "lumaInverted": 3][matteMode] ?? 0)], "uQualOn": [qualifier.isEmpty ? 0 : 1], "uWinOn": [window.isEmpty ? 0 : 1], "uTime": [Float(time)]]
+        let safeW = max(1e-4, layerWidth.isFinite ? layerWidth : 1), safeH = max(1e-4, layerHeight.isFinite ? layerHeight : 1)
+        let quadW = max(Float(1), Float(safeW) * Float(target.width) / Float(viewport[0]))
+        let quadH = max(Float(1), Float(safeH) * Float(target.height) / Float(viewport[1]))
+        var u: [String: [Float]] = ["uInv0": [m[3] / d, -m[1] / d, -m[2] / d, m[0] / d], "uInv1": [(m[2] * m[5] - m[3] * m[4]) / d, (m[1] * m[4] - m[0] * m[5]) / d, Float(safeW), Float(safeH)], "uOpacity": [Float(opacity)], "uCrop": [Float(crop.number("l")), Float(crop.number("r")), Float(crop.number("t")), Float(crop.number("b"))], "uSrcSize": [Float(src.width), Float(src.height)], "uViewSize": viewport.map(Float.init), "uViewport": [Float(target.width), Float(target.height)], "uQuadPx": [quadW, quadH], "uAspect": [Float(viewport[0] / viewport[1])], "uGrade": [grade.isEmpty ? 0 : 1], "uKeyOn": [key.isEmpty ? 0 : 1], "uMaskOn": [mask == nil ? 0 : 1], "uMatteOn": [matte == nil ? 0 : 1], "uMatteMode": [Float(["alpha": 0, "alphaInverted": 1, "luma": 2, "lumaInverted": 3][matteMode] ?? 0)], "uQualOn": [qualifier.isEmpty ? 0 : 1], "uWinOn": [window.isEmpty ? 0 : 1], "uTime": [Float(time)]]
         for (name, field, fallback) in [("uExposure", "exposure", 0.0), ("uContrast", "contrast", 1), ("uPivot", "pivot", 0.435), ("uSaturation", "saturation", 1), ("uHue", "hue", 0), ("uTemp", "temperature", 0), ("uTint", "tint", 0)] { u[name] = [Float(grade.number(field, fallback))] }
         for field in ["lift", "gamma", "gain", "offset", "shadowTint", "highlightTint"] { u["u" + field.prefix(1).uppercased() + field.dropFirst()] = grade.floats(field, [0, 0, 0]) }
         u["uKeyColor"] = Array(renderColor(key.string("color", "#00ff00")).prefix(3)); u["uKeySim"] = [Float(key.number("similarity", 0.3) * 0.5)]; u["uKeySmooth"] = [Float(max(0.001, key.number("smoothness", 0.1) * 0.5))]; u["uKeySpill"] = [Float(key.number("spill", 0.5))]
@@ -145,7 +173,7 @@ extension ReelMetalRenderer {
         for (name, field, fallback) in [("uPosterize", "posterize", 0.0), ("uPixelate", "pixelate", 0), ("uAberration", "aberration", 0), ("uVignette", "vignette", 0), ("uVignetteSoft", "vignetteSoft", 0.6), ("uGrain", "grain", 0), ("uLetterbox", "letterbox", 0)] { u[name] = [Float(fx.number(field, fallback))] }
         u["uQualHue"] = qualifier.floats("hue", [0, 360]); u["uQualSat"] = qualifier.floats("sat", [0, 1]); u["uQualLum"] = qualifier.floats("lum", [0, 1]); u["uQualSoft"] = [Float(qualifier.number("soft", 0.05))]; u["uQualInvert"] = [qualifier.flag("invert") ? 1 : 0]; u["uQualShow"] = [qualifier.flag("show") ? 1 : 0]
         u["uWinType"] = [Float(["circle": 0, "rect": 1, "linear": 2][window.string("type")] ?? 0)]; u["uWinCenter"] = [Float(window.number("x", 0.5)), Float(window.number("y", 0.5))]; u["uWinSize"] = [Float(window.number("w", 0.5)), Float(window.number("h", 0.5))]; u["uWinRot"] = [Float(window.number("rotation") * Double.pi / 180)]; u["uWinSoft"] = [Float(max(0.001, window.number("softness", 0.15)))]; u["uWinInvert"] = [window.flag("invert") ? 1 : 0]
-        let blank = try clear(1, 1, color: [1, 1, 1, 1])
+        let blank = try blankTexture()
         let curves = grade.object("curves"), curve = curves.isEmpty ? blank : try curveTexture(curves), lut = try lutTexture(grade.string("lut"))
         u["uCurvesOn"] = [curves.isEmpty ? 0 : 1]; u["uLutOn"] = [grade.string("lut").isEmpty ? 0 : 1]; u["uLutMix"] = [Float(grade.number("lutMix", 1))]; u["uLutSize"] = [Float(lut.texture.width)]
         u["uLutDomainMin"] = lut.minimum; u["uLutDomainMax"] = lut.maximum
@@ -189,10 +217,13 @@ extension ReelMetalRenderer {
             case "parallel", "layerMixer":
                 var acc = try clear(w, h), total: Float = 0
                 for (i, input) in inputs.enumerated() {
-                    let weight = (n["weights"] as? [NSNumber])?.element(i)?.floatValue ?? 1; total += weight
+                    let rawWeight = (n["weights"] as? [NSNumber])?.element(i)?.floatValue ?? 1
+                    let weight = rawWeight.isFinite ? max(0, rawWeight) : 0
+                    total += weight
                     let blend = (n["blends"] as? [String])?.element(i) ?? "normal"
                     let next = try texture(w, h)
-                    try pass("blend", textures: [acc, input], target: next, uniforms: ["uMode": [Float(type == "parallel" ? 0 : renderBlends[blend] ?? 0)], "uMix": [type == "parallel" && i > 0 ? weight / total : 1]], command: command); acc = next
+                    let mix = type == "parallel" && i > 0 ? (total > 0 ? weight / total : 0) : 1
+                    try pass("blend", textures: [acc, input], target: next, uniforms: ["uMode": [Float(type == "parallel" ? 0 : renderBlends[blend] ?? 0)], "uMix": [mix]], command: command); acc = next
                 }
                 result[id] = acc
             case "output":
@@ -241,7 +272,7 @@ extension ReelMetalRenderer {
         if fx.number("glow") > 0 {
             let threshold = try texture(source.width, source.height); try pass("combine", textures: [current, current], target: threshold, uniforms: ["uMode": [0], "uThreshold": [Float(fx.number("glowThreshold", 0.7))]], command: command)
             let softened = try blur(threshold, radius: fx.number("glowRadius", 12) * scale, command: command), out = try texture(source.width, source.height)
-            try pass("combine", textures: [current, softened], target: out, uniforms: ["uMode": [1], "uAmount": [Float(fx.number("glow"))]], command: command); current = out
+            try pass("combine", textures: [current, softened], target: out, uniforms: ["uMode": [1], "uAmount": [Float(fx.number("glow") * 1.5)]], command: command); current = out
         }
         return current
     }

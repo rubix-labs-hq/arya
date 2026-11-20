@@ -24,10 +24,10 @@ struct NativeMotionPanel: View {
     @State private var motionApplying: NativeMotionDraft?
     @State private var motionControlID = UUID()
     @FocusState private var expressionFocused: Bool
-    #if os(iOS)
-    @State private var layersExpanded = false
-    @State private var graphExpanded = false
-    @State private var keyLanesExpanded = false
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    @State private var layersExpanded = UIDevice.current.userInterfaceIdiom == .pad
+    @State private var graphExpanded = UIDevice.current.userInterfaceIdiom == .pad
+    @State private var keyLanesExpanded = UIDevice.current.userInterfaceIdiom == .pad
     @State private var keysExpanded = false
     #else
     @State private var layersExpanded = true
@@ -45,16 +45,16 @@ struct NativeMotionPanel: View {
                     Spacer()
                     Text(nativeTimecode(model.time, fps: model.fps)).font(.system(size: 11).monospacedDigit()).foregroundStyle(NativeEditorStyle.muted)
                 }
-                #if os(macOS)
+                #if os(macOS) || targetEnvironment(macCatalyst)
                 layerList
                 #endif
                 if let clip = model.selected, model.tracks.flatMap(\.clips).contains(where: { $0.id == clip.id }) {
-                    #if os(iOS)
+                    #if os(iOS) && !targetEnvironment(macCatalyst)
                     mobileSelectedLayer(clip)
-                    keyframeControls(clip)
                     DisclosureGroup(isExpanded: $graphExpanded) { motionGraph(clip).padding(.top, 8) } label: {
                         Label("Motion graph", systemImage: "chart.xyaxis.line").font(.subheadline.weight(.semibold)).frame(minHeight: 44)
                     }.accessibilityIdentifier("editor.motion.graph")
+                    keyframeControls(clip)
                     DisclosureGroup(isExpanded: $keyLanesExpanded) { keyframeTimeline(clip).padding(.top, 8) } label: {
                         Label("Property key lanes", systemImage: "diamond").font(.subheadline.weight(.semibold)).frame(minHeight: 44)
                     }.accessibilityIdentifier("editor.motion.lanes")
@@ -69,7 +69,7 @@ struct NativeMotionPanel: View {
                     maskControls(clip)
                     #endif
                 } else {
-                    #if os(iOS)
+                    #if os(iOS) && !targetEnvironment(macCatalyst)
                     Text("Select a layer below or in the timeline to edit its motion.")
                         .font(.subheadline).foregroundStyle(NativeEditorStyle.muted)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
@@ -79,7 +79,7 @@ struct NativeMotionPanel: View {
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
                     #endif
                 }
-                #if os(iOS)
+                #if os(iOS) && !targetEnvironment(macCatalyst)
                 layerList
                 #endif
             }.nativePanelPadding()
@@ -108,7 +108,7 @@ struct NativeMotionPanel: View {
         .onDisappear { invalidateMotionDraft() }
     }
 
-    #if os(iOS)
+    #if os(iOS) && !targetEnvironment(macCatalyst)
     private func mobileSelectedLayer(_ clip: NativeClip) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if !sharedContextHeader {
@@ -136,7 +136,7 @@ struct NativeMotionPanel: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: layerIcon(row.clip)).frame(width: 16).foregroundStyle(NativeEditorStyle.muted)
                                     VStack(alignment: .leading, spacing: 3) {
-                                        #if os(iOS)
+                                        #if os(iOS) && !targetEnvironment(macCatalyst)
                                         Text(row.clip.name).font(.subheadline.weight(row.clip.id == model.selectedID ? .semibold : .regular)).lineLimit(2)
                                         Text(row.track.name + (row.track.locked ? " · Locked" : "")).font(.caption).foregroundStyle(NativeEditorStyle.muted).lineLimit(2)
                                         #else
@@ -148,7 +148,7 @@ struct NativeMotionPanel: View {
                                     if !row.clip.fields.dictionary("anim").isEmpty { Image(systemName: "diamond.fill").font(.system(size: 8)).foregroundStyle(NativeEditorStyle.accent) }
                                 }
                                 .padding(.leading, 8 + CGFloat(row.depth) * 14).padding(.trailing, 8)
-                                #if os(iOS)
+                                #if os(iOS) && !targetEnvironment(macCatalyst)
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                 #else
                                 .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
@@ -169,7 +169,7 @@ struct NativeMotionPanel: View {
             }
         } label: {
             HStack {
-                #if os(iOS)
+                #if os(iOS) && !targetEnvironment(macCatalyst)
                 Text("Layers").font(.subheadline.weight(.semibold))
                 Spacer()
                 Text("\(model.tracks.flatMap(\.clips).count)").font(.caption.monospacedDigit()).foregroundStyle(NativeEditorStyle.muted)
@@ -179,7 +179,7 @@ struct NativeMotionPanel: View {
                 Text("\(model.tracks.flatMap(\.clips).count)").font(.system(size: 11).monospacedDigit()).foregroundStyle(NativeEditorStyle.muted)
                 #endif
             }
-            #if os(iOS)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             .font(.subheadline).frame(minHeight: 44)
             #endif
         }
@@ -203,7 +203,7 @@ struct NativeMotionPanel: View {
     private func keyframeTimeline(_ clip: NativeClip) -> some View {
         let duration = max(clip.duration, 1 / max(1, model.fps)), renderedVersion = model.version
         return VStack(alignment: .leading, spacing: 0) {
-            #if os(iOS)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Keyframes").font(.subheadline.weight(.semibold))
                 Text("Layer time · seconds").font(.caption).foregroundStyle(NativeEditorStyle.muted)
@@ -228,7 +228,7 @@ struct NativeMotionPanel: View {
             ForEach(animatedProperties(clip), id: \.self) { lane in
                 HStack(spacing: 0) {
                     Button { chooseProperty(lane) } label: {
-                        #if os(iOS)
+                        #if os(iOS) && !targetEnvironment(macCatalyst)
                         Text(propertyLabel(lane)).font(.subheadline.weight(lane == property ? .semibold : .regular))
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(width: 78, alignment: .leading).frame(minHeight: 44, alignment: .leading)
@@ -243,8 +243,8 @@ struct NativeMotionPanel: View {
                 .background(lane == property ? NativeEditorStyle.accent.opacity(0.04) : Color.clear)
                 .overlay(alignment: .bottom) { Rectangle().fill(NativeEditorStyle.line).frame(height: 1) }
             }
-            #if os(iOS)
-            Text("Drag selected keys to move them together. Shift-click adds or removes a key.")
+            #if os(iOS) && !targetEnvironment(macCatalyst)
+            Text("Tap a key to select it. Drag selected keys to move them together.")
                 .font(.caption).fixedSize(horizontal: false, vertical: true)
                 .foregroundStyle(NativeEditorStyle.muted).padding(.top, 7)
             #else
@@ -259,15 +259,20 @@ struct NativeMotionPanel: View {
         let keyList = keys(clip, property: property)
         let selectedKey = keyList.first { abs($0.at - (selectedKeyTime ?? -.infinity)) < 0.001 }
         return VStack(alignment: .leading, spacing: 10) {
-            Picker("Property", selection: Binding(get: { property }, set: chooseProperty)) {
-                ForEach(Array(Set(properties + Array(clip.fields.dictionary("anim").keys))).sorted(), id: \.self) { Text(propertyLabel($0)).tag($0) }
+            LabeledContent {
+                Picker("Property", selection: Binding(get: { property }, set: chooseProperty)) {
+                    ForEach(Array(Set(properties + Array(clip.fields.dictionary("anim").keys))).sorted(), id: \.self) { Text(propertyLabel($0)).tag($0) }
+                }
+                .labelsHidden()
+                #if os(iOS) && !targetEnvironment(macCatalyst)
+                .font(.subheadline).frame(minHeight: 44)
+                #else
+                .font(.system(size: 12))
+                #endif
+            } label: {
+                Text("Property").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted)
             }
-            #if os(iOS)
-            .font(.subheadline).frame(minHeight: 44)
-            #else
-            .font(.system(size: 12))
-            #endif
-            #if os(iOS)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             NativeNumberRow("New key value", value: newValue, showsSlider: false) { newValue = $0 }
             Button { addKey(clip, renderedVersion: renderedVersion) } label: { Label("Set key at playhead", systemImage: "plus.diamond").font(.subheadline).lineLimit(2) }
                 .buttonStyle(NativeToolbarButtonStyle()).disabled(isLocked(clip) || !playheadInside(clip))
@@ -293,10 +298,12 @@ struct NativeMotionPanel: View {
                     NativeMotionNumberEditor("Layer time · s", value: key.at, range: 0...max(0, clip.duration), begin: { beginMotionDraft(clip, property: property, renderedVersion: renderedVersion, movingKeys: true) }, preview: { value, context in previewMotionMove(deltaTime: value - key.at, context: context) }, end: discardMotionDraft) { value, context in finishMotionMove(deltaTime: value - key.at, context: context) }
                     NativeMotionNumberEditor("Key value", value: key.value, begin: { beginMotionDraft(clip, property: property, renderedVersion: renderedVersion, movingKeys: true) }, preview: { value, context in previewMotionMove(deltaTime: 0, deltaValue: value - key.value, valueProperty: property, context: context) }, end: discardMotionDraft) { value, context in finishMotionMove(deltaTime: 0, deltaValue: value - key.value, valueProperty: property, context: context) }
                     Text("Timeline \(nativeTimecode(clip.start + key.at, fps: model.fps))").font(.system(size: 10).monospacedDigit()).foregroundStyle(NativeEditorStyle.muted).frame(maxWidth: .infinity, alignment: .trailing)
-                    Picker("Outgoing easing", selection: Binding(get: { key.easeName }, set: { setSelectedEase($0, clip: clip, renderedVersion: renderedVersion) })) {
-                        if key.easeName == "custom" { Text("Custom Bezier").tag("custom") }
-                        ForEach(NativeMotionKey.eases, id: \.self) { Text(NativeMotionKey.easeLabel($0)).tag($0) }
-                    }.font(.system(size: 12))
+                    LabeledContent {
+                        Picker("Outgoing easing", selection: Binding(get: { key.easeName }, set: { setSelectedEase($0, clip: clip, renderedVersion: renderedVersion) })) {
+                            if key.easeName == "custom" { Text("Custom Bezier").tag("custom") }
+                            ForEach(NativeMotionKey.eases, id: \.self) { Text(NativeMotionKey.easeLabel($0)).tag($0) }
+                        }.labelsHidden().font(.system(size: 12))
+                    } label: { Text("Outgoing easing").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                     bezierControls(clip, key: key, renderedVersion: renderedVersion)
                     Text("Easing shapes the segment from this key to the next.").font(.system(size: 10)).foregroundStyle(NativeEditorStyle.muted)
                     Button("Delete selected keys", role: .destructive) { deleteSelected(clip, renderedVersion: renderedVersion) }.buttonStyle(NativeToolbarButtonStyle())
@@ -305,22 +312,26 @@ struct NativeMotionPanel: View {
                 Text(keyList.isEmpty ? "No keys for this property. Set a value and add its first key." : "Select a diamond or a key below to edit its time, value and easing.")
                     .font(.system(size: 11)).foregroundStyle(NativeEditorStyle.muted)
             }
-            #if os(iOS)
-            Picker("New key easing", selection: $newEase) {
-                ForEach(NativeMotionKey.eases, id: \.self) { Text(NativeMotionKey.easeLabel($0)).tag($0) }
-            }.font(.subheadline).frame(minHeight: 44)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
+            LabeledContent {
+                Picker("New key easing", selection: $newEase) {
+                    ForEach(NativeMotionKey.eases, id: \.self) { Text(NativeMotionKey.easeLabel($0)).tag($0) }
+                }.labelsHidden().font(.subheadline).frame(minHeight: 44)
+            } label: { Text("New key easing").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
             #else
             Divider().overlay(NativeEditorStyle.line)
             NativeNumberRow("New key value", value: newValue, showsSlider: false) { newValue = $0 }
-            Picker("New key easing", selection: $newEase) {
-                ForEach(NativeMotionKey.eases, id: \.self) { Text(NativeMotionKey.easeLabel($0)).tag($0) }
-            }.font(.system(size: 12))
+            LabeledContent {
+                Picker("New key easing", selection: $newEase) {
+                    ForEach(NativeMotionKey.eases, id: \.self) { Text(NativeMotionKey.easeLabel($0)).tag($0) }
+                }.labelsHidden().font(.system(size: 12))
+            } label: { Text("New key easing").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
             Button { addKey(clip, renderedVersion: renderedVersion) } label: { Label("Set key at playhead", systemImage: "plus.diamond") }
                 .buttonStyle(NativeToolbarButtonStyle()).disabled(isLocked(clip) || !playheadInside(clip))
             if !playheadInside(clip) { Text("Move the playhead inside this layer to add a key.").font(.system(size: 10)).foregroundStyle(NativeEditorStyle.muted) }
             #endif
             if !keyList.isEmpty {
-                #if os(iOS)
+                #if os(iOS) && !targetEnvironment(macCatalyst)
                 DisclosureGroup(isExpanded: $keysExpanded) {
                     VStack(spacing: 1) {
                         ForEach(keyList) { key in
@@ -396,7 +407,7 @@ struct NativeMotionPanel: View {
         return VStack(alignment: .leading, spacing: 8) {
             Divider().overlay(NativeEditorStyle.line)
             Text("Expression · \(propertyLabel(property))").font(.system(size: 12, weight: .semibold))
-            TextField("value + sin(time * 3) * 50", text: $expression, axis: .vertical).textFieldStyle(.plain).lineLimit(2...6)
+            TextField("Example: value + sin(time * 3) * 50", text: $expression, axis: .vertical).textFieldStyle(.plain).lineLimit(2...6)
                 .font(.system(size: 11, design: .monospaced)).padding(8)
                 .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 5))
                 .overlay { RoundedRectangle(cornerRadius: 5).stroke(NativeEditorStyle.line) }
@@ -405,11 +416,14 @@ struct NativeMotionPanel: View {
             HStack {
                 Button("Apply expression") { if let context = expressionCapture ?? captureMotion(clip, property: property, renderedVersion: renderedVersion) { commitMotion([["op": "expression", "id": clip.id, "prop": property, "expr": expression.isEmpty ? NSNull() : expression]], context: context) } }
                 Button("Remove") { if let context = captureMotion(clip, property: property, renderedVersion: renderedVersion) { expression = ""; expressionCapture = nil; commitMotion([["op": "expression", "id": clip.id, "prop": property, "expr": NSNull()]], context: context) } }
+                    .disabled(clip.fields.dictionary("expr")[property] == nil)
             }.buttonStyle(NativeToolbarButtonStyle())
-            Picker("Parent", selection: Binding(get: { clip.fields.string("parent", "none") }, set: { value in if let context = captureMotion(clip, property: property, renderedVersion: renderedVersion) { commitMotion([["op": "parent", "id": clip.id, "parent": value == "none" ? NSNull() : value]], context: context) } })) {
-                Text("None").tag("none")
-                ForEach(model.tracks.flatMap(\.clips).filter { $0.id != clip.id && $0.kind != "audio" }) { layer in Text(layer.name).tag(layer.id) }
-            }.font(.system(size: 12))
+            LabeledContent {
+                Picker("Parent", selection: Binding(get: { clip.fields.string("parent", "none") }, set: { value in if let context = captureMotion(clip, property: property, renderedVersion: renderedVersion) { commitMotion([["op": "parent", "id": clip.id, "parent": value == "none" ? NSNull() : value]], context: context) } })) {
+                    Text("None").tag("none")
+                    ForEach(model.tracks.flatMap(\.clips).filter { $0.id != clip.id && $0.kind != "audio" }) { layer in Text(layer.name).tag(layer.id) }
+                }.labelsHidden().font(.system(size: 12))
+            } label: { Text("Parent").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
         }.disabled(isLocked(clip))
     }
 

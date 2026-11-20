@@ -767,20 +767,21 @@ struct NativeTimeline: View {
     #endif
     private let rowHeight: CGFloat = 64
     private var rulerHeight: CGFloat {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         return 44
         #else
         return 28
         #endif
     }
     private var trackHeaderWidth: CGFloat {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         return 72
         #else
         return 128
         #endif
     }
-    private var contentWidth: Double { max(600, (model.duration + 5) * model.zoom) }
+    @State private var tracksViewportWidth = 600.0
+    private var contentWidth: Double { max(tracksViewportWidth, (model.duration + 5) * model.zoom) }
     private var displayTracks: [NativeTrack] { Array(model.tracks.filter { $0.kind == "video" }.reversed()) + model.tracks.filter { $0.kind != "video" } }
     /// Changes when a project or timeline opens, or when its first clips arrive.
     private var firstClipTrackKey: String {
@@ -936,6 +937,13 @@ struct NativeTimeline: View {
                                     .frame(width: abs(marquee.point.x - marquee.start.x), height: abs(marquee.point.y - marquee.start.y))
                                     .offset(x: min(marquee.start.x, marquee.point.x), y: min(marquee.start.y, marquee.point.y)).allowsHitTesting(false)
                             }
+                        }
+                    }
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear
+                                .onAppear { tracksViewportWidth = max(600, Double(proxy.size.width)) }
+                                .onChange(of: proxy.size.width) { _, width in tracksViewportWidth = max(600, Double(width)) }
                         }
                     }
                     #if os(iOS)
@@ -1624,7 +1632,7 @@ private struct NativeTimelineToolbar: View {
         let clipboardCapture = model.clipboardActionCapture()
         let matchFrame = Result { try model.captureMatchFrame() }
         Group {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         HStack(spacing: 6) {
             Menu {
                 ForEach(NativeTimelineMode.allCases, id: \.self) { item in
@@ -1709,7 +1717,7 @@ private struct NativeTimelineToolbar: View {
                     ForEach(NativeTimelineMode.allCases, id: \.self) { item in Button(item.rawValue) { mode = item } }
                 } label: { Label(mode.rawValue, systemImage: "cursorarrow.motionlines") }.help(mode.hint)
                 Button { snapping.toggle() } label: { Label("Snap", systemImage: "dot.scope") }.buttonStyle(NativeToolbarButtonStyle(selected: snapping)).help("Snap to clip edges, markers and playhead. S toggles snapping. Edits always align to frames.")
-                Button { extending.toggle() } label: { Label("Multi", systemImage: "checkmark.circle") }.buttonStyle(NativeToolbarButtonStyle(selected: extending)).help("Tap clips to add or remove them from the selection. Shift or Command click also selects multiple clips.")
+                Button { extending.toggle() } label: { Label("Multi", systemImage: "checkmark.circle") }.buttonStyle(NativeToolbarButtonStyle(selected: extending)).help("Click clips to add or remove them from the selection. Shift or Command click also selects multiple clips.")
                 Menu {
                     Button("Copy selection") { if let clipboardCapture { model.copyTimelineSelection(expected: clipboardCapture) } }.disabled(clipboardCapture == nil || !model.canCopyTimelineSelection)
                     Button("Cut selection") { if let clipboardCapture { model.copyTimelineSelection(cut: true, expected: clipboardCapture) } }.disabled(clipboardCapture == nil || !model.canCopyTimelineSelection)
@@ -1742,14 +1750,20 @@ private struct NativeTimelineToolbar: View {
         }
         #endif
         }
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         .frame(height: max(44, toolbarHeight))
         #else
         .frame(height: 44)
         #endif
         .background(NativeEditorStyle.panel)
-        .sheet(isPresented: $multicamVisible) { NativeMulticamPanel(model: model) }
-        .sheet(item: $markerRequest) { request in NativeTimelineMarkerPanel(model: model, request: request) }
+        .sheet(isPresented: $multicamVisible) {
+            NativeMulticamPanel(model: model)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+        }
+        .sheet(item: $markerRequest) { request in
+            NativeTimelineMarkerPanel(model: model, request: request)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+        }
     }
 }
 

@@ -364,3 +364,18 @@ test('the link preview image exists at the size the metadata declares and makes 
   // The earlier artwork stays published so previews that platforms cached still resolve.
   assert.ok(allowlist.includes('assets/brand/social.png'));
 });
+
+test('videos omit invalid loading attributes and download checksum helpers follow release readiness', async () => {
+  for (const tag of live.home.match(/<video\b[^>]*>/g) ?? []) {
+    assert.doesNotMatch(tag, /\bloading=/, tag);
+  }
+  assert.match(live.download, /id="copy-checksum" hidden>Copy SHA-256<\/button>/);
+  assert.match(live.download, new RegExp(`id="release-verify">shasum -a 256 Arya-${shipped.release.version.replace(/\./g, '\\.')}\\.dmg<\\/code>`));
+  const unreleased = await build({
+    ...shipped,
+    release: { ...shipped.release, ready: false, notarized: false, version: null, sha256: null, macURL: null },
+  });
+  assert.equal(unreleased.result.status, 0, unreleased.result.stderr);
+  assert.doesNotMatch(unreleased.download, /id="release-verify"/);
+  assert.doesNotMatch(unreleased.download, /Arya-null\.dmg/);
+});

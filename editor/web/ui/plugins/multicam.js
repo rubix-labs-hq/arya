@@ -30,7 +30,7 @@ const css = `
 .mc-cell { position: relative; cursor: pointer; background: #000; outline: 2px solid transparent; outline-offset: -2px; }
 .mc-cell canvas { display: block; width: 100%; height: 100%; }
 .mc-cell.live { outline-color: #ff3b30; }
-.mc-cell:hover:not(.live) { outline-color: #f5b94299; }
+.mc-cell:hover:not(.live) { outline-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .mc-label { position: absolute; left: 4px; bottom: 3px; font-size: 11px; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
 .mc-label .num { display: inline-block; min-width: 14px; padding: 0 3px; margin-right: 3px; border-radius: 3px; background: #ffffff26; text-align: center; }
 .mc-cell.live .num { background: #ff3b30; }
@@ -185,7 +185,9 @@ function liveAngle(c, t) {
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', e => {
     if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || !/^Digit[1-9]$/.test(e.code)) return
-    if (e.target.closest?.('input, textarea, select, [contenteditable]')) return
+    if (store.settingsOpen || store.showKeys || store.assistantSharingReviewOpen) return
+    if (!['edit', 'motion', 'color', 'audio'].includes(store.page)) return
+    if (e.target.closest?.('input, textarea, select, [contenteditable], [role="dialog"], [role="alertdialog"], dialog')) return
     const c = multicamAt(viewProject(), player.t)
     const n = Number(e.code.slice(5)) - 1
     if (!c || n >= c.angles.length) return
@@ -253,6 +255,9 @@ function AngleViewer({ p, rect }) {
     if (!c) return undefined
     let raf = 0
     let lastDraw = 0
+    let lastMt = NaN
+    let lastClip = null
+    let lastPlaying = false
     const loop = now => {
       raf = requestAnimationFrame(loop)
       const cur = latest.current
@@ -260,8 +265,15 @@ function AngleViewer({ p, rect }) {
       const { c: clip, p: view } = cur
       const playing = player.playing && player.rate > 0
       const mt = mcTime(clip, player.t)
-      const draw = now - lastDraw > 30
-      if (draw) lastDraw = now
+      const changed = mt !== lastMt || clip !== lastClip || playing !== lastPlaying
+      if (!playing && !changed && now - lastDraw < 250) return
+      const draw = playing ? now - lastDraw > 30 : changed || now - lastDraw > 250
+      if (!playing && !changed) {
+        // Only repaint idle thumbnails if a video just finished seeking/loading.
+        const anySeeking = clip.angles.slice(0, 9).some((_, i) => videos.get(`${clip.id}#${i}`)?.el.seeking)
+        if (!anySeeking) return
+      }
+      if (draw) { lastDraw = now; lastMt = mt; lastClip = clip; lastPlaying = playing }
       clip.angles.slice(0, 9).forEach((angle, i) => {
         const asset = view.assets[angle.src] ?? {}
         const v = angleVideo(`${clip.id}#${i}`, mediaUrl(view, angle.src)).el
@@ -349,29 +361,33 @@ function MulticamBrowser({ project: p }) {
     setPicked(cur => (cur.includes(src) ? cur.filter(x => x !== src) : [...cur, src]))
     setSync(null)
   }
+  const mounted = useRef(true)
+  useEffect(() => () => { mounted.current = false }, [])
   const doSync = async () => {
     setBusy(true)
     try {
-      setSync({ srcs: picked, ...(await syncAngles(picked)) })
+      const r = await syncAngles(picked)
+      if (mounted.current) setSync({ srcs: picked, ...r })
     } catch (error) {
-      toast(error.message, 'error')
+      if (mounted.current) toast(error.message, 'error')
     }
-    setBusy(false)
+    if (mounted.current) setBusy(false)
   }
   const create = async () => {
     setBusy(true)
     try {
       const r = sync && sync.srcs.join('|') === picked.join('|') ? sync : canSync ? await syncAngles(picked) : { offsets: picked.map(() => 0) }
+      if (!mounted.current) return
       await createMulticam(picked, { offsets: r.offsets, labels: picked.map(name), at: player.t, withAudio })
     } catch (error) {
-      toast(error.message, 'error')
+      if (mounted.current) toast(error.message, 'error')
     }
-    setBusy(false)
+    if (mounted.current) setBusy(false)
   }
 
   return html`
     <div class="tab-body">
-      <div class="mc-note">Pick two to nine camera angles in order. ${canSync ? 'Arya lines them up by their sound and builds a multicam clip at the playhead.' : 'The native app starts them at zero offset. Adjust each offset in the Multicam inspector, or open the browser editor to sync by audio.'}</div>
+      <div class="mc-note">Pick two to nine camera angles in order. ${canSync ? 'Arya lines them up by their sound and builds a multicam clip at the playhead.' : s.caps.host === 'browser-local' ? 'The hosted beta starts angles at zero offset. Adjust each offset in the Multicam inspector, or use Arya for Mac or the local editor to sync by audio.' : 'The native app starts them at zero offset. Adjust each offset in the Multicam inspector, or open the browser editor to sync by audio.'}</div>
       <div class="mc-list">
         ${videosList.map(([src, a]) => {
           const i = picked.indexOf(src)
@@ -420,19 +436,22 @@ function MulticamInspector({ clip }) {
     if (partner) ops.push({ op: 'update', id: partner.id, set: { src: angles[i].src, in: Math.max(0, (clip.in ?? 0) + (partner.start - clip.start) * (clip.speed ?? 1) + (angles[i].offset ?? 0)) } })
     edit(ops, `audio from ${angles[i].label ?? `angle ${i + 1}`}`)
   }
+  const mounted = useRef(true)
+  useEffect(() => () => { mounted.current = false }, [])
   const resync = async () => {
     setBusy(true)
     try {
       const r = await syncAngles(angles.map(a => a.src))
+      if (!mounted.current) return
       const ops = [{ op: 'update', id: clip.id, set: { angles: angles.map((a, i) => ({ ...a, offset: r.offsets[i] })) } }]
       const a = clip.audioAngle ?? 0
       if (partner) ops.push({ op: 'update', id: partner.id, set: { in: Math.max(0, (clip.in ?? 0) + (partner.start - clip.start) * (clip.speed ?? 1) + r.offsets[a]) } })
       await edit(ops, `re-synced ${clip.id} by audio`)
       toast(`Offsets: ${r.offsets.map(o => o.toFixed(3)).join(', ')} s`)
     } catch (error) {
-      toast(error.message, 'error')
+      if (mounted.current) toast(error.message, 'error')
     }
-    setBusy(false)
+    if (mounted.current) setBusy(false)
   }
   const placeAudio = () => {
     const a = clip.audioAngle ?? 0
@@ -451,7 +470,7 @@ function MulticamInspector({ clip }) {
       <div class="row gap">
         <label class="row gap mc-note"><input type="checkbox" checked=${s.mcViewer !== false} onChange=${e => set({ mcViewer: e.target.checked })} /> Angle viewer</label>
         <span style=${{ flex: 1 }}></span>
-        <button class="ghost" disabled=${busy || !canSync} title=${canSync ? '' : 'Open the browser editor to sync by audio'} onClick=${resync}>${busy ? 'Syncing…' : 'Re-sync by audio'}</button>
+        <button class="ghost" disabled=${busy || !canSync} title=${canSync ? '' : s.caps.host === 'browser-local' ? 'Audio sync needs Arya for Mac or the local editor' : 'Open the browser editor to sync by audio'} onClick=${resync}>${busy ? 'Syncing…' : 'Re-sync by audio'}</button>
       </div>
       <h4 style=${{ margin: '4px 0 0' }}>Angles</h4>
       <div class="mc-list">

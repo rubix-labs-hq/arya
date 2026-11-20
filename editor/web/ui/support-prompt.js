@@ -4,6 +4,7 @@
 // The rules live in core/support-prompt.js. This device stores only counts and dates.
 
 import { h, render } from 'preact'
+import { useEffect } from 'preact/hooks'
 import htm from 'htm'
 import { exportJustFinished, recordSupportChoice, successfulExport, supportPromptState } from '/core/support-prompt.js'
 import { set, store, subscribe, useStore } from './store.js'
@@ -25,6 +26,18 @@ function choose(choice) {
 
 function SupportPrompt() {
   const s = useStore()
+  useEffect(() => {
+    if (!s.supportPromptOpen || !s.supportURL) return
+    const onKey = e => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        choose('notNow')
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [s.supportPromptOpen, s.supportURL])
   if (!s.supportPromptOpen || !s.supportURL) return null
   return html`<aside class="support-prompt" role="dialog" aria-modal="false" aria-labelledby="support-prompt-title">
     <div class="support-prompt-body">

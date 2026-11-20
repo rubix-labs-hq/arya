@@ -1,15 +1,20 @@
-import { api, set } from './store.js'
+import { api, set, store } from './store.js'
 
 let statusRequest = 0
 export async function refreshAssistantStatus({ refresh = false } = {}) {
   const request = ++statusRequest
+  const current = typeof store === 'object' && store !== null ? store : null
   try {
     const status = await api(`/api/assistant/status${refresh ? '?refresh=1' : ''}`)
-    if (request === statusRequest) set({ assistantStatus: status, assistantStatusError: '' })
+    if (request === statusRequest && (!current || current.assistantStatusError !== '' || JSON.stringify(current.assistantStatus) !== JSON.stringify(status))) {
+      set({ assistantStatus: status, assistantStatusError: '' })
+    }
     return status
   } catch (error) {
     const message = error.message === '/api/assistant/status 404' ? 'The Arya server needs a restart to load account settings.' : error.message
-    if (request === statusRequest) set({ assistantStatus: null, assistantStatusError: message })
+    if (request === statusRequest && (!current || current.assistantStatus !== null || current.assistantStatusError !== message)) {
+      set({ assistantStatus: null, assistantStatusError: message })
+    }
     throw error
   }
 }

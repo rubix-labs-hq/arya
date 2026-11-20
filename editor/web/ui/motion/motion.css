@@ -135,7 +135,7 @@
 .mt-expr-status { font: 11px ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
 .mt-expr-status.ok { color: var(--good); }
 .mt-expr-status.bad { color: var(--danger); }
-.mt-expr-ref { position: fixed; z-index: 70; margin-top: 140px; width: 460px; max-height: 260px; overflow: auto; background: #20211ff2; border: 1px solid #59634c; border-radius: 8px; padding: 4px; box-shadow: 0 12px 40px #000a; }
+.mt-expr-ref { position: fixed; z-index: 70; max-width: calc(100vw - 16px); max-height: 260px; overflow: auto; background: #20211ff2; border: 1px solid #59634c; border-radius: 8px; padding: 4px; box-shadow: 0 12px 40px #000a; }
 .mt-expr-ref-item { display: flex; flex-direction: column; gap: 1px; padding: 4px 8px; border-radius: 5px; cursor: pointer; }
 .mt-expr-ref-item:hover { background: #efbc6822; }
 .mt-expr-ref-item span { color: var(--muted); font-size: 11px; white-space: normal; }

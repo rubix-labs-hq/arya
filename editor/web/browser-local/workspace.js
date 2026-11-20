@@ -1,7 +1,7 @@
 import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
-import { hasPendingEdits, set, store, toast, useStore } from '../ui/store.js'
+import { hasPendingEdits, historyDepth, set, store, toast, useStore } from '../ui/store.js'
 import { player } from '../ui/engine-host.js'
 import { host } from '../host.js'
 import { formatFileSize } from './delivery-preview.js'
@@ -34,7 +34,7 @@ export function BrowserWorkspace() {
   }, [open])
   const apply = result => {
     player.pause()
-    set({ project: result.project, version: result.version, root: result.root, selection: [], selMarker: null, selTrack: null, source: null, mediaReveal: null, openComp: null, viewerMode: 'timeline', jobs: result.jobs ?? [] })
+    set({ project: result.project, version: result.version, history: historyDepth(result.history), root: result.root, selection: [], selMarker: null, selTrack: null, source: null, mediaReveal: null, openComp: null, viewerMode: 'timeline', jobs: result.jobs ?? [], stills: [], wipe: null, refs: [], receipts: [], highlight: new Map(), deliverRange: null })
     player.seek(0)
   }
   const run = async (label, operation, canCancel = false) => {
@@ -49,7 +49,7 @@ export function BrowserWorkspace() {
     event.stopPropagation()
     if (event.key === 'Escape' && !busy) { event.preventDefault(); setOpen(false); return }
     if (event.key !== 'Tab') return
-    const controls = [...dialog.current.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled)')].filter(element => element.getClientRects().length)
+    const controls = [...dialog.current.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary,[tabindex="0"]')].filter(element => element.getClientRects().length)
     if (!controls.length) { event.preventDefault(); dialog.current.focus(); return }
     if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1).focus() }
     else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0].focus() }
@@ -64,13 +64,16 @@ export function BrowserWorkspace() {
     set(patch)
   }
   const saveLabel = hasPendingEdits() ? 'Saving edit or waiting for recovery' : state.project ? `Saved on this browser · revision ${backend.record?.version ?? state.version}` : 'Projects stay on this browser'
+  const lowStorage = Boolean(storage?.quota > 0 && (storage.usage ?? 0) / storage.quota >= 0.8)
   return html`<div class="browser-workspace" role="region" aria-label="Browser project storage">
     <button type="button" class="ghost" ref=${trigger} aria-haspopup="dialog" aria-expanded=${open} onClick=${() => setOpen(true)}>Projects & backups</button>
     <span class="browser-save-state" role="status" aria-live="polite">${busy || (importing ? `${importState.state === 'committing' ? 'Saving imported media' : importState.state === 'copying' ? 'Copying' : 'Adding media'} ${importState.name ?? ''} ${Math.round((importState.progress ?? 0) * 100)}%` : saveLabel)}</span>
+    ${lowStorage ? html`<span class="browser-storage-warn" role="status">Browser storage ${Math.round(((storage.usage ?? 0) / storage.quota) * 100)}% full. Download a backup.</span>` : null}
     ${importing && importState.state !== 'committing' ? html`<button type="button" class="ghost" onClick=${() => backend.request('/api/browser/import/cancel')}>Cancel import</button>` : null}
     ${importedNavigation ? html`<button type="button" class="ghost" onClick=${revealImported}>View imported media</button>` : null}
     ${importState.error ? html`<span role="alert">${importState.error}</span>` : null}
-    ${open ? html`<div class="modal-back"><section class="modal browser-project-dialog" ref=${dialog} role="dialog" aria-modal="true" aria-labelledby="browser-project-title" tabIndex="-1" onKeyDown=${trap}>
+    ${!open && error ? html`<span role="alert" class="settings-error">${error}</span>` : null}
+    ${open ? html`<div class="modal-back" onClick=${event => { if (event.target === event.currentTarget && !busy) setOpen(false) }}><section class="modal browser-project-dialog" ref=${dialog} role="dialog" aria-modal="true" aria-labelledby="browser-project-title" tabIndex="-1" onKeyDown=${trap}>
       <header class="row gap"><div><h2 id="browser-project-title">Your browser projects</h2><p class="dialog-subtitle">Saved on this device, not uploaded.</p></div><span class="grow"></span><button type="button" class="ghost" disabled=${!!busy} onClick=${() => setOpen(false)}>Close</button></header>
       <p>Your footage is copied to storage on this device. Arya does not upload it. Reopen projects here, and download a complete backup before clearing website data or changing browsers.</p>
       ${storage ? html`<p class="hint">${storage.warning}${storage.quota ? ` ${Math.round((storage.usage ?? 0) / 1024 / 1024)} MB used of approximately ${Math.round(storage.quota / 1024 / 1024)} MB.` : ''}</p>` : null}

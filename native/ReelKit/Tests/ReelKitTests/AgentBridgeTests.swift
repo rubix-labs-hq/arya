@@ -103,6 +103,16 @@ final class AgentBridgeTests: XCTestCase {
         XCTAssertEqual(requests.filter { $0.url?.path.hasSuffix("/cancel") == true }.count, 1)
     }
 
+    func testAuthorizationFailureBeforeRunStartDoesNotSendRemoteCancel() async throws {
+        let fixture = BridgeFixture(token: token)
+        do {
+            _ = try await client(fixture).run("Edit", sharing: try sharing(), authorize: { throw Assistant.Failure.sharingRequired }, tool: { _, _, _ in .object([]) })
+            XCTFail("authorize error must propagate")
+        } catch Assistant.Failure.sharingRequired {} catch { XCTFail("Unexpected error \(error)") }
+        let requests = await fixture.requests
+        XCTAssertTrue(requests.isEmpty, "No start or cancel request should be sent before the run starts")
+    }
+
     private func sharing(_ provider: String = "claude-code", model: String = "") throws -> AssistantSharingScope {
         try .init(models: [.init(provider: provider, model: model)], companion: URL(string: "http://127.0.0.1:8877/")!)
     }

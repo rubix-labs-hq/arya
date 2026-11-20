@@ -38,6 +38,9 @@ public actor ReelMetalRenderer {
     let textureCache: CVMetalTextureCache
     let hdrContext: CIContext
     var imageCache: [String: MTLTexture] = [:]
+    var curveCache: [String: MTLTexture] = [:]
+    var blankSDRTexture: MTLTexture?
+    var blankHDRTexture: MTLTexture?
     var lutCache: [String: NativeLUTCacheEntry] = [:]
     var identityLUT: NativeLUT?
     var lutCacheClock: UInt64 = 0
@@ -49,7 +52,7 @@ public actor ReelMetalRenderer {
     var raster = NativeRasterizer()
     private var outputBuffers: (width: Int, height: Int, format: OSType, pool: CVPixelBufferPool, cache: CVMetalTextureCache)?
 
-    public func releaseCaches() { outputBuffers = nil; imageCache.removeAll(); decoders.removeAll(); hdrDecoders.removeAll(); lutCache.removeAll(); identityLUT = nil; lutCacheGeneration += 1; CVMetalTextureCacheFlush(textureCache, 0) }
+    public func releaseCaches() { outputBuffers = nil; imageCache.removeAll(); curveCache.removeAll(); blankSDRTexture = nil; blankHDRTexture = nil; decoders.removeAll(); hdrDecoders.removeAll(); lutCache.removeAll(); identityLUT = nil; lutCacheGeneration += 1; CVMetalTextureCacheFlush(textureCache, 0) }
 
     public init(folder: ProjectFolder, coreScriptURL: URL, fontURLs: [URL] = []) throws {
         self.folder = folder
@@ -72,18 +75,20 @@ public actor ReelMetalRenderer {
         for url in candidates where FileManager.default.fileExists(atPath: url.path) { CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil) }
     }
 
-    public func render(project: String, at: Double, comp: String? = nil, width: Int? = nil) async throws -> ReelRenderedFrame {
+    public func render(project: String, at: Double, comp: String? = nil, width: Int? = nil, height: Int? = nil) async throws -> ReelRenderedFrame {
         try Task.checkCancellation()
         let plan = try JSON.parse(core.framePlan(project: project, at: at, comp: comp)) as? [String: Any] ?? [:]
         let snapshot = try NativeLUTContext.snapshot ?? captureLUTSnapshot(paths: lutPaths(plan))
         return try await NativeLUTContext.$snapshot.withValue(snapshot) {
-            try await renderCapturedLUTs(plan: plan, width: width, snapshot: snapshot)
+            try await renderCapturedLUTs(plan: plan, width: width, height: height, snapshot: snapshot)
         }
     }
 
-    private func renderCapturedLUTs(plan: [String: Any], width: Int?, snapshot: NativeLUTSnapshot) async throws -> ReelRenderedFrame {
-        let w = max(2, width ?? plan.int("width", 1920))
-        let h = max(2, Int((Double(w) * plan.number("height", 1080) / plan.number("width", 1920)).rounded()))
+    private func renderCapturedLUTs(plan: [String: Any], width: Int?, height: Int?, snapshot: NativeLUTSnapshot) async throws -> ReelRenderedFrame {
+        let planWidth = plan.number("width", 1920), planHeight = plan.number("height", 1080)
+        guard planWidth.isFinite, planHeight.isFinite, planWidth > 0, planHeight > 0 else { throw ReelRenderingError("invalid composition dimensions") }
+        let w = max(2, width ?? Int(planWidth.rounded()))
+        let h = max(2, height ?? Int((Double(w) * planHeight / planWidth).rounded()))
         guard w <= 16384 && h <= 16384 else { throw ReelRenderingError("render dimensions exceed 16384 pixels") }
         guard let command = queue.makeCommandBuffer() else { throw ReelRenderingError("could not create a Metal command buffer") }
         let geometry = ReelDrawGeometryCollector()
@@ -187,19 +192,34 @@ public actor ReelMetalRenderer {
     }
 
     func clear(_ width: Int, _ height: Int, color: [Float] = [0, 0, 0, 0]) throws -> MTLTexture {
+        let safeColor = color.count >= 4 ? color : [0, 0, 0, 0]
         let result = try texture(width, height)
         if NativeHDR.rendering {
-            let rgba = NativeHDR.linear(color).map(NativeHalfFloat.bits)
+            let rgba = NativeHDR.linear(safeColor).map(NativeHalfFloat.bits)
             let pixel = SIMD4<UInt16>(rgba[0], rgba[1], rgba[2], rgba[3])
             let values = [SIMD4<UInt16>](repeating: pixel, count: width * height)
             values.withUnsafeBytes { result.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width * 8) }
             return result
         }
-        let rgba = (color.prefix(3).map { $0 * color[3] } + [color[3]]).map { UInt8(max(0, min(255, Int(($0 * 255).rounded())))) }
+        let alpha = safeColor[3].isFinite ? max(0, min(1, safeColor[3])) : 0
+        let rgba = (safeColor.prefix(3).map { ($0.isFinite ? $0 : 0) * alpha } + [alpha]).map { UInt8(max(0, min(255, Int(($0 * 255).rounded())))) }
         let pixel = SIMD4<UInt8>(rgba[0], rgba[1], rgba[2], rgba[3])
         let bytes = [SIMD4<UInt8>](repeating: pixel, count: width * height)
         bytes.withUnsafeBytes { result.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width * 4) }
         return result
+    }
+
+    func blankTexture() throws -> MTLTexture {
+        if NativeHDR.rendering {
+            if let existing = blankHDRTexture { return existing }
+            let created = try clear(1, 1, color: [1, 1, 1, 1])
+            blankHDRTexture = created
+            return created
+        }
+        if let existing = blankSDRTexture { return existing }
+        let created = try clear(1, 1, color: [1, 1, 1, 1])
+        blankSDRTexture = created
+        return created
     }
 
     func pass(_ name: String, textures: [MTLTexture], target: MTLTexture, uniforms: [String: [Float]], command: MTLCommandBuffer) throws {
@@ -234,9 +254,10 @@ public actor ReelMetalRenderer {
             if matteSources.contains(c.string("id")) { continue }
             if c.string("kind") == "adjustment" {
                 if !c.object("fx").isEmpty { geometry?.invalidateNodePlanes() }
+                let planW = max(1, plan.number("width", Double(width))), planH = max(1, plan.number("height", Double(height)))
                 let adjusted = try texture(width, height)
-                try draw(acc, target: adjusted, matrix: [1, 0, 0, 1, Float(plan.number("width") / 2), Float(plan.number("height") / 2)], layerWidth: plan.number("width"), layerHeight: plan.number("height"), viewport: [plan.number("width"), plan.number("height")], grade: c.object("grade"), fx: c.object("fx"), time: plan.number("time"), command: command)
-                let effected = try effects(adjusted, fx: c.object("fx"), scale: Double(width) / plan.number("width"), command: command), next = try texture(width, height)
+                try draw(acc, target: adjusted, matrix: [1, 0, 0, 1, Float(planW / 2), Float(planH / 2)], layerWidth: planW, layerHeight: planH, viewport: [planW, planH], grade: c.object("grade"), fx: c.object("fx"), time: plan.number("time"), command: command)
+                let effected = try effects(adjusted, fx: c.object("fx"), scale: Double(width) / planW, command: command), next = try texture(width, height)
                 try pass("blend", textures: [acc, effected], target: next, uniforms: ["uMode": [0], "uMix": [Float(c.number("opacity", 1))]], command: command); acc = next
                 continue
             }

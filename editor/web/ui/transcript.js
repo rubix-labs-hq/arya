@@ -23,8 +23,8 @@ const CSS = `
 .tr-words { line-height:1.95; }
 .tr-word { display:inline; padding:2px 4px; margin:0; border:0; border-radius:4px; background:transparent; color:var(--text); font:inherit; line-height:inherit; cursor:pointer; }
 .tr-word:hover { background:#ffffff0c; }
-.tr-word.sel { background:#f5b94230; color:var(--accent); }
-.tr-word.match { box-shadow:inset 0 -2px #f5b942; }
+.tr-word.sel { background:#efbc6830; color:var(--accent); }
+.tr-word.match { box-shadow:inset 0 -2px #efbc68; }
 .tr-word:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 .tr-selection { padding:8px; border:1px solid var(--line); border-radius:8px; display:flex; flex-direction:column; gap:7px; }
 .tr-selection p { margin:0; font-size:12px; color:var(--muted); }

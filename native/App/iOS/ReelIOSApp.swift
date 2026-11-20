@@ -166,6 +166,7 @@ struct ReelIOSApp: App {
                         NativeNewProjectSheet(session: session,
                             isPresented: { presentation.isCurrentSheet(route) },
                             onDismiss: { presentation.dismissSheet(route) })
+                            .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
                             .id(route.id)
                     case .assistantSettings:
                         NavigationStack {
@@ -173,30 +174,135 @@ struct ReelIOSApp: App {
                                 .navigationTitle("Assistant")
                                 .toolbar { Button("Done") { presentation.dismissSheet(route) } }
                         }
-                        .tint(NativeEditorStyle.accent)
+                        .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
                         .id(route.id)
                     case .gettingStarted:
                         NativeGettingStartedSheet(onDismiss: { presentation.dismissSheet(route) })
+                            .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
                             .id(route.id)
                     case .support:
                         NavigationStack {
                             NativeProView(store: .shared)
                                 .toolbar { Button("Done") { presentation.dismissSheet(route) } }
                         }
-                        .tint(NativeEditorStyle.accent)
+                        .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
                         .id(route.id)
                     }
                 }
         }
         .commands {
+            CommandGroup(replacing: .help) {
+                Button("Arya Getting started") { presentation.presentSheet(.gettingStarted) }
+                Button("Arya Pro") { presentation.presentSheet(.support) }
+            }
+            CommandGroup(replacing: .newItem) {
+                Button("New Project…") { presentation.presentSheet(.newProject) }.keyboardShortcut("n")
+                Button("Open Project Folder…") { presentation.presentPicker(sessionID: session.sessionID) }.keyboardShortcut("o")
+                Menu("Open Recent") {
+                    ForEach(session.recents) { recent in
+                        Button(recent.name) { session.open(recent: recent) }
+                    }
+                }
+                .disabled(session.recents.isEmpty)
+                Divider()
+                Button("Import Media…") { session.nativeEditor.showFiles = true }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
+                    .disabled(session.folder == nil || session.useWebEditor)
+                Button("Recover Saved Project…") { session.offerProjectRecovery() }
+                    .disabled(session.folder == nil)
+                Button("Close Project") { presentation.projectRouteChanged(); session.close() }
+                    .keyboardShortcut("w", modifiers: [.command, .shift])
+                    .disabled(session.folder == nil)
+            }
+            CommandGroup(replacing: .undoRedo) {
+                Button("Undo") { session.undo(redo: false) }.keyboardShortcut("z")
+                    .disabled(session.folder == nil)
+                Button("Redo") { session.undo(redo: true) }.keyboardShortcut("z", modifiers: [.command, .shift])
+                    .disabled(session.folder == nil)
+            }
             // On an iPad and on Mac Catalyst the View menu owns Option-Command-A, as on the Mac.
             // The toolbar button carries no second copy, which made the key do nothing after a click.
             CommandGroup(after: .toolbar) {
                 Button(assistantVisible || session.nativeMenu.compactAssistantOpen ? "Hide Assistant" : "Show Assistant", action: toggleAssistant)
                     .keyboardShortcut(session.useWebEditor || !NativeAssistantShortcut.menuOwnsKey ? nil : NativeAssistantShortcut.key)
                     .disabled(session.folder == nil || session.useWebEditor)
+                Divider()
+                ForEach(NativePanel.workflow) { page in
+                    Button("\(page.name) Page") { session.showPage(page.rawValue) }.disabled(session.folder == nil)
+                }
+            }
+            CommandMenu("Timeline") {
+                Group {
+                    Button("Play or Pause") { runTimelineCommand { session.nativeEditor.togglePlayback() } }
+                    Button("Split at Playhead") { runTimelineCommand { session.nativeEditor.split() } }
+                        .keyboardShortcut(session.useWebEditor ? nil : KeyboardShortcut("b", modifiers: [.command]))
+                    Button("Delete Selected Clip") { runTimelineCommand { session.nativeEditor.delete() } }
+                        .disabled(!session.useWebEditor && !session.nativeMenu.hasSelection)
+                    Button("Ripple Delete") { runTimelineCommand { session.nativeEditor.delete(ripple: true) } }
+                        .disabled(!session.useWebEditor && !session.nativeMenu.hasSelection)
+                    Button("Previous Frame") { runTimelineCommand { session.nativeEditor.step(-1) } }
+                    Button("Next Frame") { runTimelineCommand { session.nativeEditor.step(1) } }
+                    Divider()
+                    Button("Duplicate Selected Clips") { runTimelineCommand { session.nativeEditor.duplicate() } }
+                        .keyboardShortcut(session.useWebEditor ? nil : KeyboardShortcut("d", modifiers: [.command]))
+                        .disabled(!session.useWebEditor && !session.nativeMenu.hasSelection)
+                    Button("Export…") { runTimelineCommand { session.nativeEditor.panel = .deliver } }
+                        .keyboardShortcut(session.useWebEditor ? nil : KeyboardShortcut("e", modifiers: [.command]))
+                    Divider()
+                    Button("Copy Timeline Selection") {
+                        runTimelineCommand {
+                            guard let capture = session.nativeEditor.clipboardActionCapture() else { return }
+                            session.nativeEditor.copyTimelineSelection(cut: false, expected: capture)
+                        }
+                    }
+                    .disabled(!session.useWebEditor && !session.nativeMenu.canCopy)
+                    Button("Cut Timeline Selection") {
+                        runTimelineCommand {
+                            guard let capture = session.nativeEditor.clipboardActionCapture() else { return }
+                            session.nativeEditor.copyTimelineSelection(cut: true, expected: capture)
+                        }
+                    }
+                    .disabled(!session.useWebEditor && !session.nativeMenu.canCopy)
+                    Button("Paste Timeline Clips") {
+                        runTimelineCommand {
+                            guard let capture = session.nativeEditor.clipboardActionCapture() else { return }
+                            session.nativeEditor.pasteTimelineClipboard(expected: capture)
+                        }
+                    }
+                    .disabled(!session.useWebEditor && !session.nativeMenu.canPaste)
+                    Button("Match Frame") {
+                        runTimelineCommand {
+                            do {
+                                let capture = try session.nativeEditor.captureMatchFrame()
+                                session.nativeEditor.matchFrame(capture)
+                            } catch { session.nativeEditor.status = error.localizedDescription }
+                        }
+                    }
+                    .disabled(!session.useWebEditor && !session.nativeMenu.canMatchFrame)
+                }
+                .disabled(session.folder == nil || session.useWebEditor)
             }
         }
+    }
+
+    private func runTimelineCommand(_ action: () -> Void) {
+        guard session.folder != nil, session.error == nil, !session.useWebEditor,
+              presentation.sheet == nil, presentation.picker == nil,
+              presentedControllers() == 0, !isTextInputActive() else { return }
+        action()
+    }
+
+    private func isTextInputActive() -> Bool {
+        func findResponder(in view: UIView) -> UIResponder? {
+            if view.isFirstResponder { return view }
+            for subview in view.subviews {
+                if let found = findResponder(in: subview) { return found }
+            }
+            return nil
+        }
+        guard let window = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).flatMap(\.windows).first(where: { $0.isKeyWindow }),
+              let responder = findResponder(in: window) else { return false }
+        return responder is UITextField || responder is UITextView || responder is UITextInput
     }
 
     /// Runs only with nothing presented over the editor, except the compact assistant's own sheet.

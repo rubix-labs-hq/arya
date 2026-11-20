@@ -20,11 +20,17 @@ struct NativeRenderQueue: View {
                 let name = job.string("output", spec.string("out", job.string("id")))
                 let state = job.string("state")
                 let active = ["queued", "running", "rendering"].contains(state)
-                let cancelled = job.string("error").lowercased().contains("cancelled")
+                let cancelled = state == "cancelled" || state == "canceled" || job.string("error").lowercased().contains("cancel")
                 VStack(alignment: .leading, spacing: 5) {
                     Text((name as NSString).lastPathComponent).font(.caption.weight(.semibold)).lineLimit(2)
                     Text(NativeDeliverPanel.presetName(spec.string("preset"))).font(.caption2).foregroundStyle(.secondary)
-                    HStack {
+                    HStack(spacing: 6) {
+                        if !cancelled && state == "done" {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(NativeEditorStyle.success)
+                                .accessibilityHidden(true)
+                        }
                         Text(cancelled ? "Cancelled" : state == "queued" ? "Waiting" : state == "done" ? "Completed" : state.capitalized)
                             .font(.caption).accessibilityIdentifier("native.render.state")
                         Spacer()
@@ -35,10 +41,10 @@ struct NativeRenderQueue: View {
                         }
                     }
                     if active { ProgressView(value: min(1, max(0, job.number("progress")))) }
-                    if !job.string("deliveryWarning").isEmpty { Text(job.string("deliveryWarning")).font(.caption).foregroundStyle(.orange) }
-                    if !cancelled && !job.string("error").isEmpty { Text(job.string("error")).font(.caption).foregroundStyle(.red) }
+                    if !job.string("deliveryWarning").isEmpty { Text(job.string("deliveryWarning")).font(.caption).foregroundStyle(NativeEditorStyle.warning) }
+                    if !cancelled && !job.string("error").isEmpty { Text(job.string("error")).font(.caption).foregroundStyle(NativeEditorStyle.error) }
                 }.padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                    .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 6))
             }
         }
     }

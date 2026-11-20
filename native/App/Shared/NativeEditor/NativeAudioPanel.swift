@@ -233,24 +233,23 @@ struct NativeAudioPanel: View {
         }
         let analysis = work.visibleResult(model)
         if !analysis.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Measured result").font(.subheadline.weight(.semibold))
-                Text(JSONDescription(analysis)).font(.body.monospaced()).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(NativeEditorStyle.background, in: RoundedRectangle(cornerRadius: 8))
-            .accessibilityIdentifier("editor.audio.measurements")
+            NativeAudioResultCard(fields: analysis)
+                .accessibilityIdentifier("editor.audio.measurements")
         }
         ForEach(Array(work.warnings.enumerated()), id: \.offset) { _, warning in
             Text(warning).font(.footnote).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
         }
-        Picker("Channel", selection: $busID) {
-            Text("Master output").tag("master")
-            ForEach(audioTracks) { track in Text(track.name).tag(track.id) }
+        LabeledContent {
+            Picker("Channel", selection: $busID) {
+                Text("Master output").tag("master")
+                ForEach(audioTracks) { track in Text(track.name).tag(track.id) }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu).font(.subheadline).frame(minHeight: 44)
+            .accessibilityIdentifier("editor.audio.channel")
+        } label: {
+            Text("Channel").font(.subheadline).foregroundStyle(NativeEditorStyle.muted)
         }
-        .pickerStyle(.menu).font(.subheadline).frame(minHeight: 44)
-        .accessibilityIdentifier("editor.audio.channel")
         DisclosureGroup(isExpanded: $busControlsExpanded) { busControls.padding(.top, 8) } label: {
             Text(busID == "master" ? "Master controls" : "Channel controls").font(.subheadline.weight(.semibold)).frame(minHeight: 44)
         }.accessibilityIdentifier("editor.audio.bus")
@@ -581,7 +580,6 @@ private struct NativeAudioCleanupControls: View {
     }
 }
 
-#if os(macOS)
 private struct NativeAudioResultCard: View {
     let fields: [String: Any]
     @State private var rawDetailsExpanded = false
@@ -698,7 +696,6 @@ private enum NativeAudioResultFormatting {
         return text
     }
 }
-#endif
 private func JSONDescription(_ fields: [String: Any]) -> String {
     fields.keys.sorted().compactMap { key -> String? in
         guard let value = fields[key], !(value is [Any]), !(value is [String: Any]) else { return nil }

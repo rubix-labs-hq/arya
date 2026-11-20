@@ -45,7 +45,7 @@ export function nodeActions(clip, sel) {
     edit(ops, summary)
     if (select) selectNode(clip, select)
   }
-  const fresh = () => store.project.tracks.flatMap(t => t.clips).find(c => c.id === clip.id) ?? clip
+  const fresh = () => viewProject().tracks.flatMap(t => t.clips).find(c => c.id === clip.id) ?? clip
 
   return {
     serial: (type = 'corrector') => {
@@ -154,10 +154,12 @@ export function NodeEditor({ clip }) {
     const up = ev => {
       removeEventListener('pointermove', move)
       removeEventListener('pointerup', up)
+      removeEventListener('pointercancel', up)
       onUp(ev)
     }
     addEventListener('pointermove', move)
     addEventListener('pointerup', up)
+    addEventListener('pointercancel', up)
   }
 
   const downNode = (e, n) => {

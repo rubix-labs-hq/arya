@@ -12,12 +12,12 @@ function fixture(run) {
   const write = (scope, path, data) => { const file = resolve(scope, path); mkdirSync(resolve(file, '..'), { recursive: true }); writeFileSync(file, data); };
   const packages = {};
   let notice = 'https://registry.npmjs.org/mediabunny/-/mediabunny-1.66.0.tgz\n';
-  for (const [name, version, license] of [['preact', '10.29.8', 'MIT'], ['htm', '3.1.1', 'Apache-2.0'], ['mediabunny', '1.66.0', 'MPL-2.0']]) {
+  for (const [name, label, version, license] of [['preact', 'Preact', '10.29.8', 'MIT'], ['htm', 'htm', '3.1.1', 'Apache-2.0'], ['mediabunny', 'Mediabunny', '1.66.0', 'MPL-2.0']]) {
     packages[`node_modules/${name}`] = { version, license };
     write(source, `editor/node_modules/${name}/package.json`, JSON.stringify({ version, license }));
     const text = `${name} fixture license text.\n`;
     write(source, `editor/node_modules/${name}/LICENSE`, text); write(bundle, `vendor/${name}/LICENSE`, text);
-    notice += `| ${version} | ${license} |\n${text}`;
+    notice += `| ${label} | ${version} | ${license} |\n${text}`;
   }
   for (const [sourcePath, bundlePath, text] of [
     ['editor/web/fonts/LICENSE-Inter.txt', 'web/fonts/LICENSE-Inter.txt', 'Inter'],

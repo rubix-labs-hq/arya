@@ -34,8 +34,8 @@ const CSS = `
 .cap-style .field > .muted { flex: 1 1 100%; }
 .cap-list { display: flex; flex-direction: column; gap: 4px; }
 .cap-row { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: start; padding: 5px 6px; border: 1px solid var(--line); border-radius: 7px; cursor: pointer; }
-.cap-row.active { border-color: #f5b94266; }
-.cap-row.sel { background: #f5b94214; border-color: var(--accent); }
+.cap-row.active { border-color: #efbc6866; }
+.cap-row.sel { background: #efbc6814; border-color: var(--accent); }
 .cap-times { display: flex; flex-direction: column; gap: 3px; }
 .cap-times input { width: 86px; font: 500 11.5px ui-monospace, Menlo, monospace; padding: 2px 5px; }
 .cap-text { width: 100%; resize: vertical; min-height: 38px; font-size: 12.5px; line-height: 1.35; }
@@ -184,23 +184,38 @@ function openModal(Component, props = {}) {
 function FilePicker({ kind, title, onPick, onClose }) {
   const [dir, setDir] = useState('.')
   const [list, setList] = useState(null)
+  const dialog = useRef(null)
+  const dismiss = useRef(onClose)
+  dismiss.current = onClose
   useEffect(() => {
-    api(`/api/interchange/files?dir=${encodeURIComponent(dir)}&kind=${kind}`).then(setList).catch(e => toast(e.message, 'error'))
+    const doc = globalThis.document
+    if (!doc) return
+    const opener = doc.activeElement
+    const el = dialog.current
+    if (el) (dialogControls(el)[0] ?? el).focus()
+    const key = event => { if (dialog.current?.getClientRects().length) dialogKey(event, dialog.current, () => dismiss.current()) }
+    doc.addEventListener('keydown', key, true)
+    return () => { doc.removeEventListener('keydown', key, true); if (opener?.isConnected) opener.focus?.() }
+  }, [])
+  useEffect(() => {
+    let active = true
+    api(`/api/interchange/files?dir=${encodeURIComponent(dir)}&kind=${kind}`).then(data => active && setList(data)).catch(e => active && toast(e.message, 'error'))
+    return () => { active = false }
   }, [dir])
   const up = list?.dir ? list.dir.split('/').slice(0, -1).join('/') || '.' : null
   const what = kind === 'captions' ? '.srt or .vtt' : '.fcpxml, .fcpxmld or .otio'
 
   return html`
     <div class="modal-back" onClick=${onClose}>
-      <div class="modal" onClick=${e => e.stopPropagation()}>
-        <h3>${title}</h3>
-        <div class="crumbs"><button class="ghost" onClick=${() => setDir('.')}>⌂</button> ${list?.dir || 'project folder'} ${up ? html`<button class="ghost" onClick=${() => setDir(up)}>↑ up</button>` : null}</div>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="cap-file-picker-title" tabIndex="-1" ref=${dialog} onClick=${e => e.stopPropagation()}>
+        <h3 id="cap-file-picker-title">${title}</h3>
+        <div class="crumbs"><button type="button" class="ghost" aria-label="Project folder" onClick=${() => setDir('.')}>⌂</button> ${list?.dir || 'project folder'} ${up ? html`<button type="button" class="ghost" onClick=${() => setDir(up)}>↑ up</button>` : null}</div>
         <div class="file-list">
           ${list && !list.entries.length ? html`<div class="empty-hint">No ${what} files here.</div>` : null}
-          ${(list?.entries ?? []).map(e => html`<div class="file-row" onClick=${() => (e.dir ? setDir(e.path) : onPick(e.path))}><span class=${`file-kind ${e.dir ? 'dir' : 'file'}`} aria-hidden="true"></span>${e.name}</div>`)}
+          ${(list?.entries ?? []).map(e => html`<button type="button" class="file-row" onClick=${() => (e.dir ? setDir(e.path) : onPick(e.path))}><span class=${`file-kind ${e.dir ? 'dir' : 'file'}`} aria-hidden="true"></span>${e.name}</button>`)}
         </div>
         <div class="hint">Files must be inside the project folder. Exports land in renders/.</div>
-        <div class="modal-actions"><button class="ghost" onClick=${onClose}>Cancel</button></div>
+        <div class="modal-actions"><button type="button" class="ghost" onClick=${onClose}>Cancel</button></div>
       </div>
     </div>
   `
@@ -231,10 +246,11 @@ function CaptionsConfirm({ title, items, tracks, initialTrack, note, warnings, o
       onClose()
     }
   }
-  const fps = store.project.fps
+  const fps = viewProject().fps
+  const headingId = titleId ?? 'cap-confirm-standalone-title'
 
   const body = html`
-        <h3 id=${titleId}>${title}</h3>
+        <h3 id=${headingId}>${title}</h3>
         ${note ? html`<div class="hint">${note}</div>` : null}
         ${(warnings ?? []).map(warning => html`<div class="cap-warn" role="status">${warning}</div>`)}
         <div class="cap-preview">${items.slice(0, 200).map(c => html`<div><span class="cap-n">${tc(c.t, fps)} → ${tc(c.end, fps)}</span><br />${c.text}</div>`)}</div>
@@ -251,8 +267,8 @@ function CaptionsConfirm({ title, items, tracks, initialTrack, note, warnings, o
         ${expectedVersion !== undefined && expectedVersion !== s.version ? html`<div class="cap-warn">The project changed. Close this preview and generate it again before applying.</div>` : null}`
   if (bare) return body
   return html`
-    <div class="modal-back" onClick=${onClose}>
-      <div class="modal cap-dialog" onClick=${e => e.stopPropagation()}>${body}</div>
+    <div class="modal-back" onClick=${onClose} onKeyDown=${e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose() } }}>
+      <div class="modal cap-dialog" role="dialog" aria-modal="true" aria-labelledby=${headingId} tabIndex="-1" onClick=${e => e.stopPropagation()}>${body}</div>
     </div>
   `
 }
@@ -433,7 +449,7 @@ function CaptionRow({ clip, fps, active, selected, focus }) {
 function CaptionList({ track }) {
   const s = useStore()
   const t = useTime()
-  const fps = s.project.fps
+  const fps = viewProject().fps
   const clips = [...track.clips].sort((a, b) => a.start - b.start)
 
   return html`
@@ -529,7 +545,7 @@ function CaptionWords({ clip, fps }) {
 }
 
 function CaptionInspector({ clip, track }) {
-  const fps = store.project.fps
+  const fps = viewProject().fps
 
   return html`
     <div class="section-body">
@@ -583,9 +599,9 @@ function ImportConfirm({ rel, preview, onClose }) {
   }
 
   return html`
-    <div class="modal-back" onClick=${onClose}>
-      <div class="modal" onClick=${e => e.stopPropagation()}>
-        <h3>Replace the project with ${rel.split('/').pop()}?</h3>
+    <div class="modal-back" onClick=${onClose} onKeyDown=${e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose() } }}>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="cap-import-confirm-title" tabIndex="-1" onClick=${e => e.stopPropagation()}>
+        <h3 id="cap-import-confirm-title">Replace the project with ${rel.split('/').pop()}?</h3>
         <div class="kv"><span>Name</span><b>${p.name}</b></div>
         <div class="kv"><span>Format</span><b>${p.width}×${p.height} · ${p.fps} fps · ${tc(end, p.fps)}</b></div>
         <div class="kv"><span>Clips</span><b>${clips.length} (${tracks || 'none'})</b></div>

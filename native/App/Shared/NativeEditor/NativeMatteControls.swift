@@ -21,24 +21,30 @@ struct NativeMatteControls: View {
         let version = model.version
         GroupBox("Track matte") {
             VStack(alignment: .leading, spacing: 8) {
-                Picker("Matte mode", selection: Binding(get: { mode }, set: { value in
-                    let value: Any = value.isEmpty ? NSNull() : ["mode": value, "source": source] as [String: Any]
-                    model.edit(["op": "matte", "id": clip.id, "matte": value], expectedVersion: version)
-                })) {
-                    ForEach(modes, id: \.0) { Text($0.1).tag($0.0) }
-                }
-                .accessibilityIdentifier("native.matte.mode")
-                if !mode.isEmpty {
-                    Picker("Matte source", selection: Binding(get: { source }, set: { value in
-                        model.edit(["op": "matte", "id": clip.id, "matte": ["mode": mode, "source": value]], expectedVersion: version)
+                LabeledContent {
+                    Picker("Matte mode", selection: Binding(get: { mode }, set: { value in
+                        let value: Any = value.isEmpty ? NSNull() : ["mode": value, "source": source] as [String: Any]
+                        model.edit(["op": "matte", "id": clip.id, "matte": value], expectedVersion: version)
                     })) {
-                        Text("Layer above").tag("")
-                        if !source.isEmpty && !candidates.contains(where: { $0.id == source }) {
-                            Text("Unavailable layer (\(source))").tag(source)
-                        }
-                        ForEach(candidates, id: \.id) { Text("\($0.name) (\($0.id))").tag($0.id) }
+                        ForEach(modes, id: \.0) { Text($0.1).tag($0.0) }
                     }
-                    .accessibilityIdentifier("native.matte.source")
+                    .labelsHidden()
+                    .accessibilityIdentifier("native.matte.mode")
+                } label: { Text("Matte mode").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
+                if !mode.isEmpty {
+                    LabeledContent {
+                        Picker("Matte source", selection: Binding(get: { source }, set: { value in
+                            model.edit(["op": "matte", "id": clip.id, "matte": ["mode": mode, "source": value]], expectedVersion: version)
+                        })) {
+                            Text("Layer above").tag("")
+                            if !source.isEmpty && !candidates.contains(where: { $0.id == source }) {
+                                Text("Unavailable layer (\(source))").tag(source)
+                            }
+                            ForEach(candidates, id: \.id) { Text("\($0.name) (\($0.id))").tag($0.id) }
+                        }
+                        .labelsHidden()
+                        .accessibilityIdentifier("native.matte.source")
+                    } label: { Text("Matte source").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                     Text("The source controls this layer's visibility and is hidden from the composite. Where the source has no picture, its matte is transparent.")
                         .font(.caption).foregroundStyle(NativeEditorStyle.muted)
                 }

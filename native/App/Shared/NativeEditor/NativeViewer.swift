@@ -878,10 +878,11 @@ struct NativeViewer: View {
             if transport.size.width >= 600 {
                 Button { model.seek(0) } label: { Image(systemName: "backward.end.alt") }.help("Go to start").accessibilityLabel("Go to start")
             }
-            Button { model.step(-1) } label: { Image(systemName: "backward.end") }.help("Previous frame")
+            Button { model.step(-1) } label: { Image(systemName: "backward.end") }.help("Previous frame").accessibilityLabel("Previous frame")
             Button { model.togglePlayback() } label: { Image(systemName: model.playing ? "pause.fill" : "play.fill") }
                 .keyboardShortcut(.space, modifiers: []).help(model.playing ? "Pause" : "Play")
-            Button { model.step(1) } label: { Image(systemName: "forward.end") }.help("Next frame")
+                .accessibilityLabel(model.playing ? "Pause" : "Play")
+            Button { model.step(1) } label: { Image(systemName: "forward.end") }.help("Next frame").accessibilityLabel("Next frame")
             if transport.size.width >= 600 {
                 Button { model.seek(model.duration) } label: { Image(systemName: "forward.end.alt") }.help("Go to end").accessibilityLabel("Go to end")
             }
@@ -899,6 +900,7 @@ struct NativeViewer: View {
                     .disabled(mode != .shapePath && (model.selected == nil || model.selected?.kind == "audio") || mode == .trackingBox && (!model.hasCapability("analysis", "tracking") || model.selected?.kind != "video"))
                 }
             } label: { Image(systemName: "pencil.tip") }.help("Draw a mask, path, or tracking region")
+                .accessibilityLabel("Draw a mask, path, or tracking region")
         }.buttonStyle(NativeToolbarButtonStyle()).padding(.horizontal, 10).frame(height: 44)
         }.frame(height: 44).background(NativeEditorStyle.panel)
         #endif
@@ -1015,6 +1017,12 @@ struct NativeViewer: View {
         .onDisappear { cancelGesture(); model.viewerColorWindow?.updateViewport(nil); viewerLayout = nil }
         #if os(macOS)
         .onExitCommand { model.viewerColorPicker = nil; cancelGesture(); model.viewerColorWindow?.cancel() }
+        #else
+        .onKeyPress(.escape) {
+            let active = model.viewerColorPicker != nil || model.viewerColorWindow != nil
+            model.viewerColorPicker = nil; cancelGesture(); model.viewerColorWindow?.cancel()
+            return active ? .handled : .ignored
+        }
         #endif
 
     }

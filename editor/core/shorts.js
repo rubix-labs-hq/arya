@@ -1,4 +1,4 @@
-import { applyOps, findClip, round } from './project.js'
+import { applyOps, compView, findClip, round } from './project.js'
 import { wordsToCaptions } from './interchange.js'
 
 export const CAPTION_STYLES = {
@@ -35,7 +35,7 @@ export function captionItems(project, src, inputWords, options = {}) {
   const style = captionStyle(options.style)
   const found = options.id ? findClip(project, options.id) : null
   const scope = options.comp ?? found?.comp ?? null
-  const view = scope ? project.comps?.[scope] : project
+  const view = scope ? compView(project, scope) : project
   if (!view) throw new Error(`No composition ${scope}`)
   if (found && options.comp && found.comp !== options.comp) throw new Error('The selected clip is outside this composition')
   const seen = new Set(), warnings = []
@@ -52,7 +52,8 @@ export function captionItems(project, src, inputWords, options = {}) {
   })
   if (options.id && !uses.length) throw new Error(`Clip ${options.id} does not play ${src}`)
   const items = [], kept = new Set()
-  const maxChars = Math.min(options.maxChars ?? 42, Math.max(8, Math.floor(view.width * 1080 / view.height * 0.9 / Math.max(1, style.size * 0.62))))
+  const requestedMaxChars = Number.isFinite(Number(options.maxChars)) && Number(options.maxChars) > 0 ? Number(options.maxChars) : 42
+  const maxChars = Math.min(requestedMaxChars, Math.max(8, Math.floor((view.width || 1920) * 1080 / (view.height || 1080) * 0.9 / Math.max(1, style.size * 0.62))))
   for (const c of uses) {
     const speed = c.speed ?? 1, from = c.in ?? 0, to = from + c.dur * speed
     const inside = words.filter(w => (w.t + w.end) / 2 >= from && (w.t + w.end) / 2 < to)

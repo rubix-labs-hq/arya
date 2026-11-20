@@ -6,9 +6,8 @@ import XCTest
 
 final class RenderingTests: XCTestCase {
     func testBrowserGoldenFramesThroughMetal() async throws {
-        let root = Support.nativeDir.deletingLastPathComponent().appendingPathComponent("build/native-render-fixtures")
-        // Exports refuse to overwrite, so frames left by an earlier run would fail this one.
-        try? FileManager.default.removeItem(at: root)
+        let root = try Support.tempFolder("native-render-fixtures")
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
         let generator = Process(); generator.executableURL = try renderingTool("node", override: ProcessInfo.processInfo.environment["NODE"]); generator.arguments = [Support.nativeDir.appendingPathComponent("scripts/render-fixtures.mjs").path, root.path]
         try generator.run(); generator.waitUntilExit(); XCTAssertEqual(generator.terminationStatus, 0)
         let frames = try JSON.parse(String(contentsOf: root.appendingPathComponent("frames.json"))) as! [[String: Any]]

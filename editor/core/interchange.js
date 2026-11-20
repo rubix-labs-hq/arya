@@ -165,14 +165,15 @@ export function projectPath(abs, root) {
 
 // ---------------------------------------------------------------- XML
 
-const XML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+const XML_ENTITIES = Object.assign(Object.create(null), { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" })
 
 function decodeEntities(t) {
   if (t.indexOf('&') < 0) return t
 
   return t.replace(/&(#[xX][0-9a-fA-F]+|#\d+|[A-Za-z]+);/g, (m, e) => {
-    if (e[0] !== '#') return XML_ENTITIES[e] ?? m
+    if (e[0] !== '#') return Object.hasOwn(XML_ENTITIES, e) ? XML_ENTITIES[e] : m
     const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10)
+    if (!Number.isInteger(code) || code < 0 || code > 0x10ffff) return m
     try {
       return String.fromCodePoint(code)
     } catch {
@@ -461,7 +462,8 @@ export function wordsToCaptions(words, options = {}) {
   for (const w of list) {
     const text = String(w.text).trim()
     const t = Number(w.t)
-    const end = Math.max(t, Number(w.end ?? t))
+    const rawEnd = Number(w.end)
+    const end = Number.isFinite(rawEnd) ? Math.max(t, rawEnd) : t
     const prev = ws[ws.length - 1]
     if (includeWords && ATTACHES_RIGHT.test(text)) {
       carry += text; carryWords.push(w)
@@ -1175,8 +1177,9 @@ export function fromFCPXML(xml, root = '', options = {}) {
   const md = readMd(seq, 'reel.project')
   const fmt = res.get(seq.attrs.format)
   const fd = parseRational(fmt?.attrs.frameDuration)
-  const fps = isNum(md?.fps) ? md.fps : fd ? normalizeFps(fd.den / fd.num) : 30
-  const exact = fd ? fd.den / fd.num : exactRate(fps)
+  const fdRate = fd && fd.num > 0 && fd.den > 0 ? fd.den / fd.num : null
+  const fps = isNum(md?.fps) && md.fps > 0 ? md.fps : fdRate ? normalizeFps(fdRate) : 30
+  const exact = fdRate ?? exactRate(fps)
   const toF = sec => Math.round(sec * exact)
   const width = numOr(fmt?.attrs.width, md?.width ?? 1920)
   const height = numOr(fmt?.attrs.height, md?.height ?? 1080)
@@ -1725,7 +1728,7 @@ export function fromOTIO(input, root = '', options = {}) {
     for (const v of Object.values(n)) scan(v)
   }
   scan(tl.tracks)
-  const fps = isNum(md?.fps) ? md.fps : normalizeFps(firstRate || 24)
+  const fps = isNum(md?.fps) && md.fps > 0 ? md.fps : normalizeFps(isNum(firstRate) && firstRate > 0 ? firstRate : 24)
   const exact = exactRate(fps)
   const sec = rt => (rt && isNum(rt.value) && isNum(rt.rate) && rt.rate > 0 ? rt.value / rt.rate : 0)
   const toF = s => Math.round(s * exact)
@@ -1779,7 +1782,8 @@ export function fromOTIO(input, root = '', options = {}) {
           const avail = sec(ref.available_range?.duration)
           if (avail > 0) a.duration = Math.max(a.duration ?? 0, round(avail, 3))
           const warp = (ch.effects ?? []).find(e => /^(LinearTimeWarp|FreezeFrame)/.test(String(e?.OTIO_SCHEMA ?? '')))
-          const scalar = warp ? Number(warp.time_scalar ?? 1) : 1
+          const rawScalar = warp ? Number(warp.time_scalar ?? 1) : 1
+          const scalar = Number.isFinite(rawScalar) ? rawScalar : 1
           const inSec = round(Math.max(0, sec(range?.start_time) - sec(ref.available_range?.start_time)), 5)
           const still = group === 'video' && !ref.available_range
           s = still ? { kind: 'image', src: key } : { kind: group === 'audio' ? 'audio' : 'video', src: key, in: inSec }

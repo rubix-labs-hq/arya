@@ -75,7 +75,7 @@ function ParamNum({ label, value, spec, onCommit, clip, prop }) {
 
 function KeyedNum({ common, value, onCommit, clip, prop }) {
   const t = useTime()
-  const p = store.project
+  const p = typeof viewProject === 'function' ? viewProject() : store.project
   const local = Math.max(0, Math.min(clip.dur, t - clip.start))
   const keys = sortedKeys(clip.anim?.[prop])
   const animated = keys.length > 0
@@ -237,7 +237,7 @@ function drawEq(cv, bands) {
   ctx.fillStyle = '#8b8b98'
   ctx.font = '18px -apple-system, sans-serif'
   for (const [f, l] of [[100, '100'], [1000, '1k'], [10000, '10k']]) ctx.fillText(l, x(f) + 4, H - 6)
-  ctx.strokeStyle = '#f5b942'
+  ctx.strokeStyle = '#efbc68'
   ctx.lineWidth = 3
   ctx.beginPath()
   for (let px = 0; px <= W; px += 2) {
@@ -246,7 +246,7 @@ function drawEq(cv, bands) {
     px === 0 ? ctx.moveTo(px, y(d)) : ctx.lineTo(px, y(d))
   }
   ctx.stroke()
-  ctx.fillStyle = '#f5b942'
+  ctx.fillStyle = '#efbc68'
   bands.forEach((b, k) => {
     const cx = x(b.freq)
     const cy = y(eqResponse(bands, b.freq))
@@ -255,7 +255,7 @@ function drawEq(cv, bands) {
     ctx.fill()
     ctx.fillStyle = '#1a1405'
     ctx.fillText(String(k + 1), cx - 5, cy + 6)
-    ctx.fillStyle = '#f5b942'
+    ctx.fillStyle = '#efbc68'
   })
 }
 
@@ -513,7 +513,7 @@ function freeAudioTrack(p, from, to) {
 
 /** Renders a cleaned copy of a clip's audio on the server and points the clip at it. */
 export async function cleanClip(clip, mode = 'voice', input = CLEAN_DEFAULTS) {
-  if (store.caps.processing?.audioClean === false) return toast('Open the browser editor to render cleaned audio', 'error')
+  if (store.caps.processing?.audioClean === false) return toast(store.caps.host === 'browser-local' ? 'Audio cleanup needs Arya for Mac or the local editor.' : 'Open the browser editor to render cleaned audio', 'error')
   if (!clip.src) return toast('This clip has no source to clean', 'error')
   toast(mode === 'voice' ? 'Cleaning up the voice…' : 'Removing noise…')
   let receipt
@@ -606,7 +606,7 @@ export function AudioCleanupControls({ clip, canClean }) {
       <button class="ghost tiny" disabled=${!canClean || running || invalidNoise || !!sourceError} onClick=${() => run('voice')}>Clean up voice</button>
       <button class="ghost tiny" disabled=${!canClean || running || invalidNoise || !!sourceError} onClick=${() => run('denoise')}>Denoise</button>
     </div>
-    <div class="hint">${canClean ? `Renders the full original source and retains its cleanup settings. Adjusting an applied result starts with the original sound. Playback and export use the rendered copy. Undo placement restores the previous clip and retains its reusable Media copy${clip.kind === 'video' ? '; cleaned audio keeps its mix controls on a new clip' : ''}.` : 'Open the browser editor to render cleaned audio. Playback effects and loudness controls are available here.'}</div>
+    <div class="hint">${canClean ? `Renders the full original source and retains its cleanup settings. Adjusting an applied result starts with the original sound. Playback and export use the rendered copy. Undo placement restores the previous clip and retains its reusable Media copy${clip.kind === 'video' ? '; cleaned audio keeps its mix controls on a new clip' : ''}.` : store.caps.host === 'browser-local' ? 'Audio cleanup needs Arya for Mac or the local editor. Playback effects and loudness controls are available here.' : 'Open the browser editor to render cleaned audio. Playback effects and loudness controls are available here.'}</div>
     <div class="hint">Stationary noise reduction runs on the CPU. Quality sets spectrum resolution in the native engine and gain smoothing in the browser server. Compare speech detail and noise before stronger settings.</div>
   </div>`
 }
@@ -614,7 +614,7 @@ export function AudioCleanupControls({ clip, canClean }) {
 function ClipAudioFx({ clip, track }) {
   const s = useStore()
   const canClean = s.caps.processing?.audioClean !== false
-  const p = s.project
+  const p = viewProject()
   const setFx = (list, map) => edit({ op: 'update', id: clip.id, set: { fx: list, ...(map ? fxAnimPatch(clip, map) : {}) } })
   const nested = clip.kind === 'comp' || clip.kind === 'multicam'
   const angles = clip.kind === 'multicam' ? clip.angles ?? [] : []
@@ -651,7 +651,7 @@ registerInspector({
   // Audio clips, comp and multicam clips (whose sound the built-in Audio tab does not cover),
   // and video clips that carry their own sound.
   when: clip => {
-    const p = store.project
+    const p = viewProject()
     if (!p) return false
     if (clip.kind === 'audio' || clip.kind === 'multicam') return true
     if (clip.kind === 'comp') return sounds(p, { ...clip, enabled: true, mute: false })

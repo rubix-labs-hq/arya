@@ -23,6 +23,7 @@ const families = [
   ['figma-token', /\bfig[dp]_[A-Za-z0-9_-]{20,}\b/g],
   ['slack-token', /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/g],
   ['stripe-secret', /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{20,}\b/g],
+  ['stripe-webhook-secret', /\bwhsec_[A-Za-z0-9]{24,}\b/g],
   ['credential-in-url', /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]+:[^\s/@]{8,}@/gi],
   ['assigned-secret', /\b(?:client_secret|api_key|access_token|refresh_token|aws_secret_access_key)\s*[=:]\s*["']([^"'\r\n]{20,})["']/gi],
 ];
@@ -187,11 +188,11 @@ export function scan(includeHistory, includeUntracked = false, scopeRoot = root)
     const absolute = resolve(scopeRoot, path);
     const rel = relative(scopeRoot, absolute);
     if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) throw new Error('Tracked path escaped the repository.');
-    let bytes;
-    try { bytes = boundedWorkingFile(absolute, scopeRoot); } catch { skip({ scope, path, reason: 'working-file-read-rejected' }); continue; }
     if (/(?:^|\/)(?:\.env(?:\.|$)|.*\.(?:p12|pfx|key|mobileprovision)$)/i.test(path)) add({ scope, path, family: 'sensitive-file-name', severity: 'review-required' });
     if (/(?:^|\/)(?:build|DerivedData|node_modules|\.reel|renders)\//.test(path)) add({ scope, path, family: 'generated-or-project-data', severity: 'publication-review' });
     if (/\.(?:mp4|mov|m4a|wav|mp3|png|jpg|jpeg|ttf|woff2?)$/i.test(path)) add({ scope, path, family: 'media-or-font-provenance', severity: 'publication-review' });
+    let bytes;
+    try { bytes = boundedWorkingFile(absolute, scopeRoot); } catch { skip({ scope, path, reason: 'working-file-read-rejected' }); continue; }
     if (bytes === null) { skip({ scope, path, reason: 'size-limit' }); continue; }
     const fileSHA256 = createHash('sha256').update(bytes).digest('hex');
     const binding = { scope, ...safeLocation(path), bytes: bytes.length, sha256: fileSHA256 };
@@ -261,6 +262,7 @@ function selfTest() {
     ['figma-token', 'fig' + 'd_' + 'a'.repeat(30)],
     ['slack-token', 'xox' + 'b-' + 'a'.repeat(30)],
     ['stripe-secret', 'sk_' + 'live_' + 'a'.repeat(30)],
+    ['stripe-webhook-secret', 'whsec_' + 'a'.repeat(32)],
     ['credential-in-url', 'https://' + 'account:' + 'secret'.repeat(4) + '@example.invalid'],
     ['assigned-secret', 'client_' + 'secret="' + 'a'.repeat(40) + '"'],
     ['personal-absolute-path', '/Us' + 'ers/example/private'],

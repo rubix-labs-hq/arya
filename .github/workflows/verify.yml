@@ -57,10 +57,12 @@ jobs:
           node scripts/public-readiness.mjs --self-test
           node --test scripts/test-public-readiness.mjs
           /usr/bin/python3 -I -S -B scripts/test-public-readiness-read.py
-  native:
+          node --test scripts/test-third-party-notices.mjs
+          node scripts/check-third-party-notices.mjs
+  native-tests:
     if: github.repository == 'rubix-labs-hq/arya' || github.event_name == 'workflow_dispatch'
     runs-on: macos-26
-    timeout-minutes: 150
+    timeout-minutes: 90
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
       SWIFT_BACKTRACE: enable=yes,interactive=no
@@ -92,11 +94,31 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: Run shared native backend tests
         # Two tests hold wall-clock and denoise-quality limits that shared runners miss by a few
-        # percent. The local release gate runs them on real hardware.
+        # percent. The local release gate runs them on real hardware. Preview reuse tests run
+        # serially so hardware AAC decoding stays deterministic under shared admission.
         run: |
-          NODE="$(command -v node)" swift test --package-path native/ReelKit \
+          NODE="$(command -v node)" swift test --parallel --package-path native/ReelKit \
             --skip 'AudioPreviewTests.testBackendPreviewProducesOnlyRequestedRangeWithSharedVerifiedLimiter' \
-            --skip 'NativeVideoQualityTests.testVideoDenoiseRouteProcessesRealEncodedSourceAndUndo'
+            --skip 'NativeVideoQualityTests.testVideoDenoiseRouteProcessesRealEncodedSourceAndUndo' \
+            --skip 'NativeAudioPreviewReuseBackendTests'
+          NODE="$(command -v node)" swift test --package-path native/ReelKit \
+            --filter 'NativeAudioPreviewReuseBackendTests'
+  native-scripts:
+    if: github.repository == 'rubix-labs-hq/arya' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+      SWIFT_BACKTRACE: enable=yes,interactive=no
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - run: npm ci
+        working-directory: editor
       - name: Verify project metadata on macOS and Mac Catalyst
         run: python3 native/scripts/test-project-metadata.py
       - name: Verify native assistant change receipts
@@ -127,7 +149,7 @@ jobs:
           python3 native/scripts/test-editor-input-and-status.py
           python3 native/scripts/test-color-node-graph.py
           python3 native/scripts/test-mac-menu-state.py
-      - name: Verify native processing and import controls
+      - name: Verify native processing, mobile contracts and import controls
         run: |
           sh native/scripts/test-inspector-workflows.sh
           python3 native/scripts/test-interchange-import.py
@@ -150,11 +172,42 @@ jobs:
           python3 native/scripts/test-transcript-drafts.py
           python3 native/scripts/test-transcript-preview.py
           python3 native/scripts/test-native-responsive.py
+          python3 native/scripts/test-native-haptics.py
+          python3 native/scripts/test-native-motion-route.py
+          python3 native/scripts/test-mobile-first-run.py
+          python3 native/scripts/test-mobile-keyboard.py
+          python3 native/scripts/test-recent-projects.py
+          python3 native/scripts/test-delivery-history.py
+          python3 native/scripts/test-delivery-range.py
+          python3 native/scripts/test-assistant-editor-controls.py
           python3 native/scripts/test-import-outcomes.py
           python3 native/scripts/test-native-support-purchases.py
           python3 native/scripts/test-support-channels.py
           python3 native/scripts/test-mobile-track-delete.py
           node native/scripts/test-mobile-track-delete.mjs . .
+      - name: Verify runtime, verifier and installer boundaries
+        run: |
+          python3 native/scripts/test-node-runtime.py
+          python3 native/scripts/test-arya-installer.py
+          python3 native/scripts/test-agent-helper.py
+          python3 native/scripts/test-release.py
+          python3 native/scripts/test-verify-arya-local.py
+  native-apps:
+    if: github.repository == 'rubix-labs-hq/arya' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+      SWIFT_BACKTRACE: enable=yes,interactive=no
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - run: npm ci
+        working-directory: editor
       - name: Build macOS app
         run: xcodebuild -project native/Reel.xcodeproj -scheme Reel -configuration Debug -destination 'generic/platform=macOS' -derivedDataPath build/ci-mac CODE_SIGNING_ALLOWED=NO build
       - name: Build iPhone and iPad app
@@ -163,13 +216,6 @@ jobs:
         run: |
           xcodebuild -project native/Reel.xcodeproj -scheme 'Reel Mac App Store' -configuration Debug -destination 'generic/platform=macOS,variant=Mac Catalyst' -derivedDataPath build/ci-catalyst CODE_SIGNING_ALLOWED=NO build
           python3 native/scripts/validate-app-store.py build/ci-catalyst/Build/Products/Debug-maccatalyst/Arya.app --unsigned
-      - name: Verify runtime and installer boundaries
-        run: |
-          python3 native/scripts/test-node-runtime.py
-          python3 native/scripts/test-arya-installer.py
-          python3 native/scripts/test-agent-helper.py
-      - name: Validate local release archive
-        run: python3 native/scripts/test-release.py
       - name: Build local release archive
         run: python3 native/scripts/release.py archive --output build/ci-release
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -129,9 +129,11 @@ export function compView(p, compId) {
 }
 
 export function timecode(t, fps = 30, withFrames = true) {
-  const total = Math.max(0, Math.round(t * fps))
-  const f = total % fps
-  const s = Math.floor(total / fps)
+  const rate = Number.isFinite(fps) && fps > 0 ? fps : 30
+  const base = Math.max(1, Math.round(rate))
+  const total = Math.max(0, Math.round((Number.isFinite(t) ? t : 0) * rate))
+  const f = total % base
+  const s = Math.floor(total / base)
   const pad = n => String(n).padStart(2, '0')
   const hms = `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`
 
@@ -210,7 +212,7 @@ export function hasAudio(p, c) {
   if (c.kind === 'audio') return !c.mute
   if (c.kind === 'multicam') return !c.mute && Boolean(p.assets[c.angles?.[c.audioAngle ?? 0]?.src]?.hasAudio)
   if (c.kind === 'comp') return !c.mute && (p.comps?.[c.comp]?.tracks ?? []).some(t => t.kind === 'audio' && t.clips.length)
-  if (c.kind !== 'video' || c.mute || c.audioDetached) return false
+  if (c.kind !== 'video' || c.mute || c.audioDetached || c.freeze !== undefined) return false
 
   return Boolean(c.src && p.assets[c.src]?.hasAudio)
 }
@@ -439,14 +441,29 @@ function sourceLength(p, c) {
   return (c.src && p.assets[c.src]?.duration) || Infinity
 }
 
+const UNSAFE_MERGE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+
+function sanitizeClone(value) {
+  if (Array.isArray(value)) return value.map(sanitizeClone)
+  if (value && typeof value === 'object') {
+    const out = {}
+    for (const [k, v] of Object.entries(value)) {
+      if (UNSAFE_MERGE_KEYS.has(k)) continue
+      out[k] = sanitizeClone(v)
+    }
+    return out
+  }
+  return value
+}
+
 function deepMerge(target, set) {
   for (const [key, value] of Object.entries(set)) {
-    if (key === 'id') continue
-    const current = target[key]
+    if (key === 'id' || UNSAFE_MERGE_KEYS.has(key)) continue
+    const current = Object.hasOwn(target, key) ? target[key] : undefined
     if (value === null) delete target[key]
     else if (current && typeof current === 'object' && !Array.isArray(current) && value && typeof value === 'object' && !Array.isArray(value)) {
       deepMerge(current, value)
-    } else target[key] = structuredClone(value)
+    } else target[key] = sanitizeClone(value)
   }
 }
 
@@ -456,8 +473,8 @@ function settingChanges(target, set, prefix = '') {
   const plain = value => value === null || ['string', 'number', 'boolean'].includes(typeof value)
   const out = []
   for (const [key, value] of Object.entries(set)) {
-    if (key === 'id') continue
-    const current = target?.[key], name = `${prefix}${key}`
+    if (key === 'id' || UNSAFE_MERGE_KEYS.has(key)) continue
+    const current = target && Object.hasOwn(target, key) ? target[key] : undefined, name = `${prefix}${key}`
     if (value && typeof value === 'object' && !Array.isArray(value) && (current === undefined || current && typeof current === 'object' && !Array.isArray(current))) out.push(...settingChanges(current ?? {}, value, `${name}.`))
     else if (value === null) out.push(current === undefined ? `${name} (unchanged)` : `${name} removed`)
     else if (!plain(value) || current !== undefined && !plain(current)) out.push(name)
@@ -1057,8 +1074,10 @@ export function applyOps(source, ops) {
         break
       }
       case 'delete_range': {
+        if (!Number.isFinite(op.from) || !Number.isFinite(op.to)) throw new Error('delete_range needs finite from and to times')
         const from = snapToFrame(op.from, p.fps)
         const to = snapToFrame(op.to, p.fps)
+        if (!(to > from)) { log.push(`removed empty range at ${round(from, 3)}s`); break }
         const split = { reserved: [], links: new Map() }
         for (const track of p.tracks) {
           if (track.locked || (op.tracks && !op.tracks.includes(track.id))) continue
@@ -1136,15 +1155,18 @@ export function applyOps(source, ops) {
       }
       case 'freeze': {
         const { track, clip } = clipOf(op.id)
+        if (!Number.isFinite(op.at)) throw new Error('freeze needs a finite time')
         const at = snapToFrame(op.at, p.fps)
         if (clip.kind !== 'video') throw new Error('freeze frames need a video clip')
         const hold = op.dur ?? 2
+        if (!Number.isFinite(hold) || hold < minDur) throw new Error('freeze duration must be positive')
         const held = sourceTime(p, clip, at)
-        const tmp = applyOps(p, [{ op: 'split', id: clip.id, at }])
-        Object.assign(p, tmp.project)
-        // The id comes after the split so the freeze frame never shares an id with the split's tail.
+        const src = clip.src, grade = clip.grade ? structuredClone(clip.grade) : undefined
+        const { x, y, scale } = clip
+        // Split in place against the active scope so freezing works identically inside nested compositions.
+        applyOne({ op: 'split', id: clip.id, at })
         const id = nextId(p, 'c')
-        const frame = { id, kind: 'video', src: clip.src, start: at, dur: hold, in: held, freeze: held, label: 'Freeze', grade: clip.grade, x: clip.x, y: clip.y, scale: clip.scale }
+        const frame = { id, kind: 'video', src, start: at, dur: hold, in: held, freeze: held, mute: true, label: 'Freeze', ...(grade ? { grade } : {}), x, y, scale }
         const t2 = trackOf(p, track.id)
         // The hold is an insert: everything from the freeze point on, linked audio included, moves later together.
         for (const tt of p.tracks) if (!tt.locked) shiftAfter(tt, at, hold)
@@ -1276,25 +1298,44 @@ export function applyOps(source, ops) {
       }
       case 'close_gaps': {
         const track = trackOf(p, op.track)
+        if (track.locked) throw new Error(`track ${track.id} is locked`)
         let cursor = 0
+        const touched = new Set()
         for (const clip of track.clips) {
           const delta = cursor - clip.start
-          if (delta < 0) for (const l of linkedOf(p, clip)) l.clip.start = round(l.clip.start + delta)
+          if (delta < 0) {
+            for (const l of linkedOf(p, clip)) {
+              if (l.track.locked) continue
+              l.clip.start = round(Math.max(0, l.clip.start + delta))
+              touched.add(l.track)
+            }
+          }
           clip.start = round(Math.min(clip.start, cursor))
-          cursor = clipEnd(clip)
+          cursor = Math.max(cursor, clipEnd(clip))
         }
+        for (const t of touched) sortTrack(t)
         log.push(`closed gaps on ${op.track}`)
         break
       }
       case 'range': {
         const target = op.comp ? p.comps[op.comp] : p
-        target.range = op.in === null ? null : { in: snapToFrame(op.in ?? target.range?.in ?? 0, p.fps), out: snapToFrame(op.out ?? target.range?.out ?? (op.comp ? compDuration(target) : duration(p)), p.fps) }
+        if (op.in === null) target.range = null
+        else {
+          const nextIn = op.in ?? target.range?.in ?? 0
+          const nextOut = op.out ?? target.range?.out ?? (op.comp ? compDuration(target) : duration(p))
+          if (!Number.isFinite(nextIn) || !Number.isFinite(nextOut) || nextIn < 0 || nextOut < 0) throw new Error('range needs finite non-negative times')
+          target.range = { in: snapToFrame(nextIn, p.fps), out: snapToFrame(nextOut, p.fps) }
+        }
         log.push(target.range ? `range ${target.range.in}–${target.range.out}s` : 'cleared range')
         break
       }
       case 'project': {
-        deepMerge(p, op.set ?? {})
-        log.push(`project: ${Object.keys(op.set ?? {}).join(', ')}`)
+        const set = op.set ?? {}
+        for (const k of ['width', 'height', 'fps']) {
+          if (Object.hasOwn(set, k) && set[k] !== null && (!Number.isFinite(set[k]) || set[k] <= 0)) throw new Error(`project.${k} must be a positive finite number`)
+        }
+        deepMerge(p, set)
+        log.push(`project: ${Object.keys(set).join(', ')}`)
         break
       }
       case 'replace': {
@@ -1549,7 +1590,9 @@ function applyMotionOp(p, op, ctx) {
       return true
     }
     case 'precompose': {
-      const picks = op.ids.map(id => clipOf(id))
+      const uniqueIds = [...new Set(Array.isArray(op.ids) ? op.ids : [])]
+      if (!uniqueIds.length) throw new Error('precompose needs at least one clip')
+      const picks = uniqueIds.map(id => clipOf(id))
       const t0 = Math.min(...picks.map(x => x.clip.start))
       const t1 = Math.max(...picks.map(x => clipEnd(x.clip)))
       const id = nextId(p, 'k')
@@ -1564,24 +1607,28 @@ function applyMotionOp(p, op, ctx) {
         tt.clips.push({ ...clip, start: round(clip.start - t0) })
       }
       const order = p.tracks.map(t => t.id)
-      tracks.sort((a, b) => order.indexOf(a) - order.indexOf(b))
+      tracks.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
+      for (const tt of tracks) sortTrack(tt)
       p.comps[id] = { id, name: op.name ?? 'Precomp', width: p.width, height: p.height, fps: p.fps, duration: round(t1 - t0), background: 'transparent', markers: [], tracks }
       const host = picks.filter(x => x.track.kind === 'video').map(x => x.track).sort((a, b) => order.indexOf(b.id) - order.indexOf(a.id))[0] ?? picks[0].track
       const clipId = nextId(p, 'c')
       host.clips.push({ id: clipId, kind: 'comp', comp: id, start: round(t0), dur: round(t1 - t0), in: 0, label: p.comps[id].name })
       sortTrack(host)
       created.push(id, clipId)
-      log.push(`precomposed ${op.ids.join(', ')} into ${id} (${clipId})`)
+      log.push(`precomposed ${uniqueIds.join(', ')} into ${id} (${clipId})`)
 
       return true
     }
     // motion layers
     case 'add_shape': {
-      const track = videoTrack(Math.max(minDur, op.dur ?? 5))
-      const id = nextId(p, 'c')
+      const dur = op.dur ?? 5
+      if (!Number.isFinite(dur) || dur <= 0) throw new Error('shape duration must be a positive number')
       const type = op.shape?.type ?? 'rect'
+      if (!Object.hasOwn(SHAPE_DEFAULTS, type)) throw new Error(`shape type must be one of ${Object.keys(SHAPE_DEFAULTS).join(', ')}`)
+      const track = videoTrack(Math.max(minDur, dur))
+      const id = nextId(p, 'c')
       const shape = { ...structuredClone(DEFAULT_SHAPE), ...SHAPE_DEFAULTS[type], ...structuredClone(op.shape ?? {}), type }
-      track.clips.push({ id, kind: 'shape', start: timeOf(), dur: snapToFrame(Math.max(minDur, op.dur ?? 5), p.fps), shape, label: op.name ?? `${type[0].toUpperCase()}${type.slice(1)}`, ...structuredClone(op.set ?? {}) })
+      track.clips.push({ id, kind: 'shape', start: timeOf(), dur: snapToFrame(Math.max(minDur, dur), p.fps), shape, label: op.name ?? `${type[0].toUpperCase()}${type.slice(1)}`, ...structuredClone(op.set ?? {}) })
       sortTrack(track)
       created.push(id)
       log.push(`added ${type} shape ${id}`)

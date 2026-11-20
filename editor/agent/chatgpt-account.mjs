@@ -289,7 +289,9 @@ export function createChatGPTAccount(options = {}) {
         response.end(page(title, text))
       }
       if (request.method !== 'GET' || request.headers.host !== `127.0.0.1:${port}`) return respond(400, 'Request refused', 'Start ChatGPT sign-in from Arya Settings.')
-      const url = new URL(request.url, `http://127.0.0.1:${port}`)
+      let url
+      try { url = new URL(request.url, `http://127.0.0.1:${port}`) }
+      catch { return respond(400, 'Request refused', 'Start ChatGPT sign-in from Arya Settings.') }
       if (url.pathname === '/auth/start') {
         if (attempt !== current || current.phase !== 'waiting' || !same(url.searchParams.get('attempt') ?? '', current.startToken)) return respond(404, 'Sign-in link expired', 'Start ChatGPT sign-in again from Arya Settings.')
         // The authorize URL can carry an identity hint, so only this redirect ever holds it.

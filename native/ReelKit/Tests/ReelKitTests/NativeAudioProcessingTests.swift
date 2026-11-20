@@ -218,6 +218,22 @@ final class NativeAudioProcessingTests: XCTestCase {
         XCTAssertEqual(try NativeAudioProcessing.clean(pcm, mode: "voice", options: .init(strength: 0)).count, pcm.count)
     }
 
+    func testWriteFloat32Preserves24BitPrecisionAndClampsOutOfRangeSamples() async throws {
+        let root = try Support.tempFolder("float32-export")
+        let file = root.appendingPathComponent("export.wav")
+        let samples: [Float] = [0, 0.000001, -0.000001, 0.5, 1.8, -1.8, .nan]
+        try NativeAudioProcessing.writeFloat32(.init(channels: [samples, samples], rate: 48000), to: file)
+        let bytes = try Data(contentsOf: file)
+        XCTAssertEqual(Array(bytes[20..<22]), [3, 0])
+        XCTAssertEqual(Array(bytes[34..<36]), [32, 0])
+        let decoded = try await NativeAudioProcessing.decode(file)
+        XCTAssertEqual(decoded.count, samples.count)
+        let expected: [Float] = [0, 0.000001, -0.000001, 0.5, 1.0, -1.0, 0]
+        for channel in decoded.channels {
+            for i in expected.indices { XCTAssertEqual(channel[i], expected[i], accuracy: 1e-7) }
+        }
+    }
+
 }
 
 private final class AnalysisCompletionFlag: @unchecked Sendable {

@@ -17,6 +17,7 @@ export const SHORTCUTS = [
   ['F', 'Match frame (open the source at this frame)'], ['E W D Q', 'Append / insert / overwrite / connect the source clip'],
   ['⌘C ⌘X ⌘V', 'Copy / cut / paste at playhead'], ['⌘D', 'Duplicate'], ['⌘A', 'Select all'], ['⌘Z ⇧⌘Z', 'Undo / redo'],
   ['⌘= ⌘-', 'Zoom timeline'], ['⇧Z', 'Zoom to fit'], ['⌘L', 'Loop playback'], ['⇧1 … ⇧6', 'Media, Edit, Motion, Color, Audio, Deliver pages'],
+  ['Motion: F9 / P S R T A U / Q G Y', 'Easy ease · reveal properties · shape, pen and anchor tools'],
   ['⌘E', 'Export'], ['⌘,', 'Settings'], ['F6 / ⇧F6', 'Next / previous panel'], ['/', 'Ask Arya'], ['⌥-click', 'Reference anything to the assistant'], ['?', 'This list'],
 ]
 
@@ -179,8 +180,11 @@ export function installKeys() {
   window.addEventListener('keydown', e => {
     if (e.defaultPrevented) return
     if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); set({ settingsOpen: !store.settingsOpen, settingsOtherWays: false }); return }
-    if (store.settingsOpen) return
-    if (e.key === 'Escape' && store.showKeys) { e.preventDefault(); set({ showKeys: false }); return }
+    if (store.settingsOpen || store.assistantSharingReviewOpen) return
+    if (store.showKeys) {
+      if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); set({ showKeys: false }) }
+      return
+    }
     if (e.target.closest?.(COMMAND_INPUTS)) return
     if (CONTROL_KEYS.has(e.key) && e.target.closest?.(FOCUSABLE_CONTROLS)) return
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
@@ -257,6 +261,7 @@ export function installKeys() {
           handled = false
       }
     } else {
+      if (k === '/' && store.caps?.host === 'browser-local') return
       switch (lower) {
         case ' ':
           runEditorCommand('playPause')

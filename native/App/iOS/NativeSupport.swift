@@ -407,19 +407,26 @@ struct NativeProView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 18) {
-                Button("Restore Purchases") { Task { await store.restore() } }
-                    .disabled(store.status == .restoring)
-                    .accessibilityIdentifier("pro.restore")
-                Link("Terms of Use", destination: Self.termsURL)
-                Link("Privacy Policy", destination: Self.privacyURL)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 18) { footerLinks }
+                VStack(alignment: .leading, spacing: 4) { footerLinks }
             }
             .font(.footnote.weight(.semibold))
-            .frame(minHeight: 44)
             Text("Apple handles payment. Arya has no account system and keeps no purchase history. Pro works on every iPhone, iPad and Mac signed in to the same Apple Account.")
                 .font(.footnote).foregroundStyle(NativeEditorStyle.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    @ViewBuilder private var footerLinks: some View {
+        Button("Restore Purchases") { Task { await store.restore() } }
+            .frame(minHeight: 44)
+            .disabled(store.status == .restoring)
+            .accessibilityIdentifier("pro.restore")
+        Link("Terms of Use", destination: Self.termsURL)
+            .frame(minHeight: 44)
+        Link("Privacy Policy", destination: Self.privacyURL)
+            .frame(minHeight: 44)
     }
 
     static func title(_ plan: ProPlan) -> String {

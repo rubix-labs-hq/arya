@@ -34,6 +34,9 @@ test('static package contains only explicit files and separates editor CSP from 
   assert.equal(config.routes.at(-1).status, 404)
   assert.match(config.routes[2].headers['Content-Security-Policy'], /sha256-/)
   assert.doesNotMatch(config.routes[1].headers['Content-Security-Policy'], /unsafe-inline/)
+  assert.equal(config.routes[3].src, '/assets/(.*)')
+  assert.equal(config.routes[3].continue, true)
+  assert.equal(config.routes[3].headers['Cache-Control'], 'public, max-age=3600, stale-while-revalidate=86400')
   for (const path of ['editor/server.mjs', '.env', 'receipt.json']) await assert.rejects(access(join(f.output, '.vercel/output/static', path)))
 })
 test('search indexing follows the site config and always excludes the editor', async t => {

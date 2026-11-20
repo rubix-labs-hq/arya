@@ -40,7 +40,7 @@ function uploadFiles(files) {
   try {
     if (!store.project) await api('/api/new', { name: 'Untitled' })
     const captured = host.browser.context()
-    return await uploadMediaFiles(files, { upload: file => { host.browser.assert(captured); return host.upload(file) }, request: (path, body) => { host.browser.assert(captured); return api(path, body) }, notify: toast, assets: store.project?.assets })
+    return await uploadMediaFiles(files, { local: true, upload: file => { host.browser.assert(captured); return host.upload(file) }, request: (path, body) => { host.browser.assert(captured); return api(path, body) }, notify: toast, assets: store.project?.assets })
   } catch (error) { toast(error.message, 'error'); return null }
   })()
 }
@@ -73,7 +73,7 @@ export function analyzeMenu(p, src) {
   const asset = p.assets[src] ?? {}
 
   return [
-    { label: 'Reference to Assistant', run: () => addRef({ kind: 'media', id: src, label: mediaDisplayName(src, asset) }) },
+    host.kind === 'browser-local' ? null : { label: 'Reference to Assistant', run: () => addRef({ kind: 'media', id: src, label: mediaDisplayName(src, asset) }) },
     { label: 'Open in source viewer', run: () => openSource(src) },
     asset.generated?.kind === 'original-music' && asset.generated?.renderer === 'arya-score-synth/1' ? { label: 'Music details & reuse…', run: () => showMusicDetails(src) } : null,
     { label: 'Append to timeline', hint: 'E', run: () => edit({ op: 'append', src }) },
@@ -85,7 +85,7 @@ export function analyzeMenu(p, src) {
     asset.hasAudio ? { label: 'Measure loudness (LUFS)', disabled: store.caps.analysis?.loudness === false, run: () => analyze(src, 'loudness') } : null,
     asset.hasAudio ? { label: store.caps.transcriber === 'speech' ? 'Transcribe with Apple Speech' : 'Transcribe (whisper)', disabled: store.caps.analysis?.transcript === false, run: () => analyze(src, 'transcript') } : null,
     { sep: true },
-    { label: 'Remove from project', danger: true, run: () => api('/api/forget', { paths: [src] }) },
+    { label: 'Remove from project', danger: true, run: () => api('/api/forget', { paths: [src] }).then(() => { if (store.source?.src === src) set({ source: null, viewerMode: 'timeline' }) }).catch(error => toast(error.message, 'error')) },
   ].filter(Boolean)
 }
 
@@ -94,7 +94,7 @@ export function openSource(src) {
 }
 
 async function analyze(src, kind, apply = false) {
-  if (store.caps.analysis?.[kind] === false) return toast(`Open the browser editor to run ${kind} analysis`, 'error')
+  if (store.caps.analysis?.[kind] === false) return toast(host.kind === 'browser-local' ? `${kind} analysis needs Arya for Mac or the local editor.` : `Open the browser editor to run ${kind} analysis`, 'error')
   const timelineAnalysis = ['scenes', 'beats', 'silence'].includes(kind)
   const p = timelineAnalysis ? viewProject() : store.project
   const projectIdentity = store.project
@@ -197,14 +197,9 @@ function MediaCard({ p, src, asset }) {
   const sel = store.source?.src === src
   const display = mediaDisplayModel(src, asset)
 
-  return html`
-    <div class=${`media-card ${sel ? 'sel' : ''}`} draggable="true" title=${display.tooltip}
-      tabIndex="0" role="button" aria-pressed=${sel} aria-label=${display.name}
-      onKeyDown=${e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); set({ source: { src }, viewerMode: store.viewerMode }) } }}
-      onDragStart=${e => e.dataTransfer.setData('application/x-reel', JSON.stringify({ type: 'media', src }))}
-      onDblClick=${() => openSource(src)}
-      onClick=${e => (e.altKey ? addRef({ kind: 'media', id: src, label: display.name }) : set({ source: { src }, viewerMode: store.viewerMode }))}
-      onContextMenu=${e => (e.preventDefault(), openMenu(e.clientX, e.clientY, analyzeMenu(p, src)))}>
+  const hasMusicDetails = asset.generated?.kind === 'original-music' && asset.generated?.renderer === 'arya-score-synth/1'
+  const selectCard = e => (e.altKey && host.kind !== 'browser-local' ? addRef({ kind: 'media', id: src, label: display.name }) : set({ source: { src }, viewerMode: store.viewerMode }))
+  const cardBody = html`
       <div class=${`thumb ${kind}`} onMouseMove=${e => { const r = e.currentTarget.getBoundingClientRect(); setHoverX((e.clientX - r.left) / r.width) }} onMouseLeave=${() => setHoverX(null)}>
         ${strip ? html`<svg class="thumb-picture" viewBox=${`0 0 ${strip.w} ${strip.h}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true"><svg width=${strip.w} height=${strip.h} overflow="hidden"><image href=${strip.url} width=${strip.w * strip.count} height=${strip.h} x=${-idx * strip.w} /></svg></svg>` : null}
         ${!strip ? html`<span class=${`icon media-kind media-kind-${MEDIA_ICON[kind] ?? 'video'}`} aria-hidden="true"></span>` : null}
@@ -213,7 +208,33 @@ function MediaCard({ p, src, asset }) {
       </div>
       <div class="name">${display.name}</div>
       ${asset.generated?.kind === 'original-music' && asset.generated?.renderer?.startsWith('arya-score-synth/') ? html`<small class="media-provenance">Locally synthesized</small>` : null}
-      ${asset.generated?.kind === 'original-music' && asset.generated?.renderer === 'arya-score-synth/1' ? html`<button type="button" class="ghost" draggable="false" style=${{ margin: '4px', minHeight: '44px' }} onClick=${e => { e.stopPropagation(); return showMusicDetails(src) }} onDblClick=${e => e.stopPropagation()} onDragStart=${e => { e.preventDefault(); e.stopPropagation() }}>Music details</button>` : null}
+  `
+
+  if (hasMusicDetails) {
+    return html`
+      <div class=${`media-card ${sel ? 'sel' : ''}`} draggable="true" title=${display.tooltip}
+        onDragStart=${e => e.dataTransfer.setData('application/x-reel', JSON.stringify({ type: 'media', src }))}
+        onContextMenu=${e => (e.preventDefault(), openMenu(e.clientX, e.clientY, analyzeMenu(p, src)))}>
+        <div role="button" tabIndex="0" aria-pressed=${sel} aria-label=${display.name}
+          onKeyDown=${e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); set({ source: { src }, viewerMode: store.viewerMode }) } }}
+          onDblClick=${() => openSource(src)}
+          onClick=${selectCard}>
+          ${cardBody}
+        </div>
+        <button type="button" class="ghost" draggable="false" style=${{ margin: '4px', minHeight: '44px' }} onClick=${e => { e.stopPropagation(); return showMusicDetails(src) }} onDblClick=${e => e.stopPropagation()} onDragStart=${e => { e.preventDefault(); e.stopPropagation() }}>Music details</button>
+      </div>
+    `
+  }
+
+  return html`
+    <div class=${`media-card ${sel ? 'sel' : ''}`} draggable="true" title=${display.tooltip}
+      tabIndex="0" role="button" aria-pressed=${sel} aria-label=${display.name}
+      onKeyDown=${e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); set({ source: { src }, viewerMode: store.viewerMode }) } }}
+      onDragStart=${e => e.dataTransfer.setData('application/x-reel', JSON.stringify({ type: 'media', src }))}
+      onDblClick=${() => openSource(src)}
+      onClick=${selectCard}
+      onContextMenu=${e => (e.preventDefault(), openMenu(e.clientX, e.clientY, analyzeMenu(p, src)))}>
+      ${cardBody}
     </div>
   `
 }

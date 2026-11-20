@@ -1,6 +1,7 @@
 {
   "name": "reel",
   "version": "1.3.0",
+  "icon": "./.claude-plugin/icon.png",
   "author": {
     "name": "Rubix Labs",
     "url": "https://github.com/rubix-labs-hq"

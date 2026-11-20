@@ -14,7 +14,7 @@ const SHAPE_CYCLE = ['rect', 'ellipse', 'polygon', 'star']
 
 export function installMotionKeys() {
   window.addEventListener('keydown', e => {
-    if (store.page !== 'motion' || e.target.closest?.('input, textarea, select, [contenteditable]')) return
+    if (store.page !== 'motion' || store.settingsOpen || store.showKeys || store.assistantSharingReviewOpen || e.target.closest?.('input, textarea, select, [contenteditable], [role="dialog"], [role="alertdialog"], dialog')) return
     const cmd = e.metaKey || e.ctrlKey
     const m = ms()
     const keys = m.keySel
@@ -36,6 +36,7 @@ export function installMotionKeys() {
         handled = false // the editor copies the selected clips
       } else {
         const board = copyKeys(store.project, keys)
+        if (!board) return
         mset({ keyClipboard: board, lastCopy: 'keys' })
         toast(`Copied ${board.items.length} key${board.items.length > 1 ? 's' : ''}`)
       }

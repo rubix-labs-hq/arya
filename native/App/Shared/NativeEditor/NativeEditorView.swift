@@ -308,6 +308,9 @@ struct NativeEditorView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+    #endif
     @ScaledMetric(relativeTo: .body) private var contextHeaderHeight = 44.0
     @ScaledMetric(relativeTo: .caption) private var compactTimelineMinimum = 196.0
     @ScaledMetric(relativeTo: .caption2) private var compactWorkflowItemWidth = 48.0
@@ -391,6 +394,12 @@ struct NativeEditorView: View {
                             Image(systemName: "info.circle")
                             Text(status).lineLimit(1).truncationMode(.tail)
                             Spacer(minLength: 0)
+                            if session.projectReadOnlyReason == nil {
+                                Button { model.status = "" } label: {
+                                    Image(systemName: "xmark").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                                        .padding(4).contentShape(Rectangle())
+                                }.buttonStyle(.plain).accessibilityLabel("Dismiss status")
+                            }
                         }
                     }
                     .font(compact ? .caption : .system(size: 11)).foregroundStyle(NativeEditorStyle.muted)
@@ -488,6 +497,12 @@ struct NativeEditorView: View {
                 else { toggleAssistant() }
             }
             .onChange(of: model.panel) { previous, next in
+                if session.projectReadOnlyReason == nil, !model.status.isEmpty {
+                    let lower = model.status.lowercased()
+                    if !lower.contains("fail") && !lower.contains("error") && !lower.contains("could not") && !lower.contains("unavailable") {
+                        model.status = ""
+                    }
+                }
                 if compact {
                     if !NativeCompactWorkspaceRouting.inlineWorkspaces.contains(next) {
                         model.mobilePanel = next
@@ -594,6 +609,7 @@ struct NativeEditorView: View {
                 finishImportNavigation(requestID: ownerID, panel: panel)
             }) { request in
                 NativeMediaImportSheet(session: session, model: model, request: request).id(request.id)
+                    .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
             }
             .id(ownerID)
     }
@@ -672,7 +688,7 @@ struct NativeEditorView: View {
     }
 
     private func usesCompactLayout(size: CGSize) -> Bool {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         return NativeWorkspaceLayout.compact(width: size.width, height: size.height, mobile: true, accessibilityText: dynamicTypeSize.isAccessibilitySize)
         #else
         return false
@@ -1187,8 +1203,7 @@ struct NativeEditorView: View {
                 .menuStyle(.borderlessButton).frame(width: 30, height: 30)
                 .help("Pane visibility and workspace layouts").accessibilityLabel("Workspace layout")
                 .accessibilityIdentifier("editor.layoutMenu")
-            Button { settingsVisible = true } label: { Image(systemName: "gearshape") }
-                .keyboardShortcut(",", modifiers: [.command])
+            Button { openSettings() } label: { Image(systemName: "gearshape") }
                 .help("Settings (⌘,)").accessibilityLabel("Settings")
             // The menu bar's Show Assistant command owns Option-Command-A on the Mac. A second
             // shortcut on this button made the key do nothing right after a click on it.
@@ -1352,7 +1367,7 @@ struct NativeEditorView: View {
                 if !compact {
                     Button("Import media") { model.showFiles = true }
                         .keyboardShortcut("i", modifiers: [.command])
-                        .accessibilityIdentifier("editor.importMedia")
+                        .accessibilityIdentifier("editor.menu.importMedia")
                     Button("Project library") { libraryVisible = true }
                 }
                 Button("Figma") { select(.figma, compact: compact) }
@@ -1363,9 +1378,9 @@ struct NativeEditorView: View {
                 Toggle("Show timeline", isOn: $timelineVisible)
                 if compact {
                     Menu("Timeline size") {
-                        Button("Compact") { timelineHeight = 140 }
-                        Button("Balanced") { timelineHeight = 200 }
-                        Button("Large") { timelineHeight = 300 }
+                        Button("Compact") { timelineHeight = 180 }
+                        Button("Balanced") { timelineHeight = 260 }
+                        Button("Large") { timelineHeight = 360 }
                     }
                 } else {
                     Toggle("Show media", isOn: mediaToggle).disabled(model.panel == .media)
@@ -1523,6 +1538,9 @@ private struct NativeDesktopChromeButtonStyle: ButtonStyle {
         let selected: Bool
         @Environment(\.isEnabled) private var enabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+    #endif
         @State private var hovered = false
 
         var body: some View {
@@ -1543,7 +1561,7 @@ private struct NativeDesktopChromeButtonStyle: ButtonStyle {
 
 private struct NativeResizeDivider: View {
     static var thickness: Double {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         return 44
         #else
         return 6
@@ -1599,7 +1617,7 @@ private struct NativeSettingsCategoryControl: View {
 
     private var options: [(value: String, title: String)] {
         var all = [(value: "assistant", title: "Assistant accounts"), (value: "figma", title: "Figma")]
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         all.append((value: "interaction", title: "Interaction"))
         #endif
         return all
@@ -1812,6 +1830,7 @@ private struct NativeEditorPreferences: View {
                     NativeProView(store: proStore)
                         .toolbar { Button("Done") { supportVisible = false } }
                 }
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
             }
             #endif
             Rectangle().fill(NativeEditorStyle.line).frame(height: 1)
@@ -1827,7 +1846,10 @@ private struct NativeEditorPreferences: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         #endif
         .background(NativeEditorStyle.panel)
-        .sheet(isPresented: $gettingStartedVisible) { NativeGettingStartedSheet() }
+        .sheet(isPresented: $gettingStartedVisible) {
+            NativeGettingStartedSheet()
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+        }
     }
 }
 

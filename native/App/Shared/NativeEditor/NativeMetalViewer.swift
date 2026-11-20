@@ -90,7 +90,7 @@ private final class MetalPresenter: NSObject, MTKViewDelegate {
     }
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { view.draw() }
     func draw(in view: MTKView) {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         guard UIApplication.shared.applicationState == .active else {
             #if DEBUG
             NativePresentationDiagnostics.inactiveDraws += 1

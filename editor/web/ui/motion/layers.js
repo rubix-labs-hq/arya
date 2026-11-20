@@ -44,10 +44,12 @@ function drag(e, { move, up }) {
   const fin = ev => {
     removeEventListener('pointermove', mv)
     removeEventListener('pointerup', fin)
-    up?.(ev, moved)
+    removeEventListener('pointercancel', fin)
+    up?.(ev, ev.type === 'pointercancel' ? false : moved)
   }
   addEventListener('pointermove', mv)
   addEventListener('pointerup', fin)
+  addEventListener('pointercancel', fin)
 }
 
 const layerName = c => c.label ?? (c.kind === 'title' ? c.title?.text?.split('\n')[0] : String(c.src ?? c.kind).split('/').pop())
@@ -390,7 +392,7 @@ function LayerRow({ row, view, X, zoom, marquee, setWhip }) {
   return html`
     <div class=${`mt-row layer ${isSel ? 'sel' : ''} ${visible ? '' : 'off'}`} data-layer=${c.id} style=${{ height: `${ROW}px` }}>
       <div class="mt-l mt-grid" onPointerDown=${e => !e.target.closest('button, select, input, .whip') && select(e)} onDblClick=${() => c.kind === 'comp' && openComposition(c.comp)}>
-        <button class="tw" aria-label=${`${m.open[c.id] ? 'Collapse' : 'Expand'} ${c.name ?? c.id}`} aria-expanded=${!!m.open[c.id]} onClick=${toggleOpen}>${m.open[c.id] ? '▾' : '▸'}</button>
+        <button class="tw" aria-label=${`${m.open[c.id] ? 'Collapse' : 'Expand'} ${layerName(c)}`} aria-expanded=${!!m.open[c.id]} onClick=${toggleOpen}>${m.open[c.id] ? '▾' : '▸'}</button>
         <span class="c num">${n}</span>
         <button class=${`sw ${visible ? 'on' : ''}`} aria-label="Visible" aria-pressed=${visible} title=${visible ? 'Hide layer' : 'Show layer'} onClick=${() => edit({ op: 'update', id: c.id, set: { enabled: visible ? false : null } })}>${visible ? html`<span class="ui-glyph glyph-eye" aria-hidden="true"></span>` : '·'}</button>
         <button class=${`sw ${c.solo ? 'on solo' : ''}`} aria-label="Solo" aria-pressed=${Boolean(c.solo)} title="Solo: hides the tracks of every layer that is not soloed" onClick=${() => edit(soloOps(view, c.id), c.solo ? 'unsolo' : 'solo')}>S</button>
@@ -537,7 +539,7 @@ function PropRow({ row, view, X, sel, marquee }) {
       <div class="mt-l" style=${{ paddingLeft: `${row.depth * 16 + 30}px` }}>
         <button class=${`stopwatch ${keys.length ? 'on' : ''} ${hasExpr ? 'expr' : ''}`} aria-label=${`Animate ${r.label}`} aria-pressed=${keys.length > 0} title="Stopwatch: animate this property (click again to remove its keys). ⌥-click: expression" onClick=${stopwatch}><span class="ui-glyph glyph-stopwatch" aria-hidden="true"></span></button>
         <span class="plabel" onClick=${pickProp} title="Click to show in the graph editor (⇧ adds)">${r.label}${hasExpr ? html`<span class="eq">=</span>` : null}</span>
-        <${Num} label="↔" value=${Math.round(value * 1000) / 1000} step=${r.step} min=${r.min} max=${r.max} unit=${r.unit} digits=${r.digits}
+        <${Num} label="↔" ariaLabel=${r.label} value=${Math.round(value * 1000) / 1000} step=${r.step} min=${r.min} max=${r.max} unit=${r.unit} digits=${r.digits}
           onChange=${v => preview([write(v)])} onCommit=${v => commit([write(v)], `${prop} = ${v}`)} />
         <span class="kf">
           <button class="kf-nav" aria-label=${`Previous ${r.label} keyframe`} disabled=${!prev} onClick=${() => prev && player.seek(c.start + prev[0])}>‹</button>

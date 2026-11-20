@@ -92,7 +92,7 @@ struct ReelMacApp: App {
                 .keyboardShortcut(editorShortcut("a", modifiers: [.command, .option]))
                 .disabled(session.folder == nil || session.useWebEditor)
             Divider()
-            ForEach(NativePanel.allCases) { page in
+            ForEach(NativePanel.workflow) { page in
                 Button("\(page.name) Page") { session.showPage(page.rawValue) }.disabled(session.folder == nil)
             }
             // The browser editor is a development aid, under the same rule as the workspace menu.
@@ -231,13 +231,21 @@ struct ReelMacApp: App {
         popup.addItems(withTitles: formats.map(\.0))
         popup.setAccessibilityIdentifier("newProject.frameSize")
         let label = NSTextField(labelWithString: "Frame size:")
-        let row = NSStackView(views: [label, popup])
+        let frameRates: [(String, Double)] = [("24 fps", 24), ("25 fps", 25), ("30 fps", 30), ("60 fps", 60)]
+        let fpsPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        fpsPopup.addItems(withTitles: frameRates.map(\.0))
+        fpsPopup.selectItem(at: 2)
+        fpsPopup.setAccessibilityIdentifier("newProject.frameRate")
+        let fpsLabel = NSTextField(labelWithString: "Frame rate:")
+        let row = NSStackView(views: [label, popup, fpsLabel, fpsPopup])
         row.orientation = .horizontal
+        row.spacing = 10
         row.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
         panel.accessoryView = row
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let format = formats[max(0, popup.indexOfSelectedItem)]
-        session.create(at: url, width: format.1, height: format.2)
+        let fps = frameRates[max(0, fpsPopup.indexOfSelectedItem)].1
+        session.create(at: url, width: format.1, height: format.2, fps: fps)
     }
 
     private func importMedia() {

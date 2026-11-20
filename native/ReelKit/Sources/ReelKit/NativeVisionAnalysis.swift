@@ -6,7 +6,8 @@ import Vision
 public enum NativeVisionAnalysis {
     /// The initial rectangle uses normalized top-left coordinates, matching the editor viewer.
     public static func track(file: URL, from: Double, duration: Double, fps: Double, rect: CGRect) async throws -> JSON {
-        guard from>=0,duration>0,fps>0,fps<=120,rect.width>0,rect.height>0,rect.minX>=0,rect.minY>=0,rect.maxX<=1,rect.maxY<=1 else { throw ReelBackend.APIError("Give a valid range and normalized tracking rectangle.") }
+        guard from.isFinite,duration.isFinite,fps.isFinite,rect.minX.isFinite,rect.minY.isFinite,rect.width.isFinite,rect.height.isFinite,
+              from>=0,duration>0,duration<=3600,fps>0,fps<=120,rect.width>0,rect.height>0,rect.minX>=0,rect.minY>=0,rect.maxX<=1,rect.maxY<=1 else { throw ReelBackend.APIError("Give a valid range and normalized tracking rectangle.") }
         let generator=AVAssetImageGenerator(asset:AVURLAsset(url:file)); generator.appliesPreferredTrackTransform=true; generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = .zero
         let initial=VNDetectedObjectObservation(boundingBox:CGRect(x:rect.minX,y:1-rect.maxY,width:rect.width,height:rect.height))
         let request=VNTrackObjectRequest(detectedObjectObservation:initial); request.trackingLevel = .accurate
@@ -37,7 +38,8 @@ public enum NativeVisionAnalysis {
     }
 
     public static func autoReframe(file: URL, from: Double, duration: Double, width: Double, height: Double, fps: Double = 2) async throws -> JSON {
-        guard from>=0,duration>0,width>0,height>0,fps>0,fps<=30 else { throw ReelBackend.APIError("Give a valid auto reframe range and target dimensions.") }
+        guard from.isFinite,duration.isFinite,width.isFinite,height.isFinite,fps.isFinite,
+              from>=0,duration>0,duration<=3600,width>0,height>0,fps>0,fps<=30 else { throw ReelBackend.APIError("Give a valid auto reframe range and target dimensions.") }
         let generator=AVAssetImageGenerator(asset:AVURLAsset(url:file)); generator.appliesPreferredTrackTransform=true
         generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = .zero
         var centers:[CGPoint]=[],detected:[Bool]=[]; var sourceW=0,sourceH=0
@@ -48,6 +50,7 @@ public enum NativeVisionAnalysis {
             let result=(try JSON.parse(saliency(image).text) as? [String:Any]) ?? [:],center=result["center"] as? [Double] ?? [Double(sourceW)/2,Double(sourceH)/2]
             centers.append(CGPoint(x:center[0],y:center[1])); detected.append(result["detected"] as? Bool ?? false)
         }
+        guard sourceW>0,sourceH>0,!centers.isEmpty else { throw ReelBackend.APIError("Auto reframe could not decode any video frames.") }
         let scale=max(width/Double(sourceW),height/Double(sourceH)),radius=max(1,Int(fps)),maxX=max(0,(Double(sourceW)*scale-width)/2),maxY=max(0,(Double(sourceH)*scale-height)/2)
         let samples=centers.indices.map { i -> JSON in
             let a=max(0,i-radius),b=min(centers.count-1,i+radius),sum=centers[a...b].reduce(CGPoint.zero) { CGPoint(x:$0.x+$1.x,y:$0.y+$1.y) },center=CGPoint(x:sum.x/Double(b-a+1),y:sum.y/Double(b-a+1))
@@ -66,7 +69,9 @@ public enum NativeVisionAnalysis {
         let segment=request ?? VNGeneratePersonSegmentationRequest(); segment.qualityLevel = .accurate; segment.outputPixelFormat=kCVPixelFormatType_OneComponent8
         try VNImageRequestHandler(cgImage:image,options:[:]).perform([segment])
         guard let buffer=segment.results?.first?.pixelBuffer else { throw ReelBackend.APIError("Vision returned no person mask.") }
-        let mask=CIImage(cvPixelBuffer:buffer),sx=Double(image.width)/mask.extent.width,sy=Double(image.height)/mask.extent.height
+        let mask=CIImage(cvPixelBuffer:buffer)
+        guard mask.extent.width > 0, mask.extent.height > 0 else { throw ReelBackend.APIError("Vision returned an empty person mask.") }
+        let sx=Double(image.width)/mask.extent.width,sy=Double(image.height)/mask.extent.height
         return mask.transformed(by:CGAffineTransform(scaleX:sx,y:sy)).cropped(to:CGRect(x:0,y:0,width:image.width,height:image.height))
     }
 }

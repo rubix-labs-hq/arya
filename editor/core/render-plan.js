@@ -177,19 +177,21 @@ function transformValues(p, c, local, extra = { dx: 0, dy: 0, scale: 1 }) {
   }
 }
 
+/** The parent-chain matrix applied before a clip's own local matrix, safe even when this clip has scale 0. */
+function parentWorldMatrix(p, c, t, depth = 0) {
+  if (!c.parent || depth >= 32) return [1, 0, 0, 1, 0, 0]
+  const parent = p.tracks.flatMap(tr => tr.clips).find(x => x.id === c.parent)
+  if (!parent) return [1, 0, 0, 1, 0, 0]
+  const now = worldMatrix(p, parent, Math.max(parent.start, Math.min(clipEnd(parent), t)), undefined, depth + 1)
+  const ref = c.parentRef ? localMatrix(c.parentRef) : localMatrix(transformValues(p, parent, 0))
+  return mul(now, inverse(ref))
+}
+
 /** The world matrix of a clip at timeline time t, parents applied (relative to their pose when parented). */
 export function worldMatrix(p, c, t, extra, depth = 0) {
-  let M = localMatrix(transformValues(p, c, t - c.start, extra))
-  if (c.parent && depth < 32) {
-    const parent = p.tracks.flatMap(tr => tr.clips).find(x => x.id === c.parent)
-    if (parent) {
-      const now = worldMatrix(p, parent, Math.max(parent.start, Math.min(clipEnd(parent), t)), undefined, depth + 1)
-      const ref = c.parentRef ? localMatrix(c.parentRef) : localMatrix(transformValues(p, parent, 0))
-      M = mul(mul(now, inverse(ref)), M)
-    }
-  }
-
-  return M
+  const M = localMatrix(transformValues(p, c, t - c.start, extra))
+  if (!c.parent || depth >= 32) return M
+  return mul(parentWorldMatrix(p, c, t, depth), M)
 }
 
 function resolved(p, c, value, prefix, local) {
@@ -199,7 +201,10 @@ function resolved(p, c, value, prefix, local) {
     const path = prop.slice(prefix.length).split('.')
     if (path.some(part => !part || ['__proto__', 'prototype', 'constructor'].includes(part))) continue
     let obj = out
-    for (const key of path.slice(0, -1)) obj = obj[key] ??= {}
+    for (const key of path.slice(0, -1)) {
+      if (!obj[key] || typeof obj[key] !== 'object' || Array.isArray(obj[key])) obj[key] = {}
+      obj = obj[key]
+    }
     obj[path[path.length - 1]] = valueAt(p, c, prop, local)
   }
   return out
@@ -212,16 +217,21 @@ export function framePlan(root, t, comp = null, depth = 0) {
   const clipPlan = c => {
     const local = t - c.start
     const extra = c.kind === 'title' ? titleAnim(c, local) : { dx: 0, dy: 0, scale: 1, opacity: 1, blur: 0 }
+    const localM = localMatrix(transformValues(view, c, local, extra))
     const matrix = worldMatrix(view, c, t, extra)
     const pose = transformValues(view, c, local)
-    const parentMatrix = mul(matrix, inverse(localMatrix(transformValues(view, c, local, extra))))
+    const det = localM[0] * localM[3] - localM[1] * localM[2]
+    const parentMatrix = Math.abs(det) > 1e-12 ? mul(matrix, inverse(localM)) : parentWorldMatrix(view, c, t)
     let src = c.src
     let st = sourceTime(view, c, t)
     if (c.kind === 'multicam') {
-      const mt = (c.in ?? 0) + local * (c.speed ?? 1)
-      const angle = c.angles[angleAt(c, mt)]
-      src = angle.src
-      st = Math.max(0, Math.min((root.assets[src]?.duration ?? Infinity) - 0.001, mt + (angle.offset ?? 0)))
+      const speed = Number.isFinite(c.speed) && c.speed > 0 ? c.speed : 1
+      const mt = c.reverse ? (c.in ?? 0) + (c.dur - local) * speed : (c.in ?? 0) + local * speed
+      const angle = Array.isArray(c.angles) && c.angles.length ? c.angles[angleAt(c, mt)] : null
+      if (angle) {
+        src = angle.src
+        st = Math.max(0, Math.min((root.assets[src]?.duration ?? Infinity) - 0.001, mt + (angle.offset ?? 0)))
+      }
     }
     const fx = effectsOf(view, c, local)
     if (extra.blur) fx.blur = (fx.blur ?? 0) + extra.blur

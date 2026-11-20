@@ -20,6 +20,7 @@ Arya was called Reel during development. Some documents still use that name, and
 
 - [Native builds and distribution](native-release.md): clean-source setup, verification, archives and notarization.
 - [Mac distribution and installation](arya-distribution.md): the DMG builder, install, update, rollback and uninstall.
+- [App Store release](app-store-release.md): iPhone, iPad and Mac App Store build and submission notes.
 - [UI and interaction QA](ui-qa.md): manual checks before a release.
 
 ## Assistant and integrations
@@ -35,6 +36,8 @@ Arya was called Reel during development. Some documents still use that name, and
 - [Native editor parity](design/native-editor-parity.md)
 - [Browser settings and panel access](design/browser-editor-settings.md)
 - [Creative library and animation context](design/creative-library.md)
+- [Device UX audit](design/device-ux-audit.md)
+- [Launch campaign notes](design/launch-campaign.md)
 
 ## Elsewhere in the repository
 

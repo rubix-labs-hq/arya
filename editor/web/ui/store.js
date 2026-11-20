@@ -214,7 +214,10 @@ export function useTime() {
     }
     timeListeners.add(fn)
 
-    return () => timeListeners.delete(fn)
+    return () => {
+      timeListeners.delete(fn)
+      if (raf) cancelAnimationFrame(raf)
+    }
   }, [])
 
   return time.t
@@ -315,31 +318,32 @@ export function connect(onProject) {
     hello: d => set({ connected: true, ...(historyDepth(d?.history) ? { history: historyDepth(d.history) } : {}), ...(d?.session?.id ? { session: d.session } : {}) }),
     error: () => set({ connected: false }),
     project: d => {
-      if (d.version < store.version) return
+      const switched = host.kind === 'browser-local' && d.root && d.root !== store.root
+      if (!switched && d.version < store.version) return
       // An event without a depth (the hosted editor) clears a stale one, so Undo and Redo stay enabled.
       const history = historyDepth(d.history)
-      if (d.who === 'you' && pending > 0) {
+      if (!switched && d.who === 'you' && pending > 0) {
         set({ version: d.version, history })
 
         return
       }
-      const highlight = new Map(store.highlight)
-      const made = changeReceipt(store.project, d.project, { version: d.version, who: d.who, at: d.at })
+      const highlight = switched ? new Map() : new Map(store.highlight)
+      const made = switched ? null : changeReceipt(store.project, d.project, { version: d.version, who: d.who, at: d.at })
       // The plain sentences the server returns with an assistant edit travel with its receipt.
       const notes = Array.isArray(d.notes) ? d.notes.filter(note => typeof note === 'string' && note.trim()).slice(0, 10).map(note => note.slice(0, 700)) : []
       // The server session tags the receipt, because versions start again with each one.
       const receipt = made && { ...made, ...(notes.length ? { notes } : {}), session: store.session?.id ?? null }
-      let receipts = store.receipts
+      let receipts = switched ? [] : store.receipts
       if (receipt) {
         receipts = [...receipts, { ...receipt, displayBytes: JSON.stringify(receipt).length }].slice(-30)
         let bytes = receipts.reduce((sum, item) => sum + (item.displayBytes ?? 0), 0)
         while (receipts.length > 1 && bytes > 4 * 1024 * 1024) bytes -= receipts.shift().displayBytes ?? 0
       }
-      if (d.who !== 'you' && store.project && d.project) {
+      if (!switched && d.who !== 'you' && store.project && d.project) {
         // Include changed layers in nested compositions.
         if (receipt) for (const clip of receipt.clips) if (clip.status !== 'deleted') highlight.set(clip.id, performance.now())
       }
-      set({ ...(host.kind === 'browser-local' && d.root && d.root !== store.root ? { root: d.root, source: null, selection: [], selMarker: null, selTrack: null, openComp: null, viewerMode: 'timeline', jobs: d.jobs ?? [] } : {}), project: d.project, version: d.version, highlight, receipts, history })
+      set({ ...(switched ? { root: d.root, source: null, selection: [], selMarker: null, selTrack: null, openComp: null, viewerMode: 'timeline', jobs: d.jobs ?? [], stills: [], wipe: null, refs: [], deliverRange: null } : {}), project: d.project, version: d.version, highlight, receipts, history })
       onProject?.(d)
     },
     activity: a => set(s => ({ activity: [...s.activity, a].slice(-60) })),
@@ -360,7 +364,7 @@ export function connect(onProject) {
 }
 
 export function selectedClips() {
-  const p = store.project
+  const p = viewProject()
   if (!p) return []
   const ids = new Set(store.selection)
 

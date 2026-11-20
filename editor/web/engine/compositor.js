@@ -333,6 +333,41 @@ export class Compositor {
     const gl = canvas.getContext('webgl2', { premultipliedAlpha: true, preserveDrawingBuffer: true, antialias: false, alpha })
     if (!gl) throw new Error('WebGL2 is not available')
     this.gl = gl
+    this.contextLost = false
+    this.onContextRestored = null
+    this.textures = new Map()
+    this.targets = {}
+    this.curveTextures = new Map()
+    this.luts = new Map()
+    this.lutGeneration = 0
+    this.lutBytes = 0
+    this.lutExpected = null
+    this.lutAbort = null
+    this.size = [0, 0]
+    this._initGL()
+    canvas.addEventListener?.('webglcontextlost', e => {
+      e.preventDefault()
+      this.contextLost = true
+    })
+    canvas.addEventListener?.('webglcontextrestored', () => {
+      this.contextLost = false
+      this.textures.clear()
+      this.targets = {}
+      this.pool?.clear()
+      this.curveTextures.clear()
+      this.luts.clear()
+      this.lutBytes = 0
+      this.lutExpected = null
+      this.size = [0, 0]
+      this.deviceRenderEdge = undefined
+      this._initGL()
+      this.onContextRestored?.()
+    })
+  }
+
+  _initGL() {
+    const gl = this.gl
+    const alpha = this.alpha
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
     this.programs = {
       layer: this.program(VERT, LAYER),
@@ -350,17 +385,15 @@ export class Compositor {
     gl.bindVertexArray(this.vao)
     gl.enableVertexAttribArray(0)
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0)
-    this.textures = new Map()
-    this.targets = {}
-    this.curveTextures = new Map()
-    this.luts = new Map()
-    this.lutGeneration = 0
-    this.lutBytes = 0
-    this.lutExpected = null
-    this.lutAbort = null
-    this.size = [0, 0]
     this.blankCurves = this.makeCurveTexture(null)
     this.blankLut = this.makeLut3d({ size: 2, data: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1]) })
+  }
+
+  clearTextures() {
+    for (const entry of this.textures.values()) this.gl.deleteTexture(entry.tex)
+    this.textures.clear()
+    for (const tex of this.curveTextures.values()) this.gl.deleteTexture(tex)
+    this.curveTextures.clear()
   }
 
   program(vs, fs) {

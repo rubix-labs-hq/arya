@@ -50,6 +50,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]]] : acc), []))
 const ROOT = path.resolve(args.root ?? process.cwd())
 const PORT = Number(args.port ?? process.env.PORT ?? 4870)
+if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65535) throw new Error(`Invalid port: ${args.port ?? process.env.PORT}`)
 const FILE = path.join(ROOT, 'reel.project.json')
 const DOT = path.join(ROOT, '.reel')
 const CACHE = path.join(DOT, 'cache')
@@ -362,12 +363,24 @@ function send(res, status, body, headers = {}) {
   res.end(data)
 }
 
+const EDITOR_CSP = (() => {
+  try {
+    const html = fs.readFileSync(path.join(HERE, 'web', 'index.html'), 'utf8')
+    const hashes = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
+      .filter(m => !/\bsrc\s*=/.test(m[1]) && m[2].trim())
+      .map(m => `'sha256-${createHash('sha256').update(m[2]).digest('base64')}'`)
+    return `default-src 'self'; script-src 'self' ${hashes.join(' ')}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`
+  } catch {
+    return "frame-ancestors 'none'"
+  }
+})()
+
 async function readBody(req, limit = 1e9) {
   const chunks = []
   let size = 0
   for await (const chunk of req) {
     size += chunk.length
-    if (size > limit) throw new Error('body too large')
+    if (size > limit) throw Object.assign(new Error('body too large'), { status: 413 })
     chunks.push(chunk)
   }
 
@@ -376,8 +389,12 @@ async function readBody(req, limit = 1e9) {
 
 async function readJson(req) {
   const buf = await readBody(req, 50e6)
-
-  return buf.length ? JSON.parse(buf.toString('utf8')) : {}
+  if (!buf.length) return {}
+  try {
+    return JSON.parse(buf.toString('utf8'))
+  } catch {
+    throw Object.assign(new Error('Invalid JSON request body'), { status: 400 })
+  }
 }
 
 // .mts names both AVCHD transport streams and TypeScript modules. Outside the project an .mts
@@ -405,7 +422,7 @@ function resolveMedia(rel) {
     catch (error) { if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR' || path.dirname(folder) === folder) throw new Error(`media outside the project: ${rel}`) }
   }
   const root = fs.realpathSync(ROOT)
-  if (real === root || real.startsWith(root + path.sep)) return norm
+  if (real === root || real.startsWith(root + path.sep)) return real
   // A registered path or a symlink may reach media, LUTs or fonts elsewhere, but never another kind of file.
   // Return the checked real path, so a symlink swapped in afterwards is not followed.
   if (EXTERNAL_FILE_EXT.test(real) && (!fs.existsSync(real) || fs.statSync(real).isFile() && transportStreamOrOther(real))) return real
@@ -520,21 +537,23 @@ async function ensureProxy(rel, asset) {
 
 async function makeProxy(rel, asset) {
   if (!asset.proxy) return
-  const out = path.join(ROOT, asset.proxy)
+  const out = guardedOutput(ROOT, path.join(ROOT, asset.proxy))
   if (fs.existsSync(out)) return
-  fs.mkdirSync(path.dirname(out), { recursive: true })
+  fs.mkdirSync(guardedOutput(ROOT, path.dirname(out)), { recursive: true })
   const abs = resolveMedia(rel)
   await once(`proxy:${out}`, async () => {
     pushActivity('reel', `making a playable proxy for ${rel}`)
-    const tmp = `${out}.part${path.extname(out)}`
-    if (out.endsWith('.png')) await run('ffmpeg', ['-nostdin', '-y', '-loglevel', 'error', '-i', abs, '-frames:v', '1', tmp])
-    else {
-      await run('ffmpeg', ['-nostdin', '-y', '-loglevel', 'error', '-i', abs, '-map', '0:v:0', '-map', '0:a?', '-vf', "scale='min(1920,iw)':-2", '-c:v', 'h264_videotoolbox', '-b:v', '12M', '-g', '15', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', tmp])
-    }
-    assertAssistantPublication()
-    fs.renameSync(tmp, out)
-    broadcast('media', { src: rel, proxy: asset.proxy })
-    pushActivity('reel', `proxy ready for ${rel}`)
+    const tmp = guardedOutput(ROOT, `${out}.${randomUUID()}.part${path.extname(out)}`)
+    try {
+      if (out.endsWith('.png')) await run('ffmpeg', ['-nostdin', '-y', '-loglevel', 'error', '-i', abs, '-frames:v', '1', tmp])
+      else {
+        await run('ffmpeg', ['-nostdin', '-y', '-loglevel', 'error', '-i', abs, '-map', '0:v:0', '-map', '0:a?', '-vf', "scale='min(1920,iw)':-2", '-c:v', 'h264_videotoolbox', '-b:v', '12M', '-g', '15', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', tmp])
+      }
+      assertAssistantPublication()
+      fs.renameSync(guardedOutput(ROOT, tmp), guardedOutput(ROOT, out))
+      broadcast('media', { src: rel, proxy: asset.proxy })
+      pushActivity('reel', `proxy ready for ${rel}`)
+    } finally { try { fs.unlinkSync(guardedOutput(ROOT, tmp)) } catch {} }
   })
 }
 
@@ -603,11 +622,14 @@ async function cachedPeaks(rel) {
 async function peaks(rel) {
   const abs = resolveMedia(rel)
   const key = await cacheKey(abs, 'peaks2')
-  const file = path.join(CACHE, key, 'peaks.json')
-  if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'))
+  const dir = guardedOutput(ROOT, path.join(CACHE, key))
+  const file = guardedOutput(ROOT, path.join(dir, 'peaks.json'))
+  if (fs.existsSync(file)) {
+    try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch {}
+  }
 
   return once(`peaks:${key}`, async () => {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.mkdirSync(guardedOutput(ROOT, dir), { recursive: true })
     const rate = 16000
     const perSec = 100
     const { stdout } = await run('ffmpeg', ['-nostdin', '-loglevel', 'error', '-i', abs, '-vn', '-ac', '1', '-ar', String(rate), '-f', 's16le', 'pipe:1'], { encoding: 'buffer' })
@@ -626,7 +648,11 @@ async function peaks(rel) {
     }
     const data = { perSec, peaks: out }
     assertAssistantPublication()
-    fs.writeFileSync(file, JSON.stringify(data))
+    const temporary = guardedOutput(ROOT, path.join(dir, `peaks-${randomUUID()}.part.json`))
+    try {
+      fs.writeFileSync(temporary, JSON.stringify(data), { flag: 'wx' })
+      fs.renameSync(guardedOutput(ROOT, temporary), guardedOutput(ROOT, file))
+    } finally { try { fs.unlinkSync(guardedOutput(ROOT, temporary)) } catch {} }
 
     return data
   })
@@ -640,14 +666,18 @@ async function audioRange(rel, from, dur) {
   // SHA-256 of its bytes instead, so the second export of the same media reuses the first one's audio.
   const digest = exportCopyDigests.get(abs)
   const key = digest ? hashOf('export-copy', digest, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3)) : await cacheKey(abs, 'wav-stereo-energy-v2', from.toFixed(3), dur.toFixed(3))
-  const file = path.join(CACHE, 'audio', `${key}.wav`)
+  const audioDir = guardedOutput(ROOT, path.join(CACHE, 'audio'))
+  const file = guardedOutput(ROOT, path.join(audioDir, `${key}.wav`))
   if (fs.existsSync(file)) return file
-  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.mkdirSync(audioDir, { recursive: true })
 
   return once(`wav:${key}`, async () => {
-    await run('ffmpeg', ['-nostdin', '-y', '-loglevel', 'error', '-ss', String(Math.max(0, from)), '-t', String(dur), '-i', abs, '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', `${file}.part.wav`])
-    assertAssistantPublication()
-    fs.renameSync(`${file}.part.wav`, file)
+    const part = guardedOutput(ROOT, path.join(audioDir, `${key}-${randomUUID()}.part.wav`))
+    try {
+      await run('ffmpeg', ['-nostdin', '-y', '-loglevel', 'error', '-ss', String(Math.max(0, from)), '-t', String(dur), '-i', abs, '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', part])
+      assertAssistantPublication()
+      fs.renameSync(guardedOutput(ROOT, part), guardedOutput(ROOT, file))
+    } finally { try { fs.unlinkSync(guardedOutput(ROOT, part)) } catch {} }
 
     return file
   })
@@ -1300,15 +1330,27 @@ const routes = {
   },
 
   'POST /api/import': async body => {
-    if (!project) commit(newProject(path.basename(ROOT)), 'reel', ['new project'], { projectChanged: true })
-    const paths = []
-    for (const p of body.paths ?? []) {
-      const abs = path.resolve(ROOT, p)
-      if (fs.statSync(abs).isDirectory()) {
-        for (const f of fs.readdirSync(abs)) if (MEDIA_EXT.test(f)) paths.push(path.relative(ROOT, path.join(abs, f)))
-      } else paths.push(path.relative(ROOT, abs).startsWith('..') ? abs : path.relative(ROOT, abs))
+    const requested = Array.isArray(body.paths) ? body.paths : []
+    const rootReal = fs.realpathSync(ROOT)
+    const paths = [], failures = []
+    for (const p of requested) {
+      if (typeof p !== 'string' || !p) continue
+      try {
+        const abs = path.resolve(ROOT, p)
+        const real = fs.realpathSync(abs)
+        const inside = real === rootReal || real.startsWith(rootReal + path.sep)
+        if (!inside && assistantCalls.getStore()) throw new Error('Agent files must stay inside the project.')
+        const info = fs.statSync(real)
+        if (info.isDirectory()) {
+          if (!inside) throw new Error(`media outside the project: ${p}`)
+          for (const f of fs.readdirSync(real)) if (MEDIA_EXT.test(f)) paths.push(path.relative(rootReal, path.join(real, f)))
+        } else paths.push(inside ? path.relative(rootReal, real) : abs)
+      } catch (error) {
+        failures.push({ path: p, name: path.basename(p), stage: 'probe', error: error.message })
+      }
     }
-    const assets = {}, failures = [], warnings = [], identities = []
+    if (!project) commit(newProject(path.basename(ROOT)), 'reel', ['new project'], { projectChanged: true })
+    const assets = {}, warnings = [], identities = []
     let sawGeneratedMusic = false
     for (const p of paths) {
       const existing = project.assets?.[p], generated = isAryaMusicAsset(existing)
@@ -1354,6 +1396,7 @@ const routes = {
   },
 
   'POST /api/forget': async body => {
+    if (!project) throw Object.assign(new Error('No project is open'), { status: 400 })
     const p = structuredClone(project)
     for (const src of body.paths ?? []) delete p.assets[src]
     commit(p, 'you', [`removed ${body.paths?.length ?? 0} media from the project`])
@@ -1405,9 +1448,19 @@ const routes = {
   },
 
   'GET /api/luts': () => {
+    const rootReal = fs.realpathSync(ROOT)
     const dirs = [path.join(ROOT, 'luts'), path.join(ROOT, 'LUTs'), ROOT]
     const out = []
-    for (const d of dirs) if (fs.existsSync(d)) for (const f of fs.readdirSync(d)) if (/\.cube$/i.test(f)) out.push(path.relative(ROOT, path.join(d, f)))
+    for (const d of dirs) {
+      let realDir
+      try {
+        const st = fs.lstatSync(d)
+        if (!st.isDirectory() || st.isSymbolicLink()) continue
+        realDir = fs.realpathSync(d)
+      } catch { continue }
+      if (realDir !== rootReal && !realDir.startsWith(rootReal + path.sep)) continue
+      for (const f of fs.readdirSync(realDir)) if (/\.cube$/i.test(f)) out.push(path.relative(rootReal, path.join(realDir, f)))
+    }
 
     return { luts: [...new Set(out)] }
   },
@@ -1450,15 +1503,19 @@ const routes = {
   // Long-poll: answers when the job ends or after `timeout` ms, whichever is first.
   'GET /api/jobs/wait': async (_b, q) => {
     const id = q.get('id')
-    const until = Date.now() + Math.min(60000, Number(q.get('timeout') ?? 25000))
+    const rawTimeout = Number(q.get('timeout') ?? 25000)
+    const waitMs = Number.isFinite(rawTimeout) ? Math.max(0, Math.min(60000, rawTimeout)) : 25000
+    const until = Date.now() + waitMs
     while (Date.now() < until) {
       const job = jobs.get(id)
-      if (!job) throw new Error(`no job ${id}`)
+      if (!job) throw Object.assign(new Error(`no job ${id}`), { status: 404 })
       if (job.state === 'done' || job.state === 'failed') return jobPublic(job)
       await new Promise(r => setTimeout(r, 250))
     }
+    const job = jobs.get(id)
+    if (!job) throw Object.assign(new Error(`no job ${id}`), { status: 404 })
 
-    return jobPublic(jobs.get(id))
+    return jobPublic(job)
   },
   'POST /api/jobs/cancel': body => {
     const job = jobs.get(body.id)
@@ -1505,6 +1562,7 @@ const routes = {
 
 async function handleJobUpload(req, res, url) {
   // /api/job/<id>/<audio|frames|frame|done|fail|progress>
+  if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed' }, { allow: 'POST' })
   const [, , , id, what] = url.pathname.split('/')
   const job = jobs.get(id)
   if (!job) return send(res, 404, { error: 'no such job' })
@@ -1550,7 +1608,7 @@ async function handleJobUpload(req, res, url) {
       if (job.kind !== 'export' || job.state !== 'running' || job.finishing) return send(res, 409, { error: 'The export is not accepting frames.' })
       const buf = await readBody(req, Math.max(job.spec.width * job.spec.height * 4, 32000000))
       job.processing.assertCurrent()
-      if (job.state !== 'running' || job.finishing) return send(res, 410, { error: 'The export stopped while frames were uploading.' })
+      if (job.state !== 'running' || job.finishing || !job.ffmpeg?.stdin || job.ffmpeg.stdin.destroyed) return send(res, 410, { error: 'The export stopped while frames were uploading.' })
       const ok = job.ffmpeg.stdin.write(buf)
       if (!ok) await new Promise((resolve, reject) => {
         const cleanup = () => { job.ffmpeg.stdin.removeListener('drain', drained); job.ffmpeg.removeListener('close', closed); job.ffmpeg.stdin.removeListener('error', failed) }
@@ -1576,7 +1634,8 @@ async function handleJobUpload(req, res, url) {
       job.processing.assertCurrent()
       const dir = guardedOutput(ROOT, path.join(DOT, 'frames'))
       fs.mkdirSync(dir, { recursive: true })
-      const file = path.join(dir, `frame-${job.id}-${job.spec.comp ? `${job.spec.comp}-` : ''}${job.spec.at.toFixed(3)}.png`)
+      const compSlug = job.spec.comp ? `${String(job.spec.comp).replace(/[^A-Za-z0-9_-]+/g, '_')}-` : ''
+      const file = guardedOutput(dir, path.join(dir, `frame-${job.id}-${compSlug}${job.spec.at.toFixed(3)}.png`))
       job.exportSources.assertCurrentSync(() => job.processing.assertCurrent())
       fs.writeFileSync(guardedOutput(ROOT, file), buf, { flag: 'wx', mode: 0o600 })
       job.state = 'done'
@@ -1611,7 +1670,12 @@ async function handleJobUpload(req, res, url) {
 setInterval(createWorkerWatchdog({ jobs: () => jobs.values(), failJob, retireWorker: ownedWorker => workerHost.retire(ownedWorker, 'its job stalled') }), WORKER_CHECK_MS).unref()
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
+  let url
+  try {
+    url = new URL(req.url ?? '/', `http://127.0.0.1:${PORT}`)
+  } catch {
+    return send(res, 400, { error: 'invalid request url' })
+  }
   // Only the editor itself (same origin) and local tools with no Origin (the mod, curl)
   // may write. A page on another site could otherwise post edits or inject prompts.
   const origin = req.headers.origin
@@ -1650,7 +1714,7 @@ const server = http.createServer(async (req, res) => {
         res.write(`event: chatHistory\ndata: ${JSON.stringify(chatHistory.status())}\n\n`)
         res.write(`event: assistantReview\ndata: ${JSON.stringify(assistantReview.snapshot())}\n\n`)
       }
-      const ping = setInterval(() => res.write(': ping\n\n'), 15000)
+      const ping = setInterval(() => { try { res.write(': ping\n\n') } catch { clearInterval(ping); clients.delete(client) } }, 15000)
       req.on('close', () => {
         clearInterval(ping)
         clients.delete(client)
@@ -1701,7 +1765,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET') {
       const rel = url.pathname === '/' ? 'index.html' : path.normalize(url.pathname).replace(/^(\.\.[/\\])+/, '').slice(1)
 
-      return serveFile(req, res, path.join(HERE, 'web', rel), { 'x-content-type-options': 'nosniff', 'content-security-policy': "frame-ancestors 'none'" })
+      return serveFile(req, res, path.join(HERE, 'web', rel), { 'x-content-type-options': 'nosniff', 'content-security-policy': EDITOR_CSP })
     }
     send(res, 404, { error: 'not found' })
   } catch (error) {

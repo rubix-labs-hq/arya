@@ -7,10 +7,11 @@ import { boundedWorkingFile } from './public-readiness.mjs';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const runtime = [
-  { name: 'preact', version: '10.29.8', license: 'MIT' },
-  { name: 'htm', version: '3.1.1', license: 'Apache-2.0' },
-  { name: 'mediabunny', version: '1.66.0', license: 'MPL-2.0' },
+  { name: 'preact', label: 'Preact', version: '10.29.8', license: 'MIT' },
+  { name: 'htm', label: 'htm', version: '3.1.1', license: 'Apache-2.0' },
+  { name: 'mediabunny', label: 'Mediabunny', version: '1.66.0', license: 'MPL-2.0' },
 ];
+const tipsStripe = { name: 'stripe', version: '23.1.0', license: 'MIT' };
 const fonts = [
   ['Inter', 'editor/web/fonts/LICENSE-Inter.txt', 'web/fonts/LICENSE-Inter.txt'],
   ['Mrs Saint Delafield', 'editor/web/fonts/MrsSaintDelafield-OFL.txt', 'web/fonts/MrsSaintDelafield-OFL.txt'],
@@ -48,10 +49,19 @@ export function checkThirdPartyNotices({ sourceRoot = root, noticeRoot = sourceR
     const installed = json(sourceRoot, `editor/node_modules/${dependency.name}/package.json`);
     if (locked?.version !== dependency.version || installed.version !== dependency.version ||
         locked.license !== dependency.license || installed.license !== dependency.license ||
-        !notice.includes(`| ${dependency.version} | ${dependency.license} |`)) {
+        !notice.includes(`| ${dependency.label} | ${dependency.version} | ${dependency.license} |`)) {
       throw new Error('A dependency changed. Update and review the notices before distribution.');
     }
     include(dependency.name, `editor/node_modules/${dependency.name}/LICENSE`, `vendor/${dependency.name}/LICENSE`);
+  }
+  let tipsLock = null;
+  try { tipsLock = json(sourceRoot, 'services/tips/package-lock.json'); } catch {}
+  if (tipsLock) {
+    const lockedStripe = tipsLock.packages?.[`node_modules/${tipsStripe.name}`];
+    if (lockedStripe?.version !== tipsStripe.version || lockedStripe?.license !== tipsStripe.license ||
+        !notice.includes(`Stripe Node SDK ${tipsStripe.version} under the ${tipsStripe.license} license`)) {
+      throw new Error('The tips receiver Stripe dependency changed. Update and review the notices before distribution.');
+    }
   }
   for (const [name, sourcePath, bundlePath] of fonts) include(name, sourcePath, bundlePath);
   if (bundleRoot && !noticeBytes.equals(bytes(bundleRoot, 'THIRD_PARTY_NOTICES.md'))) {
@@ -74,8 +84,19 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const args = process.argv.slice(2);
     if (args.length && !(args.length === 2 && args[0] === '--bundle')) throw new Error('Invalid arguments.');
     console.log(JSON.stringify(checkThirdPartyNotices({ bundleRoot: args[1] || null }), null, 2));
-  } catch {
-    console.error('Third-party notice verification failed. No private paths or file contents were printed.');
+  } catch (error) {
+    const known = new Set([
+      'Invalid arguments.',
+      'A notice input is missing or outside the byte limit.',
+      'The exact Mediabunny source-access notice is missing.',
+      'A complete component license text is missing.',
+      'A bundled license differs from the inventoried source.',
+      'A dependency changed. Update and review the notices before distribution.',
+      'The tips receiver Stripe dependency changed. Update and review the notices before distribution.',
+      'The bundled third-party notice differs from the release notice.',
+    ]);
+    const detail = error instanceof Error && known.has(error.message) ? ` ${error.message}` : '';
+    console.error(`Third-party notice verification failed.${detail} No private paths or file contents were printed.`);
     process.exitCode = 2;
   }
 }

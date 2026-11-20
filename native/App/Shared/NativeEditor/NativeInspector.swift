@@ -792,9 +792,12 @@ struct NativeInspector: View {
                 NativeNumberRow("Tracking", value: title.number("tracking"), range: -20...100) { model.update(clip, ["title": ["tracking": $0]]) }
                 NativeTitleAppearanceControls(model: model, clip: clip)
                 Picker("Align", selection: Binding(get: { title.string("align", "center") }, set: { model.update(clip, ["title": ["align": $0]]) })) { ForEach(["left", "center", "right"], id: \.self) { Text($0.capitalized).tag($0) } }
-                Picker("Animation", selection: Binding(get: { title.string("anim", "none") }, set: { model.update(clip, ["title": ["anim": $0]]) })) {
-                    ForEach(["none", "fade", "rise", "drop", "pop", "slideLeft", "slideRight", "typewriter", "blurIn", "tracking"], id: \.self) { Text(NativeOptionName.words($0)).tag($0) }
-                }
+                LabeledContent {
+                    Picker("Animation", selection: Binding(get: { title.string("anim", "none") }, set: { model.update(clip, ["title": ["anim": $0]]) })) {
+                        ForEach(["none", "fade", "rise", "drop", "pop", "slideLeft", "slideRight", "typewriter", "blurIn", "tracking"], id: \.self) { Text(NativeOptionName.words($0)).tag($0) }
+                    }
+                    .labelsHidden()
+                } label: { Text("Animation").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
             }.padding(4)
         }
     }
@@ -803,7 +806,10 @@ struct NativeInspector: View {
         let shape = clip.fields.dictionary("shape")
         return GroupBox("Shape") {
             VStack(spacing: 8) {
-                Picker("Type", selection: Binding(get: { shape.string("type", "rect") }, set: { model.update(clip, ["shape": ["type": $0]]) })) { ForEach(["rect", "ellipse", "polygon", "star", "line"], id: \.self) { Text($0.capitalized).tag($0) } }
+                LabeledContent {
+                    Picker("Type", selection: Binding(get: { shape.string("type", "rect") }, set: { model.update(clip, ["shape": ["type": $0]]) })) { ForEach(["rect", "ellipse", "polygon", "star", "line"], id: \.self) { Text($0.capitalized).tag($0) } }
+                        .labelsHidden()
+                } label: { Text("Type").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                 NativeNumberRow("Width", value: shape.number("width", 480), range: 1...4000, step: 1) { model.update(clip, ["shape": ["width": $0]]) }
                 NativeNumberRow("Height", value: shape.number("height", 270), range: 1...4000, step: 1) { model.update(clip, ["shape": ["height": $0]]) }
                 NativeNumberRow("Radius", value: shape.number("radius", 24), range: 0...500, step: 1) { model.update(clip, ["shape": ["radius": $0]]) }
@@ -817,14 +823,14 @@ struct NativeInspector: View {
             VStack(alignment: .leading, spacing: 8) {
                 Menu("Add effect") {
                     ForEach(["blur", "sharpen", "vignette", "grain", "pixelate", "glow", "mirror", "invert", "posterize", "chromaticAberration", "letterbox"], id: \.self) { type in
-                        Button(type.capitalized) { model.edit(["op": "effect", "id": clip.id, "type": type]) }
+                        Button(NativeOptionName.words(type)) { model.edit(["op": "effect", "id": clip.id, "type": type]) }
                     }
                 }
                 ForEach(Array(clip.fields.objects("effects").enumerated()), id: \.offset) { index, effect in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Toggle(effect.string("type").capitalized, isOn: Binding(get: { effect.flag("enabled", true) }, set: { model.edit(["op": "effect", "id": clip.id, "index": index, "enabled": $0]) }))
-                            Button { model.edit(["op": "effect", "id": clip.id, "remove": index]) } label: { Image(systemName: "minus.circle") }.accessibilityLabel("Remove \(effect.string("type"))")
+                            Toggle(NativeOptionName.words(effect.string("type")), isOn: Binding(get: { effect.flag("enabled", true) }, set: { model.edit(["op": "effect", "id": clip.id, "index": index, "enabled": $0]) }))
+                            Button { model.edit(["op": "effect", "id": clip.id, "remove": index]) } label: { Image(systemName: "minus.circle") }.accessibilityLabel("Remove \(NativeOptionName.words(effect.string("type")))")
                         }
                         let params = effect.dictionary("params")
                         ForEach(params.keys.sorted(), id: \.self) { key in
@@ -834,7 +840,10 @@ struct NativeInspector: View {
                                 }
                             } else if let value = params[key] as? String {
                                 if key == "axis" {
-                                    Picker("Axis", selection: Binding(get: { value }, set: { model.edit(["op": "effect", "id": clip.id, "index": index, "params": [key: $0]]) })) { Text("Horizontal").tag("x"); Text("Vertical").tag("y") }
+                                    LabeledContent {
+                                        Picker("Axis", selection: Binding(get: { value }, set: { model.edit(["op": "effect", "id": clip.id, "index": index, "params": [key: $0]]) })) { Text("Horizontal").tag("x"); Text("Vertical").tag("y") }
+                                            .labelsHidden()
+                                    } label: { Text("Axis").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                                 } else {
                                     NativeTextRow(key.capitalized, value: value) { model.edit(["op": "effect", "id": clip.id, "index": index, "params": [key: $0]]) }
                                 }
@@ -842,9 +851,12 @@ struct NativeInspector: View {
                         }
                     }
                 }
-                Picker("Transition", selection: Binding(get: { clip.fields.dictionary("transitionIn").string("type", "none") }, set: { model.edit(["op": "transition", "id": clip.id, "type": $0, "dur": 0.5]) })) {
-                    ForEach(["none", "crossDissolve", "dipBlack", "dipWhite", "wipeLeft", "wipeRight", "wipeUp", "wipeDown", "slideLeft", "slideRight", "pushLeft", "pushRight", "zoomIn", "iris", "blurDissolve"], id: \.self) { Text(NativeOptionName.words($0)).tag($0) }
-                }
+                LabeledContent {
+                    Picker("Transition", selection: Binding(get: { clip.fields.dictionary("transitionIn").string("type", "none") }, set: { model.edit(["op": "transition", "id": clip.id, "type": $0, "dur": 0.5]) })) {
+                        ForEach(["none", "crossDissolve", "dipBlack", "dipWhite", "wipeLeft", "wipeRight", "wipeUp", "wipeDown", "slideLeft", "slideRight", "pushLeft", "pushRight", "zoomIn", "iris", "blurDissolve"], id: \.self) { Text(NativeOptionName.words($0)).tag($0) }
+                    }
+                    .labelsHidden()
+                } label: { Text("Transition").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
                 if !clip.fields.dictionary("transitionIn").isEmpty {
                     NativeNumberRow("Transition duration", value: clip.fields.dictionary("transitionIn").number("dur", 0.5), range: (2 / model.fps)...max(clip.duration, clip.fields.dictionary("transitionIn").number("dur", 0.5)), showsSlider: false) {
                         model.edit(["op": "transition", "id": clip.id, "type": clip.fields.dictionary("transitionIn").string("type"), "dur": $0])
@@ -999,8 +1011,16 @@ private struct NativeInspectorJobCard: View {
             let measurements = job.dictionary("measurements").isEmpty ? job.dictionary("result") : job.dictionary("measurements")
             if !measurements.isEmpty { Text(String(NativeProcessingSummary(measurements).prefix(8000))).font(.caption2).textSelection(.enabled) }
         }.padding(8).background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 6))
-        .sheet(isPresented: $showingResults) { if let capture { NativeAnalysisResults(model: model, jobID: job.string("id"), capture: capture) } }
-        .sheet(item: $preview) { output in NativeProcessingOutputPreview(model: model, url: output.url, folder: output.folder, identity: output.identity) }
+        .sheet(isPresented: $showingResults) {
+            if let capture {
+                NativeAnalysisResults(model: model, jobID: job.string("id"), capture: capture)
+                    .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+            }
+        }
+        .sheet(item: $preview) { output in
+            NativeProcessingOutputPreview(model: model, url: output.url, folder: output.folder, identity: output.identity)
+                .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
+        }
     }
     private func cancel() {
         let id = job.string("id"), folder = model.folder
@@ -1071,7 +1091,7 @@ private struct NativeAnalysisResults: View {
                 Button("Split selected clip") { apply(split: true) }.disabled(!canEdit || selected.isEmpty)
             }.buttonStyle(NativeToolbarButtonStyle())
             #endif
-            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
+            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(NativeEditorStyle.error) }
             #if os(iOS)
             resultRows
             #else
@@ -1204,9 +1224,10 @@ private struct NativeProcessingOutputPreview: View {
                 else if error.isEmpty { ProgressView("Decoding frame") }
             }.frame(maxWidth: .infinity, minHeight: 220, maxHeight: 440).clipped()
             Slider(value: $time, in: 0...max(0.001, duration - 0.001))
+                .accessibilityLabel("Preview frame time")
             Text(String(format: "Source %.3f s", time)).font(.caption).monospacedDigit()
             Text("Alpha appears over the checkerboard. This preview does not apply the saved source to a clip.").font(.caption2).foregroundStyle(.secondary)
-            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
+            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(NativeEditorStyle.error) }
         }
     }
     private func frame(at requested: Double) async {

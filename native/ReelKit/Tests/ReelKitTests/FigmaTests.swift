@@ -242,6 +242,21 @@ final class FigmaTests: XCTestCase {
         }
     }
 
+    func testHTTPSImageRedirectToLoopbackIsRefused() async throws {
+        let folder = ProjectFolder(root: try Support.tempFolder())
+        let provider = FigmaProvider([
+            response(["nodes": ["1:1": ["document": frame]]]),
+            response(["images": ["3:1": "https://images.example.test/photo.png"]]),
+            .init(data: Data(), status: 302, headers: ["location": "http://127.0.0.1:4870/api/project"]),
+        ])
+        let client = try make(FigmaStore(.init(accessToken: "private_secret")), provider)
+        let prepared = try await client.prepareImport(body: .object([("url", "https://www.figma.com/design/FileKey/File?node-id=1-1")]), folder: folder)
+        XCTAssertFalse(prepared.warnings.isEmpty, "redirect to loopback should warn instead of fetching")
+        let requests = await provider.requests
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertFalse(requests.contains { $0.url?.host == "127.0.0.1" })
+    }
+
     private var frame: [String: Any] {
         ["id": "1:1", "type": "FRAME", "name": "Frame", "absoluteBoundingBox": ["x": 0, "y": 0, "width": 320, "height": 180], "fills": [["type": "SOLID", "color": ["r": 0.2, "g": 0.1, "b": 0.5]]], "children": [
             ["id": "2:1", "type": "TEXT", "name": "Heading", "characters": "Editable heading", "absoluteBoundingBox": ["x": 20, "y": 20, "width": 200, "height": 40], "style": ["fontFamily": "Inter", "fontWeight": 800, "fontSize": 24], "fills": [["type": "SOLID", "color": ["r": 1, "g": 1, "b": 1]]]],

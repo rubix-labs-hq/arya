@@ -338,10 +338,17 @@ public actor Figma {
         if source.hasPrefix("data:") {
             guard let comma = source.firstIndex(of: ","), source[..<comma].hasSuffix(";base64"), let value = Data(base64Encoded: String(source[source.index(after: comma)...])), value.count <= Self.maxImage else { throw Failure("The image data URL is invalid or too large.") }
             data = value
-        } else if let initial = URL(string: source), initial.scheme == "https" || (initial.scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(initial.host ?? "")) {
+        } else if let initial = URL(string: source),
+                  let initialScheme = initial.scheme?.lowercased(),
+                  initialScheme == "https" || (initialScheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(initial.host?.lowercased() ?? "")) {
+            let initialIsHTTPS = initialScheme == "https"
             var url = initial, value: Data?
             for hop in 0...4 {
-                guard url.user == nil, url.password == nil, url.scheme == "https" || (url.scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(url.host ?? "")) else { throw Failure("The image URL uses an unsupported connection.") }
+                let scheme = url.scheme?.lowercased() ?? ""
+                let host = url.host?.lowercased() ?? ""
+                let isLoopback = ["localhost", "127.0.0.1", "::1", "[::1]"].contains(host)
+                let allowedScheme = initialIsHTTPS ? (scheme == "https" && !isLoopback) : (scheme == "https" || (scheme == "http" && isLoopback))
+                guard url.user == nil, url.password == nil, allowedScheme else { throw Failure("The image URL uses an unsupported connection.") }
                 let response = try await send(URLRequest(url: url), limit: Self.maxImage)
                 if (300..<400).contains(response.status), let location = response.headers["location"], let next = URL(string: location, relativeTo: url)?.absoluteURL, hop < 4 { url = next; continue }
                 guard (200..<300).contains(response.status) else { throw Failure("Figma image download failed.") }
