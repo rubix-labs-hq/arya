@@ -119,6 +119,8 @@ jobs:
           cache-dependency-path: editor/package-lock.json
       - run: npm ci
         working-directory: editor
+      - name: Build ReelKit package for contract scripts
+        run: swift build --package-path native/ReelKit
       - name: Verify project metadata on macOS and Mac Catalyst
         run: python3 native/scripts/test-project-metadata.py
       - name: Verify native assistant change receipts
