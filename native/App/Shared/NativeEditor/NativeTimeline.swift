@@ -1907,6 +1907,8 @@ struct NativeTimeline: View {
     }
     private func performDrop(_ info: DropInfo, canvas: Bool) -> Bool {
         dropPreview = nil
+        // The drop carries its own payload. Forget the browser's, so a later drag cannot preview as this one.
+        model.activeBrowserDrag = nil
         guard let landing = dropLanding(info, canvas: canvas) else {
             model.status = model.projectReadOnlyReason ?? "Open an editable timeline before dropping media on it."
             return false
@@ -1926,7 +1928,6 @@ struct NativeTimeline: View {
         _ = provider.loadObject(ofClass: NSString.self) { value, _ in
             let payload = value as? String
             Task { @MainActor in
-                model.activeBrowserDrag = nil
                 guard let payload, let item = NativeTimelineDrop.Item(payload: payload) else {
                     model.status = "Drop media, titles and generators from the browser, or files from Finder."
                     return
