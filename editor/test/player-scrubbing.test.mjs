@@ -73,3 +73,18 @@ test('fresh views of the same nested composition can paint, switching compositio
   seeks[2]();await turn()
   assert.equal(comp.frames[1].p.compId,'scene2')
 })
+
+test('hover previews coalesce without seeking and a late skim cannot replace the playhead frame', async () => {
+  const { player, comp, seeks } = fixture()
+  player.t = 3
+  player.skim(7)
+  player.skim(9)
+  assert.equal(player.t, 3)
+  seeks[0].resolve(); await turn()
+  assert.deepEqual(comp.frames.map(frame => frame.t), [7])
+  player.endSkim()
+  seeks[1].resolve(); await turn()
+  assert.equal(seeks[2].t, 3)
+  seeks[2].resolve(); await turn()
+  assert.deepEqual(comp.frames.map(frame => frame.t), [7, 3])
+})

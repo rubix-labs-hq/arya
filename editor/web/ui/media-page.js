@@ -4,6 +4,7 @@
 import { h } from 'preact'
 import htm from 'htm'
 import { timecode } from '/core/project.js'
+import { contextItems, mediaTarget, showContext } from './assistant-context.js'
 import { analyzeMenu, Browser } from './browser.js'
 import { useStore } from './store.js'
 import { Transcript } from './transcript.js'
@@ -28,8 +29,9 @@ function Details() {
   ]
 
   return html`
-    <div class="details">
+    <div class="details" onContextMenu=${e => showContext(e, mediaTarget(src, a))}>
       ${rows.map(([k, v]) => html`<div class="kv"><span>${k}</span><b title=${String(v)}>${String(v)}</b></div>`)}
+      <button class="ghost" onClick=${() => contextItems(mediaTarget(src, a))[0].run()}>Add to Ask Arya</button>
       <h4>Analyze</h4>
       ${s.caps.host === 'native' ? html`<div class="hint">Apple Speech is available here. Open the browser editor for scene, silence, beat and source loudness analysis.</div>` : s.caps.host === 'browser-local' ? html`<div class="hint">Media analysis and transcription need Arya for Mac or the local editor.</div>` : null}
       <div class="analyze-list">${analyzeMenu(s.project, src).filter(i => !i.sep).map(i => html`<button class=${`ghost ${i.danger ? 'danger' : ''}`} disabled=${i.disabled} onClick=${i.run}>${i.label}</button>`)}</div>

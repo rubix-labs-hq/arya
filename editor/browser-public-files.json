@@ -324,6 +324,10 @@
     "target": "editor/ui/assistant-sharing.js"
   },
   {
+    "source": "web/ui/assistant-context.js",
+    "target": "editor/ui/assistant-context.js"
+  },
+  {
     "source": "web/ui/assistant-state.js",
     "target": "editor/ui/assistant-state.js"
   },
@@ -454,6 +458,10 @@
   {
     "source": "web/ui/library/model.js",
     "target": "editor/ui/library/model.js"
+  },
+  {
+    "source": "web/ui/magnetic.js",
+    "target": "editor/ui/magnetic.js"
   },
   {
     "source": "web/ui/media-import.js",

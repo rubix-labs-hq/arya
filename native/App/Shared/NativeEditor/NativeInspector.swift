@@ -683,6 +683,7 @@ struct NativeInspector: View {
                 }.id("\(model.folder?.path ?? "")|\(model.composition ?? "main")|\(model.selectedID ?? "none")")
                 NativeInspectorJobs(model: model).id("inspectorJobs")
             }.nativePanelPadding()
+            .aryaContextAIMenu(model, model.selected.map(NativeAskAryaTarget.clip) ?? .frame(model))
         }
     }
 

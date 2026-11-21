@@ -1,6 +1,7 @@
 // Inspector: every property of the selection, with scrub-to-change fields, keyframe
 // toggles at the playhead, a curve editor, effects, titles, audio and transitions.
 
+import { clipTarget, frameTarget, showContext } from './assistant-context.js'
 import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
@@ -527,14 +528,14 @@ export function Inspector() {
   const trSel = s.selection.find(id => id.startsWith('tr:'))
   if (trSel) {
     const c = p.tracks.flatMap(t => t.clips).find(cc => cc.id === trSel.slice(3))
-    if (c?.transitionIn) return html`<div class="panel inspector"><${TransitionInspector} clip=${c} /></div>`
+    if (c?.transitionIn) return html`<div class="panel inspector" onContextMenu=${e => showContext(e, clipTarget(c))}><${TransitionInspector} clip=${c} /></div>`
   }
   const found = p.tracks.flatMap(t => t.clips.map(c => ({ track: t, clip: c }))).find(x => x.clip.id === s.selection[0])
   if (!found) {
     const m = p.markers.find(mm => mm.id === s.selMarker)
-    if (m) return html`<div class="panel inspector"><${MarkerInspector} m=${m} /></div>`
+    if (m) return html`<div class="panel inspector" onContextMenu=${e => showContext(e, frameTarget(m.t))}><${MarkerInspector} m=${m} /></div>`
 
-    return html`<div class="panel inspector"><${ProjectInspector} key=${s.root} /></div>`
+    return html`<div class="panel inspector" onContextMenu=${e => showContext(e, frameTarget())}><${ProjectInspector} key=${s.root} /></div>`
   }
   const { clip, track } = found
   const tabs = [
@@ -551,7 +552,7 @@ export function Inspector() {
   const tab = tabs.some(([k]) => k === s.inspectorTab) ? s.inspectorTab : tabs[0][0]
 
   return html`
-    <div class="panel inspector">
+    <div class="panel inspector" onContextMenu=${e => showContext(e, clipTarget(clip, tab === 'audio' ? 'audio' : s.page === 'motion' ? 'motion' : 'clip'))}>
       <div class="inspector-head">
         <b title=${s.selection.length > 1 ? `Showing ${clipName(clip)}` : undefined}>${s.selection.length > 1 ? `${s.selection.length} clips selected` : clipName(clip)}</b>
         ${/* Where the clip is, not its stored id. The id is on the Info tab. */ null}

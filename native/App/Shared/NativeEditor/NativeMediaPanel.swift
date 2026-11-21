@@ -411,6 +411,8 @@ struct NativeMediaPanel: View {
                             .accessibilityLabel("Restore missing original \(asset.name)")
                     }
                 }.contextMenu {
+                    NativeContextAIMenuContent(model, .media(asset))
+                    Divider()
                     if model.isMissingMedia(asset) {
                         Button("Restore missing original…") { model.chooseMissingOriginal(asset) }
                             .disabled(model.restoringMediaSource != nil || session.projectReadOnlyReason != nil)

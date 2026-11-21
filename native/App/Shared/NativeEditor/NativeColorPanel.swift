@@ -109,6 +109,7 @@ struct NativeColorPanel: View {
                     Divider().overlay(NativeEditorStyle.line)
                     lookControls
                 }.nativePanelPadding()
+                .aryaContextAIMenu(model, model.selected.map { .panel(.grade, clip: $0, details: ["node": nodeID, "scope": scope]) })
             }
             .background(NativeEditorStyle.panel)
         }

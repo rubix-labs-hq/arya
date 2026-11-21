@@ -83,6 +83,7 @@ struct NativeMotionPanel: View {
                 layerList
                 #endif
             }.nativePanelPadding()
+            .aryaContextAIMenu(model, model.selected.map { .panel(.motion, clip: $0, details: ["property": property]) })
         }
         .background(NativeEditorStyle.panel)
         .onChange(of: model.selectedID) { _, _ in resetSelection() }
@@ -157,6 +158,7 @@ struct NativeMotionPanel: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .aryaContextAIMenu(model, .panel(.motion, clip: row.clip, details: ["property": property]))
                             .accessibilityLabel("Select layer \(row.clip.name), \(row.track.name)\(row.track.locked ? ", locked" : "")")
                             .id(row.id)
                         }

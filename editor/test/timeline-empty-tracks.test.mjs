@@ -7,14 +7,14 @@ import * as core from '../core/project.js'
 
 const source = fs.readFileSync(new URL('../web/ui/timeline.js', import.meta.url), 'utf8')
 const body = source.replace(/^import .*$/gm, '').replace(/^export function /gm, 'function ').replace(/^export \{.*\}\s*$/gm, '')
-const factory = new Function('deps', 'matchMedia', `const {h,htm,useEffect,useLayoutEffect,useRef,useState,applyOps,clipEnd,duration,hasAudio,snapToFrame,timecode,MARKER_COLORS,addRef,api,edit,onTime,set,store,subscribe,time,toast,useStore,useTime,viewProject,openMenu,player,registry,devicePixelRatio,ResizeObserver,requestAnimationFrame}=deps;${body};return {rowsOf,TrackHeader,drawClip,hitAt,drawAll}`)
+const factory = new Function('deps', 'matchMedia', `const {h,htm,useEffect,useLayoutEffect,useRef,useState,applyOps,clipEnd,duration,hasAudio,snapToFrame,timecode,MARKER_COLORS,addRef,api,edit,onTime,set,store,subscribe,time,toast,useStore,useTime,viewProject,showContext,trackTarget,player,registry,devicePixelRatio,ResizeObserver,requestAnimationFrame}=deps;${body};return {rowsOf,TrackHeader,drawClip,hitAt,drawAll}`)
 
 function fixture(trackHeight = {}) {
   const project = core.newProject('Empty tracks', { width: 1920, height: 1080, fps: 30 })
   const store = { project, trackHeight, selection: [], selTrack: null, tool: 'select', highlight: new Map(), scroll: 0, zoom: 100 }
   const pointer = { matches: false, addEventListener() {}, removeEventListener() {} }
   const menus = []
-  const deps = { ...core, h, htm, store, useStore: () => store, viewProject: () => project, useTime: () => 0, time: { t: 0 }, useRef: value => ({ current: value }), useState: value => [value, () => {}], useEffect() {}, useLayoutEffect() {}, subscribe: () => () => {}, onTime: () => () => {}, set: patch => Object.assign(store, typeof patch === 'function' ? patch(store) : patch), edit() {}, api() {}, addRef() {}, toast() {}, openMenu: (x, y, items) => menus.push(items), player: {}, registry: { clipMenus: [] }, devicePixelRatio: 1, ResizeObserver: class { observe() {} disconnect() {} }, requestAnimationFrame: () => 1 }
+  const deps = { ...core, h, htm, store, useStore: () => store, viewProject: () => project, useTime: () => 0, time: { t: 0 }, useRef: value => ({ current: value }), useState: value => [value, () => {}], useEffect() {}, useLayoutEffect() {}, subscribe: () => () => {}, onTime: () => () => {}, set: patch => Object.assign(store, typeof patch === 'function' ? patch(store) : patch), edit() {}, api() {}, addRef() {}, toast() {}, showContext: (_event, _target, items) => menus.push(items), trackTarget: track => track, player: {}, registry: { clipMenus: [] }, devicePixelRatio: 1, ResizeObserver: class { observe() {} disconnect() {} }, requestAnimationFrame: () => 1 }
   return { module: factory(deps, () => pointer), project, store, pointer, menus }
 }
 const heights = f => Object.fromEntries(f.module.rowsOf(f.project).rows.map(row => [row.track.id, row.h]))

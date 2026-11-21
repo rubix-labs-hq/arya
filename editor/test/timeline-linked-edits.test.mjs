@@ -12,7 +12,7 @@ import { detachedAudioSettings } from '../core/audio-cleanup.js'
 
 const source = fs.readFileSync(new URL('../web/ui/timeline.js', import.meta.url), 'utf8')
 const body = source.replace(/^import .*$/gm, '').replace(/^export function /gm, 'function ').replace(/^export \{.*\}\s*$/gm, '')
-const factory = new Function('deps', 'matchMedia', `const {h,htm,useEffect,useLayoutEffect,useRef,useState,applyOps,clipEnd,duration,hasAudio,snapToFrame,timecode,MARKER_COLORS,addRef,api,edit,onTime,set,store,subscribe,time,toast,useStore,useTime,viewProject,openMenu,player,registry,devicePixelRatio,ResizeObserver,requestAnimationFrame,mediaDisplayName,detachedAudioSettings}=deps;${body};return {rowsOf,Timeline}`)
+const factory = new Function('deps', 'matchMedia', `const {h,htm,useEffect,useLayoutEffect,useRef,useState,applyOps,clipEnd,duration,hasAudio,snapToFrame,timecode,MARKER_COLORS,addRef,api,edit,onTime,set,store,subscribe,time,toast,useStore,useTime,viewProject,openMenu,showContext,clipTarget,player,registry,devicePixelRatio,ResizeObserver,requestAnimationFrame,mediaDisplayName,detachedAudioSettings}=deps;${body};return {rowsOf,Timeline}`)
 
 function project() {
   const p = core.newProject('Gestures')
@@ -29,7 +29,7 @@ function timeline({ linked, tool, locked = [], setup = () => {} }) {
   const deps = {
     ...core, h, htm, store, useStore: () => store, viewProject: () => p, useTime: () => 0, time: { t: 0 }, useRef: value => ({ current: value }), useState: () => [0, () => {}],
     useEffect: () => {}, useLayoutEffect: () => {}, subscribe: () => () => {}, onTime: () => () => {}, set: patch => Object.assign(store, typeof patch === 'function' ? patch(store) : patch),
-    edit: ops => { edits.push(structuredClone(ops)); p = core.applyOps(p, ops).project }, api: () => {}, addRef: () => {}, toast: text => notices.push(text), openMenu: () => {}, player: { beginScrub() {}, endScrub() {} },
+    edit: ops => { edits.push(structuredClone(ops)); p = core.applyOps(p, ops).project }, api: () => {}, addRef: () => {}, toast: text => notices.push(text), openMenu: () => {}, showContext: () => {}, clipTarget: c => c, player: { beginScrub() {}, endScrub() {} },
     registry: { clipMenus: [] }, devicePixelRatio: 1, ResizeObserver: class { observe() {} disconnect() {} }, requestAnimationFrame: () => 1, mediaDisplayName: s => s, detachedAudioSettings,
   }
   const { Timeline, rowsOf } = factory(deps, () => ({ matches: false, addEventListener() {}, removeEventListener() {} }))

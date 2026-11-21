@@ -1,5 +1,6 @@
 // Deliver page: export presets, render settings and the render queue.
 
+import { showContext } from './assistant-context.js'
 import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
@@ -172,7 +173,7 @@ export function DeliverPage() {
 
   return html`
     <div class="page deliver">
-      <div class="panel deliver-settings">
+      <div class="panel deliver-settings" onContextMenu=${e => showContext(e, { kind: 'deliver', object: 'export', label: choice.name ?? choice.preset, type: 'deliver', details: { preset: choice.preset, width: outW, height: outH, fps: fps ?? p.fps, range } })}>
         <h3>Render settings</h3>
         ${composition ? html`<div class="hint">Exporting composition: <b>${composition.name}</b></div>` : null}
         <label class="deliver-preset-picker">

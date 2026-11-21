@@ -1582,6 +1582,8 @@ struct NativeTimeline: View {
             }
         }.padding(.horizontal, 6).frame(maxWidth: .infinity, alignment: .leading)
         .contextMenu {
+            NativeContextAIMenuContent(model, .track(track))
+            Divider()
             Button(track.fields.flag("hidden") ? "Show track" : "Hide track") { model.edit(["op": "update_track", "id": track.id, "set": ["hidden": !track.fields.flag("hidden")]]) }
             Button("Close gaps") { model.edit(["op": "close_gaps", "track": track.id]) }.disabled(track.locked)
             Button("Delete track", role: .destructive) { model.edit(["op": "delete_track", "id": track.id]) }
@@ -1916,6 +1918,8 @@ private struct NativeTimelineMarkerPanel: View {
                 .accessibilityLabel("\(name), \(frame.map { "frame \($0)" } ?? "invalid time")")
                 .accessibilityHint("Move the playhead to this marker. Open its menu to edit or delete it.")
                 .contextMenu {
+                    NativeContextAIMenuContent(model, .init(kind: .marker, objectID: marker.string("id"), label: name, details: ["time": String(time)]))
+                    Divider()
                     Button("Edit marker") { begin(marker.string("id")) }.disabled(!editable)
                     Button("Delete marker", role: .destructive) { confirmDelete(marker.string("id")) }.disabled(!editable)
                 }
@@ -2139,6 +2143,8 @@ private struct NativeTimelineClip: View {
         .contentShape(Rectangle()).onTapGesture(perform: select)
         .gesture(clipDrag(renderedVersion: renderedVersion))
         .contextMenu {
+            NativeContextAIMenuContent(model, .clip(clip))
+            Divider()
             clipContextMenu(clipboardCapture: clipboardCapture, matchFrame: matchFrame)
         }
     }

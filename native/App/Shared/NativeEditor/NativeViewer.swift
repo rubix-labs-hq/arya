@@ -822,6 +822,10 @@ struct NativeViewer: View {
                     }.padding(.horizontal, 8).background(NativeEditorStyle.panel, in: RoundedRectangle(cornerRadius: 6)).padding(8)
                 }
             }
+            .contextMenu {
+                NativeContextAIMenuContent(model, .frame(model))
+                if let clip = model.selected { Menu(clip.name) { NativeContextAIMenuContent(model, .clip(clip)) } }
+            }
             .onAppear { viewerModelID = ObjectIdentifier(model); updateViewerLayout(viewport?.layout) }
             .onChange(of: viewport?.layout) { _, layout in updateViewerLayout(layout) }
         }
@@ -1132,6 +1136,7 @@ private struct NativeSourceViewer: View {
                     if model.sourceLoading { ProgressView("Opening source").tint(.white).foregroundStyle(.white) }
                     if let error = model.sourceError { Text(error).font(.callout).foregroundStyle(.white).multilineTextAlignment(.center).padding().background(.black.opacity(0.8)) }
                 }.frame(maxWidth: .infinity).frame(height: layout.picture).clipped()
+                .contextMenu { if let asset = model.sourceAsset { NativeContextAIMenuContent(model, .media(asset)) } }
                 if let range = model.sourceRange {
                     VStack(spacing: 0) {
                     ScrollView(.vertical) {

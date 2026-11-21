@@ -775,6 +775,8 @@ final class NativeEditorModel: ObservableObject {
     /// The Motion page's selected property. Lives here so it survives workflow page changes.
     @Published var motionProperty = "x"
     @Published var drawing: NativeDrawingMode?
+    @Published var pinnedAssistantTargets: [AskAryaPinnedContext] = []
+    @Published var assistantFocusRequests = 0
     @Published var assistantDraft = ""
     @Published var assistantInputKind = "prompt"
     @Published var transcriptSource: String?
@@ -1056,6 +1058,7 @@ final class NativeEditorModel: ObservableObject {
         displayedTime = nil; displayedPreviewID = nil; displayedVersion = nil; displayedRevision = nil; displayedComposition = nil; displayedFolder = nil; displayedGeneration = nil; scrubbing = false; paintedFrames = 0
         jobs = []; capabilities = [:]; status = ""; busy = false
         drawing = nil
+        pinnedAssistantTargets = []; assistantFocusRequests = 0
         assistantDraft = ""; assistantInputKind = "prompt"; lookReference = nil
         transcriptSource = nil
     }

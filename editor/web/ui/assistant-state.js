@@ -40,6 +40,7 @@ export function assistantState(status, provider = status?.provider ?? 'claude-co
 export function assistantPrompt(text, state, playhead, inputKind) {
   if (inputKind !== undefined && !['prompt', 'script', 'screenplay'].includes(inputKind)) throw new Error('Choose Prompt, Script or Screenplay.')
   for (const ref of state.refs ?? []) {
+    if (ref.kind === 'editor_target' && ref.context?.sourceProjectVersion !== state.version) throw new Error('An attached item changed. Remove it or add it again from its menu.')
     if (!['motion', 'marker'].includes(ref.kind) || !ref.context) continue
     if (ref.kind === 'marker' && (ref.context.projectRoot !== state.root || ref.context.projectVersion !== state.version)) throw new Error('The project changed since this marker was attached. Attach the current marker again.')
     if (ref.context.projectRoot !== state.root || ref.context.projectVersion !== state.version) throw new Error('The project changed since this motion request was attached. Select the current layers and attach the request again.')

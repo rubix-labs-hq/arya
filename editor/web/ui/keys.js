@@ -1,7 +1,8 @@
 // Keyboard: Final Cut Pro and DaVinci Resolve defaults where they agree, Resolve
 // conventions for delete (Delete lifts, Shift-Delete ripples).
 
-import { clipEnd, compView, duration, snapToFrame, sourceTime } from '/core/project.js'
+import { magneticOps, primaryTrack } from './magnetic.js'
+import { applyOps, clipEnd, compView, duration, snapToFrame, sourceTime } from '/core/project.js'
 import { player } from './engine-host.js'
 import { api, edit, set, store, time, toast, viewProject } from './store.js'
 import { copySelection } from './timeline.js'
@@ -11,8 +12,8 @@ export const SHORTCUTS = [
   ['Space', 'Play / pause'], ['J K L', 'Shuttle reverse / stop / forward (tap again to go faster)'], ['← →', 'Previous / next frame (⇧ one second)'],
   ['↑ ↓', 'Previous / next edit point'], ['Home / End', 'Start / end'], ['I / O', 'Mark in / out'], ['X', 'Mark the clip under the playhead'],
   ['⌥X', 'Clear in and out'], ['A', 'Select tool'], ['B', 'Blade tool'], ['T', 'Trim tool (ripple edges, roll edit points, slip bodies; ⌥ slides)'],
-  ['Y', 'Slip tool'], ['U', 'Slide tool'], ['H', 'Hand tool'], ['N', 'Snapping on / off'], ['⌘B', 'Blade at playhead (selected clips, or every track)'],
-  ['⌫', 'Delete, leaving a gap'], ['⇧⌫', 'Ripple delete'], ['M', 'Add marker'], ['⌥[ / ⌥]', 'Trim start / end to playhead'],
+  ['Y', 'Slip tool'], ['U', 'Slide tool'], ['H', 'Hand tool'], ['S', 'Skimming on / off'], ['N', 'Snapping on / off'], ['⌘B', 'Blade at playhead (selected clips, or every track)'],
+  ['⌫', 'Delete (ripple on magnetic V1)'], ['⇧⌫', 'Ripple delete'], ['M', 'Add marker'], ['⌥[ / ⌥]', 'Trim start / end to playhead'],
   [', .', 'Nudge selection one frame (⇧ ten)'], ['V', 'Enable / disable clip'], ['⌘T', 'Add cross dissolve'], ['⌥F', 'Freeze frame'],
   ['F', 'Match frame (open the source at this frame)'], ['E W D Q', 'Append / insert / overwrite / connect the source clip'],
   ['⌘C ⌘X ⌘V', 'Copy / cut / paste at playhead'], ['⌘D', 'Duplicate'], ['⌘A', 'Select all'], ['⌘Z ⇧⌘Z', 'Undo / redo'],
@@ -123,7 +124,10 @@ export function runEditorCommand(command) {
         edit({ op: 'delete_marker', id: store.selMarker })
         set({ selMarker: null })
       } else if (ids.length) {
-        edit({ op: command === 'rippleDelete' ? 'ripple_delete' : 'lift', ids, ...unlinked() })
+        const magnetic = store.magnetic && primaryTrack(p)?.clips.some(c => ids.includes(c.id))
+        const op = { op: command === 'rippleDelete' ? 'ripple_delete' : 'lift', ids, ...unlinked() }
+        if (magnetic) edit(magneticOps(p, [op], { linked: store.linked, applyOps, project: store.project }))
+        else edit(op)
         set({ selection: [] })
       } else if (sel().length) toast('The selected clips are on locked tracks.')
       else if (p.range) edit({ op: 'delete_range', from: p.range.in, to: p.range.out, ripple: command === 'rippleDelete' })
@@ -328,6 +332,9 @@ export function installKeys() {
         case 'h':
           set({ tool: 'hand' })
           break
+        case 's':
+          set({ skimming: !store.skimming })
+          break
         case 'n':
           set({ snapping: !store.snapping })
           toast(`Snapping ${store.snapping ? 'on' : 'off'}`)
@@ -359,7 +366,13 @@ export function installKeys() {
             seen.add(link)
             return true
           })
-          if (ids.length) edit(ids.map(id => ({ op: 'trim', id, edge: right ? 'right' : 'left', to: time.t, ripple: e.altKey, ...(store.linked ? {} : { unlinked: true }) })))
+          if (ids.length) {
+            const primary = store.magnetic && primaryTrack(p)
+            const ops = ids.map(id => ({ op: 'trim', id, edge: right ? 'right' : 'left', to: time.t,
+              ripple: e.altKey || Boolean(primary?.clips?.some(c => c.id === id)), ...unlinked() }))
+            edit(primary && ops.some(op => primary.clips.some(c => c.id === op.id))
+              ? magneticOps(p, ops, { linked: store.linked, applyOps, project: store.project }) : ops)
+          }
           else if (sel().length) toast('The selected clips are on locked tracks.')
           break
         }

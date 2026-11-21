@@ -384,6 +384,7 @@ struct NativeDeliverPanel: View {
                 }
                 .buttonStyle(NativeSecondaryButtonStyle(fill: true))
             }.nativePanelPadding()
+            .aryaContextAIMenu(model, .init(kind: .deliver, objectID: "export", label: "Export · \(preset)", details: ["preset": preset, "transfer": transfer, "range": exportScope, "width": String(outputSize?.width ?? 0), "height": String(outputSize?.height ?? 0), "fps": String(outputOverrides ? outputFPS : model.fps)]))
         }
         .sheet(item: $importSheet) { _ in
             NativeInterchangeImportSheet(model: model, session: session)

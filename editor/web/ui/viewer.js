@@ -1,6 +1,7 @@
 // Viewer: the composited frame with on-canvas transform handles, overlays, the
 // transport, and a source monitor for marking and three-point edits.
 
+import { mediaTarget, frameTarget, showContext } from './assistant-context.js'
 import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
@@ -184,7 +185,7 @@ export function Viewer({ compact }) {
   const timelineName = p.compId ? s.project?.comps?.[p.compId]?.name ?? p.compId : 'Main timeline'
 
   const onStageDown = e => {
-    if (e.target.closest('.xform')) return
+    if (e.button !== 0 || e.target.closest('.xform')) return
     if (e.altKey) {
       const r = e.currentTarget.getBoundingClientRect()
       const px = Math.round(((e.clientX - r.left - rect.x) / rect.w) * p.width)
@@ -235,7 +236,7 @@ export function Viewer({ compact }) {
         <button class=${s.overlays.grid ? 'on' : ''} title="Rule of thirds" aria-label="Rule of thirds grid" aria-pressed=${!!s.overlays.grid} onClick=${() => set({ overlays: { ...s.overlays, grid: !s.overlays.grid } })}><${Icon} name="grid" /></button>
         ${backendHost.kind === 'browser-local' ? null : html`<button title="Reference this frame to your assistant (⌥-click a point in the frame for a pixel)" aria-label="Reference this frame to your assistant" onClick=${() => addRef({ kind: 'frame', id: time.t.toFixed(3), label: `frame ${timecode(time.t, p.fps)}` })}><${Icon} name="attach" /></button>`}
       </div>
-      <div class="viewer-stage" ref=${stage} onPointerDown=${shown ? undefined : onStageDown} onDblClick=${() => player.toggle()}>
+      <div class="viewer-stage" onContextMenu=${e => showContext(e, frameTarget())} ref=${stage} onPointerDown=${shown ? undefined : onStageDown} onDblClick=${() => player.toggle()}>
         <div class="canvas-host" ref=${host} style=${{ left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` }}></div>
         ${s.overlays.safe ? html`<div class="safe" style=${{ left: `${rect.x + rect.w * 0.05}px`, top: `${rect.y + rect.h * 0.05}px`, width: `${rect.w * 0.9}px`, height: `${rect.h * 0.9}px` }}><div class="safe-inner"></div></div>` : null}
         ${s.overlays.grid ? html`<div class="thirds" style=${{ left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.w}px`, height: `${rect.h}px` }}></div>` : null}
@@ -439,7 +440,7 @@ function SourceViewer({ compact } = {}) {
         <span class="grow"></span>
         <span class="muted">${asset.width ? `${asset.width}×${asset.height}` : ''} ${asset.fps ? `${asset.fps}fps` : ''} ${asset.codec ?? ''}</span>
       </div>
-      <div class="viewer-stage src">
+      <div class="viewer-stage src" onContextMenu=${e => showContext(e, mediaTarget(src.src, asset))}>
         ${isImage ? html`<img class="src-media" src=${url} alt=${mediaDisplayName(src.src, asset)} />` : audioOnly ? html`<div class="empty-hint" onClick=${toggle}><span style="font-size:40px">♪</span><br />${mediaDisplayName(src.src, asset)}<br /><span class="muted">Audio source</span></div><audio ref=${video} src=${url} preload="auto"></audio>` : html`<video class="src-media" ref=${video} src=${url} controls=${false} onClick=${toggle}></video>`}
       </div>
       ${isImage ? null : html`
