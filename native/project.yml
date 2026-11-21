@@ -12,8 +12,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.3.0"
-    CURRENT_PROJECT_VERSION: "10"
+    MARKETING_VERSION: "1.3.1"
+    CURRENT_PROJECT_VERSION: "13"
     # The build phase reads editor/ outside the project folder.
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     DEAD_CODE_STRIPPING: YES

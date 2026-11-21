@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { nativeCaptureNote } from '../scripts/product-home.mjs';
+import { atLeastMinor, nativeCaptureNote } from '../scripts/product-home.mjs';
 import { preparePublicOutput } from '../scripts/prepare-public.mjs';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -84,19 +84,21 @@ test('every After the Tide picture on the home page sits beside its disclosure',
   const tide = Object.values(native.images).filter(item => item.project === 'After the Tide');
   assert.ok(tide.length >= 2 && native.clips['after-the-tide'].project === 'After the Tide');
   // Under the device stage, under each capture further down that shows the picture, and under the clip.
-  const pictured = ['mac-media-panel', 'mac-edit'];
+  const nextActive = Boolean(shipped.mobileRelease?.ready) && native.next && atLeastMinor(shipped.mobileRelease.version, native.next.version);
+  const liveImages = { ...native.images, ...(nextActive ? native.next.images : {}) };
+  const pictured = ['mac-media-panel', 'mac-edit', ...(nextActive && liveImages['iphone-assistant']?.still ? ['iphone-assistant'] : [])];
   assert.equal(native.stills['After the Tide'], disclosure);
   assert.ok(native.projects['After the Tide'].startsWith(disclosure));
   for (const id of pictured) {
-    assert.equal(native.images[id].still, true, id);
-    const start = live.home.indexOf(`native-${id}.webp`);
-    assert.ok(live.home.slice(start, live.home.indexOf('</figure>', start)).includes(disclosure), id);
+    assert.equal(liveImages[id].still, true, id);
+    const start = live.home.indexOf(liveImages[id].src);
+    assert.ok(start > 0 && live.home.slice(start, live.home.indexOf('</figure>', start)).includes(disclosure), id);
   }
   assert.equal(live.home.split(disclosure).length - 1, 2 + pictured.length);
   // Panels that show no picture carry no flag.
-  for (const id of ['mac-color-inspector', 'ipad-color-inspector', 'iphone-deliver']) assert.ok(!native.images[id].still, id);
+  for (const id of ['mac-color-inspector', 'ipad-color-inspector', 'iphone-deliver']) assert.ok(!liveImages[id].still, id);
   const stage = live.home.slice(live.home.indexOf('<figure class="family"'), live.home.indexOf('</figure>', live.home.indexOf('<figure class="family"')));
-  assert.ok(stage.includes('native-iphone-edit.webp') && stage.includes(disclosure));
+  assert.ok(stage.includes(liveImages['iphone-edit'].src) && stage.includes(disclosure));
   const clip = live.home.slice(live.home.indexOf('<figure class="chapter-figure figure-clip">'), live.home.indexOf('</figure>', live.home.indexOf('<figure class="chapter-figure figure-clip">')));
   assert.ok(clip.includes('after-the-tide.mp4') && clip.includes(disclosure));
   // It is a generated still with editable layers. Nothing calls it footage or a camera original.
@@ -178,8 +180,10 @@ test('screens of the next App Store release appear only once that release is liv
   assert.ok(next && Object.keys(next.images).length > 0);
   for (const item of Object.values(next.images)) assert.ok(item.project in native.projects && item.device && item.alt && item.label, item.src);
   // While the shipped release is older, no page loads them and the note does not mention them.
-  for (const item of Object.values(next.images)) assert.ok(!live.home.includes(item.src), `${item.src} shows before its release`);
-  assert.ok(!text(live.home).includes(next.edition));
+  const older = await build({ ...shipped, mobileRelease: { ...shipped.mobileRelease, version: '1.2.0', build: '7' } });
+  assert.equal(older.result.status, 0, older.result.stderr);
+  for (const item of Object.values(next.images)) assert.ok(!older.home.includes(item.src), `${item.src} shows before its release`);
+  assert.ok(!text(older.home).includes(next.edition));
   // Once the App Store release reaches that version, they replace the matching images and the
   // capture note says where they come from.
   const later = await build({ ...shipped, mobileRelease: { ...shipped.mobileRelease, version: `${next.version}.0` } });
@@ -215,8 +219,8 @@ test('Ask Arya instructions follow each released edition independently', async (
   const both = await buildAt('1.4.0', '2.0');
   assert.match(both, /Using Ask Arya in the direct Mac download and the iPhone and iPad apps<\/h3>/);
   for (const page of [direct, mobile, both]) assert.match(page, /Undo on it.*choose Apply or Discard/);
-  // The shipped config has the 1.3.0 Mac download live, so the home page carries the Mac instructions.
-  assert.match(live.home, /Using Ask Arya in the direct Mac download<\/h3>/);
+  // The shipped config has both the 1.3.0 Mac download and 1.3.0 App Store iPhone/iPad apps live.
+  assert.match(live.home, /Using Ask Arya in the direct Mac download and the iPhone and iPad apps<\/h3>/);
   assert.match(macOnly.home, /Using Ask Arya in the direct Mac download<\/h3>/);
 });
 
@@ -264,8 +268,9 @@ test('the assistant leads the page and is never described as Mac only', () => {
   assert.ok(section.includes('On iPad and iPhone. Use ChatGPT where offered, an Anthropic API key, or a connection to Arya on your Mac.'));
   assert.ok(section.includes('You can edit and export without connecting an account.'));
   assert.equal(live.home.slice(live.home.indexOf('<section class="assistant"'), live.home.indexOf('<section class="pages"')).match(/<ul class="points">(.*?)<\/ul>/s)[1].split('<li>').length - 1, 4);
-  // The screenshot slot keeps its file and size.
-  assert.match(live.home, /<figure class="chapter-figure figure-assistant"><a href="\/assets\/product\/assistant-panel\.webp\?v=[0-9a-f]{12}" class="figure-link"><img src="\/assets\/product\/assistant-panel\.webp\?v=[0-9a-f]{12}"[^>]* width="712" height="1024"/);
+  // The screenshot slot keeps its file and size (native Ask Arya once mobile 1.3+ is live, local browser panel otherwise).
+  assert.match(live.home, /<figure class="plate plate-iphone-assistant"><div class="plate-frame"><picture><img src="\/assets\/product\/native-iphone-assistant\.webp\?v=[0-9a-f]{12}"[^>]* width="603" height="1311"/);
+  assert.match(macOnly.home, /<figure class="chapter-figure figure-assistant"><a href="\/assets\/product\/assistant-panel\.webp\?v=[0-9a-f]{12}" class="figure-link"><img src="\/assets\/product\/assistant-panel\.webp\?v=[0-9a-f]{12}"[^>]* width="712" height="1024"/);
   assert.match(live.home, /<article class="platform"><h3>iPhone and iPad<\/h3>.*?<li>Assistant editing with your own AI account\.<\/li>/s);
 
   // With no App Store release, the page makes no claim about the assistant on those devices.
