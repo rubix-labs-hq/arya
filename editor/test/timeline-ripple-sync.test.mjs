@@ -43,6 +43,34 @@ for (const [label, ops] of [
   assert.deepEqual(videoOverlaps(after), [])
 })
 
+// The mirror case: a3 and a2 are J cuts whose sound starts before their picture does.
+function jCut(sound) {
+  const p = fixture()
+  p.tracks.find(t => t.id === 'V3').clips = []; p.tracks.find(t => t.id === 'A3').clips = []
+  p.tracks.find(t => t.id === 'A1').clips = sound.map(([id, start, dur, link]) => ({ id, kind: 'audio', start, dur, link }))
+  return p
+}
+test('ripple deleting the clip before a J cut moves the leading sound with its picture', () => {
+  const before = jCut([['a1', 0, 3.5, 'L1'], ['a2', 3.5, 2, 'L2'], ['a3', 5.5, 3.5, 'L3']])
+  const { project } = applyOps(before, [{ op: 'ripple_delete', id: 'v2' }])
+  assert.deepEqual(ids(project, 'A1'), ['a1', 'a3'])
+  assert.equal(start(project, 'v3'), 3); assert.equal(start(project, 'a3'), 2.5)
+  assert.equal(offset(project, 'v3', 'a3'), offset(before, 'v3', 'a3'))
+})
+test('a J cut that would start before zero stops at zero', () => {
+  const before = jCut([['a1', 0, 2.5, 'L1'], ['a2', 2.5, 3.5, 'L2'], ['a3', 6, 3, 'L3']])
+  const { project } = applyOps(before, [{ op: 'ripple_delete', id: 'v1' }])
+  assert.equal(start(project, 'v2'), 0); assert.equal(start(project, 'v3'), 3); assert.equal(start(project, 'a3'), 3)
+  // a2 led v2 by 0.5 s; the timeline has no room before 0, so a2 starts with v2 instead.
+  assert.equal(start(project, 'a2'), 0)
+})
+test('a ripple trim before a J cut moves the leading sound with its picture', () => {
+  const before = jCut([['a1', 0, 3, 'L1'], ['a2', 3, 2.5, 'L2'], ['a3', 5.5, 3.5, 'L3']])
+  const { project } = applyOps(before, [{ op: 'trim', id: 'v2', edge: 'right', to: 5, ripple: true }])
+  assert.equal(start(project, 'v3'), 5); assert.equal(offset(project, 'v3', 'a3'), offset(before, 'v3', 'a3'))
+  assert.deepEqual(videoOverlaps(project), [])
+})
+
 test('ripple delete closes the picture gap on the linked tracks and leaves other tracks in place', () => {
   const { project } = applyOps(fixture(), [{ op: 'ripple_delete', id: 'v2' }])
   assert.deepEqual(ids(project, 'V1'), ['v1', 'v3']); assert.deepEqual(ids(project, 'A1'), ['a1', 'a3'])

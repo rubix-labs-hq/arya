@@ -584,11 +584,13 @@ function shiftAfter(track, from, delta, except) {
 /**
  * Applies ripple shifts as one edit. Each plan moves the clips on its track that start at or after
  * `from` by `delta`, measured before any clip moves. Unless `unlinked`, a moved clip's linked
- * partners on unlocked tracks that no plan covers move by the same amount, so later picture and
- * sound stay in sync when a clip without sound, or only one side of a link, ripples.
+ * partners on unlocked tracks that did not move yet move by the same amount, so later picture and
+ * sound stay in sync when a clip without sound, or only one side of a link, ripples. That covers
+ * partners on a rippled track that start before its `from`, such as the sound of a J cut that
+ * leads into the deleted span. A partner never moves before 0, so it can lose sync there.
  */
 function rippleTracks(p, plans, unlinked = false) {
-  const rippled = new Set(plans.map(plan => plan.track))
+  const except = new Set(plans.map(plan => plan.except).filter(Boolean))
   const shift = new Map()
   for (const { track, from, delta, except } of plans) {
     if (!delta) continue
@@ -600,7 +602,7 @@ function rippleTracks(p, plans, unlinked = false) {
     for (const x of allClips(p)) if (x.clip.link) groups.set(x.clip.link, [...(groups.get(x.clip.link) ?? []), x])
     for (const [c, delta] of [...shift]) {
       for (const l of c.link ? groups.get(c.link) ?? [] : []) {
-        if (l.clip !== c && !l.track.locked && !rippled.has(l.track) && !shift.has(l.clip)) shift.set(l.clip, delta)
+        if (l.clip !== c && !l.track.locked && !except.has(l.clip) && !shift.has(l.clip)) shift.set(l.clip, delta)
       }
     }
   }
