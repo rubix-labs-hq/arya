@@ -782,7 +782,8 @@ struct NativeViewer: View {
                         .scrollBounceBehavior(.basedOnSize)
                         .frame(maxWidth: 440, maxHeight: geometry.size.height)
                 }
-                if let viewport, model.metalFrame != nil, model.duration > 0, !timelineIsEmpty, model.drawing == nil {
+                // A skimmed frame is a look, not the edit point: handles and the compare wipe wait for the playhead.
+                if let viewport, model.metalFrame != nil, model.duration > 0, !timelineIsEmpty, model.drawing == nil, !skimming {
                     comparisonOverlay(viewport: viewport)
                     let dispatch = overlayDispatch()
                     if let controller = model.viewerColorWindow, model.panel == .color {
@@ -797,8 +798,15 @@ struct NativeViewer: View {
                     } else { interactionOverlay(viewport: viewport, layers: visibleLayers) }
                     comparisonHandle(viewport: viewport)
                 }
-                if model.rendering, model.metalFrame != nil {
+                if model.rendering, model.metalFrame != nil, !skimming {
                     VStack { HStack { Spacer(); ProgressView().controlSize(.small).padding(10) }; Spacer() }
+                }
+                if model.skimAsset != nil, let image = model.skimAssetFrame {
+                    // A clip skimmed in the browser, shown over the timeline frame until the pointer leaves it.
+                    ZStack {
+                        NativeEditorStyle.viewer
+                        Image(decorative: image, scale: 1).resizable().interpolation(.medium).aspectRatio(contentMode: .fit)
+                    }.frame(width: geometry.size.width, height: geometry.size.height).allowsHitTesting(false).accessibilityHidden(true)
                 }
                 if let mode = model.drawing {
                     NativeDrawingOverlay(model: model, mode: mode)
@@ -822,12 +830,25 @@ struct NativeViewer: View {
                     }.padding(.horizontal, 8).background(NativeEditorStyle.panel, in: RoundedRectangle(cornerRadius: 6)).padding(8)
                 }
             }
+            .overlay(alignment: .top) { skimPill }
             .contextMenu {
                 NativeContextAIMenuContent(model, .frame(model))
                 if let clip = model.selected { Menu(clip.name) { NativeContextAIMenuContent(model, .clip(clip)) } }
             }
             .onAppear { viewerModelID = ObjectIdentifier(model); updateViewerLayout(viewport?.layout) }
             .onChange(of: viewport?.layout) { _, layout in updateViewerLayout(layout) }
+        }
+    }
+
+    /// True while the pointer skims the timeline or a browser clip.
+    private var skimming: Bool { model.skimTime != nil || model.skimAsset != nil }
+
+    /// Says the viewer shows a skimmed frame, and which one, so it is never mistaken for the playhead.
+    @ViewBuilder private var skimPill: some View {
+        if let asset = model.skimAsset, model.skimAssetFrame != nil {
+            NativeViewerSkimPill(text: "Skimming · \((asset.src as NSString).lastPathComponent) · \(nativeTimecode(asset.time, fps: model.fps))")
+        } else if model.showingSkimFrame, let at = model.skimTime {
+            NativeViewerSkimPill(text: "Skimming · \(nativeTimecode(at, fps: model.fps))")
         }
     }
 
@@ -1399,5 +1420,23 @@ private struct NativeViewerPlaceholder: View {
             }
             .frame(width: max(0, size.width), height: max(0, size.height))
             .accessibilityElement(children: .ignore).accessibilityLabel(label)
+    }
+}
+
+/// The viewer's note that it shows a skimmed frame.
+private struct NativeViewerSkimPill: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(Color(red: 1, green: 0x6b / 255, blue: 0x57 / 255)).frame(width: 6, height: 6)
+            Text(text).font(.system(size: 11, weight: .medium, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+        }
+        .padding(.horizontal, 9).padding(.vertical, 5)
+        .foregroundStyle(NativeEditorStyle.text.opacity(0.9))
+        .background(.black.opacity(0.62), in: Capsule())
+        .overlay { Capsule().stroke(.white.opacity(0.12)) }
+        .padding(8).allowsHitTesting(false)
+        .accessibilityElement(children: .ignore).accessibilityLabel(text).accessibilityIdentifier("viewer.skimming")
     }
 }

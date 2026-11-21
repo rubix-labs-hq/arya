@@ -172,6 +172,8 @@ struct NativeMetalViewer:View {let texture:MTLTexture;var body:some View {EmptyV
  var drawing:NativeDrawingMode?,viewerColorPicker:NativeViewerColorPicker?,viewerComparison:NativeViewerComparison?
  var viewerColorWindow:NativeColorWindowController?
  var viewerComparisonFraction=0.5,version=7,time=1.0,panel=NativePanel.edit
+ var skimTime:Double?,skimAsset:(src:String,time:Double)?,skimAssetFrame:CGImage?
+ var showingSkimFrame:Bool {false}
  var busy=false,showFiles=false,status="",renderError:String?,folder:URL?,width=1920.0,height=1080.0,fps=30.0,duration=4.0
  var sourceAsset:NativeAsset?,sourceRange:NativeSourceRange?,sourceImage:CGImage?,sourceLoading=false,sourceError:String?,sourcePlaying=false,sourcePlayer=AVPlayer()
  var tracks:[NativeTrack] {project?.tracks(in:composition) ?? []};var selected:NativeClip? {tracks.flatMap(\.clips).first {$0.id==selectedID}}

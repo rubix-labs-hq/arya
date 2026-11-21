@@ -2,6 +2,7 @@ import Foundation
 import CoreFoundation
 import ImageIO
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #endif
@@ -468,7 +469,9 @@ enum NativeTimelinePlanning {
             }
         }
 
-        func plan(mode: NativeTimelineMode, delta: Double, edge: String? = nil, destination: String? = nil) throws -> Plan {
+        /// `magnetic` plans for the magnetic timeline: a move that touches the primary storyline reorders it without
+        /// gaps, and a ripple trim there carries the later clips on every other track. Without it the plan is the classic one.
+        func plan(mode: NativeTimelineMode, delta: Double, edge: String? = nil, destination: String? = nil, magnetic: Bool = false) throws -> Plan {
             guard delta.isFinite, abs(delta) < 1_000_000 else { throw Failure("The timeline gesture has invalid geometry.") }
             let leadClip = try clip(lead)
             switch mode {
@@ -499,7 +502,8 @@ enum NativeTimelinePlanning {
                     if item.id == lead, let target { operation["track"] = target }
                     operations.append(operation)
                 }
-                return Plan(operations: scoped(operations), offsets: offsets, targetTrack: target, snapLine: useEnd ? b.line : a.line, detail: String(format: "Move %+.2f s", offsets[lead] ?? shift))
+                let free = Plan(operations: scoped(operations), offsets: offsets, targetTrack: target, snapLine: useEnd ? b.line : a.line, detail: String(format: "Move %+.2f s", offsets[lead] ?? shift))
+                return magnetic ? try magneticMove(leadClip: leadClip, group: group, shift: shift, target: target, free: free) : free
             case .trim, .ripple:
                 guard let edge, ["left", "right"].contains(edge) else { throw Failure("Drag a clip edge to trim.") }
                 let group = family(leadClip); try aligned(group)
@@ -540,11 +544,22 @@ enum NativeTimelinePlanning {
                             offsets[later.id] = shift
                         }
                     }
-                    for later in clips where offsets[later.id] != nil {
-                        guard family(later).allSatisfy({ offsets[$0.id] == shift }) else { throw Failure("The ripple would separate later linked clips.") }
+                    if !magnetic {
+                        for later in clips where offsets[later.id] != nil {
+                            guard family(later).allSatisfy({ offsets[$0.id] == shift }) else { throw Failure("The ripple would separate later linked clips.") }
+                        }
                     }
                 }
-                return Plan(operations: scoped([["op": "trim", "id": lead, "edge": edge, "to": to, "ripple": mode == .ripple]]), offsets: offsets, targetTrack: nil, snapLine: snapped.line == to ? to : nil, detail: String(format: "%@ %@ %.2f s", mode.rawValue, edge, to), clipFields: previewFields)
+                var operations: [[String: Any]] = [["op": "trim", "id": lead, "edge": edge, "to": to, "ripple": mode == .ripple]]
+                if mode == .ripple, magnetic, abs(shift) > 0.00001 {
+                    // The core ripples only the trimmed clips' own tracks. Later clips on every other track follow,
+                    // so titles, sound and captions stay over the pictures they belong to.
+                    for follower in NativeMagneticTimeline.followers(clips: clips, rippled: Set(group.map(\.track)), from: leadClip.end, shift: shift) {
+                        operations.append(["op": "move", "id": follower.id, "start": frame(follower.start + shift), "unlinked": true])
+                        offsets[follower.id] = shift
+                    }
+                }
+                return Plan(operations: scoped(operations), offsets: offsets, targetTrack: nil, snapLine: snapped.line == to ? to : nil, detail: String(format: "%@ %@ %.2f s", mode.rawValue, edge, to), clipFields: previewFields)
             case .roll:
                 guard let edge, ["left", "right"].contains(edge) else { throw Failure("Drag a shared edge to roll.") }
                 let pair = try neighbors(of: leadClip, edge: edge)
@@ -620,6 +635,307 @@ enum NativeTimelinePlanning {
             }
             return (a, b)
         }
+    }
+}
+/// Magnetic timeline planning. The primary storyline is the lowest video track. Edits there leave no gap,
+/// and clips on other tracks keep their place over the primary clips they belong to.
+enum NativeMagneticTimeline {
+    /// The most follower moves one edit sends. A longer timeline closes its gap without them.
+    static let followerLimit = 400
+
+    static func primaryTrack(_ tracks: [[String: Any]]) -> String? {
+        tracks.first { ($0["kind"] as? String ?? "video") == "video" }?["id"] as? String
+    }
+
+    /// Clips on unlocked tracks the core does not ripple that start at or after `from`. They move by `shift`
+    /// with an unlinked move each. A track is left alone when moving its clips left would stack them on a clip that stays.
+    static func followers(clips: [NativeTimelinePlanning.Clip], rippled: Set<String>, from: Double, shift: Double) -> [NativeTimelinePlanning.Clip] {
+        guard from.isFinite, shift.isFinite else { return [] }
+        var result: [NativeTimelinePlanning.Clip] = []
+        for track in Set(clips.filter { !$0.locked }.map(\.track)).subtracting(rippled).sorted() {
+            let row = clips.filter { $0.track == track }
+            let moving = row.filter { $0.start >= from - 0.000001 }
+            guard let first = moving.map(\.start).min(), first + shift >= -0.000001 else { continue }
+            let wall = row.filter { $0.start < from - 0.000001 }.map(\.end).max() ?? 0
+            if shift < 0, first + shift < wall - 0.000001 { continue }
+            result += moving.sorted { $0.start < $1.start }
+        }
+        return result.count <= followerLimit ? result : []
+    }
+
+    /// The operations for a delete with the magnetic timeline on, or nil when the delete does not touch the
+    /// primary storyline and should stay a plain delete. Each removed primary clip closes its gap, and later
+    /// clips on the other tracks move up by the same amount.
+    static func deleteOperations(tracks: [[String: Any]], ids: [String], fps: Double) -> [[String: Any]]? {
+        guard fps.isFinite, fps > 0, let primary = primaryTrack(tracks),
+              tracks.first(where: { $0["id"] as? String == primary })?["locked"] as? Bool != true else { return nil }
+        var clips = tracks.flatMap { track in
+            (track["clips"] as? [[String: Any]] ?? []).map {
+                NativeTimelinePlanning.Clip(fields: $0, track: track["id"] as? String ?? "", trackKind: track["kind"] as? String ?? "video", locked: track["locked"] as? Bool ?? false)
+            }
+        }
+        guard clips.allSatisfy({ $0.start.isFinite && $0.duration.isFinite && $0.start >= 0 && $0.duration > 0 && !$0.id.isEmpty }) else { return nil }
+        let frame = { (value: Double) -> Double in ((value * fps).rounded() / fps * 100_000).rounded() / 100_000 }
+        // What a delete of `id` removes: the clip and its linked partners on unlocked tracks.
+        func removed(_ id: String) -> [NativeTimelinePlanning.Clip] {
+            guard let clip = clips.first(where: { $0.id == id }) else { return [] }
+            return [clip] + (clip.link.isEmpty ? [] : clips.filter { $0.id != id && $0.link == clip.link && !$0.locked })
+        }
+        var ripples = Set<String>(), lifts: [String] = []
+        for id in ids {
+            let family = removed(id)
+            guard !family.isEmpty else { return nil }
+            let onPrimary = family.filter { $0.track == primary }.map(\.id)
+            if onPrimary.isEmpty { lifts.append(id) } else { ripples.formUnion(onPrimary) }
+        }
+        guard !ripples.isEmpty else { return nil }
+        var operations: [[String: Any]] = [], followerMoves: [[String: Any]] = []
+        if !lifts.isEmpty {
+            let gone = Set(lifts.flatMap { removed($0).map(\.id) })
+            operations.append(["op": "delete", "ids": lifts.sorted()])
+            clips.removeAll { gone.contains($0.id) }
+        }
+        func moved(_ clip: NativeTimelinePlanning.Clip, to start: Double) -> NativeTimelinePlanning.Clip {
+            var fields = clip.fields; fields["start"] = start
+            return NativeTimelinePlanning.Clip(fields: fields, track: clip.track, trackKind: clip.trackKind, locked: clip.locked)
+        }
+        // Last clip first, so an earlier clip is still where the project has it when its turn comes.
+        for id in ripples.sorted(by: { a, b in (clips.first { $0.id == a }?.start ?? 0) > (clips.first { $0.id == b }?.start ?? 0) }) {
+            let family = removed(id)
+            guard let lead = family.first else { continue }
+            let gone = Set(family.map(\.id)), rippled = Set(family.map(\.track))
+            let from = lead.end, length = lead.duration
+            clips.removeAll { gone.contains($0.id) }
+            // The core closes the gap on every track that lost a clip.
+            for part in family.sorted(by: { $0.start > $1.start }) {
+                clips = clips.map { $0.track == part.track && $0.start >= part.end - 0.000001 ? moved($0, to: max(0, $0.start - part.duration)) : $0 }
+            }
+            operations.append(["op": "ripple_delete", "ids": [id]])
+            for follower in followers(clips: clips, rippled: rippled, from: from, shift: -length) {
+                let start = frame(max(0, follower.start - length))
+                followerMoves.append(["op": "move", "id": follower.id, "start": start, "unlinked": true])
+                clips = clips.map { $0.id == follower.id ? moved($0, to: start) : $0 }
+            }
+            operations += followerMoves; followerMoves = []
+            if operations.count > followerLimit {
+                let plain: [[String: Any]] = lifts.isEmpty ? [] : [["op": "delete", "ids": lifts.sorted()]]
+                return plain + [["op": "ripple_delete", "ids": ripples.sorted()]]
+            }
+        }
+        return operations
+    }
+}
+
+extension NativeTimelinePlanning.Capture {
+    /// A move with the magnetic timeline on. When the drag starts or ends on the primary storyline, the dragged
+    /// clips land on the nearest edit point, the other primary clips close up around them, and clips on other
+    /// tracks follow the primary clip they start over. Any other move stays the free one.
+    func magneticMove(leadClip: NativeTimelinePlanning.Clip, group: [NativeTimelinePlanning.Clip], shift: Double, target: String?,
+                      free: NativeTimelinePlanning.Plan) throws -> NativeTimelinePlanning.Plan {
+        guard let primary = NativeMagneticTimeline.primaryTrack(tracks),
+              tracks.first(where: { $0["id"] as? String == primary })?["locked"] as? Bool != true,
+              leadClip.track == primary || target == primary else { return free }
+        guard target != nil || abs(shift) >= minimumDuration / 2 else { return free }
+        let groupIDs = Set(group.map(\.id))
+        let trackAfter = { (clip: NativeTimelinePlanning.Clip) -> String in clip.id == self.lead ? (target ?? clip.track) : clip.track }
+        let stay = clips.filter { $0.track == primary && !groupIDs.contains($0.id) }.sorted { $0.start < $1.start }
+        let block = group.filter { trackAfter($0) == primary }.sorted { $0.start < $1.start }
+        let links = (stay + block).map(\.link).filter { !$0.isEmpty }
+        guard Set(links).count == links.count else { return free }
+        for item in stay { try editable(item) }
+        var order = stay
+        if !block.isEmpty {
+            let from = (block.map(\.start).min() ?? 0) + shift, to = (block.map(\.end).max() ?? 0) + shift
+            // Dragging right, the block's trailing edge chooses the slot; dragging left or arriving, its leading edge does.
+            let probe = leadClip.track == primary && target == nil && shift > 0 ? to : from
+            order.insert(contentsOf: block, at: stay.filter { $0.start + $0.duration / 2 < probe }.count)
+        }
+        var packed: [String: Double] = [:], cursor = 0.0
+        for item in order { packed[item.id] = cursor; cursor = frame(cursor + item.duration) }
+        guard cursor < 1_000_000 else { throw NativeTimelinePlanning.Failure("The move exceeds the supported timeline range.") }
+
+        var operations: [[String: Any]] = [], offsets: [String: Double] = [:], placed: [String: Double] = [:], seen = Set<String>()
+        // The lead leaving or arriving carries the rest of the selection freely. A reorder leaves the selected
+        // clips on other tracks to follow their primary clips, like everything else up there.
+        let reorder = leadClip.track == primary && target == nil
+        for item in [leadClip] + group.filter({ $0.id != lead }) {
+            let key = item.link.isEmpty ? "id:\(item.id)" : "link:\(item.link)"
+            let linked = family(item)
+            let anchor = linked.first { packed[$0.id] != nil && groupIDs.contains($0.id) } ?? item
+            if reorder, packed[anchor.id] == nil { continue }
+            guard seen.insert(key).inserted else { continue }
+            let start = try packed[anchor.id] ?? boundedFrame(anchor.start + shift, lower: anchor.start - (linked.map(\.start).min() ?? 0),
+                                                              upper: anchor.start + 999_999 - (linked.map(\.end).max() ?? anchor.end))
+            for partner in linked {
+                placed[partner.id] = partner.start + start - anchor.start
+                // The dragged clips stay under the pointer. They settle on the edit point when the drag ends.
+                offsets[partner.id] = free.offsets[partner.id] ?? shift
+            }
+            var operation: [String: Any] = ["op": "move", "id": anchor.id, "start": start]
+            if anchor.id == lead, let target { operation["track"] = target }
+            operations.append(operation)
+            if anchor.id != lead, linked.contains(where: { $0.id == lead }), let target {
+                operations.append(["op": "move", "id": lead, "start": frame(max(0, leadClip.start + start - anchor.start)), "track": target])
+            }
+        }
+        for item in stay {
+            guard let start = packed[item.id], abs(start - item.start) > 0.00001 else { continue }
+            for partner in family(item) where !partner.locked {
+                placed[partner.id] = partner.start + start - item.start; offsets[partner.id] = start - item.start
+            }
+            operations.append(["op": "move", "id": item.id, "start": start])
+        }
+        // Clips on other tracks follow the primary clip they start over.
+        var following: [String: Double] = [:]
+        for item in clips where item.track != primary && !item.locked && placed[item.id] == nil {
+            guard let over = clips.first(where: { $0.track == primary && item.start >= $0.start - 0.000001 && item.start < $0.end - 0.000001 }),
+                  trackAfter(over) == primary, let start = packed[over.id], abs(start - over.start) > 0.00001,
+                  item.start + start - over.start >= 0 else { continue }
+            following[item.id] = start - over.start
+        }
+        if following.count > NativeMagneticTimeline.followerLimit { following = [:] }
+        // A track keeps its followers in place when moving them would stack clips on it.
+        var crowded = Set<String>()
+        for track in Set(clips.filter { following[$0.id] != nil }.map(\.track)) {
+            let row = clips.filter { trackAfter($0) == track }.map { clip -> (start: Double, end: Double) in
+                let start = placed[clip.id] ?? (clip.start + (following[clip.id] ?? 0))
+                return (start, start + clip.duration)
+            }.sorted { $0.start < $1.start }
+            if zip(row, row.dropFirst()).contains(where: { $0.end > $1.start + 0.0001 }) { crowded.insert(track) }
+        }
+        let crowdedLinks = Set(clips.filter { following[$0.id] != nil && crowded.contains($0.track) }.map(\.link).filter { !$0.isEmpty })
+        for item in clips.sorted(by: { $0.start < $1.start }) {
+            guard let delta = following[item.id], !crowded.contains(item.track), !crowdedLinks.contains(item.link) else { continue }
+            operations.append(["op": "move", "id": item.id, "start": frame(item.start + delta), "unlinked": true])
+            offsets[item.id] = delta
+        }
+        operations.append(["op": "close_gaps", "track": primary])
+        let landing = block.first.flatMap { packed[$0.id] }
+        return NativeTimelinePlanning.Plan(operations: scoped(operations), offsets: offsets, targetTrack: free.targetTrack, snapLine: landing ?? free.snapLine,
+                                           detail: landing.map { String(format: "Reorder at %.2f s", $0) } ?? free.detail)
+    }
+}
+
+/// Where media or a generator dragged from the browser lands in the timeline.
+enum NativeTimelineDrop {
+    static let prefix = "arya-drag:"
+    enum Item: Equatable {
+        case media(String), title(String), shape(String), color(String), adjustment
+        init?(payload: String) {
+            guard payload.hasPrefix(NativeTimelineDrop.prefix) else { return nil }
+            let body = String(payload.dropFirst(NativeTimelineDrop.prefix.count))
+            if body == "adjustment" { self = .adjustment; return }
+            guard let colon = body.firstIndex(of: ":") else { return nil }
+            let value = String(body[body.index(after: colon)...])
+            guard !value.isEmpty, value.utf8.count <= 4096 else { return nil }
+            switch body[..<colon] {
+            case "media": self = .media(value)
+            case "title": self = .title(value)
+            case "shape": self = .shape(value)
+            case "color": self = .color(value)
+            default: return nil
+            }
+        }
+        var payload: String {
+            switch self {
+            case .media(let source): return NativeTimelineDrop.prefix + "media:" + source
+            case .title(let preset): return NativeTimelineDrop.prefix + "title:" + preset
+            case .shape(let preset): return NativeTimelineDrop.prefix + "shape:" + preset
+            case .color(let hex): return NativeTimelineDrop.prefix + "color:" + hex
+            case .adjustment: return NativeTimelineDrop.prefix + "adjustment"
+            }
+        }
+    }
+    enum Placement: Equatable { case insert, append, connect, place }
+
+    /// What the item adds to its operation: the source for media, or the whole generator.
+    static func fields(_ item: Item, width: Double, height: Double) -> [String: Any] {
+        switch item {
+        case .media(let source): return ["src": source]
+        case .title(let preset):
+            let lower = preset == "Lower third", size = min(width, height) * (lower ? 0.055 : 0.09)
+            let animation = preset == "Typewriter" ? "typewriter" : preset == "Fade in" ? "fade" : "none"
+            return ["op": "add_title", "text": lower ? "Name or description" : "Your title", "dur": 5.0,
+                    "set": ["x": width / 2, "y": height * (lower ? 0.84 : 0.5)],
+                    "title": ["font": "Inter", "size": size, "anim": animation] as [String: Any]]
+        case .shape(let type): return ["op": "add_shape", "shape": ["type": type], "dur": 5.0]
+        case .color(let hex): return ["op": "add_color", "color": hex, "dur": 5.0]
+        case .adjustment: return ["op": "adjustment", "dur": 5.0]
+        }
+    }
+    struct Plan {
+        /// One operation without its item fields: `op`, plus `track` and `start` or `at` where they apply.
+        let operation: [String: Any]
+        /// The lane to light up. Nil when the core chooses or adds the track.
+        let track: String?
+        let time: Double
+        let placement: Placement
+    }
+
+    /// The landing for a drop. `kind` is "video", "image" or "audio" for media, and nil for a generator.
+    /// `hover` is the lane under the pointer, or nil over the empty canvas. Media goes to a track of its own kind.
+    /// With the magnetic timeline on, media on the primary storyline is inserted at the nearest edit point or
+    /// appended, and a generator dropped over primary clips connects on a track above them.
+    static func plan(tracks: [[String: Any]], kind: String?, duration: Double, hover: String?, time: Double, magnetic: Bool, fps: Double) throws -> Plan {
+        guard fps.isFinite, fps > 0, time.isFinite, duration.isFinite, duration > 0 else { throw NativeTimelinePlanning.Failure("The drop has invalid timing.") }
+        let media = kind != nil, wanted = kind == "audio" ? "audio" : "video"
+        let frame = { (value: Double) -> Double in ((max(0, value) * fps).rounded() / fps * 100_000).rounded() / 100_000 }
+        func id(_ track: [String: Any]) -> String { track["id"] as? String ?? "" }
+        func usable(_ track: [String: Any]) -> Bool { (track["kind"] as? String ?? "video") == wanted && track["locked"] as? Bool != true && !id(track).isEmpty }
+        func spans(_ track: [String: Any]) -> [(start: Double, end: Double)] {
+            (track["clips"] as? [[String: Any]] ?? []).compactMap { clip -> (start: Double, end: Double)? in
+                guard let start = (clip["start"] as? NSNumber)?.doubleValue, let length = (clip["dur"] as? NSNumber)?.doubleValue,
+                      start.isFinite, length.isFinite else { return nil }
+                return (start, start + length)
+            }.sorted { $0.start < $1.start }
+        }
+        let primary = NativeMagneticTimeline.primaryTrack(tracks)
+        let hovered = tracks.first { id($0) == hover }
+        var target = hovered.flatMap { usable($0) ? $0 : nil }
+        if target == nil, media || hovered != nil {
+            // Routed to a track of the right kind: the magnetic storyline for pictures, else the first track with room at the drop.
+            let candidates = tracks.filter(usable), from = frame(time)
+            let room = candidates.first { track in !spans(track).contains { $0.start < from + duration - 0.000001 && $0.end > from + 0.000001 } }
+            let storyline = magnetic && wanted == "video" && candidates.first.map { id($0) == primary } == true
+            target = storyline ? candidates.first : room ?? candidates.first
+        }
+        guard let target else {
+            if media || hovered != nil { throw NativeTimelinePlanning.Failure(wanted == "audio" ? "Add an unlocked audio track before placing sound." : "Add an unlocked video track before placing this.") }
+            // A generator over the empty canvas: the core puts it on top, on a new track when the top one is busy.
+            return Plan(operation: ["start": frame(time)], track: nil, time: frame(time), placement: .connect)
+        }
+        let row = spans(target), end = row.map(\.end).max() ?? 0, onPrimary = id(target) == primary
+        // The first free start at or after `from` that fits the clip on a row.
+        func freeStart(_ from: Double, in row: [(start: Double, end: Double)]) -> Double {
+            var start = from
+            for span in row where span.start < start + duration - 0.000001 && span.end > start + 0.000001 { start = span.end }
+            return frame(start)
+        }
+        if magnetic, onPrimary {
+            if row.isEmpty || time >= end - 0.000001 {
+                return media ? Plan(operation: ["op": "append", "track": id(target)], track: id(target), time: frame(end), placement: .append)
+                    : Plan(operation: ["track": id(target), "start": frame(end)], track: id(target), time: frame(end), placement: .append)
+            }
+            if media {
+                // An insert blades whatever spans its point, so it lands on the nearest edit point of the storyline.
+                var points: [Double] = [0]
+                for span in row { points += [span.start, span.end] }
+                let at = points.min { abs($0 - time) < abs($1 - time) } ?? 0
+                if at >= end - 0.000001 { return Plan(operation: ["op": "append", "track": id(target)], track: id(target), time: frame(end), placement: .append) }
+                return Plan(operation: ["op": "insert", "track": id(target), "at": frame(at)], track: id(target), time: frame(at), placement: .insert)
+            }
+            // A generator over primary clips connects above them, on the lowest unlocked video track with room.
+            let start = frame(time)
+            let above = tracks.drop { id($0) != primary }.dropFirst().first { track in
+                usable(track) && !spans(track).contains { $0.start < start + duration - 0.000001 && $0.end > start + 0.000001 }
+            }
+            if let above { return Plan(operation: ["track": id(above), "start": start], track: id(above), time: start, placement: .connect) }
+            return Plan(operation: ["start": start], track: nil, time: start, placement: .connect)
+        }
+        let start = freeStart(time, in: row)
+        var operation: [String: Any] = ["track": id(target), "start": start]
+        if media { operation["op"] = "add_clip" }
+        return Plan(operation: operation, track: id(target), time: start, placement: onPrimary ? .place : .connect)
     }
 }
 // END TIMELINE PLANNING
@@ -757,6 +1073,9 @@ struct NativeTimeline: View {
     @State private var preview: NativeTimelinePlanning.Plan?
     @State private var marquee: Marquee?
     @State private var feedback = ""
+    /// The pointer's place while skimming. It is its own object, so moving the hairline redraws only the hairline.
+    @State private var skimPointer = NativeTimelineSkimPointer()
+    @State private var dropPreview: NativeTimelineDropPreview?
     #if os(iOS)
     @State private var precisionEdge = "right"
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -794,6 +1113,7 @@ struct NativeTimeline: View {
         let edge: String?
         let rows: [String]
         let sourceTrack: String
+        var magnetic = false
         #if os(iOS)
         var interaction: NativeTimelineInteractionCapture? = nil
         var feedbackContext: UUID? = nil
@@ -860,8 +1180,11 @@ struct NativeTimeline: View {
                     .frame(width: trackHeaderWidth, height: rulerHeight).background(NativeEditorStyle.panel)
                 ruler.frame(height: rulerHeight)
                     .overlay(alignment: .topLeading) {
-                        Rectangle().fill(NativeEditorStyle.playhead).frame(width: 1.5)
-                            .offset(x: model.time * model.zoom).allowsHitTesting(false)
+                        ZStack(alignment: .topLeading) {
+                            Rectangle().fill(NativeEditorStyle.playhead).frame(width: 1.5)
+                                .offset(x: model.time * model.zoom).allowsHitTesting(false)
+                            NativeTimelineSkimmer(pointer: skimPointer, fps: model.fps, badge: true)
+                        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
                     .offset(x: tracksScrollX)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
@@ -884,7 +1207,7 @@ struct NativeTimeline: View {
                             ForEach(displayTracks) { track in
                                 ZStack(alignment: .leading) {
                                     Rectangle().fill(NativeEditorStyle.panelRaised.opacity(0.55))
-                                        .contentShape(Rectangle()).onTapGesture { model.select(id: nil); keyboardFocus = true }
+                                        .contentShape(Rectangle()).onTapGesture { model.commitSkim(); model.select(id: nil); keyboardFocus = true }
                                         #if os(macOS)
                                         .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .named("nativeTimelineRows"))
                                             .onChanged(updateMarquee).onEnded(endMarquee))
@@ -893,7 +1216,7 @@ struct NativeTimeline: View {
                                         let shown = shownClip(clip)
                                         let motionContext = model.processingContextID, motionVersion = model.version, motionComposition = model.composition
                                         NativeTimelineClip(clip: shown, track: track, model: model, mode: mode,
-                                                           select: { selectClip(clip.id) }, extend: { selectClip(clip.id, extending: true) },
+                                                           select: { model.commitSkim(); selectClip(clip.id) }, extend: { selectClip(clip.id, extending: true) },
                                                            begin: { begin(clip.id, edge: $0, renderedVersion: $1) },
                                                            update: { update(clip.id, translation: $0) },
                                                            end: { end(clip.id, translation: $0) },
@@ -916,6 +1239,8 @@ struct NativeTimeline: View {
                             }
                         }
                         .coordinateSpace(name: "nativeTimelineRows")
+                        .onContinuousHover(coordinateSpace: .local) { skimHover($0) }
+                        .onDrop(of: NativeTimelineDropDelegate.types, delegate: dropDelegate(canvas: false))
                         #if os(iOS)
                         .background {
                             GeometryReader { content in
@@ -926,17 +1251,26 @@ struct NativeTimeline: View {
                         }
                         #endif
                         .overlay(alignment: .topLeading) {
-                            Rectangle().fill(NativeEditorStyle.playhead).frame(width: 1.5)
-                                .offset(x: model.time * model.zoom).allowsHitTesting(false)
-                            if let line = preview?.snapLine {
-                                Rectangle().fill(NativeEditorStyle.accent).frame(width: 1)
-                                    .offset(x: line * model.zoom).allowsHitTesting(false)
-                            }
-                            if let marquee {
-                                Rectangle().fill(NativeEditorStyle.accent.opacity(0.12)).overlay { Rectangle().stroke(NativeEditorStyle.accent) }
-                                    .frame(width: abs(marquee.point.x - marquee.start.x), height: abs(marquee.point.y - marquee.start.y))
-                                    .offset(x: min(marquee.start.x, marquee.point.x), y: min(marquee.start.y, marquee.point.y)).allowsHitTesting(false)
-                            }
+                            // One stack measured from the rows' top left. Left to the overlay, a wide marker would
+                            // centre the narrow ones on itself and move the playhead.
+                            ZStack(alignment: .topLeading) {
+                                Rectangle().fill(NativeEditorStyle.playhead).frame(width: 1.5)
+                                    .offset(x: model.time * model.zoom).allowsHitTesting(false)
+                                if let line = preview?.snapLine {
+                                    Rectangle().fill(NativeEditorStyle.accent).frame(width: 1)
+                                        .offset(x: line * model.zoom).allowsHitTesting(false)
+                                }
+                                if let marquee {
+                                    Rectangle().fill(NativeEditorStyle.accent.opacity(0.12)).overlay { Rectangle().stroke(NativeEditorStyle.accent) }
+                                        .frame(width: abs(marquee.point.x - marquee.start.x), height: abs(marquee.point.y - marquee.start.y))
+                                        .offset(x: min(marquee.start.x, marquee.point.x), y: min(marquee.start.y, marquee.point.y)).allowsHitTesting(false)
+                                }
+                                NativeTimelineSkimmer(pointer: skimPointer, fps: model.fps, badge: rowsTop > 0)
+                                if let dropPreview, !dropPreview.canvas {
+                                    NativeTimelineDropIndicator(preview: dropPreview, lane: dropLane(dropPreview.track), x: dropPreview.time * model.zoom,
+                                                                top: rowsTop, height: CGFloat(displayTracks.count) * (rowHeight + 1))
+                                }
+                            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         }
                     }
                     .background {
@@ -985,7 +1319,20 @@ struct NativeTimeline: View {
             #if os(macOS)
             .background(NativeTimelineCanvasFocusAnchor(owner: canvasFocusOwner).allowsHitTesting(false))
             #endif
-            .accessibilityLabel("Timeline. Command A selects all. Arrow keys move the playhead. Comma and period nudge the selection in the current editing mode. S toggles snapping.")
+            .accessibilityLabel("Timeline. Command A selects all. Arrow keys move the playhead. Comma and period nudge the selection in the current editing mode. S toggles skimming. N toggles snapping.")
+            // A drop below the tracks, or on a timeline with none, still lands: pictures join the main track.
+            .onDrop(of: NativeTimelineDropDelegate.types, delegate: dropDelegate(canvas: true))
+            .overlay(alignment: .top) {
+                if let dropPreview, dropPreview.canvas {
+                    NativeTimelineDropPill(label: dropPreview.label, valid: dropPreview.valid).padding(.top, rulerHeight + 8).allowsHitTesting(false)
+                }
+            }
+            .overlay {
+                if let dropPreview, dropPreview.canvas, dropPreview.valid {
+                    RoundedRectangle(cornerRadius: 6).stroke(NativeEditorStyle.accent.opacity(0.85), lineWidth: 1.5)
+                        .shadow(color: NativeEditorStyle.accent.opacity(0.5), radius: 8).padding(2).allowsHitTesting(false)
+                }
+            }
             #if os(iOS)
             // A phone timeline shows about two tracks. When the top tracks are empty, open on the
             // first track that holds clips instead of on empty rows. Runs once per project and timeline.
@@ -1096,7 +1443,11 @@ struct NativeTimeline: View {
             #endif
         }
         .onChange(of: mode) { _, _ in clearGesture() }
+        .onChange(of: model.playing) { _, playing in if playing { endSkimHover() } }
+        // A step, a seek or the Skim switch ends the skim in the model. The hairline goes with it.
+        .onChange(of: model.skimTime) { _, time in if time == nil, skimPointer.x != nil { skimPointer.x = nil } }
         .onDisappear {
+            endSkimHover(); dropPreview = nil
             clearGesture()
             #if os(iOS)
             cancelLayoutInteraction(); measuredInteractionFrame = nil
@@ -1135,6 +1486,9 @@ struct NativeTimeline: View {
             }
         }
         .frame(width: contentWidth).contentShape(Rectangle())
+        #if os(iOS)
+        .onContinuousHover(coordinateSpace: .local) { skimHover($0) }
+        #endif
         .gesture(DragGesture(minimumDistance: 0)
             #if os(iOS)
             .updating($rulerActive) { _, active, _ in active = true }
@@ -1315,11 +1669,15 @@ struct NativeTimeline: View {
         guard renderedVersion == model.version else { feedback = "The project changed. Try again."; return }
         if !model.selectedIDs.contains(id) { selectClip(id) }
         else { model.select(ids: model.selectedIDs, primary: id) }
-        let activeMode: NativeTimelineMode = edge == nil ? mode : (mode == .roll || mode == .ripple ? mode : .trim)
+        var activeMode: NativeTimelineMode = edge == nil ? mode : (mode == .roll || mode == .ripple ? mode : .trim)
         guard edge != nil || [.move, .slip, .slide].contains(activeMode) else { feedback = mode.hint; return }
         do {
             let source = try capture(id)
-            gesture = TimelineGesture(capture: source, mode: activeMode, edge: edge, rows: displayTracks.map(\.id), sourceTrack: try source.clip(id).track)
+            let magnetic = model.magneticTimeline
+            // Magnetic timeline: a trim on the primary storyline ripples, so it never opens a gap.
+            if magnetic, activeMode == .trim, touchesPrimary(source, id) { activeMode = .ripple }
+            endSkimHover()
+            gesture = TimelineGesture(capture: source, mode: activeMode, edge: edge, rows: displayTracks.map(\.id), sourceTrack: try source.clip(id).track, magnetic: magnetic)
             #if os(iOS)
             gesture?.interaction = currentInteractionLayout
             gesture?.feedbackContext = model.processingContextID
@@ -1334,7 +1692,13 @@ struct NativeTimeline: View {
             destination = try NativeTimelinePlanning.destination(rows: source.rows, source: source.sourceTrack,
                                                                  verticalDelta: translation.height, rowHeight: rowHeight + 1)
         }
-        return try source.capture.plan(mode: source.mode, delta: translation.width / source.capture.zoom, edge: source.edge, destination: destination)
+        return try source.capture.plan(mode: source.mode, delta: translation.width / source.capture.zoom, edge: source.edge, destination: destination,
+                                       magnetic: source.magnetic)
+    }
+    /// True when the clip, or a clip linked to it, is on the primary storyline.
+    private func touchesPrimary(_ source: NativeTimelinePlanning.Capture, _ id: String) -> Bool {
+        guard let primary = NativeMagneticTimeline.primaryTrack(source.tracks), let clip = try? source.clip(id) else { return false }
+        return source.family(clip).contains { $0.track == primary }
     }
     private func update(_ id: String, translation: CGSize) {
         guard let source = gesture, source.capture.lead == id else { return }
@@ -1426,18 +1790,157 @@ struct NativeTimeline: View {
         do {
             let source = try capture(id, snapping: false)
             let chosenMode = requestedMode ?? mode
-            let activeMode: NativeTimelineMode = edge == nil ? chosenMode : (chosenMode == .ripple || chosenMode == .roll ? chosenMode : .trim)
-            let result = try source.plan(mode: activeMode, delta: direction / source.fps, edge: edge)
-            guard matches(source), source.hasChanges(result) else { return }
+            var activeMode: NativeTimelineMode = edge == nil ? chosenMode : (chosenMode == .ripple || chosenMode == .roll ? chosenMode : .trim)
+            let magnetic = model.magneticTimeline, onPrimary = touchesPrimary(source, id)
+            if magnetic, activeMode == .trim, onPrimary { activeMode = .ripple }
+            let result = try source.plan(mode: activeMode, delta: direction / source.fps, edge: edge, magnetic: magnetic)
+            guard matches(source) else { return }
+            guard source.hasChanges(result) else {
+                if magnetic, activeMode == .move, onPrimary { model.status = NativeTimelineWords.magneticNudge }
+                return
+            }
             model.editBatch(result.operations, summary: commitSummary(result, source), expectedVersion: source.version, feedback: true)
         } catch { model.status = error.localizedDescription }
     }
     /// A move names the clips it moved. Other edits keep the planner's own detail.
     private func commitSummary(_ result: NativeTimelinePlanning.Plan, _ source: NativeTimelinePlanning.Capture) -> String {
+        if result.operations.last?["op"] as? String == "close_gaps" { return NativeTimelineWords.reordered }
         let ids = result.operations.compactMap { $0["op"] as? String == "move" ? $0["id"] as? String : nil }
         guard !ids.isEmpty, ids.count == result.operations.count else { return result.detail }
         return NativeStatusText.moved(ids.compactMap { try? source.clip($0).fields }, by: result.offsets[source.lead] ?? 0)
     }
+    // MARK: Skimming
+
+    /// Where the lanes start inside the rows: under the ruler on macOS, at the top where the ruler is pinned outside.
+    private var rowsTop: CGFloat {
+        #if os(macOS)
+        return rulerHeight + 1
+        #else
+        return 0
+        #endif
+    }
+    private func skimHover(_ phase: HoverPhase) {
+        switch phase {
+        case .active(let point):
+            #if os(iOS)
+            guard currentInteractionLayout.permitsInteraction else { endSkimHover(); return }
+            #endif
+            guard model.canSkim, gesture == nil, marquee == nil, dropPreview == nil, point.x.isFinite,
+                  model.zoom > 0, model.fps.isFinite, model.fps > 0 else { endSkimHover(); return }
+            let time = max(0, min(model.duration, (Double(point.x) / model.zoom * model.fps).rounded() / model.fps))
+            let x = CGFloat(time * model.zoom)
+            if skimPointer.x != x { skimPointer.time = time; skimPointer.x = x }
+            model.skim(time)
+        case .ended: endSkimHover()
+        }
+    }
+    private func endSkimHover() {
+        if skimPointer.x != nil { skimPointer.x = nil }
+        model.skim(nil)
+    }
+
+    // MARK: Drops from the browser and Finder
+
+    private func dropDelegate(canvas: Bool) -> NativeTimelineDropDelegate {
+        NativeTimelineDropDelegate(update: { updateDrop($0, canvas: canvas) }, exit: { if dropPreview != nil { dropPreview = nil } },
+                                   perform: { performDrop($0, canvas: canvas) })
+    }
+    private func dropLane(_ track: String?) -> CGRect? {
+        guard let track, let index = displayTracks.firstIndex(where: { $0.id == track }) else { return nil }
+        return CGRect(x: 0, y: rowsTop + CGFloat(index) * (rowHeight + 1), width: contentWidth, height: rowHeight)
+    }
+    /// The lane and time under a drop. Over the empty canvas there is neither, and the model chooses.
+    private func dropLanding(_ info: DropInfo, canvas: Bool) -> (hover: String?, time: Double?)? {
+        guard model.project != nil, model.projectReadOnlyReason == nil, !model.showingSource else { return nil }
+        #if os(iOS)
+        guard currentInteractionLayout.permitsInteraction else { return nil }
+        #endif
+        if canvas || displayTracks.isEmpty { return (nil, nil) }
+        let point = info.location
+        guard point.x.isFinite, point.y.isFinite, model.zoom > 0 else { return nil }
+        let index = min(displayTracks.count - 1, max(0, Int(((point.y - rowsTop) / (rowHeight + 1)).rounded(.down))))
+        return (displayTracks[index].id, dropSnap(max(0, Double(point.x) / model.zoom)))
+    }
+    /// With Snap on, a drop within nine points of the start, the playhead or a clip edge lands on it.
+    private func dropSnap(_ time: Double) -> Double {
+        guard snapping else { return time }
+        var points: [Double] = [0, model.time]
+        for track in model.tracks { for clip in track.clips { points += [clip.start, clip.end] } }
+        let near = points.filter { $0.isFinite && abs($0 - time) * model.zoom < 9 }
+        return near.min { abs($0 - time) < abs($1 - time) } ?? time
+    }
+    private func updateDrop(_ info: DropInfo, canvas: Bool) -> Bool {
+        let files = info.hasItemsConforming(to: [.fileURL])
+        let item = files ? nil : model.activeBrowserDrag.flatMap { NativeTimelineDrop.Item(payload: $0) }
+        guard files || item != nil, let landing = dropLanding(info, canvas: canvas) else {
+            if dropPreview != nil { dropPreview = nil }
+            return false
+        }
+        if skimPointer.x != nil || model.skimTime != nil { endSkimHover() }
+        // A file's kind is unknown until it is imported. It is shown as a picture, and lands by its real kind.
+        let shape = item.flatMap { model.dropShape($0) } ?? (files ? (kind: "video", duration: 5, name: "") : nil)
+        var next: NativeTimelineDropPreview
+        if let shape {
+            do {
+                let plan = try NativeTimelineDrop.plan(tracks: model.tracks.map(\.fields), kind: shape.kind, duration: shape.duration, hover: landing.hover,
+                                                       time: model.dropTime(landing.time, kind: shape.kind), magnetic: model.magneticTimeline, fps: model.fps)
+                let name = plan.track.flatMap { id in model.tracks.first { $0.id == id }?.name }
+                let words: String
+                switch plan.placement {
+                case .insert: words = "Insert at \(nativeTimecode(plan.time, fps: model.fps))"
+                case .append: words = "Append to \(name ?? "the main track")"
+                case .connect: words = name.map { "Connect on \($0)" } ?? "Connect on a new track"
+                case .place: words = "Place at \(nativeTimecode(plan.time, fps: model.fps))"
+                }
+                next = NativeTimelineDropPreview(track: plan.track, time: plan.time, label: files ? "Import · " + words : words, valid: true,
+                                                 canvas: canvas || landing.time == nil, insert: plan.placement == .insert)
+            } catch {
+                next = NativeTimelineDropPreview(track: nil, time: landing.time ?? 0, label: error.localizedDescription, valid: false,
+                                                 canvas: canvas || landing.time == nil, insert: false)
+            }
+        } else {
+            next = NativeTimelineDropPreview(track: nil, time: landing.time ?? 0, label: "That media is no longer in the project.", valid: false,
+                                             canvas: canvas || landing.time == nil, insert: false)
+        }
+        if dropPreview != next { dropPreview = next }
+        return next.valid
+    }
+    private func performDrop(_ info: DropInfo, canvas: Bool) -> Bool {
+        dropPreview = nil
+        guard let landing = dropLanding(info, canvas: canvas) else {
+            model.status = model.projectReadOnlyReason ?? "Open an editable timeline before dropping media on it."
+            return false
+        }
+        keyboardFocus = true
+        let model = model, version = model.version, context = model.processingContextID, composition = model.composition
+        let fileProviders = info.itemProviders(for: [.fileURL])
+        if !fileProviders.isEmpty {
+            NativeTimelineDropDelegate.fileURLs(fileProviders) { urls in
+                guard context == model.processingContextID, composition == model.composition else { return }
+                guard !urls.isEmpty else { model.status = "Those files could not be read. Use Import Media instead."; return }
+                model.importAndPlace(urls, hover: landing.hover, at: landing.time)
+            }
+            return true
+        }
+        guard let provider = info.itemProviders(for: [.plainText]).first else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { value, _ in
+            let payload = value as? String
+            Task { @MainActor in
+                model.activeBrowserDrag = nil
+                guard let payload, let item = NativeTimelineDrop.Item(payload: payload) else {
+                    model.status = "Drop media, titles and generators from the browser, or files from Finder."
+                    return
+                }
+                guard context == model.processingContextID, composition == model.composition, version == model.version else {
+                    model.status = "The project changed during the drop. Try again."
+                    return
+                }
+                model.place([item], hover: landing.hover, at: landing.time, expectedVersion: version)
+            }
+        }
+        return true
+    }
+
     // Split and Delete go through the model, as the Timeline menu does. The core leaves linked
     // partners on locked tracks alone, so a locked partner no longer blocks the edit.
     private func splitSelection() { model.split() }
@@ -1529,7 +2032,8 @@ struct NativeTimeline: View {
         }
         guard press.modifiers.isEmpty else { return .ignored }
         switch press.characters.lowercased() {
-        case "s": snapping.toggle()
+        case "s": model.skimmingEnabled.toggle()
+        case "n": snapping.toggle()
         case "v": mode = .move
         case "t": mode = .trim
         case "r": mode = .ripple
@@ -1600,6 +2104,122 @@ struct NativeTimeline: View {
     }
 }
 
+/// The skimmer's place in the rows, in points and in seconds.
+@MainActor final class NativeTimelineSkimPointer: ObservableObject {
+    @Published var x: CGFloat?
+    var time = 0.0
+}
+
+/// The skimmer: a hairline across the tracks at the pointer, with its timecode beside the ruler.
+private struct NativeTimelineSkimmer: View {
+    static let color = Color(red: 1, green: 0x6b / 255, blue: 0x57 / 255)
+    @ObservedObject var pointer: NativeTimelineSkimPointer
+    let fps: Double
+    let badge: Bool
+
+    var body: some View {
+        if let x = pointer.x {
+            Rectangle().fill(Self.color).frame(width: 1).offset(x: x).allowsHitTesting(false)
+            if badge {
+                Text(nativeTimecode(pointer.time, fps: fps))
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced)).monospacedDigit()
+                    .foregroundStyle(NativeEditorStyle.background)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Self.color, in: RoundedRectangle(cornerRadius: 4))
+                    .fixedSize().offset(x: x + 5, y: 3).allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
+/// Where a dragged item would land, shown while it hovers.
+struct NativeTimelineDropPreview: Equatable {
+    /// The lane that lights up. Nil when the core chooses or adds the track.
+    let track: String?
+    let time: Double
+    let label: String
+    let valid: Bool
+    /// The drop is over the empty canvas, not a lane.
+    let canvas: Bool
+    /// An insert pushes every track, so its bar crosses them all.
+    let insert: Bool
+}
+
+private struct NativeTimelineDropPill: View {
+    let label: String
+    let valid: Bool
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 11, weight: .semibold, design: .monospaced)).lineLimit(1)
+            .foregroundStyle(valid ? NativeEditorStyle.accentInk : NativeEditorStyle.text)
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(valid ? NativeEditorStyle.accent : NativeEditorStyle.panelRaised, in: Capsule())
+            .overlay { Capsule().stroke(valid ? Color.clear : NativeEditorStyle.line) }
+            .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
+            .fixedSize()
+            .accessibilityHidden(true)
+    }
+}
+
+/// The drop highlight: an amber glow on the target lane, a bar at the landing time and a pill that names the edit.
+private struct NativeTimelineDropIndicator: View {
+    let preview: NativeTimelineDropPreview
+    let lane: CGRect?
+    let x: CGFloat
+    let top: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        let bar = preview.insert || lane == nil ? CGRect(x: x, y: top, width: 0, height: height) : CGRect(x: x, y: lane?.minY ?? top, width: 0, height: lane?.height ?? height)
+        if preview.valid, let lane {
+            RoundedRectangle(cornerRadius: 4).fill(NativeEditorStyle.accent.opacity(0.13))
+                .overlay { RoundedRectangle(cornerRadius: 4).stroke(NativeEditorStyle.accent.opacity(0.9), lineWidth: 1.5) }
+                .shadow(color: NativeEditorStyle.accent.opacity(0.5), radius: 7)
+                .frame(width: lane.width, height: lane.height).offset(x: lane.minX, y: lane.minY).allowsHitTesting(false)
+        }
+        if preview.valid {
+            Rectangle().fill(NativeEditorStyle.accent).frame(width: 2, height: bar.height)
+                .shadow(color: NativeEditorStyle.accent.opacity(0.8), radius: 4)
+                .offset(x: bar.minX - 1, y: bar.minY).allowsHitTesting(false)
+        }
+        NativeTimelineDropPill(label: preview.label, valid: preview.valid)
+            .offset(x: x + 8, y: (lane?.minY ?? top) + 5).allowsHitTesting(false)
+    }
+}
+
+/// One delegate takes files and the browser's own drags, and reports the pointer while they hover.
+struct NativeTimelineDropDelegate: DropDelegate {
+    static let types: [UTType] = [.fileURL, .plainText]
+    let update: (DropInfo) -> Bool
+    let exit: () -> Void
+    let perform: (DropInfo) -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: Self.types) }
+    func dropEntered(info: DropInfo) { _ = update(info) }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: update(info) ? .copy : .forbidden) }
+    func dropExited(info: DropInfo) { exit() }
+    func performDrop(info: DropInfo) -> Bool { perform(info) }
+
+    /// Reads the dropped file URLs, in the order they were dragged, and answers on the main actor.
+    static func fileURLs(_ providers: [NSItemProvider], completion: @escaping @MainActor ([URL]) -> Void) {
+        let group = DispatchGroup(), lock = NSLock()
+        var found: [Int: URL] = [:]
+        for (index, provider) in providers.enumerated() {
+            group.enter()
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                if let url, url.isFileURL { lock.lock(); found[index] = url; lock.unlock() }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            lock.lock(); let urls = found.sorted { $0.key < $1.key }.map(\.value); lock.unlock()
+            MainActor.assumeIsolated { completion(urls) }
+        }
+    }
+}
+
 private struct NativeTimelineToolbar: View {
     @ObservedObject var model: NativeEditorModel
     @Binding var mode: NativeTimelineMode
@@ -1655,16 +2275,23 @@ private struct NativeTimelineToolbar: View {
                 .accessibilityLabel("Timeline edit mode").accessibilityValue(mode.rawValue)
                 .accessibilityHint("Choose an edit mode or read how to use timeline gestures")
                 .accessibilityIdentifier("timeline.editMode")
+            Button { model.magneticTimeline.toggle() } label: { Image(systemName: NativeTimelineWords.magneticSymbol) }
+                .buttonStyle(NativeToolbarButtonStyle(selected: model.magneticTimeline))
+                .accessibilityLabel("Magnetic timeline").accessibilityValue(model.magneticTimeline ? "On" : "Off")
+                .accessibilityHint("Automatically closes gaps on the main track")
+                .accessibilityIdentifier("timeline.magnetic")
             Button(action: split) { Image(systemName: "scissors") }
                 .disabled(model.selectedIDs.isEmpty).accessibilityLabel("Split selected clips at playhead")
                 .accessibilityIdentifier("timeline.split")
             Button { delete(false) } label: { Image(systemName: "trash") }
                 .disabled(model.selectedIDs.isEmpty).accessibilityLabel("Delete selected clips")
-                .accessibilityHint("Leaves a gap. Undo restores the deleted clips.")
+                .accessibilityHint(model.magneticTimeline ? "Closes the gap on the main track. Undo restores the deleted clips." : "Leaves a gap. Undo restores the deleted clips.")
                 .accessibilityIdentifier("timeline.delete")
             Menu {
                 Section("Selection") {
                     Toggle("Snap to edges, markers and playhead", isOn: $snapping)
+                    Toggle("Magnetic timeline: close gaps on the main track", isOn: $model.magneticTimeline)
+                    Toggle("Skim with a pointer or Apple Pencil hover", isOn: $model.skimmingEnabled)
                     Toggle("Select multiple clips", isOn: $extending)
                     Button("Select all clips", action: selectAll)
                     Button("Clear selection") { model.select(id: nil) }
@@ -1718,7 +2345,17 @@ private struct NativeTimelineToolbar: View {
                 Menu {
                     ForEach(NativeTimelineMode.allCases, id: \.self) { item in Button(item.rawValue) { mode = item } }
                 } label: { Label(mode.rawValue, systemImage: "cursorarrow.motionlines") }.help(mode.hint)
-                Button { snapping.toggle() } label: { Label("Snap", systemImage: "dot.scope") }.buttonStyle(NativeToolbarButtonStyle(selected: snapping)).help("Snap to clip edges, markers and playhead. S toggles snapping. Edits always align to frames.")
+                Button { snapping.toggle() } label: { Label("Snap", systemImage: "dot.scope") }.buttonStyle(NativeToolbarButtonStyle(selected: snapping)).help("Snap to clip edges, markers and playhead. N toggles snapping. Edits always align to frames.")
+                Button { model.magneticTimeline.toggle() } label: { Label("Magnetic", systemImage: NativeTimelineWords.magneticSymbol) }
+                    .buttonStyle(NativeToolbarButtonStyle(selected: model.magneticTimeline))
+                    .help("Magnetic timeline — automatically close gaps on primary storyline")
+                    .accessibilityLabel("Magnetic timeline").accessibilityValue(model.magneticTimeline ? "On" : "Off")
+                    .accessibilityIdentifier("timeline.magnetic")
+                Button { model.skimmingEnabled.toggle() } label: { Label("Skim", systemImage: NativeTimelineWords.skimSymbol) }
+                    .buttonStyle(NativeToolbarButtonStyle(selected: model.skimmingEnabled))
+                    .help("Skimming: move the pointer over the timeline to preview frames without moving the playhead. Click to move the playhead there. S toggles skimming.")
+                    .accessibilityLabel("Skimming").accessibilityValue(model.skimmingEnabled ? "On" : "Off")
+                    .accessibilityIdentifier("timeline.skim")
                 Button { extending.toggle() } label: { Label("Multi", systemImage: "checkmark.circle") }.buttonStyle(NativeToolbarButtonStyle(selected: extending)).help("Click clips to add or remove them from the selection. Shift or Command click also selects multiple clips.")
                 Menu {
                     Button("Copy selection") { if let clipboardCapture { model.copyTimelineSelection(expected: clipboardCapture) } }.disabled(clipboardCapture == nil || !model.canCopyTimelineSelection)
@@ -1731,7 +2368,8 @@ private struct NativeTimelineToolbar: View {
                     .accessibilityIdentifier("editor.marker.toolbar")
                 Button { multicamVisible = true } label: { Label("Multicam", systemImage: "square.grid.2x2") }.disabled(model.project == nil).help("Create multicam from imported camera sources")
                 Button(action: split) { Image(systemName: "scissors") }.disabled(model.selectedIDs.isEmpty).help("Split selected clips at the playhead")
-                Button { delete(false) } label: { Image(systemName: "trash") }.disabled(model.selectedIDs.isEmpty).help("Delete selected clips")
+                Button { delete(false) } label: { Image(systemName: "trash") }.disabled(model.selectedIDs.isEmpty)
+                    .help(model.magneticTimeline ? "Delete selected clips. Magnetic closes the gap on the main track." : "Delete selected clips and leave a gap")
                 Menu {
                     Button("Select all clips", action: selectAll)
                     Button("Clear selection") { model.select(id: nil) }
@@ -2358,6 +2996,10 @@ private struct NativeTimelineClipMedia: View {
 /// Timeline guidance in the words of the device: touch on iPhone and iPad, pointer on Mac.
 /// Mac Catalyst builds from the iOS target, so it needs its own branch.
 enum NativeTimelineWords {
+    static let magneticSymbol = "arrow.right.and.line.vertical.and.arrow.left"
+    static let skimSymbol = "cursorarrow.rays"
+    static let reordered = "Reordered the main track"
+    static let magneticNudge = "Magnetic keeps the main track packed. Drag a clip past its neighbor to reorder it, or turn Magnetic off to move it freely."
     #if targetEnvironment(macCatalyst) || os(macOS)
     static let selectHint = "Click a clip; scroll to see more"
     static let edgeHint = "Click and hold an edge, then drag"

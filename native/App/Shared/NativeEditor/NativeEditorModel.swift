@@ -679,8 +679,35 @@ final class NativeEditorModel: ObservableObject {
     /// Counted up by the menu bar's Show Assistant command. The editor view answers each change with the
     /// same toggle as Ask Arya. A count cannot stick, so a press with no editor on screen is dropped.
     @Published var assistantToggleRequests = 0
-    @Published var time: Double = 0
+    @Published var time: Double = 0 { didSet { if oldValue != time, skimTime != nil { dropSkim() } } }
     @Published var zoom: Double = 80
+    /// Magnetic timeline: edits on the primary storyline (the lowest video track) close their gaps.
+    @Published var magneticTimeline: Bool = UserDefaults.standard.object(forKey: "editor.timeline.magnetic") as? Bool ?? true {
+        didSet { if oldValue != magneticTimeline { UserDefaults.standard.set(magneticTimeline, forKey: Self.magneticTimelineKey) } }
+    }
+    /// Skimming: hovering the timeline previews that frame in the viewer without moving the playhead.
+    @Published var skimmingEnabled: Bool = UserDefaults.standard.object(forKey: "editor.timeline.skimming") as? Bool ?? true {
+        didSet {
+            guard oldValue != skimmingEnabled else { return }
+            UserDefaults.standard.set(skimmingEnabled, forKey: Self.skimmingKey)
+            if !skimmingEnabled { skim(nil); skimAssetFrame = nil; skimAsset = nil }
+        }
+    }
+    /// The timeline time under the pointer while skimming, on a frame boundary. Nil shows the playhead frame.
+    @Published var skimTime: Double? = nil
+    /// The media browser clip under the pointer, and the source time skimmed in it.
+    @Published var skimAsset: (src: String, time: Double)? = nil
+    /// The media or generator being dragged from the browser, so the timeline can say where it will land.
+    /// The drag payload itself cannot be read until the drop.
+    var activeBrowserDrag: String?
+    static let magneticTimelineKey = "editor.timeline.magnetic"
+    static let skimmingKey = "editor.timeline.skimming"
+    private var skimParked: (frame: ReelRenderedFrame, image: CGImage?, time: Double, version: Int, revision: UUID, composition: String?, generation: UUID)?
+    private var skimPublishedAt: ContinuousClock.Instant?
+    private var skimQueued: Double?
+    private var skimFlush: Task<Void, Never>?
+    private var skimSettle: Task<Void, Never>?
+    private var skimSettled = false
     @Published private(set) var playing = false
     @Published private(set) var masterAudioMeter: NativeMasterAudioMeterSnapshot = .silence
     @Published private(set) var busAudioMeters: [ReelAudioBusMeterKey: NativeMasterAudioMeterSnapshot] = [:]
@@ -815,7 +842,7 @@ final class NativeEditorModel: ObservableObject {
     private var renderTask: Task<Void, Never>?
     private var proxyTask: Task<Void, Never>?
     private var proxies: [String: String] = [:]
-    private struct FrameRequest { let token: UUID; let generation: UUID; let folder: URL; let project: String; let version: Int; let revision: UUID; let at: Double; let comp: String?; var width: Int; let queuedAt: ContinuousClock.Instant; let scrubID: UUID?; let draft: Bool; let color: Bool; let hdrScopes: Bool; let previewID: UUID?; let operations: String? }
+    private struct FrameRequest { let token: UUID; let generation: UUID; let folder: URL; let project: String; let version: Int; let revision: UUID; let at: Double; let comp: String?; var width: Int; let queuedAt: ContinuousClock.Instant; let scrubID: UUID?; let draft: Bool; let color: Bool; let hdrScopes: Bool; let previewID: UUID?; let operations: String?; var skim = false }
     private struct ScrubQualityPolicy {
         let widths: [Int]
         private(set) var level = 2
@@ -1312,6 +1339,11 @@ final class NativeEditorModel: ObservableObject {
         let ids = tracks.filter { !$0.locked }.flatMap(\.clips).map(\.id).filter { selectedIDs.contains($0) }.sorted()
         guard !ids.isEmpty else { status = "The selected clips are on locked tracks."; return }
         let clips = tracks.flatMap(\.clips).filter { ids.contains($0.id) }.sorted { $0.id < $1.id }.map(\.fields)
+        // Magnetic timeline: a delete on the primary storyline closes its gap and keeps later clips on other tracks in step.
+        if !ripple, magneticTimeline, let operations = NativeMagneticTimeline.deleteOperations(tracks: tracks.map(\.fields), ids: ids, fps: fps) {
+            editBatch(operations, summary: NativeStatusText.deleted(clips, ripple: true), expectedVersion: version, feedback: true)
+            return
+        }
         editBatch([["op": ripple ? "ripple_delete" : "delete", "ids": ids]], summary: NativeStatusText.deleted(clips, ripple: ripple),
                   expectedVersion: version, feedback: true)
     }
@@ -1348,6 +1380,106 @@ final class NativeEditorModel: ObservableObject {
         guard let track else { return }
         edit(["op": "add_clip", "src": asset.id, "track": track.id, "start": time], feedback: true)
     }
+    // BEGIN TIMELINE DROPS
+    /// The kind ("video", "image" or "audio"; nil for a generator), length and name of a browser item.
+    /// Nil when its media is not in the project.
+    func dropShape(_ item: NativeTimelineDrop.Item, assets: [String: Any]? = nil) -> (kind: String?, duration: Double, name: String)? {
+        switch item {
+        case .media(let source):
+            guard let fields = (assets ?? project?.fields.dictionary("assets"))?[source] as? [String: Any] else { return nil }
+            let asset = NativeAsset(id: source, fields: fields)
+            let length = asset.kind == "image" || !asset.duration.isFinite || asset.duration <= 0 ? 5 : asset.duration
+            return (asset.kind, length, asset.name)
+        case .title(let preset): return (nil, 5, preset)
+        case .shape(let type): return (nil, 5, type.prefix(1).uppercased() + type.dropFirst())
+        case .color: return (nil, 5, "Color")
+        case .adjustment: return (nil, 5, "Adjustment layer")
+        }
+    }
+    /// The time a drop lands at. Nil is the empty canvas: pictures join the end of a magnetic storyline, and
+    /// everything else lands at the playhead.
+    func dropTime(_ at: Double?, kind: String?) -> Double {
+        at ?? (magneticTimeline && kind != nil && kind != "audio" ? 999_999 : time)
+    }
+
+    /// Places browser items at a drop point. `hover` is the lane under the pointer and `at` its time, both nil over
+    /// the empty canvas. Pictures and sound each land end to end on a track of their own kind.
+    func place(_ items: [NativeTimelineDrop.Item], assets: [String: Any]? = nil, hover: String?, at: Double?, expectedVersion: Int?) {
+        if let reason = projectReadOnlyReason { status = reason; return }
+        do {
+            guard let planned = try placement(items, assets: assets, hover: hover, at: at) else { return }
+            editBatch(planned.operations, summary: planned.summary, expectedVersion: expectedVersion, feedback: true)
+        } catch { status = error.localizedDescription }
+    }
+
+    /// The operations that place `items`, and the words for them. Nil when there is nothing to place.
+    private func placement(_ items: [NativeTimelineDrop.Item], assets: [String: Any]?, hover: String?, at: Double?) throws -> (operations: [[String: Any]], summary: String)? {
+        guard !items.isEmpty, fps.isFinite, fps > 0 else { return nil }
+        let shaped = items.compactMap { item in dropShape(item, assets: assets).map { (item: item, shape: $0) } }
+        guard shaped.count == items.count else { throw ReelBackend.APIError("That media is no longer in the project.") }
+        do {
+            var operations: [[String: Any]] = [], words: [String] = []
+            for sound in [false, true] {
+                let run = shaped.filter { ($0.shape.kind == "audio") == sound }
+                guard let first = run.first else { continue }
+                let plan = try NativeTimelineDrop.plan(tracks: tracks.map(\.fields), kind: first.shape.kind, duration: run.reduce(0) { $0 + $1.shape.duration },
+                                                       hover: hover, time: dropTime(at, kind: first.shape.kind), magnetic: magneticTimeline, fps: fps)
+                var cursor = plan.time
+                for entry in run {
+                    var operation = plan.operation
+                    if operation["at"] != nil { operation["at"] = cursor } else if operation["start"] != nil { operation["start"] = cursor }
+                    for (key, value) in NativeTimelineDrop.fields(entry.item, width: width, height: height) { operation[key] = value }
+                    operations.append(operation)
+                    cursor = ((cursor + entry.shape.duration) * fps).rounded() / fps
+                }
+                let name = run.count == 1 ? first.shape.name : "\(run.count) clips"
+                switch plan.placement {
+                case .insert: words.append("Inserted \(name) at \(nativeTimecode(plan.time, fps: fps))")
+                case .append: words.append("Appended \(name)")
+                case .connect: words.append("Connected \(name) at \(nativeTimecode(plan.time, fps: fps))")
+                case .place: words.append("Placed \(name) at \(nativeTimecode(plan.time, fps: fps))")
+                }
+            }
+            return operations.isEmpty ? nil : (operations, words.joined(separator: ". "))
+        }
+    }
+
+    /// Imports files dropped on the timeline through the same pipeline as Import Media, then places what
+    /// arrived at the drop point. The drop point is taken before the import, which can take a while.
+    func importAndPlace(_ urls: [URL], hover: String?, at: Double?) {
+        guard let session, let backend = session.backend, !urls.isEmpty else { return }
+        let sourceFolder = folder, sourceComposition = composition, context = processingContextID
+        status = urls.count == 1 ? "Importing \(urls[0].lastPathComponent)…" : "Importing \(urls.count) files…"
+        Task {
+            var scoped: [URL] = []
+            for url in urls where url.startAccessingSecurityScopedResource() { scoped.append(url) }
+            defer { scoped.forEach { $0.stopAccessingSecurityScopedResource() } }
+            do {
+                let result = try await backend.copyIn(urls)
+                guard session.backend === backend else { return }
+                let outcome = try NativeFilesImportOutcome(receipt: result)
+                session.toast(outcome.summary, kind: outcome.issues.isEmpty && outcome.imported > 0 ? "info" : "error")
+                confirmImportFeedback(imported: outcome.imported, failed: outcome.issues.count)
+                if !outcome.issues.isEmpty { session.error = outcome.failureDetails }
+                let assets = (try JSON.parse(result.text) as? [String: Any])?["assets"] as? [String: Any] ?? [:]
+                guard !assets.isEmpty, folder == sourceFolder, composition == sourceComposition, processingContextID == context else { return }
+                // The import changed the project, so the placement is planned on the project as it is now.
+                await refresh()
+                guard folder == sourceFolder, composition == sourceComposition, processingContextID == context, projectReadOnlyReason == nil else { return }
+                let items = assets.keys.sorted().map { NativeTimelineDrop.Item.media($0) }
+                guard let planned = try placement(items, assets: assets, hover: hover, at: at) else { return }
+                try await ops(planned.operations, summary: planned.summary)
+            } catch is CancellationError {
+                // A cancelled import is quiet, as it is from Import Media.
+            } catch {
+                guard session.backend === backend else { return }
+                session.toast(error.localizedDescription, kind: "error")
+                session.error = error.localizedDescription
+            }
+        }
+    }
+    // END TIMELINE DROPS
+
     // BEGIN MATCH FRAME CONTROLLER
     var canRequestMatchFrame: Bool {
         !busy && !showingSource && !previewing && !scrubbing && !playing && session?.backend != nil && folder != nil &&
@@ -1504,7 +1636,108 @@ final class NativeEditorModel: ObservableObject {
         scrubReleaseID = nil
     }
     func step(_ frames: Double) { pause(); seek(time + frames / fps) }
-    func togglePlayback() { playing ? pause() : play() }
+    func togglePlayback() {
+        // As in Final Cut, playback starts from the skimmer when one is showing.
+        if !playing, let at = skimTime, canSkim { dropSkim(); seek(at) }
+        playing ? pause() : play()
+    }
+
+    // BEGIN SKIMMING
+    /// True when a hover may preview a frame: nothing else owns the viewer.
+    var canSkim: Bool {
+        skimmingEnabled && !playing && !scrubbing && !busy && !showingSource && !previewing && previewOperations == nil
+            && panel != .color && drawing == nil && project != nil && duration > 0
+    }
+    /// True while the viewer shows the skimmed frame instead of the playhead frame.
+    var showingSkimFrame: Bool {
+        guard let skimTime, !showingSource, !playing else { return false }
+        return skimTime != time && displayedTime == skimTime
+    }
+    /// The time the renderer draws for a skim. Nil draws the playhead.
+    private var skimRenderTime: Double? {
+        guard canSkim, let skimTime, skimTime != time else { return nil }
+        return skimTime
+    }
+
+    /// Previews `at` in the viewer without moving the playhead. Nil ends the skim and shows the playhead again.
+    /// Publishes at most about thirty times a second: each publish redraws the editor and starts a frame.
+    func skim(_ at: Double?) {
+        guard let at, at.isFinite, canSkim, fps.isFinite, fps > 0 else { endSkim(); return }
+        let target = max(0, min(duration, (at * fps).rounded() / fps))
+        guard target != skimTime else { skimQueued = nil; return }
+        let now = frameClock.now
+        if let last = skimPublishedAt, now - last < .milliseconds(33) {
+            skimQueued = target
+            if skimFlush == nil {
+                skimFlush = Task { [weak self] in
+                    try? await Task.sleep(for: .milliseconds(33))
+                    guard let self, !Task.isCancelled else { return }
+                    self.skimFlush = nil
+                    if let queued = self.skimQueued { self.skimQueued = nil; self.skim(queued) }
+                }
+            }
+            return
+        }
+        skimQueued = nil; skimPublishedAt = now
+        if skimTime == nil { parkSkimFrame() }
+        skimSettled = false
+        skimTime = target
+        requestFrame()
+        // A pointer at rest gets the frame at full size, as the playhead does after a scrub.
+        skimSettle?.cancel()
+        skimSettle = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard let self, !Task.isCancelled, self.skimTime == target else { return }
+            self.skimSettled = true; self.requestFrame()
+        }
+    }
+
+    /// Ends a skim. The frame that was showing before the skim comes back at once, then a fresh one is drawn.
+    func endSkim() {
+        guard skimTime != nil else { dropSkim(); return }
+        let parked = skimParked
+        dropSkim()
+        if let parked, parked.time == time, parked.version == version, parked.revision == projectRevision,
+           parked.composition == composition, parked.generation == generation, !playing, !showingSource {
+            metalFrame = parked.frame; frame = parked.image; displayedTime = parked.time
+        }
+        requestFrame()
+    }
+
+    /// Moves the playhead to the skimmed frame, as a click in the timeline does. False when nothing is skimmed.
+    @discardableResult
+    func commitSkim() -> Bool {
+        guard let at = skimTime, canSkim else { return false }
+        dropSkim(); seek(at)
+        return true
+    }
+
+    /// Forgets the skim without drawing. The caller draws the playhead frame.
+    private func dropSkim() {
+        skimQueued = nil; skimFlush?.cancel(); skimFlush = nil; skimSettle?.cancel(); skimSettle = nil
+        skimSettled = false; skimPublishedAt = nil; skimParked = nil
+        if skimTime != nil { skimTime = nil }
+    }
+
+    private func parkSkimFrame() {
+        skimParked = nil
+        guard let metalFrame, displayedTime == time, displayedVersion == version, displayedRevision == projectRevision,
+              displayedComposition == composition, displayedGeneration == generation, displayedPreviewID == nil else { return }
+        skimParked = (metalFrame, frame, time, version, projectRevision, composition, generation)
+    }
+
+    /// The filmstrip frame for `skimAsset`. The viewer shows it while a browser clip is skimmed.
+    private(set) var skimAssetFrame: CGImage?
+    /// Shows a browser clip's frame in the viewer. A nil source ends the skim that `from` started.
+    func skimBrowser(_ source: String?, time: Double = 0, frame: CGImage? = nil, from: String? = nil) {
+        guard let source, skimmingEnabled, !playing, frame != nil else {
+            if skimAsset != nil, source != nil || from == nil || skimAsset?.src == from { skimAssetFrame = nil; skimAsset = nil }
+            return
+        }
+        skimAssetFrame = frame
+        skimAsset = (source, time.isFinite ? max(0, time) : 0)
+    }
+    // END SKIMMING
     func pause() {
         let wasPlaying = playing
         playing = false; playTask?.cancel(); playTask = nil; audioPrepareTask?.cancel(); audioPrepareTask = nil; playbackAudio.stop()
@@ -1694,7 +1927,8 @@ final class NativeEditorModel: ObservableObject {
         scrubLastIntentToken = token
         #endif
         rendering = true
-        let draft = scrubbing || playing || previewOperations != nil
+        let skimAt = skimRenderTime
+        let draft = scrubbing || playing || previewOperations != nil || (skimAt != nil && !skimSettled)
         #if os(iOS)
         let defaultWidth = draft ? 320 : 960
         #else
@@ -1716,7 +1950,7 @@ final class NativeEditorModel: ObservableObject {
         #endif
         let color = panel == .color
         let renderProject = color ? project : (draft ? previewProject(project) : project)
-        pendingFrame = FrameRequest(token: token, generation: generation, folder: folder, project: renderProject.text, version: version, revision: projectRevision, at: time, comp: composition, width: width, queuedAt: queuedAt, scrubID: scrubID, draft: draft, color: color, hdrScopes: hdrScopes, previewID: previewCapture?.id, operations: previewOperations)
+        pendingFrame = FrameRequest(token: token, generation: generation, folder: folder, project: renderProject.text, version: version, revision: projectRevision, at: skimAt ?? time, comp: composition, width: width, queuedAt: queuedAt, scrubID: scrubID, draft: draft, color: color, hdrScopes: hdrScopes, previewID: previewCapture?.id, operations: previewOperations, skim: skimAt != nil)
         guard renderTask == nil else { return }
         let workerID = renderWorkerID
         renderTask = Task {
@@ -1742,7 +1976,7 @@ final class NativeEditorModel: ObservableObject {
                     }
                     if !Task.isCancelled, renderWorkerID == workerID, generation == request.generation, self.folder == request.folder,
                        version == request.version, projectRevision == request.revision, composition == request.comp, previewCapture?.id == request.previewID,
-                       request.color == (panel == .color), request.hdrScopes == hdrScopes, renderGeneration == request.token || (scrubbing && request.draft),
+                       request.color == (panel == .color), request.hdrScopes == hdrScopes, renderGeneration == request.token || (scrubbing && request.draft) || (request.skim && request.draft && skimRenderTime != nil),
                        request.scrubID == nil || !request.draft || request.scrubID == scrubInteractionID {
                         metalFrame = result
                         frame = panel == .color || readbackFrames ? try result.cgImage() : nil
