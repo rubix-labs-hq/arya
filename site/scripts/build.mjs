@@ -90,6 +90,10 @@ for (const item of Object.values(figures)) {
 }
 const native = JSON.parse(await readFile(join(root, 'assets/product/native.json'), 'utf8'));
 if (!/^\d+\.\d+(?:\.\d+)?$/.test(native.version)) throw new Error('Native captures must name the app version they were taken from');
+for (const item of Object.values(native.images)) {
+  if (!/^\/assets\/product\/native-[a-z-]+\.webp$/.test(item.src)) throw new Error('A native capture must be a local reviewed WebP image');
+  if (!(item.project in native.projects)) throw new Error('A native capture must name its sample project');
+}
 // Screens of the next App Store release wait in native.next. They replace the matching images, and
 // their edition note joins the capture note, only once the App Store release is live at that
 // version or later. Until then no page uses them.
@@ -107,8 +111,6 @@ if (native.next) {
   delete native.next;
 }
 for (const item of Object.values(native.images)) {
-  if (!/^\/assets\/product\/native-[a-z-]+\.webp$/.test(item.src)) throw new Error('A native capture must be a local reviewed WebP image');
-  if (!(item.project in native.projects)) throw new Error('A native capture must name its sample project');
   item.src += `?v=${await version(item.src)}`;
 }
 for (const clip of Object.values(native.clips ?? {})) {
