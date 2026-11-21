@@ -161,33 +161,77 @@ static char *attribute_names(int fd,ssize_t *length) {
     char *names=calloc((size_t)*length+1,1);if(!names)fail();
     if(*length && flistxattr(fd,names,(size_t)*length,0)!=*length)fail();return names;
 }
-// macOS may regenerate the quarantine creator and timestamp for a new file.
-// Keep the kernel's marker. Require identical flags and event identity, a valid
-// bounded representation, and no timestamp rollback. Other attributes stay exact.
+// The kernel writes these per file. Each describes the file's own creator, sandbox grants or
+// last use, not access to the project, and a new stage cannot carry the original's bytes:
+// the kernel stamps the stage itself, and App Sandbox may refuse writes to them. They take
+// no part in comparison or copying. Every other attribute stays exact.
+static int kernel_managed_xattr(const char *name) {
+    return !strcmp(name,"com.apple.provenance") || !strcmp(name,"com.apple.macl") || !strcmp(name,"com.apple.lastuseddate#PS");
+}
+static int copy_callback(int what,int stage,copyfile_state_t state,const char *source,const char *target,void *context) {
+    (void)source;(void)target;int *error=context;
+    if(stage==COPYFILE_ERR){*error=errno?errno:EIO;return COPYFILE_QUIT;}
+    if(what!=COPYFILE_COPY_XATTR || stage!=COPYFILE_START)return COPYFILE_CONTINUE;
+    const char *name=NULL;
+    if(copyfile_state_get(state,COPYFILE_STATE_XATTRNAME,&name) || !name){*error=EINVAL;return COPYFILE_QUIT;}
+    return kernel_managed_xattr(name)?COPYFILE_SKIP:COPYFILE_CONTINUE;
+}
+static void copy_xattrs(int from,int to) {
+    copyfile_state_t state=copyfile_state_alloc();if(!state)fail();int error=0;
+    if(copyfile_state_set(state,COPYFILE_STATE_STATUS_CB,(const void *)copy_callback) || copyfile_state_set(state,COPYFILE_STATE_STATUS_CTX,&error)){copyfile_state_free(state);fail();}
+    int result=fcopyfile(from,to,state,COPYFILE_XATTR),code=errno;copyfile_state_free(state);
+    if(result<0){errno=error?error:code;fail();}
+}
+// Quarantine is flags;time;creator;event. App Sandbox ORs flags 0x0086 into any quarantine a
+// sandboxed app writes, refuses to clear them, and keeps the stage's own time and creator,
+// so a project quarantined outside the sandbox (0081 from iCloud, 0083 from Safari) can
+// never match exactly. Allow only those changes: every original flag stays set, any added
+// flag is one the sandbox adds, the time never moves back, and the event stays identical
+// unless both sides hold an empty or UUID event that LaunchServices can regenerate.
+#define QUARANTINE_SANDBOX_FLAGS 0x0086u
+static int quarantine_hex(const unsigned char *text, size_t count, uint32_t *value) {
+    uint32_t result = 0;
+    for (size_t i = 0; i < count; i++) {
+        unsigned int c = text[i];
+        unsigned int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : 16;
+        if (digit > 15) return 0;
+        result = (result << 4) | digit;
+    }
+    *value = result;
+    return 1;
+}
+static int quarantine_event_replaceable(const unsigned char *event, size_t count) {
+    if (!count) return 1;
+    if (count != 36) return 0;
+    for (size_t i = 0; i < count; i++) {
+        uint32_t digit;
+        if (i == 8 || i == 13 || i == 18 || i == 23) { if (event[i] != '-') return 0; }
+        else if (!quarantine_hex(event + i, 1, &digit)) return 0;
+    }
+    return 1;
+}
 static int quarantine_restrictions_preserved(const void *original, size_t size, const void *staged, size_t other) {
     const unsigned char *a = original, *b = staged;
     if (size < 15 || other < 15 || size > 4096 || other > 4096 ||
         a[4] != ';' || b[4] != ';' || a[13] != ';' || b[13] != ';' ||
-        memcmp(a, b, 5) || memchr(a, 0, size) || memchr(b, 0, other)) return 0;
+        memchr(a, 0, size) || memchr(b, 0, other)) return 0;
+    uint32_t before_flags = 0, after_flags = 0, before = 0, after = 0;
+    if (!quarantine_hex(a, 4, &before_flags) || !quarantine_hex(b, 4, &after_flags) ||
+        !quarantine_hex(a + 5, 8, &before) || !quarantine_hex(b + 5, 8, &after)) return 0;
+    if ((after_flags & before_flags) != before_flags ||
+        (after_flags & ~before_flags & ~QUARANTINE_SANDBOX_FLAGS) || after < before) return 0;
     const unsigned char *ae = memchr(a + 14, ';', size - 14), *be = memchr(b + 14, ';', other - 14);
-    if (!ae || !be || size - (size_t)(ae - a) != other - (size_t)(be - b) ||
-        memcmp(ae, be, size - (size_t)(ae - a))) return 0;
-    uint32_t before = 0, after = 0;
-    for (size_t i = 0; i < 13; i++) {
-        if (i == 4) continue;
-        unsigned int x = a[i], y = b[i];
-        x = x >= '0' && x <= '9' ? x - '0' : x >= 'a' && x <= 'f' ? x - 'a' + 10 : x >= 'A' && x <= 'F' ? x - 'A' + 10 : 16;
-        y = y >= '0' && y <= '9' ? y - '0' : y >= 'a' && y <= 'f' ? y - 'a' + 10 : y >= 'A' && y <= 'F' ? y - 'A' + 10 : 16;
-        if (x > 15 || y > 15) return 0;
-        if (i > 4) { before = (before << 4) | x; after = (after << 4) | y; }
-    }
-    return after >= before;
+    if (!ae || !be) return 0;
+    size_t event = size - (size_t)(ae - a) - 1, other_event = other - (size_t)(be - b) - 1;
+    if (event == other_event && !memcmp(ae + 1, be + 1, event)) return 1;
+    return quarantine_event_replaceable(ae + 1, event) && quarantine_event_replaceable(be + 1, other_event);
 }
 static void verify_xattrs(int from,int to) {
     ssize_t an=0,bn=0;char *a=attribute_names(from,&an),*b=attribute_names(to,&bn);
     size_t ac=0,bc=0,total=0;
     for(size_t p=0;p<(size_t)bn;) {
         size_t n=strnlen(b+p,(size_t)bn-p);require(n<(size_t)bn-p);
+        if(kernel_managed_xattr(b+p)){p+=n+1;continue;}
         // Keep quarantine added to the new stage by App Sandbox. Existing source
         // quarantine restrictions still participate in the comparison below.
         if(!strcmp(b+p,"com.apple.quarantine")) {
@@ -202,6 +246,7 @@ static void verify_xattrs(int from,int to) {
     for(size_t p=0;p<(size_t)an;) {
         size_t n=strnlen(a+p,(size_t)an-p);require(n<(size_t)an-p);const char *name=a+p;
         require(strcmp(name,"com.apple.decmpfs")!=0);
+        if(kernel_managed_xattr(name)){p+=n+1;continue;}
         ssize_t size=fgetxattr(from,name,NULL,0,0,0),other=fgetxattr(to,name,NULL,0,0,0);
         require(size>=0 && other>=0 && (uint64_t)size<=MAX_METADATA && (uint64_t)other<=MAX_METADATA);
         require(other==size || !strcmp(name,"com.apple.quarantine"));
@@ -237,6 +282,16 @@ static void test_hook(const char *point) {
     if(fault && strcmp(fault,"quarantine-after-copy")==0 && strcmp(point,"metadata-copied")==0) {
         const char quarantine[]="0082;6ad1b4b7;Arya;";
         if(fsetxattr(tempfd,"com.apple.quarantine",quarantine,sizeof(quarantine)-1,0,0)<0)fail();
+    }
+    // The App Sandbox kernel merges its flags into a copied quarantine and keeps the stage's
+    // own time and creator; it also stamps per-file attributes on every new stage.
+    if(fault && strcmp(fault,"sandbox-quarantine-after-copy")==0 && strcmp(point,"metadata-copied")==0) {
+        const char quarantine[]="0087;6b020329;Arya;";
+        if(fsetxattr(tempfd,"com.apple.quarantine",quarantine,sizeof(quarantine)-1,0,0)<0)fail();
+    }
+    if(fault && strcmp(fault,"kernel-attributes-after-copy")==0 && strcmp(point,"metadata-copied")==0) {
+        const unsigned char macl[]={4,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16},provenance[]={1,2,0,0xf6,0xbb,0x28,0xfa,0xf4,0x30,0xa6,0x62};
+        if(fsetxattr(tempfd,"com.apple.macl",macl,sizeof(macl),0,0)<0 || fsetxattr(tempfd,"com.apple.provenance",provenance,sizeof(provenance),0,0)<0 || fsetxattr(tempfd,"com.apple.lastuseddate#PS","0123456789abcdef",16,0,0)<0)fail();
     }
     if(fault && (strcmp(fault,"stage-quarantine")==0 || strcmp(fault,"stage-quarantine-later")==0) && strcmp(point,"metadata")==0) {
         const char *quarantine=strcmp(fault,"stage-quarantine-later")==0 ? "0082;6ad1b4b7;Arya;" : "0081;00000000;Arya;";
@@ -346,7 +401,7 @@ int main(int argc,char **argv) {
     stage="metadata";test_hook("metadata");
     if(oldfd>=0) {
         if(fchown(tempfd,oldstat.st_uid,oldstat.st_gid)<0)fail();
-        if(fcopyfile(oldfd,tempfd,NULL,COPYFILE_XATTR)<0)fail();
+        copy_xattrs(oldfd,tempfd);
     }
     test_hook("metadata-copied");
     // Install access restrictions before widening the populated temporary file's mode.

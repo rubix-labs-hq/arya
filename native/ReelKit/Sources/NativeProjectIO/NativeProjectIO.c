@@ -74,29 +74,81 @@ static char *names(int fd, ssize_t *size) {
     }
     return result;
 }
+// The kernel writes these per file. Each describes the file's own creator, sandbox grants or
+// last use, not access to the project, and a new stage cannot carry the original's bytes:
+// the kernel stamps the stage itself, and App Sandbox may refuse writes to them. They take
+// no part in comparison or copying. Every other attribute stays exact.
+static int kernel_managed_xattr(const char *name) {
+    return !strcmp(name, "com.apple.provenance") || !strcmp(name, "com.apple.macl") ||
+        !strcmp(name, "com.apple.lastuseddate#PS");
+}
+struct copy_context { int error; };
+static int copy_callback(int what, int stage, copyfile_state_t state, const char *source, const char *target, void *context) {
+    (void)source; (void)target;
+    struct copy_context *copy = context;
+    if (stage == COPYFILE_ERR) { copy->error = errno ? errno : EIO; return COPYFILE_QUIT; }
+    if (what != COPYFILE_COPY_XATTR || stage != COPYFILE_START) return COPYFILE_CONTINUE;
+    const char *name = NULL;
+    if (copyfile_state_get(state, COPYFILE_STATE_XATTRNAME, &name) || !name) { copy->error = EINVAL; return COPYFILE_QUIT; }
+    return kernel_managed_xattr(name) ? COPYFILE_SKIP : COPYFILE_CONTINUE;
+}
+static int copy_metadata(int from, int to, copyfile_flags_t flags) {
+    copyfile_state_t state = copyfile_state_alloc();
+    if (!state) return -1;
+    struct copy_context context = { 0 };
+    int result = -1;
+    if (!copyfile_state_set(state, COPYFILE_STATE_STATUS_CB, (const void *)copy_callback) &&
+        !copyfile_state_set(state, COPYFILE_STATE_STATUS_CTX, &context))
+        result = fcopyfile(from, to, state, flags);
+    int code = errno;
+    copyfile_state_free(state);
+    errno = result && context.error ? context.error : code;
+    return result;
+}
 #if TARGET_OS_OSX || TARGET_OS_MACCATALYST
-// macOS may regenerate the quarantine creator and timestamp for a new file,
-// including files written by sandboxed Mac Catalyst apps.
-// Keep the kernel's marker. Require identical flags and event identity, a valid
-// bounded representation, and no timestamp rollback. Other attributes stay exact.
+// Quarantine is flags;time;creator;event. App Sandbox ORs flags 0x0086 into any quarantine a
+// sandboxed app writes, refuses to clear them, and keeps the stage's own time and creator,
+// so a project quarantined outside the sandbox (0081 from iCloud, 0083 from Safari) can
+// never match exactly. Allow only those changes: every original flag stays set, any added
+// flag is one the sandbox adds, the time never moves back, and the event stays identical
+// unless both sides hold an empty or UUID event that LaunchServices can regenerate.
+#define QUARANTINE_SANDBOX_FLAGS 0x0086u
+static int quarantine_hex(const unsigned char *text, size_t count, uint32_t *value) {
+    uint32_t result = 0;
+    for (size_t i = 0; i < count; i++) {
+        unsigned int c = text[i];
+        unsigned int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : 16;
+        if (digit > 15) return 0;
+        result = (result << 4) | digit;
+    }
+    *value = result;
+    return 1;
+}
+static int quarantine_event_replaceable(const unsigned char *event, size_t count) {
+    if (!count) return 1;
+    if (count != 36) return 0;
+    for (size_t i = 0; i < count; i++) {
+        uint32_t digit;
+        if (i == 8 || i == 13 || i == 18 || i == 23) { if (event[i] != '-') return 0; }
+        else if (!quarantine_hex(event + i, 1, &digit)) return 0;
+    }
+    return 1;
+}
 static int quarantine_restrictions_preserved(const void *original, size_t size, const void *staged, size_t other) {
     const unsigned char *a = original, *b = staged;
     if (size < 15 || other < 15 || size > 4096 || other > 4096 ||
         a[4] != ';' || b[4] != ';' || a[13] != ';' || b[13] != ';' ||
-        memcmp(a, b, 5) || memchr(a, 0, size) || memchr(b, 0, other)) return 0;
+        memchr(a, 0, size) || memchr(b, 0, other)) return 0;
+    uint32_t before_flags = 0, after_flags = 0, before = 0, after = 0;
+    if (!quarantine_hex(a, 4, &before_flags) || !quarantine_hex(b, 4, &after_flags) ||
+        !quarantine_hex(a + 5, 8, &before) || !quarantine_hex(b + 5, 8, &after)) return 0;
+    if ((after_flags & before_flags) != before_flags ||
+        (after_flags & ~before_flags & ~QUARANTINE_SANDBOX_FLAGS) || after < before) return 0;
     const unsigned char *ae = memchr(a + 14, ';', size - 14), *be = memchr(b + 14, ';', other - 14);
-    if (!ae || !be || size - (size_t)(ae - a) != other - (size_t)(be - b) ||
-        memcmp(ae, be, size - (size_t)(ae - a))) return 0;
-    uint32_t before = 0, after = 0;
-    for (size_t i = 0; i < 13; i++) {
-        if (i == 4) continue;
-        unsigned int x = a[i], y = b[i];
-        x = x >= '0' && x <= '9' ? x - '0' : x >= 'a' && x <= 'f' ? x - 'a' + 10 : x >= 'A' && x <= 'F' ? x - 'A' + 10 : 16;
-        y = y >= '0' && y <= '9' ? y - '0' : y >= 'a' && y <= 'f' ? y - 'a' + 10 : y >= 'A' && y <= 'F' ? y - 'A' + 10 : 16;
-        if (x > 15 || y > 15) return 0;
-        if (i > 4) { before = (before << 4) | x; after = (after << 4) | y; }
-    }
-    return after >= before;
+    if (!ae || !be) return 0;
+    size_t event = size - (size_t)(ae - a) - 1, other_event = other - (size_t)(be - b) - 1;
+    if (event == other_event && !memcmp(ae + 1, be + 1, event)) return 1;
+    return quarantine_event_replaceable(ae + 1, event) && quarantine_event_replaceable(be + 1, other_event);
 }
 #endif
 // Returns one for unequal metadata, minus one for a failed read, and zero for equality.
@@ -111,6 +163,7 @@ static int compare_xattrs(int from, int to, int verify) {
     for (size_t p = 0; verify && p < (size_t)target_size;) {
         size_t length = strnlen(target + p, (size_t)target_size - p);
         if (length >= (size_t)target_size - p) { invalid(); goto done; }
+        if (kernel_managed_xattr(target + p)) { p += length + 1; continue; }
 #if TARGET_OS_OSX || TARGET_OS_MACCATALYST
         // App Sandbox can add quarantine to a new stage. Retain that marker when the
         // original has none; original quarantine restrictions remain unchanged.
@@ -131,6 +184,7 @@ static int compare_xattrs(int from, int to, int verify) {
         size_t length = strnlen(source + p, (size_t)source_size - p);
         if (length >= (size_t)source_size - p || !strcmp(source + p, "com.apple.decmpfs")) { invalid(); goto done; }
         const char *name = source + p;
+        if (kernel_managed_xattr(name)) { p += length + 1; continue; }
         ssize_t size = fgetxattr(from, name, NULL, 0, 0, 0);
         if (size < 0) { failure("fgetxattr original size"); goto done; }
         if ((uint64_t)size > MAX_METADATA || total + (uint64_t)size > MAX_METADATA) { invalid(); goto done; }
@@ -230,7 +284,7 @@ int arya_copy_project_metadata(int original_fd, int staged_fd) {
     if (xattrs < 0) goto done;
     if (xattrs > 0) flags |= COPYFILE_XATTR;
     // Copy access restrictions before restoring a broader mode on populated bytes.
-    if (flags && fcopyfile(original_fd, staged_fd, NULL, flags)) { failure("fcopyfile project access metadata"); goto done; }
+    if (flags && copy_metadata(original_fd, staged_fd, flags)) { failure("fcopyfile project access metadata"); goto done; }
     actual_acl = get_acl_bytes(staged_fd, &actual_size);
     if (!actual_acl) goto done;
     int equal_acl = expected_size == actual_size && !memcmp(expected_acl, actual_acl, expected_size); free(actual_acl);

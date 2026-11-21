@@ -86,6 +86,32 @@ for(const quarantine of ['0083;6ad1b39b;Arya;','0082;6ad1b39b;Arya;event','0082;
     assert.equal(read(file),before);assert.equal(acl(file),metadata);assert.equal(attr(file),value);assert.equal(fs.statSync(file).mode & 0o7777,mode)
     assert.equal(execFileSync('/usr/bin/xattr',['-p','com.apple.quarantine',file],{encoding:'utf8'}).trim(),quarantine)
   })
+const quarantineOf = file => execFileSync('/usr/bin/xattr',['-p','com.apple.quarantine',file],{encoding:'utf8'}).trim()
+test('sandbox flags merged into an iCloud quarantine keep the project saveable',t=>{
+  const {root,file}=fixture(t);addACL(file);setAttr(file)
+  execFileSync('/usr/bin/xattr',['-w','com.apple.quarantine','0081;00000000;;',file])
+  const before=read(file),metadata=acl(file),value=attr(file),mode=fs.statSync(file).mode & 0o7777
+  const result=invoke(root,'{"name":"new"}\n',before,'sandbox-quarantine-after-copy')
+  assert.equal(result.receipt?.ok,true,JSON.stringify(result.receipt))
+  assert.equal(quarantineOf(file),'0087;6b020329;Arya;')
+  assert.equal(read(file),'{"name":"new"}\n');assert.equal(acl(file),metadata);assert.equal(attr(file),value);assert.equal(fs.statSync(file).mode & 0o7777,mode)
+})
+for(const quarantine of ['00c3;00000000;;','0081;7f000000;;','0081;00000000;;custom'])
+  test(`sandbox quarantine merge still rejects weaker restrictions ${quarantine}`,t=>{
+    const {root,file}=fixture(t);execFileSync('/usr/bin/xattr',['-w','com.apple.quarantine',quarantine,file])
+    const before=read(file),result=invoke(root,'{"name":"new"}\n',before,'sandbox-quarantine-after-copy')
+    assert.equal(result.receipt?.ok,false,JSON.stringify(result.receipt));assert.equal(read(file),before);assert.equal(quarantineOf(file),quarantine)
+  })
+test('per-file kernel attributes on the stage do not block a save and are not copied',t=>{
+  const {root,file}=fixture(t);addACL(file);setAttr(file)
+  execFileSync('/usr/bin/xattr',['-wx','com.apple.macl','0400AABBCCDDEEFF00112233445566778899',file])
+  execFileSync('/usr/bin/xattr',['-w','com.apple.lastuseddate#PS','fedcba9876543210',file])
+  const before=read(file),metadata=acl(file),value=attr(file),mode=fs.statSync(file).mode & 0o7777
+  const result=invoke(root,'{"name":"new"}\n',before,'kernel-attributes-after-copy')
+  assert.equal(result.receipt?.ok,true,JSON.stringify(result.receipt))
+  assert.equal(execFileSync('/usr/bin/xattr',['-px','com.apple.macl',file],{encoding:'utf8'}).replace(/\s/g,''),'04000102030405060708090A0B0C0D0E0F10')
+  assert.equal(read(file),'{"name":"new"}\n');assert.equal(acl(file),metadata);assert.equal(attr(file),value);assert.equal(fs.statSync(file).mode & 0o7777,mode)
+})
 test('existing quarantine flags survive the platform metadata copy',t=>{
   const {root,file}=fixture(t),quarantine='0083;00000000;Original;'
   execFileSync('/usr/bin/xattr',['-w','com.apple.quarantine',quarantine,file])
