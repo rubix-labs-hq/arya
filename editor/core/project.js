@@ -581,6 +581,44 @@ function shiftAfter(track, from, delta, except) {
   for (const c of track.clips) if (c !== except && c.start >= from - 1e-6) c.start = round(Math.max(0, c.start + delta))
 }
 
+/**
+ * Applies ripple shifts as one edit. Each plan moves the clips on its track that start at or after
+ * `from` by `delta`, measured before any clip moves. Unless `unlinked`, a moved clip's linked
+ * partners on unlocked tracks that no plan covers move by the same amount, so later picture and
+ * sound stay in sync when a clip without sound, or only one side of a link, ripples.
+ */
+function rippleTracks(p, plans, unlinked = false) {
+  const rippled = new Set(plans.map(plan => plan.track))
+  const shift = new Map()
+  for (const { track, from, delta, except } of plans) {
+    if (!delta) continue
+    for (const c of track.clips) if (c !== except && c.start >= from - 1e-6) shift.set(c, (shift.get(c) ?? 0) + delta)
+  }
+  if (!shift.size) return
+  if (!unlinked) {
+    const groups = new Map()
+    for (const x of allClips(p)) if (x.clip.link) groups.set(x.clip.link, [...(groups.get(x.clip.link) ?? []), x])
+    for (const [c, delta] of [...shift]) {
+      for (const l of c.link ? groups.get(c.link) ?? [] : []) {
+        if (l.clip !== c && !l.track.locked && !rippled.has(l.track) && !shift.has(l.clip)) shift.set(l.clip, delta)
+      }
+    }
+  }
+  for (const [c, delta] of shift) c.start = round(Math.max(0, c.start + delta))
+  for (const t of p.tracks) sortTrack(t)
+}
+
+/** Merges [start, end] spans that touch or overlap. */
+function mergeSpans(spans) {
+  const merged = []
+  for (const [s, e] of [...spans].sort((a, b) => a[0] - b[0])) {
+    const last = merged.at(-1)
+    if (last && s <= last[1] + 1e-6) last[1] = Math.max(last[1], e)
+    else merged.push([s, e])
+  }
+  return merged
+}
+
 const halfFrame = p => p.fps > 0 ? 0.5 / p.fps : 0
 
 /**
@@ -920,6 +958,7 @@ export function applyOps(source, ops) {
           const moving = new Set(parts.map(x => x.clip))
           delta = clampDelta(delta, parts.map(x => edgeBounds(p, x.track, x.clip, op.edge, moving, minDur)))
         }
+        const plans = []
         const apply = ({ track, clip }, to) => {
           const speed = clip.speed ?? 1
           const end = clipEnd(clip)
@@ -936,19 +975,20 @@ export function applyOps(source, ops) {
             const originalStart = clip.start
             clip.start = round(op.ripple ? originalStart : start)
             clip.dur = round(end - start)
-            if (op.ripple) shiftAfter(track, end, -shift, clip)
+            if (op.ripple) plans.push({ track, from: end, delta: -shift, except: clip })
           } else {
             const maxDur = backward(clip) ? clip.dur + (clip.in ?? 0) / speed : (sourceLength(p, clip) - (clip.in ?? 0)) / speed
             const nextDur = round(Math.max(minDur, Math.min(to - clip.start, maxDur)))
             const change = nextDur - clip.dur
             if (backward(clip) && clip.in !== undefined) clip.in = round(Math.max(0, clip.in - change * speed))
             clip.dur = nextDur
-            if (op.ripple) shiftAfter(track, end, change, clip)
+            if (op.ripple) plans.push({ track, from: end, delta: change, except: clip })
           }
           sortTrack(track)
           boundCaptionWords(clip, p.fps)
         }
         for (const part of parts) apply(part, round(edgeOf(part.clip) + delta))
+        rippleTracks(p, plans, op.unlinked)
         log.push(`trimmed ${op.id} ${op.edge} to ${round(op.to, 3)}s${op.ripple ? ' (ripple)' : ''}${op.unlinked ? ' (unlinked)' : ''}`)
         break
       }
@@ -1059,16 +1099,21 @@ export function applyOps(source, ops) {
         const ids = Array.isArray(op.ids) ? op.ids : [op.id]
         const ripple = op.op === 'ripple_delete' || op.ripple
         const gone = new Set()
+        const spans = new Map()
         for (const id of ids) {
           const found = clipOf(id)
-          gone.add(found.clip)
           // A locked track keeps its clips even when a linked partner is deleted.
-          if (!op.unlinked) for (const l of linkedOf(p, found.clip)) if (!l.track.locked) gone.add(l.clip)
+          const members = [found, ...(op.unlinked ? [] : linkedOf(p, found.clip).filter(l => !l.track.locked))]
+          for (const m of members) gone.add(m.clip)
+          // Every track of a link group closes the picture's span, not each clip's own length, so
+          // a J or L cut (sound longer or shorter than its picture) keeps later clips in sync.
+          const anchor = members.find(m => m.track.kind === 'video') ?? found
+          for (const m of members) spans.set(m.track, [...(spans.get(m.track) ?? []), [anchor.clip.start, clipEnd(anchor.clip)]])
         }
-        for (const track of p.tracks) {
-          const removed = track.clips.filter(c => gone.has(c)).sort((a, b) => b.start - a.start)
-          track.clips = track.clips.filter(c => !gone.has(c))
-          if (ripple) for (const r of removed) shiftAfter(track, clipEnd(r), -r.dur)
+        for (const track of p.tracks) track.clips = track.clips.filter(c => !gone.has(c))
+        if (ripple) {
+          const plans = [...spans].flatMap(([track, list]) => mergeSpans(list).map(([s, e]) => ({ track, from: e, delta: -(e - s) })))
+          rippleTracks(p, plans, op.unlinked)
         }
         log.push(`${ripple ? 'ripple deleted' : 'deleted'} ${ids.join(', ')}`)
         break
@@ -1130,6 +1175,7 @@ export function applyOps(source, ops) {
         // leaves a gap unless `ripple: true`; `ripple: false` keeps later clips and stops at the next clip.
         const before = clipOf(op.id).clip
         const wasSpeed = before.speed ?? 1, wasReverse = !!before.reverse
+        const plans = []
         withLinked(op.id, ({ track, clip }) => {
           const old = clip.speed ?? 1
           const oldEnd = clipEnd(clip)
@@ -1143,9 +1189,10 @@ export function applyOps(source, ops) {
           if (op.ripple === false) {
             const next = track.clips.filter(c => c !== clip && c.start >= oldEnd - EDGE_EPS).reduce((m, c) => Math.min(m, c.start), Infinity)
             clip.dur = round(Math.max(minDur, Math.min(clip.dur, next - clip.start)))
-          } else if (clip.dur > oldDur || op.ripple === true) shiftAfter(track, oldEnd, clip.dur - oldDur, clip)
+          } else if (clip.dur > oldDur || op.ripple === true) plans.push({ track, from: oldEnd, delta: clip.dur - oldDur, except: clip })
           boundCaptionWords(clip, p.fps)
         })
+        rippleTracks(p, plans)
         // A change of direction is named, so a Reverse toggle at the same speed does not read as a retime.
         const now = clipOf(op.id).clip, nowReverse = !!now.reverse
         if (nowReverse === wasReverse) log.push(`retimed ${op.id} to ${op.speed}x`)
