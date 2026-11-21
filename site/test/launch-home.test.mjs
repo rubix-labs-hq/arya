@@ -384,3 +384,18 @@ test('videos omit invalid loading attributes and download checksum helpers follo
   assert.doesNotMatch(unreleased.download, /id="release-verify"/);
   assert.doesNotMatch(unreleased.download, /Arya-null\.dmg/);
 });
+
+test('shipped App Store 1.3.1 release renders unified iPhone, iPad and Mac copy and workflow highlights', () => {
+  assert.equal(shipped.mobileRelease.version, '1.3.1');
+  assert.equal(shipped.mobileRelease.build, '13');
+  assert.equal(shipped.mobileRelease.pro, true);
+  assert.equal(shipped.macAppStoreRelease.version, '1.3.1');
+  assert.equal(shipped.macAppStoreRelease.build, '13');
+  assert.equal(shipped.macAppStoreRelease.pro, true);
+  assert.match(text(live.download), /App Store iPhone, iPad and Mac · Version 1\.3\.1 In the App Store edition, editing and 1080p export are free/);
+  assert.doesNotMatch(text(live.download), /Mac App Store · Version/);
+  const home = text(live.home);
+  for (const highlight of ['Magnetic timeline', 'Live skimming', 'Drag media to tracks', 'Right-click to Ask Arya', 'Add to Ask Arya chips']) {
+    assert.ok(home.includes(highlight), `home should mention ${highlight}`);
+  }
+});
