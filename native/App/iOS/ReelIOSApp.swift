@@ -279,6 +279,19 @@ struct ReelIOSApp: App {
                         }
                     }
                     .disabled(!session.useWebEditor && !session.nativeMenu.canMatchFrame)
+                    Divider()
+                    Button("Turn Skimming On or Off") {
+                        runTimelineCommand {
+                            session.nativeEditor.skimmingEnabled.toggle()
+                            session.nativeEditor.status = session.nativeEditor.skimmingEnabled ? "Skimming is on" : "Skimming is off"
+                        }
+                    }
+                    Button("Turn Magnetic Timeline On or Off") {
+                        runTimelineCommand {
+                            session.nativeEditor.magneticTimeline.toggle()
+                            session.nativeEditor.status = session.nativeEditor.magneticTimeline ? "Magnetic timeline is on" : "Magnetic timeline is off"
+                        }
+                    }
                 }
                 .disabled(session.folder == nil || session.useWebEditor)
             }

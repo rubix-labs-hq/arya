@@ -387,6 +387,8 @@ console.log('Passed post-import production editBatch request through shared appl
     func discard() { }
     func start(session: EditorSession, body: [String: Any]) async throws -> [String: Any] { [:] }
 }
+struct NativeAskAryaTarget { enum Kind: String { case deliver }; init(kind: Kind, objectID: String, label: String, details: [String: String] = [:]) {} }
+extension View { func aryaContextAIMenu(_ model: NativeEditorModel, _ target: NativeAskAryaTarget?) -> some View { self } }
 '''
         controls = (editor / 'NativeControls.swift').read_text()
         style = block(controls, 'enum NativeEditorStyle {') + '\n' + block(controls, 'enum NativeType {') + '\n' + block(controls, 'enum NativeRadius {')

@@ -1,3 +1,4 @@
+import './fixtures/browser-host-imports.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import { createRequire, registerHooks } from 'node:module'

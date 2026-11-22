@@ -128,6 +128,12 @@ struct ReelMacApp: App {
                     .disabled(!session.useWebEditor && !session.nativeMenu.canPaste)
                 Button("Match Frame") { performEditorCommand(.matchFrame) }
                     .disabled(!session.useWebEditor && !session.nativeMenu.canMatchFrame)
+                Divider()
+                // The native timeline only. S is the skimming key, as in Final Cut Pro.
+                Button("Turn Skimming On or Off") { performEditorCommand(.skimming) }.keyboardShortcut(timelineKeyShortcut("s", modifiers: []))
+                    .disabled(session.useWebEditor)
+                Button("Turn Magnetic Timeline On or Off") { performEditorCommand(.magneticTimeline) }
+                    .disabled(session.useWebEditor)
             }
             .disabled(session.folder == nil)
         }
@@ -162,6 +168,8 @@ struct ReelMacApp: App {
                 textSelectable: (NSApp.keyWindow?.firstResponder as? NSTextView)?.isSelectable == true,
                 textEditable: (NSApp.keyWindow?.firstResponder as? NSTextView)?.isEditable == true) else { return }
         if session.useWebEditor {
+            // The browser editor has no skimmer or magnetic timeline.
+            if command == .skimming || command == .magneticTimeline { return }
             session.evaluate("const { runEditorCommand } = await import('/ui/keys.js'); return runEditorCommand(\(JSON.string(command.rawValue).text))")
             return
         }
@@ -184,6 +192,12 @@ struct ReelMacApp: App {
                 let capture = try session.nativeEditor.captureMatchFrame()
                 session.nativeEditor.matchFrame(capture)
             } catch { session.nativeEditor.status = error.localizedDescription }
+        case .skimming:
+            session.nativeEditor.skimmingEnabled.toggle()
+            session.nativeEditor.status = session.nativeEditor.skimmingEnabled ? "Skimming is on" : "Skimming is off"
+        case .magneticTimeline:
+            session.nativeEditor.magneticTimeline.toggle()
+            session.nativeEditor.status = session.nativeEditor.magneticTimeline ? "Magnetic timeline is on" : "Magnetic timeline is off"
         }
     }
 
@@ -264,6 +278,7 @@ struct ReelMacApp: App {
 
 enum MacEditorCommand: String {
     case playPause, split, delete, rippleDelete, previousFrame, nextFrame, duplicate, export, copy, cut, paste, matchFrame
+    case skimming, magneticTimeline
 }
 
 @MainActor

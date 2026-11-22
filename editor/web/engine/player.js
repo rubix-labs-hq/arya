@@ -8,6 +8,7 @@ import { mediaUrl } from './media.js'
 export class Player {
   constructor({ comp, media, audio, getProject, getProjectIdentity = getProject, prepareFrame, onTime, onState }) {
     Object.assign(this, { comp, media, audio, getProject, getProjectIdentity, prepareFrame, onTime: onTime ?? (() => {}), onState: onState ?? (() => {}) })
+    this.skimTime = null
     this.t = 0
     this.playing = false
     this.rate = 0
@@ -46,9 +47,9 @@ export class Player {
     await Promise.all([...needs.map(fetchFrame), ...images])
     // Completed previews can paint while dragging. Release, playback and project changes
     // invalidate them, so a late decode cannot replace the final requested frame.
-    if (identity !== this.getProjectIdentity() || p.compId !== this.project?.compId || epoch !== this.frameEpoch || transport !== this.exactToken || revision !== this.renderRevision && !(preview && this.scrubbing)) return false
+    if (identity !== this.getProjectIdentity() || p.compId !== this.project?.compId || epoch !== this.frameEpoch || transport !== this.exactToken || revision !== this.renderRevision && !(preview && (this.scrubbing || this.skimTime != null))) return false
     await prepared?.validate()
-    if (identity !== this.getProjectIdentity() || p.compId !== this.project?.compId || epoch !== this.frameEpoch || transport !== this.exactToken || revision !== this.renderRevision && !(preview && this.scrubbing)) return false
+    if (identity !== this.getProjectIdentity() || p.compId !== this.project?.compId || epoch !== this.frameEpoch || transport !== this.exactToken || revision !== this.renderRevision && !(preview && (this.scrubbing || this.skimTime != null))) return false
     this.collectMedia(new Set(needs.map(n => n.key)))
     drawFrame(this.comp, this.media, p, t)
     this.displayedTime = t
@@ -75,8 +76,8 @@ export class Player {
       return
     }
     this.exactBusy = true
-    const t = this.t
-    this.renderExact(t, { preview: this.scrubbing })
+    const t = this.skimTime ?? this.t
+    this.renderExact(t, { preview: this.scrubbing || this.skimTime != null })
       .catch(e => console.warn('render', e))
       .finally(() => {
         this.exactBusy = false
@@ -87,7 +88,21 @@ export class Player {
       })
   }
 
+  skim(at) {
+    if (this.playing || this.scrubbing || this.skimTime === at) return
+    this.skimTime = at
+    this.requestExact()
+  }
+
+  endSkim() {
+    if (this.skimTime == null) return
+    this.skimTime = null
+    this.frameEpoch++
+    this.requestExact()
+  }
+
   beginScrub() {
+    this.skimTime = null
     this.scrubbing = true
     this.frameEpoch++
     if (this.playing) this.pause()
@@ -101,6 +116,7 @@ export class Player {
   }
 
   seek(t, options = {}) {
+    this.skimTime = null
     const end = this.end()
     this.t = Math.max(0, Math.min(t, end || t))
     if (this.playing && this.rate > 0 && !options.keepPlaying) {
@@ -114,6 +130,7 @@ export class Player {
 
   /** Called after the project changed. */
   refresh() {
+    this.skimTime = null
     if (this.playing && this.rate > 0) this.play(this.rate)
     else this.requestExact()
   }
@@ -126,6 +143,7 @@ export class Player {
   async play(rate = 1) {
     const p = this.project
     if (!p) return
+    this.skimTime = null
     this.scrubbing = false
     this.frameEpoch++
     this.exactPending = false

@@ -194,6 +194,7 @@ struct NativeAudioPanel: View {
                     NativeDuckingControls(model: model)
                     if let clip = model.selected {
                         clipControls(clip, width: geometry.size.width - 24)
+                        .aryaContextAIMenu(model, .panel(.audio, clip: clip))
                     } else {
                         Text("Select a clip to adjust its fades, EQ and loudness.").font(.system(size: 12)).foregroundStyle(NativeEditorStyle.muted)
                     }
@@ -205,6 +206,7 @@ struct NativeAudioPanel: View {
                     ForEach(Array(work.warnings.enumerated()), id: \.offset) { _, warning in Text(warning).font(.caption2).foregroundStyle(NativeEditorStyle.muted) }
                     #endif
                 }.nativePanelPadding()
+                .aryaContextAIMenu(model, .init(kind: .bus, objectID: busID, label: "Audio bus · \(busID)"))
             }.background(NativeEditorStyle.panel)
         }
         .onChange(of: model.composition) { _, _ in busID = "master"; work.cancel(model, clear: true) }
@@ -222,7 +224,7 @@ struct NativeAudioPanel: View {
     #if os(iOS)
     @ViewBuilder private func mobileAudioWorkspace(width: Double) -> some View {
         Text("Audio").font(.headline)
-        if let clip = model.selected { clipControls(clip, width: width) }
+        if let clip = model.selected { clipControls(clip, width: width).aryaContextAIMenu(model, .panel(.audio, clip: clip)) }
         else { Text("Select a clip to adjust its fades, EQ and loudness.").font(.subheadline).foregroundStyle(NativeEditorStyle.muted) }
         if work.running {
             HStack {
@@ -291,6 +293,7 @@ struct NativeAudioPanel: View {
         return NativeAudioChannelStrip(name: track.name, subtitle: track.id, volume: track.fields.number("volume"), pan: track.fields.number("pan"), muted: track.fields.flag("muted"), solo: track.fields.flag("solo"), effects: track.fields.objects("fx").count, master: false, selected: busID == track.id, meter: meter, select: { busID = track.id }, begin: { property in
             captureAudioGesture(kind: "track", id: track.id, property: property, renderedVersion: renderedVersion)
         }, commit: { value, context in commitAudioGesture(value, context: context) }, toggleMute: { updateTrack(track, ["muted": !track.fields.flag("muted")]) }, toggleSolo: { updateTrack(track, ["solo": !track.fields.flag("solo")]) })
+        .aryaContextAIMenu(model, .track(track))
     }
 
     private var masterStrip: some View {
@@ -298,6 +301,7 @@ struct NativeAudioPanel: View {
         return NativeAudioChannelStrip(name: "Master", subtitle: "Stereo output", volume: master.number("volume"), pan: 0, muted: false, solo: false, effects: master.objects("fx").count, master: true, selected: busID == "master", meter: model.masterAudioMeter, select: { busID = "master" }, begin: { property in
             captureAudioGesture(kind: "master", id: "master", property: property, renderedVersion: renderedVersion)
         }, commit: { value, context in commitAudioGesture(value, context: context) }, toggleMute: {}, toggleSolo: {})
+        .aryaContextAIMenu(model, .init(kind: .bus, objectID: "master", label: "Master bus"))
     }
 
     #if os(iOS)

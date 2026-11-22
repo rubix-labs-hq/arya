@@ -299,13 +299,10 @@ struct NativeMediaPanel: View {
             if let source = model.sourceAsset {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(source.name).font(.subheadline.weight(.semibold)).lineLimit(2)
-                    HStack(spacing: 8) {
-                        Button { useInAI(source) } label: { Label("AI draft", systemImage: "text.bubble") }
-                            .accessibilityLabel("Add \(source.name) to AI draft")
-                            .accessibilityIdentifier("editor.media.sourceAI")
-                        Button { showDetails(source) } label: { Label("Details", systemImage: "info.circle") }
-                            .accessibilityLabel("Details for \(source.name)")
-                            .accessibilityIdentifier("editor.media.sourceDetails")
+                    // One row when it fits. A narrow panel stacks the two, so a label is never squeezed into "De-tails".
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { sourceActions(source) }
+                        VStack(alignment: .leading, spacing: 6) { sourceActions(source) }
                     }.buttonStyle(NativeGeneratedMediaTouchButtonStyle())
                 }
             }
@@ -411,6 +408,8 @@ struct NativeMediaPanel: View {
                             .accessibilityLabel("Restore missing original \(asset.name)")
                     }
                 }.contextMenu {
+                    NativeContextAIMenuContent(model, .media(asset))
+                    Divider()
                     if model.isMissingMedia(asset) {
                         Button("Restore missing original…") { model.chooseMissingOriginal(asset) }
                             .disabled(model.restoringMediaSource != nil || session.projectReadOnlyReason != nil)
@@ -505,6 +504,17 @@ struct NativeMediaPanel: View {
     }
     #endif
 
+    #if !os(macOS)
+    @ViewBuilder private func sourceActions(_ source: NativeAsset) -> some View {
+        Button { useInAI(source) } label: { Label("AI draft", systemImage: "text.bubble").lineLimit(1).fixedSize(horizontal: true, vertical: false) }
+            .accessibilityLabel("Add \(source.name) to AI draft")
+            .accessibilityIdentifier("editor.media.sourceAI")
+        Button { showDetails(source) } label: { Label("Details", systemImage: "info.circle").lineLimit(1).fixedSize(horizontal: true, vertical: false) }
+            .accessibilityLabel("Details for \(source.name)")
+            .accessibilityIdentifier("editor.media.sourceDetails")
+    }
+    #endif
+
     private var presets: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -516,9 +526,10 @@ struct NativeMediaPanel: View {
                         showSaved = true
                     }.buttonStyle(NativeToolbarButtonStyle())
                 }
-                Text(section == "Titles" ? "Place editable text at the playhead, then refine it in the inspector or with AI." : model.selected.map { "Selected: \($0.name)" } ?? "Select a visual clip in the timeline to apply \(section.lowercased()).")
+                Text(section == "Titles" ? "Click to place at the playhead, or drag onto a timeline track. Refine it in the inspector or with AI." : model.selected.map { "Selected: \($0.name)" } ?? "Select a visual clip in the timeline to apply \(section.lowercased()).")
                     .font(.caption).foregroundStyle(NativeEditorStyle.muted)
-                ForEach(presetNames, id: \.self) { name in
+                if section == "Titles" { titleAndGeneratorRows }
+                ForEach(section == "Titles" ? [] : presetNames, id: \.self) { name in
                     Button { applyPreset(name) } label: {
                         HStack(spacing: 10) {
                             Image(systemName: section == "Titles" ? "textformat" : section == "Transitions" ? "rectangle.on.rectangle" : "wand.and.stars")
@@ -541,13 +552,37 @@ struct NativeMediaPanel: View {
         }
     }
 
+    /// Titles and generators. Each row adds at the playhead on a click and drags onto a timeline track.
+    @ViewBuilder private var titleAndGeneratorRows: some View {
+        ForEach(presetNames, id: \.self) { name in
+            NativeBrowserDragRow(model: model, item: .title(name), symbol: "textformat", title: NativeOptionName.words(name),
+                                 detail: "Editable text and animation", disabled: model.busy) { applyPreset(name) }
+        }
+        Text("Generators").font(.subheadline.weight(.semibold)).padding(.top, 6)
+        ForEach(NativeBrowserGenerators.shapes, id: \.type) { shape in
+            NativeBrowserDragRow(model: model, item: .shape(shape.type), symbol: shape.symbol, title: shape.name,
+                                 detail: "Editable vector shape", disabled: model.busy) { addGenerator(.shape(shape.type)) }
+        }
+        NativeBrowserDragRow(model: model, item: .adjustment, symbol: "camera.filters", title: "Adjustment layer",
+                             detail: "Grades and effects for every track below it", disabled: model.busy) { addGenerator(.adjustment) }
+        Text("Solid colors").font(.caption.weight(.semibold)).foregroundStyle(NativeEditorStyle.muted).padding(.top, 2)
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 8)], alignment: .leading, spacing: 8) {
+            ForEach(NativeBrowserGenerators.colors, id: \.hex) { color in
+                NativeBrowserColorSwatch(model: model, name: color.name, hex: color.hex, disabled: model.busy) { addGenerator(.color(color.hex)) }
+            }
+        }
+    }
+
+    /// A generator added by a click lands at the playhead, on top, as it does from the inspector.
+    private func addGenerator(_ item: NativeTimelineDrop.Item) {
+        model.place([item], hover: nil, at: model.time, expectedVersion: model.version)
+    }
+
     private func applyPreset(_ name: String) {
         if section == "Titles" {
-            let size = min(model.width, model.height) * (name == "Lower third" ? 0.055 : 0.09)
-            let animation = name == "Typewriter" ? "typewriter" : name == "Fade in" ? "fade" : "none"
-            model.edit(["op": "add_title", "text": name == "Lower third" ? "Name or description" : "Your title", "start": model.time, "dur": 5,
-                        "set": ["x": model.width / 2, "y": model.height * (name == "Lower third" ? 0.84 : 0.5)],
-                        "title": ["font": "Inter", "size": size, "anim": animation]])
+            var operation = NativeTimelineDrop.fields(.title(name), width: model.width, height: model.height)
+            operation["start"] = model.time
+            model.edit(operation)
         } else if eligible, let clip = model.selected {
             if section == "Transitions" { model.edit(["op": "transition", "id": clip.id, "type": name, "dur": min(0.5, clip.duration)]) }
             else { model.edit(["op": "effect", "id": clip.id, "type": name]) }
@@ -652,6 +687,120 @@ private enum NativeMediaSourcePreview {
     }
 }
 
+/// The shapes and colors the browser offers as generators.
+enum NativeBrowserGenerators {
+    static let shapes: [(name: String, type: String, symbol: String)] = [
+        ("Rectangle", "rect", "rectangle.fill"), ("Ellipse", "ellipse", "circle.fill"),
+        ("Polygon", "polygon", "hexagon.fill"), ("Star", "star", "star.fill"),
+    ]
+    static let colors: [(name: String, hex: String)] = [
+        ("Black", "#000000"), ("White", "#ffffff"), ("Charcoal", "#151615"), ("Ivory", "#f2f0e9"),
+        ("Amber", "#efbc68"), ("Slate", "#203040"),
+    ]
+    static func color(_ hex: String) -> Color {
+        let value = UInt32(hex.dropFirst(), radix: 16) ?? 0
+        return Color(red: Double(value >> 16 & 0xff) / 255, green: Double(value >> 8 & 0xff) / 255, blue: Double(value & 0xff) / 255)
+    }
+}
+
+/// What follows the pointer while something is dragged out of the browser: its picture or icon and its name.
+struct NativeBrowserDragCard: View {
+    static let skimmer = Color(red: 1, green: 0x6b / 255, blue: 0x57 / 255)
+    var image: CGImage? = nil
+    var swatch: Color? = nil
+    let symbol: String
+    let name: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 5).fill(swatch ?? NativeEditorStyle.background)
+                if let image { Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fill) }
+                else if swatch == nil { Image(systemName: symbol).font(.system(size: 18)).foregroundStyle(NativeEditorStyle.accent) }
+            }.frame(width: 64, height: 40).clipShape(RoundedRectangle(cornerRadius: 5))
+                .overlay { RoundedRectangle(cornerRadius: 5).stroke(.white.opacity(0.15)) }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                Text(detail).font(.system(size: 10, design: .monospaced)).foregroundStyle(NativeEditorStyle.muted).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8).frame(width: 230, alignment: .leading).foregroundStyle(NativeEditorStyle.text)
+        .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 9))
+        .overlay { RoundedRectangle(cornerRadius: 9).stroke(NativeEditorStyle.accent.opacity(0.8), lineWidth: 1.5) }
+    }
+}
+
+/// A title or generator row: a click adds it at the playhead, a drag carries it to a timeline track.
+private struct NativeBrowserDragRow: View {
+    @ObservedObject var model: NativeEditorModel
+    let item: NativeTimelineDrop.Item
+    let symbol: String
+    let title: String
+    let detail: String
+    let disabled: Bool
+    let add: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).font(.system(size: 20)).foregroundStyle(NativeEditorStyle.accent).frame(width: 32)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.caption.weight(.semibold)).lineLimit(1)
+                Text(detail).font(.caption2).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "plus").font(.caption)
+        }.padding(10).frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
+            .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 6))
+            .overlay { RoundedRectangle(cornerRadius: 6).stroke(hovered && !disabled ? NativeEditorStyle.accent.opacity(0.6) : .clear) }
+            .contentShape(Rectangle())
+            .opacity(disabled ? 0.4 : 1)
+            .onHover { hovered = $0 }
+            .onTapGesture { if !disabled { add() } }
+            .onDrag {
+                model.activeBrowserDrag = item.payload
+                return NSItemProvider(object: item.payload as NSString)
+            } preview: { NativeBrowserDragCard(symbol: symbol, name: title, detail: "5 seconds") }
+            .help("Click to add \(title) at the playhead, or drag it onto a timeline track")
+            .accessibilityElement(children: .ignore).accessibilityAddTraits(.isButton)
+            .accessibilityLabel("Add \(title)")
+            .accessibilityHint("Adds it at the playhead. Drag it onto a timeline track to place it there.")
+            .accessibilityAction { if !disabled { add() } }
+    }
+}
+
+/// A solid color generator: a click adds it at the playhead, a drag carries it to a timeline track.
+private struct NativeBrowserColorSwatch: View {
+    @ObservedObject var model: NativeEditorModel
+    let name: String
+    let hex: String
+    let disabled: Bool
+    let add: () -> Void
+
+    var body: some View {
+        let payload = NativeTimelineDrop.Item.color(hex).payload
+        VStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 5).fill(NativeBrowserGenerators.color(hex)).frame(height: 34)
+                .overlay { RoundedRectangle(cornerRadius: 5).stroke(.white.opacity(0.18)) }
+            Text(name).font(.caption2).foregroundStyle(NativeEditorStyle.muted).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+        .opacity(disabled ? 0.4 : 1)
+        .onTapGesture { if !disabled { add() } }
+        .onDrag {
+            model.activeBrowserDrag = payload
+            return NSItemProvider(object: payload as NSString)
+        } preview: { NativeBrowserDragCard(swatch: NativeBrowserGenerators.color(hex), symbol: "paintpalette", name: "\(name) color", detail: hex.uppercased()) }
+        .help("Click to add a \(name.lowercased()) color clip at the playhead, or drag it onto a timeline track")
+        .accessibilityElement(children: .ignore).accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Add \(name) color")
+        .accessibilityHint("Adds it at the playhead. Drag it onto a timeline track to place it there.")
+        .accessibilityAction { if !disabled { add() } }
+    }
+}
+
 private struct NativeMediaRow: View {
     let asset: NativeAsset
     @ObservedObject var model: NativeEditorModel
@@ -663,6 +812,8 @@ private struct NativeMediaRow: View {
     @State private var stripFrameWidth = 0
     @State private var tileWidth = 0.0
     @State private var skim: Double?
+    /// The filmstrip frame last sent to the viewer, so the editor redraws once per frame, not once per pointer move.
+    @State private var skimPublished: Int?
 
     private var sourceDescription: String {
         let parent = (asset.id as NSString).deletingLastPathComponent
@@ -699,7 +850,9 @@ private struct NativeMediaRow: View {
     }
 
     private var helpText: String {
-        large && asset.kind == "video" ? "Move the pointer across to skim. Click to preview \(asset.name) and mark a source range." : "Preview \(asset.name) and mark a source range"
+        asset.kind == "video" && model.skimmingEnabled
+            ? "Move the pointer across to skim. Click to preview \(asset.name) and mark a source range. Drag it onto the timeline to place it."
+            : "Click to preview \(asset.name) and mark a source range. Drag it onto the timeline to place it."
     }
 
     private var accessibleValue: String {
@@ -723,18 +876,20 @@ private struct NativeMediaRow: View {
 
     @ViewBuilder private var skimLine: some View {
         if let skim, tileWidth > 0 {
-            Rectangle().fill(NativeEditorStyle.playhead).frame(width: 1.5)
+            Rectangle().fill(NativeBrowserDragCard.skimmer).frame(width: 1.5)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .offset(x: skim * tileWidth).allowsHitTesting(false)
         }
     }
 
+    /// The clip's length, or the skimmed timecode in the skimmer's color while the pointer is over the tile.
     @ViewBuilder private var durationBadge: some View {
         if asset.duration > 0 {
             let seconds: Double = skim.map { $0 * asset.duration } ?? asset.duration
             Text(nativeTimecode(seconds, fps: model.fps))
-                .font(.system(size: large ? 10 : 9, design: .monospaced)).padding(3)
-                .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 3)).padding(4)
+                .font(.system(size: large ? 10 : 9, weight: skim == nil ? .regular : .semibold, design: .monospaced)).padding(3)
+                .foregroundStyle(skim == nil ? NativeEditorStyle.text : NativeEditorStyle.background)
+                .background(skim == nil ? Color.black.opacity(0.8) : NativeBrowserDragCard.skimmer, in: RoundedRectangle(cornerRadius: 3)).padding(4)
         }
     }
 
@@ -757,13 +912,28 @@ private struct NativeMediaRow: View {
         .onContinuousHover { phase in updateSkim(phase) }
     }
 
+    /// Skims any video tile, in the browser and in the sidebar. The viewer shows the same filmstrip frame.
     private func updateSkim(_ phase: HoverPhase) {
-        guard large, asset.kind == "video", tileWidth > 0 else { skim = nil; return }
+        guard model.skimmingEnabled, asset.kind == "video", tileWidth > 0 else { endSkim(); return }
         switch phase {
-        case .active(let point): skim = min(1, max(0, point.x / tileWidth))
-        case .ended: skim = nil
+        case .active(let point):
+            let fraction = min(1, max(0, point.x / tileWidth))
+            skim = fraction
+            guard strip != nil, stripFrames > 1 else { return }
+            let index = min(stripFrames - 1, max(0, Int(fraction * Double(stripFrames))))
+            if skimPublished != index {
+                skimPublished = index
+                model.skimBrowser(asset.id, time: fraction * asset.duration, frame: shownImage)
+            }
+        case .ended: endSkim()
         }
     }
+    private func endSkim() {
+        if skim != nil { skim = nil }
+        if skimPublished != nil { skimPublished = nil; model.skimBrowser(nil, from: asset.id) }
+    }
+
+    private var dragPayload: String { NativeTimelineDrop.Item.media(asset.id).payload }
 
     private var labels: some View {
         VStack(alignment: .leading, spacing: large ? 3 : 5) {
@@ -778,15 +948,28 @@ private struct NativeMediaRow: View {
     }
 
     var body: some View {
-        Button { NativeMediaSourcePreview.open(asset, model: model) } label: {
-            VStack(alignment: .leading, spacing: large ? 6 : 5) {
-                tile
-                labels
-            }.frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(NativeEditorStyle.text)
-        }.buttonStyle(.plain).help(helpText).accessibilityLabel("Preview \(asset.name)")
+        // A tap gesture, not a Button: a Button takes the mouse on the Mac and a drag would never start.
+        VStack(alignment: .leading, spacing: large ? 6 : 5) {
+            tile
+            labels
+        }.frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(NativeEditorStyle.text)
+        .contentShape(Rectangle())
+        .onTapGesture { NativeMediaSourcePreview.open(asset, model: model) }
+        .onDrag {
+            endSkim(); model.activeBrowserDrag = dragPayload
+            return NSItemProvider(object: dragPayload as NSString)
+        } preview: {
+            NativeBrowserDragCard(image: thumbnail, symbol: asset.kind == "audio" ? "waveform" : asset.kind == "image" ? "photo" : "film",
+                                  name: asset.name, detail: asset.duration > 0 ? nativeTimecode(asset.duration, fps: model.fps) : asset.kind.capitalized)
+        }
+        .help(helpText)
+        .accessibilityElement(children: .ignore).accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Preview \(asset.name)")
         .accessibilityValue(accessibleValue)
-        .accessibilityHint("Opens the source viewer to preview and mark a range before adding it to the timeline.")
+        .accessibilityHint("Opens the source viewer to preview and mark a range before adding it to the timeline. Drag it onto the timeline to place it.")
+        .accessibilityAction { NativeMediaSourcePreview.open(asset, model: model) }
         .accessibilityAction(named: "Add entire source at playhead") { model.add(asset) }
+        .onDisappear { endSkim() }
         .task(id: "\(model.mediaRestorationRevision):\(model.folder?.standardizedFileURL.path ?? ""):\(asset.id):\(JSON(any: asset.fields).text)") { await loadThumbnail() }
     }
 

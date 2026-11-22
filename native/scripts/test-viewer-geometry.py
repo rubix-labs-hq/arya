@@ -172,6 +172,8 @@ struct NativeMetalViewer:View {let texture:MTLTexture;var body:some View {EmptyV
  var drawing:NativeDrawingMode?,viewerColorPicker:NativeViewerColorPicker?,viewerComparison:NativeViewerComparison?
  var viewerColorWindow:NativeColorWindowController?
  var viewerComparisonFraction=0.5,version=7,time=1.0,panel=NativePanel.edit
+ var skimTime:Double?,skimAsset:(src:String,time:Double)?,skimAssetFrame:CGImage?
+ var showingSkimFrame:Bool {false}
  var busy=false,showFiles=false,status="",renderError:String?,folder:URL?,width=1920.0,height=1080.0,fps=30.0,duration=4.0
  var sourceAsset:NativeAsset?,sourceRange:NativeSourceRange?,sourceImage:CGImage?,sourceLoading=false,sourceError:String?,sourcePlaying=false,sourcePlayer=AVPlayer()
  var tracks:[NativeTrack] {project?.tracks(in:composition) ?? []};var selected:NativeClip? {tracks.flatMap(\.clips).first {$0.id==selectedID}}
@@ -195,6 +197,8 @@ struct NativeMetalViewer:View {let texture:MTLTexture;var body:some View {EmptyV
 }
 '''
     source += 'struct NativeColorWindowOverlay:View {let controller:NativeColorWindowController;let viewport:NativeViewerGeometry.Viewport;var body:some View {EmptyView()}}\n'
+    source += 'struct NativeAskAryaTarget {static func frame(_ m:NativeEditorModel)->Self {Self()};static func clip(_ c:NativeClip)->Self {Self()};static func media(_ a:NativeAsset)->Self {Self()}}\n'
+    source += 'struct NativeContextAIMenuContent:View {init(_ m:NativeEditorModel,_ t:NativeAskAryaTarget) {};var body:some View {EmptyView()}}\n'
     source += viewer.replace('import ReelKit\n', '')
     source += '\n' + (repo / 'native/App/Shared/NativeEditor/NativeVectorEditingOverlay.swift').read_text().replace('import ReelKit\n', '')
     path = temp / 'Viewer.swift'

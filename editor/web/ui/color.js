@@ -2,6 +2,7 @@
 // windows, presets, gallery stills and live scopes. The grade controls edit the selected
 // node: the primary node edits the clip's grade, a corrector its own (color/state.js).
 
+import { clipTarget, showContext } from './assistant-context.js'
 import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
@@ -40,6 +41,7 @@ function Wheel({ label, field, target, range, masterRange }) {
   const r = size / 2 - 8
   const opsFor = (nx, ny, nm) => target.ops({ [field]: toRgb(nx, ny, range).map(v => Math.round((v + nm) * 10000) / 10000) })
   const drag = e => {
+    if (e.button !== 0) return
     e.preventDefault()
     const el = e.currentTarget
     el.setPointerCapture(e.pointerId)
@@ -524,7 +526,7 @@ export function ColorPage() {
   const clip = gradedClip()
 
   return html`
-    <div class="page color">
+    <div class="page color" onContextMenu=${e => showContext(e, clipTarget(clip, 'grade', { node: selectedNode(clip)?.id, scope: store.scopes.kind }))}>
       <div class="color-top">
         <div class="color-monitor">
           <${Viewer} compact=${true} />

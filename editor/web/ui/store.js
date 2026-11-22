@@ -17,7 +17,8 @@ export const store = {
   tool: 'select', // select | blade | trim | slip | slide | hand | range
   snapping: true,
   linked: true,
-  skimming: false,
+  skimming: true,
+  magnetic: true,
   selection: [], // clip ids
   selMarker: null,
   selTrack: null,
@@ -40,7 +41,7 @@ export const store = {
   connected: false,
   inspectorTab: 'video',
   browserTab: 'media',
-  chatOpen: host.kind !== 'browser-local' && innerWidth >= 1200,
+  chatOpen: host.kind !== 'browser-local' && globalThis.innerWidth >= 1200,
   viewerScale: 'fit',
   previewQuality: 'half',
   overlays: { safe: false, grid: false },
@@ -169,6 +170,9 @@ export function stampedReceipts(receipts, changes, session) {
 
 export function set(patch) {
   let next = typeof patch === 'function' ? patch(store) : patch
+  if (Object.hasOwn(next, 'root') && next.root !== store.root) {
+    next = { refs: store.refs.filter(ref => ref.kind !== 'editor_target'), assistantContextRequest: null, ...next }
+  }
   // Showing a preview starts from the saved project; while an edit is still saving there is none.
   if (next.previewShown && !next.previewShown.base) next = { ...next, previewShown: pending > 0 ? null : { id: next.previewShown.id, base: store.project, version: store.version, root: store.root } }
   const changedComp = Object.hasOwn(next, 'openComp') && next.openComp !== store.openComp

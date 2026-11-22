@@ -2,6 +2,7 @@
 // strip with loudness metering and limiter, an effect editor for the selected bus, loudness
 // tools and ducking, over the timeline.
 
+import { selectedTarget, trackTarget, showContext } from './assistant-context.js'
 import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
@@ -78,7 +79,7 @@ function Strip({ track, p, editing, onEdit }) {
   const preview = v => { if (store.previewShown) return; set({ project: applyOps(store.project, [trackOp(track.id, { volume: v }, p.compId)]).project }) }
 
   return html`
-    <div class=${`strip ${track.muted ? 'muted' : ''} ${editing ? 'active' : ''}`}>
+    <div class=${`strip ${track.muted ? 'muted' : ''} ${editing ? 'active' : ''}`} onContextMenu=${e => showContext(e, trackTarget(track))}>
       <div class="strip-name" title=${track.name}>${track.id}<small>${track.name ?? ''}</small></div>
       <${FxSlots} fx=${track.fx} active=${editing} onOpen=${onEdit} />
       <div class="pan">
@@ -143,7 +144,7 @@ function MasterStrip({ p, editing, onEdit }) {
   const preview = v => { if (store.previewShown) return; set({ project: applyOps(store.project, [{ op: 'project', set: { master: { volume: v } } }]).project }) }
 
   return html`
-    <div class=${`strip master ${editing ? 'active' : ''}`}>
+    <div class=${`strip master ${editing ? 'active' : ''}`} onContextMenu=${e => showContext(e, { kind: 'bus', object: 'master', label: 'Master bus', type: 'bus' })}>
       <div class="strip-name">Master<small>${limOn ? `limit ${lim.ceiling ?? -1} dBTP` : 'no limiter'}</small></div>
       <${FxSlots} fx=${m.fx} active=${editing} onOpen=${onEdit} />
       <div class="fader-row">
@@ -232,7 +233,7 @@ export function AudioPage() {
           </div>
         </section>
         <section class="audio-monitor" aria-label="Picture monitor"><${Viewer} compact=${true} /></section>
-        <section class="audio-tools" tabIndex="0" aria-label="Audio tools">
+        <section onContextMenu=${e => showContext(e, bus ? { kind: 'bus', object: bus, label: 'Bus · ' + bus, type: 'bus' } : selectedTarget('audio'))} class="audio-tools" tabIndex="0" aria-label="Audio tools">
           ${bus ? html`<${BusEditor} p=${p} bus=${bus} onClose=${() => setBus(null)} />` : html`
           <${MasterLoudness} p=${p} />
           <h4>Clip loudness</h4>

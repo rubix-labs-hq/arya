@@ -252,6 +252,15 @@ export function ChatPanel() {
   const leaveComposerMenu = event => {
     if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false
   }
+  useEffect(() => {
+    const request = s.assistantContextRequest
+    if (!request || request !== store.assistantContextRequest) return
+    set({ assistantContextRequest: null })
+    if (request.root !== store.root) return
+    const current = assistantDraft(store)
+    if (request.suggestion) commitDraft(updatedAssistantDraft(store, [current.text, request.suggestion].filter(Boolean).join('\n')))
+    composer.current?.focus()
+  }, [s.assistantContextRequest])
   // A press focuses a scroll region. Hand focus back on release so timeline shortcuts keep working; Tab focus stays.
   const releasePointerFocus = event => {
     const region = event.currentTarget, page = globalThis.document
@@ -541,6 +550,10 @@ export function ChatPanel() {
   if (hosted) return html`<section class="panel chat assistant-unavailable" id="editor-assistant" aria-label="Assistant">
     <div class="chat-head"><div class="chat-title"><b>Assistant</b><span class="muted">Mac app</span></div><button class="ghost tiny" aria-label="Close assistant" onClick=${closePanel}><${Icon} name="close" /></button></div>
     <div class="chat-list"><div class="assistant-setup"><b>Ask for edits in Arya for Mac</b><p>The assistant cuts, titles, mixes and explains your project from a plain request. It runs in the Mac app and the local editor, not in this browser build.</p><div class="assistant-setup-actions"><a class="button primary" href="https://editwitharya.app/download/#mac" target="_blank" rel="noopener noreferrer">Download for Mac</a></div><p class="assistant-setup-note">Editing here works without it. <a class="settings-link" href="https://editwitharya.app/install/#accounts" target="_blank" rel="noopener noreferrer">Run the editor locally</a></p></div></div>
+    ${s.refs.length || text ? html`<div class="assistant-composer-card">
+      <div class="refs">${s.refs.map(ref => html`<span class="chip">${ref.label}<button aria-label=${'Remove ' + ref.label} onClick=${() => set({ refs: s.refs.filter(item => item !== ref) })}><${Icon} name="close" size=${14} /></button></span>`)}</div>
+      <textarea ref=${composer} aria-label="Ask Arya draft" value=${text} onInput=${e => setText(e.currentTarget.value)}></textarea>
+    </div>` : null}
   </section>`
 
   return html`

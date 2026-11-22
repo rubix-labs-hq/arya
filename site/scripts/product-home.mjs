@@ -25,7 +25,7 @@ export const assistantCopy = {
   // Shown after the account point while the App Store release is live. It names no CLI provider,
   // because those run on a Mac.
   mobilePoint: ['On iPad and iPhone.', 'Use ChatGPT where offered, an Anthropic API key, or a connection to Arya on your Mac.'],
-  ask: 'Open Ask Arya in the top bar on any editor page. After an edit, the reply comes first. A card below it shows what changed, with Undo on it. Turn on Preview to see the edit before you choose Apply or Discard.',
+  ask: 'Open Ask Arya in the top bar on any editor page, or right-click any clip, media item or grade for context-aware suggestions and Add to Ask Arya chips. After an edit, the reply comes first. A card below it shows what changed, with Undo on it. Turn on Preview to see the edit before you choose Apply or Discard.',
   card: 'Assistant editing with your own AI account.',
   hostedLimit: 'The browser editor has no assistant, Figma import or transcription.',
   link: ['/install/#accounts', 'How assistant sign-in works'],
@@ -198,46 +198,55 @@ ${layer('ipad-color', 'ipad', { small: shot('ipad-color-inspector'), alt: 'The C
   // side (copy beside a browser figure), wide (copy above a whole window), text (copy only).
   const chapters = [
     {
-      id: 'media', statement: 'Bring your footage in.',
-      text: `On Mac, use Import Media or drag files into Arya, and your project file and media stay in the local folder you choose.${mobileURL ? ' On iPhone and iPad, add media from Files or Photos.' : ''}`,
+      id: 'media', statement: 'Import, skim and drop onto any track.',
+      text: `On Mac, use Import Media or drag files into Arya, skim thumbnails live in the media browser and drag clips directly onto timeline tracks. Your project file and media stay in the local folder you choose.${mobileURL ? ' On iPhone and iPad, add media from Files or Photos.' : ''}`,
+      highlights: ['Live browser skimming', 'Drag directly to tracks', 'Local project folders'],
       layout: 'plate', plate: plate('mac-media-panel'),
     },
     {
-      id: 'edit', statement: 'Cut on a multitrack timeline.',
-      text: 'Blade, ripple, roll, slip and slide on a multitrack timeline, with snapping, markers, automatic proxies, nested compositions and multicam with audio sync for up to nine angles.',
+      id: 'edit', statement: 'Cut on a magnetic multitrack timeline.',
+      text: 'Work on a magnetic timeline that closes gaps automatically (or toggle it off anytime), with live skimming across every track. Blade, ripple, roll, slip and slide with snapping, markers, automatic proxies, nested compositions, multicam with audio sync for up to nine angles, and right-click context menus anywhere on the timeline.',
+      highlights: ['Magnetic timeline (toggleable)', 'Live timeline skimming', 'Drag-and-drop tracks', 'Context-aware menus'],
       layout: 'wide', figure: `<figure class="chapter-figure figure-mac-edit"><a class="figure-link" href="${shot('mac-edit').src}">${picture(shot('mac-edit'))}</a><figcaption><span class="plate-label">${shot('mac-edit').label}</span> ${shot('mac-edit').caption}${pictured(shot('mac-edit'))}</figcaption></figure>`,
     },
     {
       id: 'motion', statement: 'Keyframes, expressions and real layers.',
       text: 'Animate position, scale, rotation and opacity with easing presets or custom curves in the value and speed graphs. Write expressions such as <code>wiggle(2, 30)</code>, parent layers to nulls, draw masks, apply alpha or luma track mattes and drive layers from a point or box tracker.',
+      highlights: ['Value & speed graphs', 'Expressions', 'Masks & track mattes', 'Point & box tracker'],
       layout: 'duo', plateFirst: true, plate: plate('mac-motion-inspector'), figure: figure('motion'),
     },
     {
       id: 'color', statement: 'Grade with nodes, then check the scopes.',
       text: 'Build serial, parallel and layer-mixer graphs. Each corrector has its own lift, gamma, gain and offset wheels, curves, HSL qualifier and circle, rectangle or linear window. Load .cube LUTs, copy grades across clips and read the signal on the waveform, RGB parade, vectorscope and histogram.',
+      highlights: ['Serial, parallel & layer nodes', '.cube LUTs', 'Four live scopes'],
       layout: 'duo', plateFirst: true, plate: plate('mac-color-inspector'), figure: figure('color'),
     },
     {
       id: 'audio', statement: 'Mix to a loudness target.',
       text: 'Every track has a fader, pan and an effect rack with parametric EQ, compressor, gate, de-esser, limiter, reverb and delay. Clean dialogue with denoise and voice cleanup, measure integrated LUFS and true peak, then normalize clips to -14, -16 or -23 LUFS.',
+      highlights: ['Track effect rack', 'Denoise & voice cleanup', 'LUFS normalization'],
       layout: 'side', figure: figure('audio'),
     },
     {
       id: 'deliver', statement: 'Export the file you need.',
       text: `Arya reads and writes FCPXML, OpenTimelineIO, SRT and WebVTT, and exports H.264, HEVC, ProRes 422, 422 HQ and 4444, GIF, PNG sequences, WAV and AAC. <a href="#editions">What each edition exports</a> is listed below.${pro && mobileURL ? ` ${scope.store}` : ''}`,
+      highlights: ['FCPXML & OpenTimelineIO', 'ProRes 4444 & PNG alpha', 'SRT & WebVTT'],
       layout: mobileURL ? 'duo' : 'text', plate: mobileURL ? plate('iphone-deliver') : '', figure: mobileURL ? clipFigure('after-the-tide') : '',
     },
   ].map((chapter, index) => {
     const name = pageNames[index];
+    const highlights = chapter.highlights?.length
+      ? `<ul class="chapter-highlights" aria-label="${name} highlights">${chapter.highlights.map(item => `<li>${item}</li>`).join('')}</ul>`
+      : '';
     return `<article class="chapter chapter-${chapter.layout}" id="${chapter.id}" aria-labelledby="${chapter.id}-heading" data-chapter>
-<div class="chapter-head"><h3 id="${chapter.id}-heading"><em>${name}</em> <span>${chapter.statement}</span></h3><p>${chapter.text}</p></div>
+<div class="chapter-head"><h3 id="${chapter.id}-heading"><em>${name}</em> <span>${chapter.statement}</span></h3><div class="chapter-detail"><p>${chapter.text}</p>${highlights}</div></div>
 ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure || ''}${chapter.plate || ''}`}
 </article>`;
   }).join('\n');
   const rail = pageNames.map(name => `<a href="#${name.toLowerCase()}">${name}</a>`).join('');
 
   const whatWorksWhere = [
-    ['Editing', 'Full multitrack timeline, local project folders, automatic proxies, FCPXML and OTIO, ProRes 4444 and PNG alpha export.', 'Full timeline, proxies and render queue via local server. ProRes 4444 and PNG alpha export, plus CMX 3600 EDL.', 'Full timeline in browser storage (IndexedDB). Exports H.264, HEVC, WAV and AAC up to 5 minutes. No FCPXML or OTIO.'],
+    ['Editing', 'Magnetic multitrack timeline (toggleable), live skimming, drag-and-drop from Media to tracks, context-aware right-click menus, local project folders, automatic proxies, FCPXML and OTIO, ProRes 4444 and PNG alpha export.', 'Full timeline, proxies and render queue via local server. ProRes 4444 and PNG alpha export, plus CMX 3600 EDL.', 'Full timeline in browser storage (IndexedDB). Exports H.264, HEVC, WAV and AAC up to 5 minutes. No FCPXML or OTIO.'],
     ['Color', 'Serial, parallel and layer-mixer nodes, wheels, curves, HSL qualifiers, windows, .cube LUTs, four scopes and reference matching.', 'Included (renders Rec. 709).', 'Included (renders Rec. 709).'],
     ['Motion', 'Keyframes, value and speed graphs, expressions, vector titles and shapes, masks, track mattes, parenting, point and box tracker.', 'Included (point and box tracker; no planar tracker).', 'Included (point and box tracker; no planar tracker).'],
     ['Audio', 'Track mixer, EQ, dynamics, reverb, delay, denoise, voice cleanup, LUFS and true-peak metering, normalize to -14, -16 or -23 LUFS.', 'Included, with offline LUFS measurement and normalization.', 'Track mixer, effects, loudness metering and normalization. No denoise or voice cleanup.'],
@@ -260,9 +269,17 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
   const askOnMobile = Boolean(mobileURL) && atLeastMinor(mobileVersion, '1.3');
   const askOnMac = releaseReady && atLeastMinor(version, '1.3');
   const askEditions = [askOnMac && 'the direct Mac download', askOnMobile && 'the iPhone and iPad apps'].filter(Boolean);
+  const askWorkflowTags = ['Right-click anywhere', 'Context-aware suggestions', 'Add to Ask Arya chips', 'Preview & Undo']
+    .map(label => `<li>${label}</li>`).join('');
   const askNote = askEditions.length
-    ? `<div class="assistant-workflow"><h3>Using Ask Arya in ${askEditions.join(' and ')}</h3><p>${assistantCopy.ask}</p></div>`
+    ? `<div class="assistant-workflow"><h3>Using Ask Arya in ${askEditions.join(' and ')}</h3><p>${assistantCopy.ask}</p><ul class="workflow-tags" aria-label="Ask Arya workflow">${askWorkflowTags}</ul></div>`
     : '';
+  const heroCraft = [
+    'Magnetic timeline',
+    'Live skimming',
+    'Drag media to tracks',
+    askEditions.length ? 'Right-click to Ask Arya' : 'Context-aware menus',
+  ].map(label => `<li>${label}</li>`).join('');
   const assistantFigure = askOnMobile && shot('iphone-assistant')
     ? plate('iphone-assistant', native.editions?.[shot('iphone-assistant').edition])
     : figure('assistant', 'Local browser editor');
@@ -285,6 +302,7 @@ ${chapter.plateFirst ? `${chapter.plate}${chapter.figure}` : `${chapter.figure |
 <div class="actions hero-actions">${heroActions}</div>
 <p class="hero-meta">${releaseReady ? `<span id="hero-release">Free Mac download · ${minimumOS} or later.</span>` : releaseLine}${browserEditor ? ` ${assistantCopy.hostedLimit}` : ''}</p>
 <div class="actions hero-links">${browserEditor ? link(browserEditor, 'Open browser editor') : ''}${link('/download/', releaseReady ? 'All downloads' : 'Release status')}</div>
+<ul class="craft-pills" aria-label="Editing workflow highlights">${heroCraft}</ul>
 </div>
 </div>
 ${family}

@@ -48,6 +48,26 @@ final class ProjectRecoveryTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: original), originalBytes)
         XCTAssertEqual(try Data(contentsOf: staged), stagedBytes)
     }
+    private func metadataPair(_ name: String) throws -> (root: URL, original: URL, staged: URL, sourceFD: Int32, stagedFD: Int32) {
+        let root = try Support.tempFolder(name)
+        let original = root.appendingPathComponent("original.json"), staged = root.appendingPathComponent("staged.json")
+        try Data("original".utf8).write(to: original); try Data("staged".utf8).write(to: staged)
+        let sourceFD = Darwin.open(original.path, O_RDWR | O_NOFOLLOW), stagedFD = Darwin.open(staged.path, O_RDWR | O_NOFOLLOW)
+        XCTAssertGreaterThanOrEqual(sourceFD, 0); XCTAssertGreaterThanOrEqual(stagedFD, 0)
+        XCTAssertEqual(arya_clear_project_acl(sourceFD), 0); XCTAssertEqual(arya_clear_project_acl(stagedFD), 0)
+        for fd in [sourceFD, stagedFD] { _ = Darwin.fremovexattr(fd, "com.apple.quarantine", 0) }
+        return (root, original, staged, sourceFD, stagedFD)
+    }
+    private func setAttribute(_ fd: Int32, _ name: String, _ value: Data) {
+        XCTAssertEqual(value.withUnsafeBytes { Darwin.fsetxattr(fd, name, $0.baseAddress, $0.count, 0, 0) }, 0, name)
+    }
+    private func attribute(_ fd: Int32, _ name: String) -> Data? {
+        let size = Darwin.fgetxattr(fd, name, nil, 0, 0, 0)
+        guard size >= 0 else { return nil }
+        var value = Data(count: size)
+        let count = value.withUnsafeMutableBytes { Darwin.fgetxattr(fd, name, $0.baseAddress, size, 0, 0) }
+        return count == size ? value : nil
+    }
     #if os(macOS) || targetEnvironment(macCatalyst)
     func testNewStageQuarantineIsRetainedWithoutRelaxingOriginalMetadata() throws {
         let root = try Support.tempFolder("recovery-new-quarantine")
@@ -133,7 +153,68 @@ final class ProjectRecoveryTests: XCTestCase {
         XCTAssertEqual(originalValue.withUnsafeBytes { Darwin.fsetxattr(stagedFD, "com.apple.quarantine", $0.baseAddress, $0.count, 0, 0) }, 0)
         XCTAssertEqual(arya_verify_project_metadata(sourceFD, stagedFD), 0)
     }
+    // Reproduces the Mac Catalyst save failure: App Sandbox ORs flags 0x0086 into the stage's
+    // quarantine, refuses to clear them, and keeps its own time and creator.
+    func testSandboxMergedQuarantineSavesWithoutWeakeningRestrictions() throws {
+        let pair = try metadataPair("recovery-sandbox-quarantine")
+        defer { Darwin.close(pair.sourceFD); Darwin.close(pair.stagedFD); try? FileManager.default.removeItem(at: pair.root.deletingLastPathComponent()) }
+        let uuid = "3F1A2B3C-0000-4000-8000-123456789ABC"
+        let cases: [(original: String, staged: String, allowed: Bool)] = [
+            ("0081;00000000;;", "0087;6b020329;Arya;", true),
+            ("0083;6b000000;Safari;\(uuid)", "0087;6b020329;Arya;\(uuid)", true),
+            ("0083;6b000000;Safari;\(uuid)", "0087;6b020329;Arya;0b5e2a9c-1111-4222-8333-444455556666", true),
+            ("0083;6b000000;Safari;\(uuid)", "0087;6b020329;Arya;", true),
+            ("0086;6b000000;Arya;", "0086;6b020329;Arya;", true),
+            ("00c3;6b000000;Safari;", "0087;6b020329;Arya;", false),
+            ("0083;6b000000;Safari;", "00c7;6b020329;Arya;", false),
+            ("0083;6b000000;Safari;", "00a7;6b020329;Arya;", false),
+            ("0083;6b000000;Safari;", "0187;6b020329;Arya;", false),
+            ("0083;6b000000;Safari;", "0086;6b020329;Arya;", false),
+            ("0083;6b000000;Safari;", "0087;6affffff;Arya;", false),
+            ("0083;6b000000;Safari;custom", "0087;6b020329;Arya;\(uuid)", false),
+            ("0083;6b000000;Safari;\(uuid)", "0087;6b020329;Arya;event", false)
+        ]
+        for item in cases {
+            setAttribute(pair.sourceFD, "com.apple.quarantine", Data(item.original.utf8))
+            setAttribute(pair.stagedFD, "com.apple.quarantine", Data(item.staged.utf8))
+            let result = arya_verify_project_metadata(pair.sourceFD, pair.stagedFD), code = errno
+            XCTAssertEqual(result, item.allowed ? 0 : -1, item.staged)
+            if !item.allowed { XCTAssertEqual(code, EINVAL, item.staged) }
+            if item.allowed {
+                XCTAssertEqual(arya_copy_project_metadata(pair.sourceFD, pair.stagedFD), 0, item.staged)
+                XCTAssertNil(arya_project_io_error_operation())
+                XCTAssertEqual(attribute(pair.stagedFD, "com.apple.quarantine"), Data(item.staged.utf8))
+            }
+            XCTAssertEqual(attribute(pair.sourceFD, "com.apple.quarantine"), Data(item.original.utf8))
+        }
+        XCTAssertEqual(try Data(contentsOf: pair.original), Data("original".utf8))
+        XCTAssertEqual(try Data(contentsOf: pair.staged), Data("staged".utf8))
+    }
     #endif
+    func testKernelManagedAttributesNeitherBlockNorTravelWithProjectMetadata() throws {
+        let pair = try metadataPair("recovery-kernel-attributes")
+        defer { Darwin.close(pair.sourceFD); Darwin.close(pair.stagedFD); try? FileManager.default.removeItem(at: pair.root.deletingLastPathComponent()) }
+        let macl = Data([4, 0, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99])
+        let lastUsed = Data("fedcba9876543210".utf8)
+        setAttribute(pair.sourceFD, "com.apple.macl", macl)
+        setAttribute(pair.sourceFD, "com.apple.lastuseddate#PS", lastUsed)
+        setAttribute(pair.sourceFD, "com.apple.provenance", Data([1, 2, 0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]))
+        setAttribute(pair.stagedFD, "com.apple.provenance", Data([1, 2, 0, 0xf6, 0xbb, 0x28, 0xfa, 0xf4, 0x30, 0xa6, 0x62]))
+        setAttribute(pair.stagedFD, "com.apple.macl", Data([4, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]))
+        XCTAssertEqual(arya_verify_project_metadata(pair.sourceFD, pair.stagedFD), 0)
+        XCTAssertEqual(arya_copy_project_metadata(pair.sourceFD, pair.stagedFD), 0)
+        // A custom attribute still has to match exactly and forces a real copy.
+        setAttribute(pair.sourceFD, "com.arya.required", Data([1, 4, 9]))
+        XCTAssertEqual(arya_verify_project_metadata(pair.sourceFD, pair.stagedFD), -1); XCTAssertEqual(errno, EINVAL)
+        XCTAssertEqual(arya_copy_project_metadata(pair.sourceFD, pair.stagedFD), 0)
+        XCTAssertNil(arya_project_io_error_operation())
+        XCTAssertEqual(attribute(pair.stagedFD, "com.arya.required"), Data([1, 4, 9]))
+        XCTAssertNotEqual(attribute(pair.stagedFD, "com.apple.macl"), macl)
+        XCTAssertNotEqual(attribute(pair.stagedFD, "com.apple.lastuseddate#PS"), lastUsed)
+        XCTAssertEqual(arya_verify_project_metadata(pair.sourceFD, pair.stagedFD), 0)
+        setAttribute(pair.stagedFD, "com.arya.required", Data([2, 5, 8]))
+        XCTAssertEqual(arya_verify_project_metadata(pair.sourceFD, pair.stagedFD), -1); XCTAssertEqual(errno, EINVAL)
+    }
     func testNativeFailureContextKeepsErrnoAndIdentifiesPrivateIdentityPreparation() throws {
         let result = arya_clear_project_acl(-1)
         let code = errno

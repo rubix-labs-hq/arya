@@ -7,6 +7,7 @@ import htm from 'htm'
 const html = htm.bind(h)
 let host = null
 let opener = null
+let menuGeneration = 0
 
 export function closeMenu({ restoreFocus = false } = {}) {
   if (host) render(null, host)
@@ -31,15 +32,18 @@ export function openMenu(x, y, items) {
       }
     }, true)
   }
-  render(html`<${Menu} x=${x} y=${y} items=${items} />`, host)
+  render(html`<${Menu} key=${++menuGeneration} x=${x} y=${y} items=${items} />`, host)
 }
 
 function Menu({ x, y, items, sub }) {
   const menuRef = useRef(null)
   const [openSub, setOpenSub] = useState(null)
   const left = Math.max(8, Math.min(x, innerWidth - 260))
-  const top = Math.max(8, Math.min(y, innerHeight - items.length * 28 - 20))
-  const flipSub = left + 400 > innerWidth
+  const flipSub = left + 530 > innerWidth
+  const inlineSub = innerWidth < 620 || (flipSub && left < 264) ||
+    items.length * 32 > innerHeight - 24 || y + 190 > innerHeight
+  const subRows = inlineSub ? (items[openSub]?.sub?.length ?? 0) : 0
+  const top = Math.max(8, Math.min(y, innerHeight - items.length * 32 - subRows * 54 - 20))
 
   useEffect(() => {
     const first = menuRef.current?.querySelector('button.menu-item:not(:disabled)')
@@ -63,7 +67,7 @@ function Menu({ x, y, items, sub }) {
   }
 
   const renderSub = (subItems, parentIdx) => html`
-    <div class=${`submenu ${flipSub ? 'flip-left' : ''}`} role="menu" onKeyDown=${e => {
+    <div class=${`submenu ${inlineSub ? 'inline' : flipSub ? 'flip-left' : ''}`} role="menu" onKeyDown=${e => {
       const list = [...e.currentTarget.querySelectorAll(':scope > button.menu-item:not(:disabled)')]
       const idx = list.indexOf(document.activeElement)
       if (e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); focusItem(list, idx + 1) }
@@ -83,25 +87,26 @@ function Menu({ x, y, items, sub }) {
     </div>`
 
   return html`
-    <div ref=${menuRef} role="menu" class=${`menu ${sub ? 'sub' : ''}`} style=${{ left: `${left}px`, top: `${top}px` }} onKeyDown=${onMenuKeyDown}>
+    <div ref=${menuRef} role="menu" class=${`menu ${inlineSub ? 'scrollable' : ''} ${sub ? 'sub' : ''}`} style=${{ left: `${left}px`, top: `${top}px` }} onKeyDown=${onMenuKeyDown}>
       ${items.map((it, idx) =>
         it.sep
           ? html`<div class="menu-sep" role="separator"></div>`
           : it.sub
-            ? html`<div class=${`menu-sub-wrap has-sub ${openSub === idx ? 'open' : ''}`} onMouseEnter=${() => setOpenSub(idx)} onMouseLeave=${() => setOpenSub(cur => (cur === idx ? null : cur))}>
+            ? html`<div class=${`menu-sub-wrap has-sub ${openSub === idx ? 'open' : ''}`} onMouseEnter=${() => !inlineSub && setOpenSub(idx)} onMouseLeave=${() => !inlineSub && setOpenSub(cur => (cur === idx ? null : cur))}>
                 <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded=${openSub === idx} data-menu-idx=${idx}
                   disabled=${Boolean(it.disabled)} class=${`menu-item has-sub ${it.danger ? 'danger' : ''} ${it.disabled ? 'disabled' : ''}`}
-                  onClick=${e => { e.stopPropagation(); if (!it.disabled) setOpenSub(cur => (cur === idx ? null : idx)) }}
+                  onClick=${e => { e.stopPropagation(); if (!it.disabled) setOpenSub(cur => inlineSub && cur === idx ? null : idx) }}
                   onKeyDown=${e => {
                     if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault(); e.stopPropagation()
+                      const parent = e.currentTarget.parentElement
                       setOpenSub(idx)
-                      setTimeout(() => e.currentTarget.parentElement?.querySelector('.submenu button.menu-item:not(:disabled)')?.focus?.(), 0)
+                      setTimeout(() => parent?.querySelector('.submenu button.menu-item:not(:disabled)')?.focus?.(), 0)
                     }
                   }}>
                   <span>${it.label}</span><span class="chev" aria-hidden="true">›</span>
                 </button>
-                ${renderSub(it.sub, idx)}
+                ${openSub === idx ? renderSub(it.sub, idx) : null}
               </div>`
             : html`<button type="button" role="menuitem" disabled=${Boolean(it.disabled)}
                 class=${`menu-item ${it.danger ? 'danger' : ''} ${it.disabled ? 'disabled' : ''}`}

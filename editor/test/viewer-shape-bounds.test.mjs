@@ -130,7 +130,7 @@ test('media, compositions, titles, full-frame colors and unsupported layer kinds
 function stagePick(p, point, t = 0) {
   const selections = [], body = between(source, 'const onStageDown = e => {', '\n  return html`')
   const handler = new Function('p', 'rect', 'time', 'quadOf', 'set', 'addRef', 'timecode', 'clipEnd', `${body};return onStageDown`)(p, { x: 0, y: 0, w: p.width, h: p.height }, { t }, quadOf, patch => selections.push(patch.selection), () => {}, timecode, clipEnd)
-  handler({ target: { closest: () => false }, currentTarget: { getBoundingClientRect: () => ({ left: 0, top: 0 }) }, clientX: point[0], clientY: point[1] })
+  handler({ button: 0, target: { closest: () => false }, currentTarget: { getBoundingClientRect: () => ({ left: 0, top: 0 }) }, clientX: point[0], clientY: point[1] })
   return selections.at(-1)
 }
 test('actual stage hit testing selects the plate inside its outline and clears outside it', () => {

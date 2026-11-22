@@ -122,3 +122,78 @@ struct NativeSelectionAIContext: Identifiable {
         return bytes.count < 60_000
     }
 }
+
+/// A compact reference to the object under the menu, independent of later selection changes.
+struct NativeAskAryaTarget {
+    enum Kind: String { case clip, media, track, frame, grade, motion, audio, bus, deliver, marker }
+    let kind: Kind
+    let objectID: String
+    let label: String
+    var subtype = ""
+    var details: [String: String] = [:]
+
+    var icon: String {
+        switch kind {
+        case .clip, .media: return subtype == "audio" || subtype == "music" ? "waveform" : "film"
+        case .track: return "rectangle.stack"
+        case .frame: return "viewfinder"
+        case .grade: return "camera.filters"
+        case .motion: return "diamond"
+        case .audio, .bus: return "waveform"
+        case .deliver: return "square.and.arrow.up"
+        case .marker: return "bookmark"
+        }
+    }
+
+    var suggestions: [String] {
+        switch kind {
+        case .media:
+            if subtype == "music" { return ["Place this cue on an audio track at the playhead.", "Fade this cue under the ending.", "Build a shorter variation from this cue’s saved score."] }
+            if subtype == "audio" { return ["Insert this audio at the playhead.", "Place this source under the picture with a soft fade in.", "Measure this source’s integrated loudness."] }
+            return ["Insert this source at the playhead and fit it to the canvas.", "Build an opening title over this source.", subtype == "image" ? "Place this still for four seconds with a slow push-in." : "Mark the scene cuts in this source."]
+        case .bus: return ["Lower this bus by 3 dB.", "Check headroom on this bus and suggest a gain adjustment.", "Review the tracks routed to this bus."]
+        case .track:
+            if subtype == "audio" { return ["Lower this track by 3 dB.", "Pan this track to the center.", "Add short fades to the audio clips on this track."] }
+            if subtype == "caption" { return ["Check these captions for timing overlaps.", "Break long captions into shorter cues.", "Tidy punctuation while preserving cue timing."] }
+            return ["Close gaps on this track.", "Add a short dissolve between adjacent shots.", "Add a fade to the final shot on this track."]
+        case .frame, .marker: return ["Add a title at this moment.", "Split the video clip under this frame.", "Add a marker describing this frame."]
+        case .grade: return ["Warm the highlights on this grade node.", "Build a gentle S-curve on this node.", "Reduce saturation slightly while preserving contrast."]
+        case .motion: return ["Ease the keyframes on this property.", "Slow down the entrance on this layer.", "Add a pair of editable keys for this property."]
+        case .deliver: return ["Review this export’s frame rate and dimensions against the timeline.", "Suggest an export preset for a small review copy.", "Check the timeline range before exporting."]
+        case .audio: return Self.audioSuggestions
+        case .clip: break
+        }
+        switch subtype {
+        case "title": return ["Animate this title in and out with editable keys.", "Improve title readability with tracking and shadow.", "Add a thin amber rule beneath this title."]
+        case "shape": return ["Ease this shape into position.", "Add a contrasting stroke to this shape.", "Animate this shape’s opacity over its first half second."]
+        case "caption": return ["Shorten this caption without changing its meaning.", "Split this caption at a natural phrase break.", "Check this cue’s timing against the dialogue."]
+        case "audio": return Self.audioSuggestions
+        case "comp": return ["Stagger entrances inside this composition.", "Fade this composition out over its last second.", "Add a slow push-in to this composition."]
+        case "adjustment": return ["Add gentle contrast to this adjustment layer.", "Warm the underlying shots with this layer.", "Ease this adjustment layer’s opacity in and out."]
+        case "color": return ["Change this solid to a warm charcoal.", "Fade this solid into the next shot.", "Place a centered title over this background."]
+        case "image": return ["Add a slow push-in to this still.", "Fit this image to the canvas.", "Fade the still in and out."]
+        default: return ["Grade this shot with subtle contrast and warmer highlights.", "Add an eased push-in from 100% to 108%.", "Fade this shot in and out smoothly."]
+        }
+    }
+
+    private static let audioSuggestions = ["Normalize this clip to -14 LUFS.", "Add a 0.8-second fade in and a 1.2-second fade out.", "Reduce low-end rumble and lift vocal presence with EQ."]
+}
+
+struct AskAryaPinnedContext: Identifiable {
+    struct ID: Hashable {
+        let kind: NativeAskAryaTarget.Kind
+        let object: String
+        let composition: String?
+        let details: [String: String]
+    }
+    let target: NativeAskAryaTarget
+    let composition: String?
+    let version: Int
+    let generation: UUID
+    var id: ID { ID(kind: target.kind, object: target.objectID, composition: composition, details: target.details) }
+    var reference: [String: Any] {
+        ["kind": target.kind.rawValue, "id": target.objectID, "label": String(target.label.prefix(160)),
+         "subtype": target.subtype, "composition": composition as Any? ?? NSNull(),
+         "details": target.details, "sourceProjectVersion": version]
+    }
+}

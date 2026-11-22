@@ -18,7 +18,7 @@ const titleBody = browser.slice(browser.indexOf('async function addTitlePreset('
 const titleFactory = new Function('deps', `const { html, edit, time, viewProject, BrowserSections, titlePresetOp, store, set, subscribe, toast } = deps; ${declaration}; ${titleBody}; return { TITLE_PRESETS, TitlesTab }`)
 const dropBody = timeline.slice(timeline.indexOf('  const onDrop = e => {'), timeline.indexOf('\n\n  return html`', timeline.indexOf('  const onDrop = e => {')))
 assert(dropBody.includes("item.type === 'title'"), 'Load the actual timeline drop handler')
-const dropFactory = new Function('deps', `const { local, hitAt, p, state, snap, xt, edit, titlePresetOp } = deps; ${dropBody}; return onDrop`)
+const dropFactory = new Function('deps', `const { local, hitAt, p, state, snap, xt, edit, titlePresetOp, clearDrop } = deps; ${dropBody}; return onDrop`)
 const scopedBody = storeSource.match(/^function scoped\(ops\) \{[\s\S]*?^\}/m)?.[0]
 assert(scopedBody, 'Load the actual store composition scope function')
 const scopedFactory = new Function('store', scopedBody + '\nreturn scoped')
@@ -61,7 +61,7 @@ function editor(width, height, { nested = false } = {}) {
   }
   const drop = item => {
     const p = viewProject(), track = p.tracks.find(track => track.kind === 'video')
-    const onDrop = dropFactory({ local: () => ({ x: 1, y: 1 }), hitAt: () => ({ row: { track } }), p, state: {}, snap: (_p, value) => ({ t: snapToFrame(value, p.fps) }), xt: value => value, edit, titlePresetOp: helper.titlePresetOp })
+    const onDrop = dropFactory({ clearDrop() {}, local: () => ({ x: 1, y: 1 }), hitAt: () => ({ row: { track } }), p, state: {}, snap: (_p, value) => ({ t: snapToFrame(value, p.fps) }), xt: value => value, edit, titlePresetOp: helper.titlePresetOp })
     onDrop({ preventDefault() {}, dataTransfer: { getData: () => JSON.stringify(item) } })
     return last()
   }

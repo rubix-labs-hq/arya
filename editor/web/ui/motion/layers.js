@@ -4,6 +4,7 @@
 // expressions; keyframe diamonds you select (click, shift, box), drag in time, copy,
 // paste, delete and ease; layer bars you move and trim.
 
+import { clipTarget, showContext } from '../assistant-context.js'
 import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
@@ -390,7 +391,7 @@ function LayerRow({ row, view, X, zoom, marquee, setWhip }) {
   const visible = c.enabled !== false
 
   return html`
-    <div class=${`mt-row layer ${isSel ? 'sel' : ''} ${visible ? '' : 'off'}`} data-layer=${c.id} style=${{ height: `${ROW}px` }}>
+    <div class=${`mt-row layer ${isSel ? 'sel' : ''} ${visible ? '' : 'off'}`} onContextMenu=${e => showContext(e, clipTarget(c, 'motion'))} data-layer=${c.id} style=${{ height: `${ROW}px` }}>
       <div class="mt-l mt-grid" onPointerDown=${e => !e.target.closest('button, select, input, .whip') && select(e)} onDblClick=${() => c.kind === 'comp' && openComposition(c.comp)}>
         <button class="tw" aria-label=${`${m.open[c.id] ? 'Collapse' : 'Expand'} ${layerName(c)}`} aria-expanded=${!!m.open[c.id]} onClick=${toggleOpen}>${m.open[c.id] ? '▾' : '▸'}</button>
         <span class="c num">${n}</span>
@@ -535,7 +536,7 @@ function PropRow({ row, view, X, sel, marquee }) {
   }
 
   return html`
-    <div class=${`mt-row prop ${inGraph ? 'graphed' : ''}`} style=${{ height: `${ROW}px` }}>
+    <div class=${`mt-row prop ${inGraph ? 'graphed' : ''}`} onContextMenu=${e => showContext(e, clipTarget(c, 'motion', { property: r.prop }))} style=${{ height: `${ROW}px` }}>
       <div class="mt-l" style=${{ paddingLeft: `${row.depth * 16 + 30}px` }}>
         <button class=${`stopwatch ${keys.length ? 'on' : ''} ${hasExpr ? 'expr' : ''}`} aria-label=${`Animate ${r.label}`} aria-pressed=${keys.length > 0} title="Stopwatch: animate this property (click again to remove its keys). ⌥-click: expression" onClick=${stopwatch}><span class="ui-glyph glyph-stopwatch" aria-hidden="true"></span></button>
         <span class="plabel" onClick=${pickProp} title="Click to show in the graph editor (⇧ adds)">${r.label}${hasExpr ? html`<span class="eq">=</span>` : null}</span>

@@ -1,13 +1,14 @@
 // The timeline: a canvas of tracks with filmstrips, waveforms, fades, transitions and
 // keyframes, plus every edit gesture (select, move, trim, roll, slip, slide, blade).
 
+import { clipTarget, frameTarget, trackTarget, showContext } from './assistant-context.js'
 import { h } from 'preact'
 import { host } from '../host.js'
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
 import { applyOps, clipEnd, duration, hasAudio, snapToFrame, timecode, MARKER_COLORS } from '/core/project.js'
 import { addRef, api, edit, onTime, set, store, subscribe, time, toast, useStore, useTime, viewProject } from './store.js'
-import { openMenu } from './menu.js'
+import { magneticOps, mediaDropPosition, primaryTrack } from './magnetic.js'
 import { player } from './engine-host.js'
 import { registry } from './registry.js'
 import { mediaDisplayName } from './media-label.js'
@@ -442,6 +443,20 @@ function drawAll(canvas, state) {
     ctx.lineTo(state.bladeX + 0.5, state.height)
     ctx.stroke()
   }
+  if (state.dropMarker) {
+    const { at, track } = state.dropMarker
+    const row = rows.find(r => r.track.id === track.id)
+    if (row) {
+      const x = Math.round(tx(at)), y = Math.max(RULER, row.y - state.scrollY)
+      ctx.fillStyle = '#f5b942'
+      ctx.fillRect(x - 1, y, 3, row.h)
+      ctx.fillRect(x - 4, y, 9, 3)
+    }
+  }
+  if (store.skimming && player.skimTime != null) {
+    ctx.fillStyle = '#f5b942'
+    ctx.fillRect(Math.round(tx(player.skimTime)), 0, 1, state.height)
+  }
   // Playhead.
   const px = Math.round(tx(state.scrubT ?? time.t)) + 0.5
   ctx.strokeStyle = '#ff3b4a'
@@ -539,7 +554,10 @@ export function Timeline() {
       if (!raf) raf = requestAnimationFrame(draw)
     }
     redraw = schedule
-    const unsub = subscribe(schedule)
+    const unsub = subscribe(() => {
+      if (player.skimTime != null && (!store.skimming || store.viewerMode !== 'timeline')) player.endSkim()
+      schedule()
+    })
     const unTime = onTime(t => {
       // Keep the playhead in view while playing (page by page).
       if (store.playing && wrap.current) {
@@ -570,6 +588,7 @@ export function Timeline() {
     return () => {
       unsub()
       unTime()
+      if (player.skimTime != null) player.endSkim()
       ro.disconnect()
       coarsePointer?.removeEventListener('change', pointerChanged)
     }
@@ -589,6 +608,7 @@ export function Timeline() {
 
   const onDown = e => {
     if (e.button === 2) return
+    if (player.skimTime != null) player.endSkim()
     canvas.current.setPointerCapture(e.pointerId)
     const { x, y } = local(e)
     const hit = hitAt(p, x, y, state)
@@ -649,10 +669,10 @@ export function Timeline() {
     if (store.linked && c.link && !e.metaKey) for (const o of p.tracks.flatMap(tt => tt.clips)) if (o.link === c.link && !selection.includes(o.id)) selection.push(o.id)
     set({ selection, selMarker: null, selTrack: hit.row.track.id })
     if (hit.row.track.locked) return toast(`${hit.row.track.id} is locked`)
-    const base = { x0: x, y0: y, t0: t, clip: c, row: hit.row, moved: false }
+    const base = { x0: x, y0: y, t0: t, clip: c, row: hit.row, moved: false, project: store.project, comp: store.openComp, version: store.version }
     if (hit.zone === 'fadeIn' || hit.zone === 'fadeOut') state.drag = { ...base, kind: hit.zone }
     else if (hit.zone === 'roll') state.drag = { ...base, kind: 'roll', a: hit.a, b: hit.b }
-    else if (hit.zone === 'left' || hit.zone === 'right') state.drag = { ...base, kind: 'trim', edge: hit.zone, ripple: store.tool === 'trim' }
+    else if (hit.zone === 'left' || hit.zone === 'right') state.drag = { ...base, kind: 'trim', edge: hit.zone, ripple: store.tool === 'trim' || Boolean(store.magnetic && hit.row.track === primaryTrack(p)) }
     else if (store.tool === 'slip' || (store.tool === 'trim' && !e.altKey)) state.drag = { ...base, kind: store.tool === 'slip' || store.tool === 'trim' ? 'slip' : 'move' }
     else if (store.tool === 'slide' || (store.tool === 'trim' && e.altKey)) state.drag = { ...base, kind: 'slide' }
     else {
@@ -748,6 +768,9 @@ export function Timeline() {
     const d = state.drag
     if (!d) {
       const hit = hitAt(p, x, y, state)
+      if (store.skimming && e.pointerType !== 'touch' && !e.buttons && !store.playing && store.viewerMode === 'timeline') {
+        player.skim(Math.max(0, Math.min(duration(p), snapToFrame(xt(x), p.fps))))
+      }
       state.hover = hit
       state.bladeX = store.tool === 'blade' ? tx(snap(p, xt(x), new Set()).t) : undefined
       const cursor =
@@ -796,8 +819,15 @@ export function Timeline() {
     d.moved = true
     try {
       d.ops = opsFor(d, x, y)
-      state.preview = applyOps(p, d.ops).project
+      const primary = store.magnetic && primaryTrack(p)
+      if (primary && (d.kind === 'trim' || d.kind === 'move') && (d.row.track === primary || d.ops.some(op => op.track === primary.id))) {
+        d.magnetic = true
+        d.ops = magneticOps(p, d.ops, { at: d.kind === 'move' ? xt(x) : undefined, linked: store.linked, applyOps, project: store.project })
+        const projected = applyOps(store.project, d.ops).project
+        state.preview = p.compId ? { ...p, tracks: projected.comps[p.compId].tracks } : projected
+      } else { d.magnetic = false; state.preview = applyOps(p, d.ops).project }
     } catch {
+      d.ops = []
       state.preview = null
     }
     redraw()
@@ -815,7 +845,10 @@ export function Timeline() {
       if (store.root !== d.root) toast('The project changed during this marker edit. Select the current marker and try again.', 'error')
       else edit([{ op: 'update_marker', comp: d.comp, id: d.marker.id, set: { t: d.to } }], undefined, { expectedVersion: d.version })
     }
-    else if (d?.moved && d.ops?.length) edit(d.ops)
+    else if (d?.moved && d.ops?.length) {
+      if (d.project && (store.project !== d.project || store.openComp !== d.comp || store.version !== d.version)) toast('The timeline changed during the drag. Try the edit again.', 'error')
+      else edit(d.ops, undefined, d.magnetic ? { expectedVersion: d.version } : undefined)
+    }
     redraw()
   }
 
@@ -835,7 +868,6 @@ export function Timeline() {
   }
 
   const onContext = e => {
-    e.preventDefault()
     const { x, y } = local(e)
     const hit = hitAt(p, x, y, state)
     const t = snapToFrame(xt(x), p.fps)
@@ -844,23 +876,52 @@ export function Timeline() {
       const link = store.linked && hit.clip.link
       set({ selection: [hit.clip.id, ...(link ? p.tracks.flatMap(tt => tt.clips).filter(o => o.link === link && o.id !== hit.clip.id).map(o => o.id) : [])] })
     }
-    openMenu(e.clientX, e.clientY, clipMenu(p, hit, t))
+    const target = hit.clip ? clipTarget(hit.clip) : hit.marker ? { kind: 'marker', object: hit.marker.id, label: hit.marker.label || 'Marker', type: 'frame', details: { time: hit.marker.t } } : frameTarget(t)
+    showContext(e, target, clipMenu(p, hit, t))
   }
 
+  const dropPosition = (x, y, kind) => {
+    const row = rows.find(r => y + state.scrollY >= r.y && y + state.scrollY < r.y + r.h)
+    return mediaDropPosition(p, kind, row?.track, snap(p, xt(x), new Set()).t, store.magnetic)
+  }
+  const clearDrop = () => { state.dropMarker = null; redraw() }
+  const onDragOver = e => {
+    const types = Array.from(e.dataTransfer.types)
+    if (!types.includes('application/x-reel')) return
+    e.preventDefault()
+    const kind = types.includes('application/x-reel-audio') ? 'audio' : types.includes('application/x-reel-video') ? 'video' : null
+    if (!kind) return
+    const { x, y } = local(e)
+    state.dropMarker = dropPosition(x, y, kind)
+    e.dataTransfer.dropEffect = state.dropMarker ? 'copy' : 'none'
+    redraw()
+  }
   const onDrop = e => {
+    clearDrop()
     e.preventDefault()
     const data = e.dataTransfer.getData('application/x-reel')
     if (!data) return
-    const item = JSON.parse(data)
+    let item
+    try { item = JSON.parse(data) } catch { return }
+    if (!item) return
     const { x, y } = local(e)
     const hit = hitAt(p, x, y, state)
     const t = snap(p, xt(x), new Set()).t
     if (item.type === 'media') {
-      const asset = p.assets[item.src] ?? {}
-      const isAudio = !asset.hasVideo
-      let track = hit.row?.track
-      if (!track || (track.kind === 'audio') !== isAudio) track = p.tracks.find(tt => tt.kind === (isAudio ? 'audio' : 'video') && !tt.locked)
-      edit([{ op: e.altKey ? 'insert' : 'overwrite', src: item.src, track: track.id, start: t, ...(item.in !== undefined ? { in: item.in, out: item.out } : {}) }])
+      const asset = p.assets[item.src]
+      if (!asset || item.root !== undefined && (item.root !== store.root || item.version !== store.version)) return toast('The source changed. Drag it from the media browser again.', 'error')
+      const position = dropPosition(x, y, asset.hasVideo || asset.still ? 'video' : 'audio')
+      if (!position) return toast('Choose an unlocked track for this source.', 'error')
+      const { track, at } = position
+      const magnetic = store.magnetic && track === primaryTrack(p)
+      const op = { op: magnetic ? 'add_clip' : e.altKey ? 'insert' : 'overwrite', src: item.src, track: track.id, start: at, ...(item.in !== undefined ? { in: item.in, out: item.out } : {}) }
+      if (asset.hasAudio && asset.hasVideo && !asset.still) {
+        const audioTrack = p.tracks.find(t => t.kind === 'audio' && !t.locked)
+        if (!audioTrack) return toast('Choose an unlocked audio track for the source audio.', 'error')
+        op.audioTrack = audioTrack.id
+      }
+      if (magnetic) edit(magneticOps(p, [op], { at, linked: true, applyOps, project: store.project }), undefined, { expectedVersion: store.version })
+      else edit([op])
     } else if (item.type === 'title') {
       const track = hit.row?.track.kind === 'video' ? hit.row.track : [...p.tracks].reverse().find(tt => tt.kind === 'video')
       edit([item.preset === true ? titlePresetOp(p, item, { track: track.id, start: t }) : { op: 'add_title', track: track.id, start: t, dur: 4, text: item.text, title: item.title }])
@@ -888,12 +949,12 @@ export function Timeline() {
           </div>
         </div>
       </div>
-      <div class="tl-canvas" ref=${wrap} onDragOver=${e => e.preventDefault()} onDrop=${onDrop}>
+      <div class="tl-canvas" ref=${wrap} onDragOver=${onDragOver} onDragLeave=${e => { if (!e.currentTarget.contains(e.relatedTarget)) clearDrop() }} onDrop=${onDrop}>
         <canvas ref=${canvas} onDblClick=${e => {
           const { x, y } = local(e)
           const hit = hitAt(p, x, y, state)
           if (hit.clip?.kind === 'comp' && store.project.comps?.[hit.clip.comp]) openComposition(hit.clip.comp)
-        }} onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${onUp} onPointerCancel=${onUp} onLostPointerCapture=${onUp} onPointerLeave=${() => ((state.bladeX = undefined), (state.hover = null), redraw())} onContextMenu=${onContext}></canvas>
+        }} onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${onUp} onPointerCancel=${() => { if (state.drag) state.drag.moved = false; onUp() }} onLostPointerCapture=${onUp} onPointerLeave=${() => ((state.bladeX = undefined), (state.hover = null), player.skimTime != null && player.endSkim(), redraw())} onContextMenu=${onContext}></canvas>
       </div>
     </div>
   `
@@ -928,9 +989,7 @@ function TrackHeader({ row, p }) {
   return html`
     <div class=${`th ${t.kind} ${sel ? 'sel' : ''} ${row.h < 48 ? 'slim' : ''}`} style=${{ height: `${row.h + 2}px` }} onClick=${e => (e.altKey ? addRef({ kind: 'track', id: t.id, label: `track ${t.id} ${t.name ?? ''}` }) : set({ selTrack: t.id }))}
       onContextMenu=${e => {
-        e.preventDefault()
-        openMenu(e.clientX, e.clientY, [
-          ...(store.caps?.host === 'browser-local' ? [] : [{ label: 'Reference track to Assistant', hint: '⌥-click', run: () => addRef({ kind: 'track', id: t.id, label: `track ${t.id} ${t.name ?? ''}` }) }]),
+        showContext(e, trackTarget(t), [
           { label: 'Rename…', run: () => { const name = prompt('Track name', t.name ?? t.id); if (name) edit({ op: 'update_track', id: t.id, set: { name } }) } },
           { label: 'Close gaps', run: () => edit({ op: 'close_gaps', track: t.id }) },
           { label: 'Taller', run: () => set(s => ({ trackHeight: { ...s.trackHeight, [t.id]: Math.min(200, stepFrom + 24) } })) },
@@ -969,11 +1028,6 @@ export function clipMenu(p, hit, t) {
     // Linked selection can include partners on locked tracks; edits must leave those out.
     const unlockedIds = ids.filter(id => !p.tracks.some(tt => tt.locked && tt.clips.some(x => x.id === id)))
     items.push(
-      ...(store.caps?.host === 'browser-local' ? [] : [
-        { label: 'Reference to Assistant', hint: '⌥-click', run: () => ids.forEach(id => { const cc = p.tracks.flatMap(tt => tt.clips).find(x => x.id === id); if (cc) addRef({ kind: 'clip', id, label: `${id} ${cc.label ?? cc.title?.text ?? mediaDisplayName(cc.src ?? cc.kind, p.assets?.[cc.src])}` }) }) },
-        { label: 'Ask the Assistant about this clip…', run: () => { addRef({ kind: 'clip', id: c.id, label: `${c.id}` }); set({ chatOpen: true, chatCollapsed: false }); setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50) } },
-        { sep: true },
-      ]),
       { label: 'Blade at playhead', hint: '⌘B', run: () => edit({ op: 'blade', at: time.t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: 'Blade here', run: () => edit({ op: 'blade', at: t, id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
       { label: 'Duplicate', run: () => edit({ op: 'duplicate', id: c.id, ...(store.linked ? {} : { unlinked: true }) }) },
@@ -989,6 +1043,7 @@ export function clipMenu(p, hit, t) {
         ],
       },
     )
+    if (c.src && p.assets?.[c.src]) items.push({ label: 'Reveal in Media', run: () => set({ page: 'media', browserTab: 'media', source: { src: c.src }, viewerMode: 'source', mediaReveal: { requestID: c.src, seekToken: Date.now() } }) })
     if (c.kind === 'video') items.push({ label: 'Freeze frame at playhead', hint: '⌥F', run: () => edit({ op: 'freeze', id: c.id, at: time.t, dur: 2 }) })
     if (c.kind === 'comp') items.push({ label: 'Open composition', hint: 'double-click', run: () => openComposition(c.comp) })
     if (unlockedIds.length) items.push({ label: unlockedIds.length > 1 ? `Precompose ${unlockedIds.length} clips…` : 'Precompose…', run: () => { const name = prompt('Composition name', 'Precomp'); if (name) edit({ op: 'precompose', ids: unlockedIds, name }) } })
@@ -1001,8 +1056,12 @@ export function clipMenu(p, hit, t) {
       },
       { sep: true },
       { label: 'Copy', hint: '⌘C', run: () => copySelection(p) },
-      { label: 'Delete (leave gap)', hint: '⌫', run: () => edit({ op: 'lift', ids: unlockedIds, ...(store.linked ? {} : { unlinked: true }) }) },
-      { label: 'Ripple delete', hint: '⇧⌫', danger: true, run: () => edit({ op: 'ripple_delete', ids: unlockedIds, ...(store.linked ? {} : { unlinked: true }) }) },
+      { label: 'Delete (leave gap)', hint: store.magnetic ? '' : '⌫', run: () => edit({ op: 'lift', ids: unlockedIds, ...(store.linked ? {} : { unlinked: true }) }) },
+      { label: 'Ripple delete', hint: '⇧⌫', danger: true, run: () => {
+        const op = { op: 'ripple_delete', ids: unlockedIds, ...(store.linked ? {} : { unlinked: true }) }
+        edit(store.magnetic && primaryTrack(p)?.clips.some(c => unlockedIds.includes(c.id))
+          ? magneticOps(p, [op], { linked: store.linked, applyOps, project: store.project }) : op)
+      } },
     )
   } else if (hit.zone === 'transition') {
     items.push({ label: 'Remove transition', run: () => edit({ op: 'transition', id: hit.clip.id, type: 'none' }) })

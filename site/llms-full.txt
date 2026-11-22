@@ -5,8 +5,8 @@
 ## Availability
 
 - Mac: version 1.3.0, macOS 14 or later, Apple silicon and Intel. Signed and notarized download: https://github.com/rubix-labs-hq/arya/releases/download/v1.3.0/Arya-1.3.0.dmg. SHA-256: 1df487f6cba0fec52d9e80b257512020621d1fed08d9bf981b61b4de275b0d90.
-- iPhone and iPad: version 1.3.0, available on the App Store: https://apps.apple.com/us/app/arya-video-editor/id6826357116. Editing and export up to 1080p are free, with no watermark, ads or account. Arya Pro adds export above 1080p (4K and up to 8K), Apple ProRes 422, 422 HQ and 4444, and HDR10 (PQ) and HLG delivery.
-- Mac App Store edition: version 1.2.0, on the same App Store listing. It has the same free tier and Arya Pro as the iPhone and iPad apps.
+- iPhone and iPad: version 1.3.1, available on the App Store: https://apps.apple.com/us/app/arya-video-editor/id6826357116. Editing and export up to 1080p are free, with no watermark, ads or account. Arya Pro adds export above 1080p (4K and up to 8K), Apple ProRes 422, 422 HQ and 4444, and HDR10 (PQ) and HLG delivery.
+- Mac App Store edition: version 1.3.1, on the same App Store listing. It has the same free tier and Arya Pro as the iPhone and iPad apps.
 - Browser editor: https://editwitharya.app/editor/. Browser storage is local to this origin. Use exported backups; this is not cloud storage.
 
 ## Editing

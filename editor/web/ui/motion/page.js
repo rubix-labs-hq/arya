@@ -1,6 +1,7 @@
 // The Motion page: compositions and presets on the left, the viewer with the motion
 // tools in the middle, the inspector on the right, the layer timeline below.
 
+import { selectedTarget, showContext } from '../assistant-context.js'
 import { h } from 'preact'
 import htm from 'htm'
 import { Inspector } from '../inspector.js'
@@ -73,7 +74,7 @@ export function MotionPage() {
   const s = useStore()
 
   return html`
-    <div class=${`page motion ${s.chatOpen ? 'with-chat' : ''}`}>
+    <div class=${`page motion ${s.chatOpen ? 'with-chat' : ''}`} onContextMenu=${e => showContext(e, selectedTarget('motion', { properties: ms().reveal?.props ?? [] }))}>
       <div class="mo-upper">
         <${LeftPanel} />
         <div class="mo-center"><${ToolBar} /><${Viewer} /></div>

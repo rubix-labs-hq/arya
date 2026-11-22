@@ -87,6 +87,8 @@ export function Toolbar() {
       ${plugins.length ? group(plugins, 'Drawing and tracking tools') : null}
       <span class="tool-readout" title=${active?.[2] ?? ''}><span class="tool-current" role="status">${current ? html`<span class="tool-name">${current.name}</span>${current.shortcut ? html`<kbd>${current.shortcut}</kbd>` : null}${current.where ? html`<span class="tool-where">${current.where}</span>` : null}` : null}</span><span class="tool-preview" aria-hidden="true"></span></span>
       <span class="tl-toolbar-sep" aria-hidden="true"></span>
+      <button class=${`ghost ${s.skimming ? 'on' : ''}`} aria-label="Skimming" aria-pressed=${!!s.skimming} title="Preview frames under the pointer (S)" onClick=${() => set({ skimming: !s.skimming })}>Skim</button>
+      <button class=${`ghost ${s.magnetic ? 'on' : ''}`} aria-label="Magnetic timeline" aria-pressed=${!!s.magnetic} title="Keep shots together on V1" onClick=${() => set({ magnetic: !s.magnetic })}>Magnetic</button>
       <button class=${`ghost ${s.snapping ? 'on' : ''}`} aria-label="Snapping" aria-pressed=${!!s.snapping} title="Snapping (N)" onClick=${() => set({ snapping: !s.snapping })}><${Icon} name="magnet" /></button>
       <button class=${`ghost ${s.linked ? 'on' : ''}`} aria-label="Linked selection" aria-pressed=${!!s.linked} title="Linked selection" onClick=${() => set({ linked: !s.linked })}><${Icon} name="link" /></button>
       <span class="grow"></span>

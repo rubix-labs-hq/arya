@@ -4,6 +4,7 @@
 // Keys while the panel has focus: ⌥S serial, ⌥P parallel, ⌥L layer, ⌘D bypass,
 // ⌫ delete the selected node or link.
 
+import { clipTarget, contextItems } from '../assistant-context.js'
 import { h } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
@@ -285,7 +286,8 @@ export function NodeEditor({ clip }) {
     e.stopPropagation()
     focus()
     if (n) selectNode(clip, n.id)
-    openMenu(e.clientX, e.clientY, nodeMenu(clip, n ?? byId.get(sel), nodeActions(clip, n?.id ?? sel)))
+    const node = n ?? byId.get(sel)
+    openMenu(e.clientX, e.clientY, [...contextItems(clipTarget(clip, 'grade', { node: node?.id, scope: store.scopes.kind })), { sep: true }, ...nodeMenu(clip, node, nodeActions(clip, n?.id ?? sel))])
   }
 
   const curve = (x1, y1, x2, y2) => {

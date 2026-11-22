@@ -258,7 +258,8 @@ struct NativeAssistantPanel: View {
         }
         .navigationBarTitleDisplayMode(inSheet ? .inline : .automatic)
         #endif
-        .onAppear { takeFocusRequest() }
+        .onAppear { takeFocusRequest(); focusPinnedRequest() }
+        .onChange(of: model.assistantFocusRequests) { _, _ in focusPinnedRequest() }
         .onChange(of: focusRequest.wrappedValue) { _, requested in if requested { takeFocusRequest() } }
         .task { await refreshAccountsIfIdle() }
         .task(id: suggestionKey) { await assistant.refreshSuggestions(selection: model.selectedIDs, composition: model.composition) }
@@ -314,6 +315,15 @@ struct NativeAssistantPanel: View {
             #if os(macOS)
             .frame(minWidth: 320, minHeight: 300)
             #endif
+        }
+    }
+
+    private func focusPinnedRequest() {
+        guard model.assistantFocusRequests > 0 else { return }
+        model.assistantFocusRequests = 0
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            draftFocused = true
         }
     }
 
@@ -922,6 +932,14 @@ struct NativeAssistantPanel: View {
                     }
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Playhead \(nativeTimecode(model.time, fps: model.fps))")
+                    ForEach(model.pinnedAssistantTargets) { pin in
+                        Button { model.pinnedAssistantTargets.removeAll { $0.id == pin.id } } label: {
+                            chip { HStack(spacing: 4) {
+                                Label(pin.target.label, systemImage: pin.target.icon).lineLimit(1)
+                                Image(systemName: "xmark").font(.caption2)
+                            } }.overlay(Capsule().strokeBorder(NativeEditorStyle.accent.opacity(0.55)))
+                        }.buttonStyle(.plain).accessibilityLabel("Remove attached \(pin.target.label)")
+                    }
                     if model.assistantInputKind != "prompt" {
                         Button { model.assistantInputKind = "prompt" } label: {
                             chip { HStack(spacing: 4) { Text(model.assistantInputKind == "screenplay" ? "Screenplay" : "Script"); Image(systemName: "xmark").font(.caption2) } }
@@ -1137,12 +1155,17 @@ struct NativeAssistantPanel: View {
 
     private func sendDraft() {
         do {
+            guard model.pinnedAssistantTargets.allSatisfy({ $0.version == model.version && $0.generation == model.processingContextID }) else {
+                throw ReelBackend.APIError("An attached item changed. Remove it or add it again from its menu.")
+            }
             let selection = NativeSelectionAIContext.make(project: model.project?.fields ?? [:], clipID: model.selectedID, clipIDs: model.selectedIDs, composition: model.composition, time: model.time, version: model.version, folder: model.folder?.standardizedFileURL.path)
             guard model.selectedIDs.isEmpty || selection != nil else { throw ReelBackend.APIError("The selection is too large or changed. Select fewer layers before sending.") }
             var refs = selection?.refs ?? ["clip": "", "clips": [], "time": model.time, "composition": model.composition ?? "main", "editableNativeObjects": true, "sourceProjectVersion": model.version]
+            if !model.pinnedAssistantTargets.isEmpty { refs["pinnedTargets"] = model.pinnedAssistantTargets.map(\.reference) }
             refs["inputKind"] = model.assistantInputKind
             if let reference = model.lookReference { refs["reference"] = reference }
             try assistant.send(model.assistantDraft, refs: refs); model.assistantDraft = ""
+            model.pinnedAssistantTargets.removeAll()
             #if os(iOS)
             // The reply and the viewer are what matter now, so the keyboard steps aside.
             if horizontalSizeClass == .compact { draftFocused = false }
@@ -1205,6 +1228,7 @@ struct NativeAssistantPanel: View {
             return
         }
         var refs = selection?.refs ?? ["clip": "", "clips": [], "time": model.time, "composition": model.composition ?? "main", "editableNativeObjects": true, "sourceProjectVersion": model.version]
+        if !model.pinnedAssistantTargets.isEmpty { refs["pinnedTargets"] = model.pinnedAssistantTargets.map(\.reference) }
         refs["inputKind"] = model.assistantInputKind
         if let reference = model.lookReference { refs["reference"] = reference }
         inspectedReferences = NativeAssistantReferenceInspection(text: JSON(any: refs).text, title: "Current request context",

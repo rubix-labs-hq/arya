@@ -83,6 +83,8 @@ enum ColorPanelMode {case assistant,color}
     func importReference(_ url:URL) async throws->String {""}
 }
 struct NativeScopes:View {let frame:CGImage?;let mode:String;let pixels:Any?;var body:some View {EmptyView()}}
+struct NativeAskAryaTarget {enum Kind:String {case grade};static func panel(_ kind:Kind,clip:NativeClip,details:[String:String]=[:])->Self {Self()}}
+extension View {func aryaContextAIMenu(_ model:NativeEditorModel,_ target:NativeAskAryaTarget?)->some View {self}}
 '''
     source+=fixture+'\n'+color.replace('import ReelKit\n','')
     source+=block((editor/'NativeViewer.swift').read_text(),'enum NativeViewerGeometry {')+'\n'

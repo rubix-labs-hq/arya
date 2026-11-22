@@ -1,11 +1,11 @@
 // Left panel: media bin, titles, transitions, effects and generators.
 
+import { mediaTarget, showContext } from './assistant-context.js'
 import { h } from 'preact'
 import { ScrollTabs } from './scroll-tabs.js'
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 import htm from 'htm'
 import { EFFECTS, timecode, TRANSITIONS } from '/core/project.js'
-import { openMenu } from './menu.js'
 import { addRef, api, edit, set, store, subscribe, time, toast, useStore, viewProject } from './store.js'
 import { host } from '../host.js'
 import { registry } from './registry.js'
@@ -69,11 +69,18 @@ async function showMusicDetails(src = null) {
   } catch (error) { toast(error.message, 'error') }
 }
 
+function dragMedia(event, src, asset) {
+  const transfer = event.dataTransfer
+  transfer.effectAllowed = 'copy'
+  transfer.setData('application/x-reel', JSON.stringify({ type: 'media', src, root: store.root, version: store.version }))
+  // Dragover exposes MIME types but withholds the payload until drop.
+  transfer.setData(asset.hasVideo || asset.still ? 'application/x-reel-video' : 'application/x-reel-audio', '1')
+}
+
 export function analyzeMenu(p, src) {
   const asset = p.assets[src] ?? {}
 
   return [
-    host.kind === 'browser-local' ? null : { label: 'Reference to Assistant', run: () => addRef({ kind: 'media', id: src, label: mediaDisplayName(src, asset) }) },
     { label: 'Open in source viewer', run: () => openSource(src) },
     asset.generated?.kind === 'original-music' && asset.generated?.renderer === 'arya-score-synth/1' ? { label: 'Music details & reuse…', run: () => showMusicDetails(src) } : null,
     { label: 'Append to timeline', hint: 'E', run: () => edit({ op: 'append', src }) },
@@ -213,8 +220,8 @@ function MediaCard({ p, src, asset }) {
   if (hasMusicDetails) {
     return html`
       <div class=${`media-card ${sel ? 'sel' : ''}`} draggable="true" title=${display.tooltip}
-        onDragStart=${e => e.dataTransfer.setData('application/x-reel', JSON.stringify({ type: 'media', src }))}
-        onContextMenu=${e => (e.preventDefault(), openMenu(e.clientX, e.clientY, analyzeMenu(p, src)))}>
+        onDragStart=${e => dragMedia(e, src, asset)}
+        onContextMenu=${e => showContext(e, mediaTarget(src, p.assets[src]), analyzeMenu(p, src))}>
         <div role="button" tabIndex="0" aria-pressed=${sel} aria-label=${display.name}
           onKeyDown=${e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); set({ source: { src }, viewerMode: store.viewerMode }) } }}
           onDblClick=${() => openSource(src)}
@@ -230,10 +237,10 @@ function MediaCard({ p, src, asset }) {
     <div class=${`media-card ${sel ? 'sel' : ''}`} draggable="true" title=${display.tooltip}
       tabIndex="0" role="button" aria-pressed=${sel} aria-label=${display.name}
       onKeyDown=${e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); set({ source: { src }, viewerMode: store.viewerMode }) } }}
-      onDragStart=${e => e.dataTransfer.setData('application/x-reel', JSON.stringify({ type: 'media', src }))}
+      onDragStart=${e => dragMedia(e, src, asset)}
       onDblClick=${() => openSource(src)}
       onClick=${selectCard}
-      onContextMenu=${e => (e.preventDefault(), openMenu(e.clientX, e.clientY, analyzeMenu(p, src)))}>
+      onContextMenu=${e => showContext(e, mediaTarget(src, p.assets[src]), analyzeMenu(p, src))}>
       ${cardBody}
     </div>
   `
