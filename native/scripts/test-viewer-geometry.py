@@ -197,6 +197,8 @@ struct NativeMetalViewer:View {let texture:MTLTexture;var body:some View {EmptyV
 }
 '''
     source += 'struct NativeColorWindowOverlay:View {let controller:NativeColorWindowController;let viewport:NativeViewerGeometry.Viewport;var body:some View {EmptyView()}}\n'
+    source += 'struct NativeAskAryaTarget {static func frame(_ m:NativeEditorModel)->Self {Self()};static func clip(_ c:NativeClip)->Self {Self()};static func media(_ a:NativeAsset)->Self {Self()}}\n'
+    source += 'struct NativeContextAIMenuContent:View {init(_ m:NativeEditorModel,_ t:NativeAskAryaTarget) {};var body:some View {EmptyView()}}\n'
     source += viewer.replace('import ReelKit\n', '')
     source += '\n' + (repo / 'native/App/Shared/NativeEditor/NativeVectorEditingOverlay.swift').read_text().replace('import ReelKit\n', '')
     path = temp / 'Viewer.swift'
