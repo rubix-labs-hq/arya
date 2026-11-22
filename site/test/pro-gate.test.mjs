@@ -29,7 +29,7 @@ const universal = 'One Arya Pro purchase covers iPhone, iPad and the Mac App Sto
 const early = 'If you installed Arya from the App Store before version 1.2.0, Arya Pro is included at no charge.';
 // No page prints a missing value, and no page names the release that is still being prepared.
 // That version is assembled here so this file does not name it either.
-const unreleased = [1, 4, 0].join('.');
+const unreleased = [1, 5, 0].join('.');
 const noLeaks = (pages, label) => {
   for (const [name, file] of Object.entries(pages)) {
     assert.doesNotMatch(text(file), /\bundefined\b|\bnull\b|\bNaN\b|\[object Object\]/, `${name} prints a missing value (${label})`);
