@@ -30,7 +30,9 @@ Use `https://editwitharya.app/help/` as the App Store support URL and `https://e
 
 ## Build
 
-Install the locked editor and website tip-service dependencies as described in CONTRIBUTING.md. Do not regenerate the Xcode project casually; keep the checked-in project and `native/project.yml` consistent.
+Xcode Cloud builds the App Store editions. The Release workflow of the Arya Video Editor product archives `Reel iOS` for iOS and `Reel Mac App Store` for Mac Catalyst when a release tag starting with `v` (for example `v1.4.1`) is pushed. Merges to `main` don't start it, which keeps the team inside Xcode Cloud's included hours. It uploads both to App Store Connect, where they appear in TestFlight with no tester groups added. Start a build of any branch by hand from Xcode (Integrate, then Manage Workflows) or App Store Connect. `native/ci_scripts/ci_post_clone.sh` installs Node and the locked editor packages. `native/ci_scripts/ci_post_xcodebuild.sh` runs `validate-app-store.py` on each signed export and fails the build if it does not pass. Xcode Cloud sets the build number. Don't also upload the same version from a local archive.
+
+To build by hand instead, install the locked editor and website tip-service dependencies as described in CONTRIBUTING.md. Do not regenerate the Xcode project casually; keep the checked-in project and `native/project.yml` consistent.
 
 Archive each App Store platform separately with automatic signing and the existing developer team:
 
