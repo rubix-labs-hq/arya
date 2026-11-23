@@ -6,10 +6,12 @@ set -eu
 
 [ "${CI_XCODEBUILD_ACTION:-}" = "archive" ] || exit 0
 SIGNED="${CI_APP_STORE_SIGNED_APP_PATH:-}"
-[ -n "$SIGNED" ] && [ -d "$SIGNED" ] || { echo "No App Store export to validate"; exit 0; }
+# Every Release archive uploads, so a missing export means the check did not run: fail.
+[ -n "$SIGNED" ] && [ -d "$SIGNED" ] || { echo "error: archive has no App Store export to validate (CI_APP_STORE_SIGNED_APP_PATH='$SIGNED')" >&2; exit 1; }
 
 REPO="${CI_PRIMARY_REPOSITORY_PATH:?run by Xcode Cloud}"
 VERSION=$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([0-9.]*\)"\{0,1\}.*/\1/p' "$REPO/native/project.yml" | head -1)
+[ -n "$VERSION" ] || { echo "error: no MARKETING_VERSION in native/project.yml" >&2; exit 1; }
 
 # iOS exports an .ipa, Mac Catalyst a .pkg.
 WORK=$(mktemp -d)

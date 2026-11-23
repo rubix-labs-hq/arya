@@ -3,14 +3,18 @@
 import argparse
 import json
 import plistlib
+import re
 import subprocess
 from pathlib import Path
 
 p = argparse.ArgumentParser()
 p.add_argument('app', type=Path)
 p.add_argument('--unsigned', action='store_true', help='Allow an unsigned local development bundle')
-p.add_argument('--version', default='1.4.0')
+p.add_argument('--version', help='Expected marketing version (default: MARKETING_VERSION in native/project.yml)')
 a = p.parse_args()
+if not a.version:
+    spec = (Path(__file__).resolve().parents[1] / 'project.yml').read_text()
+    a.version = re.search(r'^\s*MARKETING_VERSION:\s*"?([0-9.]+)"?', spec, re.M).group(1)
 app = a.app.resolve()
 mac = (app / 'Contents/Info.plist').is_file()
 base = app / 'Contents' if mac else app
