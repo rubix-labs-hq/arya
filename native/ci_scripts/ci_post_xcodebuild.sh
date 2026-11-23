@@ -11,6 +11,7 @@ SIGNED="${CI_APP_STORE_SIGNED_APP_PATH:-}"
 
 REPO="${CI_PRIMARY_REPOSITORY_PATH:?run by Xcode Cloud}"
 VERSION=$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([0-9.]*\)"\{0,1\}.*/\1/p' "$REPO/native/project.yml" | head -1)
+[ -n "$VERSION" ] || { echo "error: no MARKETING_VERSION in native/project.yml" >&2; exit 1; }
 
 # iOS exports an .ipa, Mac Catalyst a .pkg.
 WORK=$(mktemp -d)
