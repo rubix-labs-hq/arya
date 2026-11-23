@@ -870,6 +870,17 @@ struct NativeViewer: View {
                 HStack(spacing: 8) { emptyTimelineActions }.fixedSize(horizontal: true, vertical: false)
                 VStack(spacing: 8) { emptyTimelineActions }
             }
+            #if os(macOS) || targetEnvironment(macCatalyst)
+            Text("Or drag video, audio or image files straight into Arya.")
+                .font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                .multilineTextAlignment(.center)
+            #else
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                Text("Or drag video, audio or image files straight into Arya.")
+                    .font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                    .multilineTextAlignment(.center)
+            }
+            #endif
             if let error = model.renderError {
                 Text(error).font(.caption).foregroundStyle(NativeEditorStyle.warning)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
@@ -881,9 +892,21 @@ struct NativeViewer: View {
     }
 
     @ViewBuilder private var emptyTimelineActions: some View {
+        #if os(iOS)
+        Button { model.beginMediaImport(preferredSource: .photos) } label: {
+            Label("Add from Photos", systemImage: "photo.on.rectangle")
+        }.buttonStyle(NativePrimaryButtonStyle())
+            .disabled(model.busy || model.projectReadOnlyReason != nil)
+            .accessibilityIdentifier("editor.viewer.addPhotos")
+        Button { model.showFiles = true } label: {
+            Text("Import media").frame(minHeight: NativeEditorStyle.minimumControlHeight).contentShape(Rectangle())
+        }.buttonStyle(NativeToolbarButtonStyle())
+            .disabled(model.busy || model.projectReadOnlyReason != nil)
+        #else
         Button { model.showFiles = true } label: {
             Text("Import media")
         }.buttonStyle(NativePrimaryButtonStyle())
+        #endif
         Button { model.edit(["op": "add_title", "text": "Your title", "start": 0, "dur": 5, "title": ["size": min(model.width, model.height) * 0.09]]) } label: {
             Text("Add title").frame(minHeight: NativeEditorStyle.minimumControlHeight).contentShape(Rectangle())
         }.buttonStyle(NativeToolbarButtonStyle())

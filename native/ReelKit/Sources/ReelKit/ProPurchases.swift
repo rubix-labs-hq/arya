@@ -21,6 +21,11 @@ public enum ProPlan: String, CaseIterable, Sendable {
     }
 }
 
+/// Which Pro capability triggered the Arya Pro sheet, so the comparison can highlight it.
+public enum ProFeature: String, CaseIterable, Sendable {
+    case resolution, prores, hdr
+}
+
 /// What the App Store returned for one plan. `displayPrice` is already localized for the
 /// customer's storefront; Arya never formats or hard-codes a price.
 public struct ProProduct: Equatable, Sendable {
@@ -31,10 +36,18 @@ public struct ProProduct: Equatable, Sendable {
     public let period: String?
     /// For example "1 week". Set only when this customer is eligible for a free trial.
     public let freeTrial: String?
+    /// StoreKit numeric price for relative savings and monthly-equivalent math.
+    public let price: Decimal?
+    /// StoreKit localized currency format style from the product itself.
+    public let priceFormat: Decimal.FormatStyle.Currency?
+    /// Renewal period expressed in months (1 for monthly, 12 for yearly; nil for non-month/year or lifetime).
+    public let renewalMonths: Int?
 
-    public init(plan: ProPlan, displayName: String, displayPrice: String, period: String? = nil, freeTrial: String? = nil) {
+    public init(plan: ProPlan, displayName: String, displayPrice: String, period: String? = nil, freeTrial: String? = nil,
+                price: Decimal? = nil, priceFormat: Decimal.FormatStyle.Currency? = nil, renewalMonths: Int? = nil) {
         self.plan = plan; self.displayName = displayName; self.displayPrice = displayPrice
         self.period = period; self.freeTrial = freeTrial
+        self.price = price; self.priceFormat = priceFormat; self.renewalMonths = renewalMonths
     }
 
     /// The full price line Apple requires next to the purchase button.
@@ -43,6 +56,34 @@ public struct ProProduct: Equatable, Sendable {
         let renewal = "\(displayPrice) per \(period). Renews automatically unless you cancel at least 24 hours before the period ends."
         guard let freeTrial else { return renewal }
         return "Free for \(freeTrial), then \(renewal)"
+    }
+}
+
+/// Derived display helpers calculated strictly from StoreKit product prices.
+public enum ProPricing {
+    /// Floored percentage savings of yearly over 12 monthly payments, or nil when either
+    /// plan is missing, has an unexpected period, or saves less than 10%.
+    public static func savingsPercent(monthly: ProProduct?, yearly: ProProduct?) -> Int? {
+        guard let monthly, let yearly,
+              monthly.renewalMonths == 1, yearly.renewalMonths == 12,
+              let monthlyPrice = monthly.price, let yearlyPrice = yearly.price,
+              monthlyPrice > 0, yearlyPrice > 0 else { return nil }
+        let annualMonthlyCost = monthlyPrice * Decimal(12)
+        guard annualMonthlyCost > yearlyPrice else { return nil }
+        var ratio = (annualMonthlyCost - yearlyPrice) * Decimal(100) / annualMonthlyCost
+        var floored = Decimal()
+        NSDecimalRound(&floored, &ratio, 0, .down)
+        let percent = NSDecimalNumber(decimal: floored).intValue
+        return percent >= 10 && percent < 100 ? percent : nil
+    }
+
+    /// Localized monthly-equivalent price for a multi-month subscription, formatted using
+    /// the product's own StoreKit currency style and rounded up so it never understates.
+    public static func monthlyEquivalent(for product: ProProduct) -> String? {
+        guard let price = product.price, let format = product.priceFormat,
+              let months = product.renewalMonths, months > 1, price > 0 else { return nil }
+        let perMonth = price / Decimal(months)
+        return perMonth.formatted(format.rounded(rule: .up))
     }
 }
 
@@ -177,6 +218,17 @@ public final class ProPurchaseController {
         case .loading, .ready: return
         case .notLoaded, .unavailable: break
         }
+        await fetchProducts()
+    }
+
+    /// Refreshes the StoreKit catalog even when already loaded, so introductory-offer
+    /// eligibility reflects recent purchases or account changes within the same launch.
+    public func reloadProducts() async {
+        if case .loading = catalog { return }
+        await fetchProducts()
+    }
+
+    private func fetchProducts() async {
         catalog = .loading
         do {
             let products = try await client.products(for: ProPlan.allCases.map(\.productID))

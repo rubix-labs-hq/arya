@@ -42,6 +42,33 @@ enum NativeSupportPromptLedger {
     }
 }
 
+/// Saves App Store rating prompt counts and decides when to trigger Apple's system prompt.
+@MainActor
+enum NativeReviewPromptLedger {
+    static let key = "review.prompt.state"
+
+    static var channelAvailable: Bool {
+        #if os(iOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    static func successfulExport(supportPromptShown: Bool, now: Date = Date(),
+                                 defaults: UserDefaults = .standard, bundle: Bundle = .main) -> Bool {
+        guard !NativeSupportPromptLedger.suppressed else { return false }
+        let version = (bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? ""
+        var state = ReviewPromptPolicy.decode(defaults.data(forKey: key))
+        let show = ReviewPromptPolicy.successfulExport(
+            &state, now: now, version: version,
+            channelAvailable: channelAvailable, supportPromptShown: supportPromptShown
+        )
+        if let data = ReviewPromptPolicy.encode(state) { defaults.set(data, forKey: key) }
+        return show
+    }
+}
+
 /// A small card that appears after a successful export. It never blocks editing and leaves
 /// when the person picks any option.
 struct NativeSupportPromptCard: View {

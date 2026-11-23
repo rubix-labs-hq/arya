@@ -234,6 +234,21 @@ struct NativeDeliverPanel: View {
         return false
         #endif
     }
+    private var proHighlight: ProFeature? {
+        guard needsPro else { return nil }
+        if preset.hasPrefix("prores-") { return .prores }
+        if hdrAvailable, hdrTransfers.contains(transfer), transfer != "sdr" { return .hdr }
+        return .resolution
+    }
+    private var needsProOnlyForSize: Bool {
+        needsPro && proHighlight == .resolution
+    }
+    private var latestCompletedExportURL: URL? {
+        guard let job = model.jobs.last(where: { $0.string("kind") == "export" && $0.string("state") == "done" }) else { return nil }
+        let output = job.string("output")
+        guard !output.isEmpty else { return nil }
+        return try? model.mediaURL(output)
+    }
     private var proBadge: String {
         #if os(iOS)
         return proStore.access.isPro ? "" : " · Pro"
@@ -327,19 +342,51 @@ struct NativeDeliverPanel: View {
                     .buttonStyle(NativePrimaryButtonStyle(fill: true))
                     .disabled(starting || model.duration <= 0 || presets.isEmpty || outputError != nil)
                     .accessibilityIdentifier("deliver.export")
+                if needsProOnlyForSize {
+                    Button("Export 1080p free") {
+                        chooseSize(long: 1920, short: 1080)
+                        export()
+                    }
+                    .buttonStyle(NativeSecondaryButtonStyle(fill: true))
+                    .disabled(starting || model.duration <= 0 || presets.isEmpty)
+                    .accessibilityIdentifier("deliver.export1080Free")
+                }
                 Button("Save current frame") { still() }.disabled(model.metalFrame == nil)
                     .buttonStyle(NativeSecondaryButtonStyle(fill: true))
-                if let lastFile {
+                if let completedURL = latestCompletedExportURL {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Export saved", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(NativeEditorStyle.success)
+                        Text(completedURL.lastPathComponent)
+                            .font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                            .lineLimit(2)
+                        ShareLink(item: completedURL) {
+                            Label("Share video", systemImage: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(NativePrimaryButtonStyle(fill: true))
+                        .accessibilityIdentifier("deliver.shareCompleted")
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay { RoundedRectangle(cornerRadius: 8).stroke(NativeEditorStyle.success.opacity(0.4), lineWidth: 1) }
+                    .accessibilityIdentifier("deliver.completedCard")
+                } else if let lastFile {
                     ShareLink(item: lastFile) {
                         Label("Share saved file", systemImage: "square.and.arrow.up")
                     }
                     .buttonStyle(NativeSecondaryButtonStyle(fill: true))
                 }
                 #if os(iOS)
-                if !mobileExport.message.isEmpty {
+                if model.supportPromptVisible && model.mobilePanel == .deliver {
+                    NativeSupportPromptCard(model: model, compact: true)
+                }
+                if !mobileExport.message.isEmpty && latestCompletedExportURL == nil {
                     HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: mobileExport.message.lowercased().contains("saved") || mobileExport.message.lowercased().contains("finished") ? "checkmark.circle.fill" : "info.circle")
-                            .foregroundStyle(mobileExport.message.lowercased().contains("saved") || mobileExport.message.lowercased().contains("finished") ? NativeEditorStyle.success : NativeEditorStyle.accent)
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(NativeEditorStyle.accent)
                             .accessibilityHidden(true)
                         Text(mobileExport.message).font(.caption).foregroundStyle(NativeEditorStyle.text)
                             .fixedSize(horizontal: false, vertical: true)
@@ -393,7 +440,15 @@ struct NativeDeliverPanel: View {
         #if os(iOS)
         .sheet(isPresented: $proVisible) {
             NavigationStack {
-                NativeProView(store: proStore, reason: "Arya Pro exports this video at full quality. Editing and 1080p export stay free.")
+                NativeProView(
+                    store: proStore,
+                    reason: "Arya Pro exports this video at full quality. Editing and 1080p export stay free.",
+                    highlight: proHighlight,
+                    onUnlocked: {
+                        proVisible = false
+                        export()
+                    }
+                )
                     .toolbar { Button("Done") { proVisible = false } }
             }
             .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)

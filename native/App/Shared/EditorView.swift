@@ -230,6 +230,7 @@ struct StartView: View {
     var openFolder: () -> Void
     var newProject: () -> Void
     #if os(iOS)
+    @AppStorage("newProject.format") private var preferredFormatRaw = ""
     var openAssistantSettings: (() -> Void)? = nil
     var openSupport: (() -> Void)? = nil
     #endif
@@ -298,6 +299,19 @@ struct StartView: View {
                     Text("A video editor you can direct.")
                         .modifier(NativeWelcomeTypography(style: .tagline)).multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
+                    #if os(iOS)
+                    Text("Free 1080p export. No watermark, no ads, no account.")
+                        .font(.subheadline).foregroundStyle(NativeEditorStyle.muted).multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        quickStartPreset(format: .portrait, title: "9:16", detail: "Reels · Shorts", symbol: "rectangle.portrait")
+                        quickStartPreset(format: .landscape, title: "16:9", detail: "YouTube · Film", symbol: "rectangle")
+                        quickStartPreset(format: .square, title: "1:1", detail: "Square", symbol: "square")
+                    }
+                    .frame(maxWidth: 560)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Quick start project formats")
+                    #endif
                     Group {
                         if NativeWelcomeLayout.horizontalActions(width: geometry.size.width, height: geometry.size.height, accessibility: dynamicTypeSize.isAccessibilitySize) {
                             ViewThatFits(in: .horizontal) {
@@ -413,6 +427,32 @@ struct StartView: View {
                 .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
         }
     }
+
+    #if os(iOS)
+    private func quickStartPreset(format: NativeNewProjectSheet.Format, title: String, detail: String, symbol: String) -> some View {
+        Button {
+            preferredFormatRaw = format.rawValue
+            newProject()
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(NativeEditorStyle.accent)
+                    .accessibilityHidden(true)
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(NativeEditorStyle.text)
+                Text(detail).font(.caption2).foregroundStyle(NativeEditorStyle.muted).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, minHeight: 64)
+            .padding(.horizontal, 6).padding(.vertical, 8)
+            .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 10))
+            .overlay { RoundedRectangle(cornerRadius: 10).stroke(NativeEditorStyle.line, lineWidth: 1) }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Start \(format.rawValue) project, \(detail)")
+        .accessibilityIdentifier("welcome.preset.\(title)")
+    }
+    #endif
 }
 
 #if os(iOS)
@@ -424,18 +464,29 @@ struct NativeNewProjectSheet: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var nameFocused: Bool
     @AccessibilityFocusState private var errorFocused: Bool
+    @AppStorage("newProject.format") private var storedFormatRaw = ""
+    @ObservedObject private var proStore = NativeProStore.shared
     @State private var name = "Untitled Arya"
-    @State private var format = Format.landscape
+    @State private var format = Self.defaultFormat
     @State private var fps = 30.0
     @State private var creating = false
     @State private var failure: String?
 
+    private static var defaultFormat: Format {
+        #if targetEnvironment(macCatalyst)
+        return .landscape
+        #else
+        return UIDevice.current.userInterfaceIdiom == .phone ? .portrait : .landscape
+        #endif
+    }
+
     enum Format: String, CaseIterable, Identifiable {
-        case landscape = "Landscape HD", portrait = "Portrait HD", square = "Square"
-        case landscapeUHD = "Landscape 4K", portraitUHD = "Portrait 4K"
+        case landscape = "Landscape 16:9", portrait = "Vertical 9:16", square = "Square 1:1"
+        case landscapeUHD = "Landscape 4K", portraitUHD = "Vertical 4K"
         var id: String { rawValue }
         var width: Int { [.landscape: 1920, .portrait: 1080, .square: 1080, .landscapeUHD: 3840, .portraitUHD: 2160][self]! }
         var height: Int { [.landscape: 1080, .portrait: 1920, .square: 1080, .landscapeUHD: 2160, .portraitUHD: 3840][self]! }
+        var isUHD: Bool { self == .landscapeUHD || self == .portraitUHD }
     }
 
     var body: some View {
@@ -464,6 +515,12 @@ struct NativeNewProjectSheet: View {
                     }
                     .accessibilityIdentifier("newProject.frameRate")
                     Text("\(format.width) × \(format.height)").foregroundStyle(.secondary)
+                    if format.isUHD && !proStore.access.isPro {
+                        Text("Editing in 4K is free. Exporting in 4K requires Arya Pro, or export at 1080p free.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("newProject.proHint")
+                    }
                 }
                 Section("Location") {
                     #if targetEnvironment(macCatalyst)
@@ -487,6 +544,8 @@ struct NativeNewProjectSheet: View {
             .disabled(creating)
             .scrollDismissesKeyboard(.interactively)
             .onAppear { nameFocused = true }
+            .onAppear { if let saved = Format(rawValue: storedFormatRaw) { format = saved } }
+            .onChange(of: format) { _, next in storedFormatRaw = next.rawValue }
             .onChange(of: session.sessionID) { _, _ in if !creating { dismissPresentation() } }
             .navigationTitle("New Project")
             .navigationBarTitleDisplayMode(.inline)

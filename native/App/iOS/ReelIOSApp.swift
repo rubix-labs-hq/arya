@@ -132,6 +132,9 @@ struct ReelIOSApp: App {
                     session.continueProject(activity)
                 }
                 .onChange(of: session.sessionID) { _, value in presentation.invalidateStalePicker(sessionID: value) }
+                .onReceive(NativeProStore.shared.$pendingIntent) { intent in
+                    if intent != nil { presentation.presentSheet(.support) }
+                }
                 .onAppear {
                     NativeMobileExport.shared.attach(session)
                     #if DEBUG

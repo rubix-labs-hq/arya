@@ -75,6 +75,51 @@ final class ProPurchaseTests: XCTestCase {
         XCTAssertEqual(store.requests.count, 1, "A loaded catalog is not fetched again")
     }
 
+    func testReloadProductsRefreshesEligibilityEvenWhenReady() async {
+        let updated = [
+            ProProduct(plan: .yearly, displayName: "Arya Pro Yearly", displayPrice: "21,99 €", period: "year", freeTrial: nil),
+            ProProduct(plan: .monthly, displayName: "Arya Pro Monthly", displayPrice: "3,49 €", period: "month"),
+            ProProduct(plan: .lifetime, displayName: "Arya Pro Lifetime", displayPrice: "54,99 €"),
+        ]
+        let store = FakeStore([.success(Self.catalog), .success(updated)])
+        let (controller, _) = await loaded(store)
+        guard case .ready(let first) = controller.catalog else { return XCTFail("catalog not ready") }
+        XCTAssertEqual(first.first(where: { $0.plan == .yearly })?.freeTrial, "1 week")
+        await controller.reloadProducts()
+        XCTAssertEqual(store.requests.count, 2)
+        guard case .ready(let refreshed) = controller.catalog else { return XCTFail("reloaded catalog not ready") }
+        XCTAssertNil(refreshed.first(where: { $0.plan == .yearly })?.freeTrial)
+    }
+
+    func testSavingsPercentAndMonthlyEquivalentFromStorePrices() {
+        let usdFormat = Decimal.FormatStyle.Currency(code: "USD", locale: Locale(identifier: "en_US"))
+        let monthly = ProProduct(plan: .monthly, displayName: "Monthly", displayPrice: "$2.99", period: "month",
+                                 price: Decimal(string: "2.99"), priceFormat: usdFormat, renewalMonths: 1)
+        let yearly = ProProduct(plan: .yearly, displayName: "Yearly", displayPrice: "$19.99", period: "year", freeTrial: "1 week",
+                                price: Decimal(string: "19.99"), priceFormat: usdFormat, renewalMonths: 12)
+        XCTAssertEqual(ProPricing.savingsPercent(monthly: monthly, yearly: yearly), 44)
+        XCTAssertEqual(ProPricing.monthlyEquivalent(for: yearly), "$1.67")
+        XCTAssertNil(ProPricing.monthlyEquivalent(for: monthly))
+
+        // Zero-decimal currency (JPY) rounds up cleanly without hardcoding decimals.
+        let jpyFormat = Decimal.FormatStyle.Currency(code: "JPY", locale: Locale(identifier: "ja_JP"))
+        let jpyMonthly = ProProduct(plan: .monthly, displayName: "Monthly", displayPrice: "¥450", period: "month",
+                                    price: Decimal(450), priceFormat: jpyFormat, renewalMonths: 1)
+        let jpyYearly = ProProduct(plan: .yearly, displayName: "Yearly", displayPrice: "¥3,000", period: "year",
+                                   price: Decimal(3000), priceFormat: jpyFormat, renewalMonths: 12)
+        XCTAssertEqual(ProPricing.savingsPercent(monthly: jpyMonthly, yearly: jpyYearly), 44)
+        XCTAssertEqual(ProPricing.monthlyEquivalent(for: jpyYearly), "¥250")
+
+        // Below 10% threshold, missing plan, or unexpected renewal months return nil.
+        let smallSavings = ProProduct(plan: .yearly, displayName: "Yearly", displayPrice: "$34.99", period: "year",
+                                      price: Decimal(string: "34.99"), priceFormat: usdFormat, renewalMonths: 12)
+        XCTAssertNil(ProPricing.savingsPercent(monthly: monthly, yearly: smallSavings))
+        XCTAssertNil(ProPricing.savingsPercent(monthly: nil, yearly: yearly))
+        let oddPeriod = ProProduct(plan: .yearly, displayName: "Yearly", displayPrice: "$19.99", period: "year",
+                                   price: Decimal(string: "19.99"), priceFormat: usdFormat, renewalMonths: 6)
+        XCTAssertNil(ProPricing.savingsPercent(monthly: monthly, yearly: oddPeriod))
+    }
+
     func testTermsStateTheFullRenewalPriceAndTrialOnlyWhenEligible() {
         XCTAssertEqual(Self.catalog[2].terms, "3,49 € per month. Renews automatically unless you cancel at least 24 hours before the period ends.")
         XCTAssertEqual(Self.catalog[1].terms, "Free for 1 week, then 21,99 € per year. Renews automatically unless you cancel at least 24 hours before the period ends.")

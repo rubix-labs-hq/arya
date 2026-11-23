@@ -69,7 +69,9 @@ check(project.count('NativeSupport.swift in Sources') == 2, 'NativeSupport.swift
 swift = core + support
 check('product.displayPrice' in support, 'UI shows the localized displayPrice')
 check(not re.search(r'\d+[.,]\d\d', swift), 'No hard-coded price in Swift sources')
-check('priceFormatStyle' not in swift and 'NumberFormatter' not in swift, 'Arya does not format prices itself')
+check('NumberFormatter' not in swift and '.currency(code:' not in swift and 'Locale(' not in swift, 'Arya does not construct currency formatters itself')
+check('priceFormatStyle' not in core and 'product.priceFormatStyle' in support, 'Only StoreKit product.priceFormatStyle is passed through')
+check('enum ProPricing' in core and 'ProPricing.savingsPercent' in support and 'PurchaseIntent.intents' in support, 'Dynamic savings math and promoted purchase intents are wired')
 check('Renews automatically unless you cancel at least 24 hours before the period ends.' in core, 'Auto-renew terms')
 check('Text(product.terms)' in support, 'Terms show next to the purchase button')
 check('introductoryOffer' in support and 'isEligibleForIntroOffer' in support, 'Trial shows only to eligible people')

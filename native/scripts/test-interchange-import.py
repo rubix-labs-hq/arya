@@ -362,6 +362,8 @@ console.log('Passed post-import production editBatch request through shared appl
     private var hapticPolicy = NativeHapticPolicy()
     @Published var supportPromptVisible = false
     private var supportPromptTask: Task<Void, Never>?
+    @Published var reviewRequestToken = 0
+    private var reviewPromptTask: Task<Void, Never>?
 '''
         # The Deliver panel registers export jobs for completion feedback through the production model methods.
         model_helpers += '\n'.join(block(model_implementation, marker) for marker in ['func registerExportFeedback(', 'func confirmExportFeedback(']) + '\n'
@@ -374,8 +376,14 @@ console.log('Passed post-import production editBatch request through shared appl
         ui_fixture = ui_fixture.replace('    var previewRequests = 0', '    let sessionID = \"import-fixture\"\n    var previewRequests = 0')
         ui_fixture = ui_fixture.replace('    var calls:', '    let folder = ProjectFolder(root: FileManager.default.temporaryDirectory)\n    func deliveryURL(id: String, root: String) async throws -> URL { throw APIError("No delivery interaction in the import fixture") }\n    var calls:')
         mobile_fixture = '''
-// The tip prompt's ledger is covered by SupportPromptTests; this check only type-checks its caller.
+// The tip and review prompt ledgers are covered by SupportPromptTests and ReviewPromptTests; this check only type-checks their callers.
 @MainActor enum NativeSupportPromptLedger { static func successfulExport() -> Bool { false } }
+@MainActor enum NativeReviewPromptLedger { static func successfulExport(supportPromptShown: Bool) -> Bool { false } }
+struct NativeSupportPromptCard: View {
+    @ObservedObject var model: NativeEditorModel
+    var compact: Bool
+    var body: some View { EmptyView() }
+}
 @MainActor final class NativeMobileExport: ObservableObject {
     static let shared = NativeMobileExport()
     var message = ""

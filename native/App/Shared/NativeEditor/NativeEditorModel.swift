@@ -781,6 +781,9 @@ final class NativeEditorModel: ObservableObject {
     /// The optional tip card. Set only by `confirmExportFeedback` after a successful export.
     @Published var supportPromptVisible = false
     private var supportPromptTask: Task<Void, Never>?
+    /// Incremented by `confirmExportFeedback` when App Store builds may request a system rating.
+    @Published var reviewRequestToken = 0
+    private var reviewPromptTask: Task<Void, Never>?
     @Published var busy = false
     @Published var missingMediaRestoreRequest: NativeMissingMediaRestoreRequest?
     @Published private(set) var restoringMediaSource: String?
@@ -797,6 +800,11 @@ final class NativeEditorModel: ObservableObject {
             guard mediaImportRequest == nil, let backend = session?.backend, let folder else { return }
             mediaImportRequest = NativeMediaImportRequest(backend: backend, folder: folder, panelID: mobilePanel?.rawValue)
         }
+    }
+    func beginMediaImport(preferredSource: NativeMediaPickerSource) {
+        guard mediaImportRequest == nil, !busy, projectReadOnlyReason == nil,
+              let backend = session?.backend, let folder else { return }
+        mediaImportRequest = NativeMediaImportRequest(backend: backend, folder: folder, panelID: mobilePanel?.rawValue, preferredSource: preferredSource)
     }
     @Published var mobilePanel: NativePanel?
     /// The Motion page's selected property. Lives here so it survives workflow page changes.
@@ -995,13 +1003,24 @@ final class NativeEditorModel: ObservableObject {
     func confirmExportFeedback(_ job: [String: Any]) {
         let kind = hapticPolicy.exportUpdate(job)
         emitHaptic(kind)
+        guard kind == .success else { return }
         // The tip card waits a moment so the export message is read first.
-        guard kind == .success, NativeSupportPromptLedger.successfulExport() else { return }
-        supportPromptTask?.cancel()
-        supportPromptTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1.2))
-            guard !Task.isCancelled else { return }
-            self?.supportPromptVisible = true
+        let showSupport = NativeSupportPromptLedger.successfulExport()
+        if showSupport {
+            supportPromptTask?.cancel()
+            supportPromptTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1.2))
+                guard !Task.isCancelled else { return }
+                self?.supportPromptVisible = true
+            }
+        }
+        if NativeReviewPromptLedger.successfulExport(supportPromptShown: showSupport) {
+            reviewPromptTask?.cancel()
+            reviewPromptTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+                self?.reviewRequestToken &+= 1
+            }
         }
     }
 
@@ -1081,6 +1100,7 @@ final class NativeEditorModel: ObservableObject {
         timelineClipboard = nil; clipboardEditing = false; clipboardTaskID = nil
         hapticPolicy.reset()
         supportPromptTask?.cancel(); supportPromptTask = nil; supportPromptVisible = false
+        reviewPromptTask?.cancel(); reviewPromptTask = nil
         time = 0; frame = nil; metalFrame = nil; clearScopes(); hdrScopes = false; renderError = nil; rendering = false
         displayedTime = nil; displayedPreviewID = nil; displayedVersion = nil; displayedRevision = nil; displayedComposition = nil; displayedFolder = nil; displayedGeneration = nil; scrubbing = false; paintedFrames = 0
         jobs = []; capabilities = [:]; status = ""; busy = false

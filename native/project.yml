@@ -12,8 +12,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.4.0"
-    CURRENT_PROJECT_VERSION: "14"
+    MARKETING_VERSION: "1.4.1"
+    CURRENT_PROJECT_VERSION: "17"
     # The build phase reads editor/ outside the project folder.
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     DEAD_CODE_STRIPPING: YES
@@ -105,6 +105,7 @@ targets:
         BGTaskSchedulerPermittedIdentifiers: ["$(PRODUCT_BUNDLE_IDENTIFIER).export", "$(PRODUCT_BUNDLE_IDENTIFIER).export.*"]
         UIBackgroundModes: [processing]
         NSUserActivityTypes: [app.reel.project]
+        NSPhotoLibraryAddUsageDescription: Arya saves exported videos you choose to your photo library.
         NSSpeechRecognitionUsageDescription: Arya uses Apple speech recognition to transcribe your clips so you can edit by text. It runs on this device when supported, otherwise Apple processes the audio.
         CFBundleURLTypes:
           - CFBundleURLName: app.reel.companion.offer
