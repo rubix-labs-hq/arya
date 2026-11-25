@@ -1507,13 +1507,31 @@ struct NativeTimeline: View {
                 : String(format: "%d:%02d", seconds / 60, seconds % 60)
         }
         return Canvas { context, size in
-            let step = model.zoom > 160 ? 0.5 : model.zoom > 40 ? 1.0 : 5.0
+            guard model.zoom.isFinite, model.zoom > 0 else { return }
+            let step: Double
+            if model.zoom > 160 {
+                step = 0.5
+            } else if model.zoom > 40 {
+                step = 1.0
+            } else {
+                let candidates: [Double] = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200]
+                let minSeconds = 64.0 / max(model.zoom, 0.0001)
+                step = candidates.first { $0 >= minSeconds } ?? (ceil(minSeconds / 3600) * 3600)
+            }
             for at in stride(from: 0.0, through: contentWidth / model.zoom, by: step) {
                 let x = at * model.zoom
-                let frames = Int((at * Double(rate)).rounded())
-                let whole = frames % rate == 0
+                let whole: Bool
+                let wholeSeconds: Int
+                if step >= 1 {
+                    whole = true
+                    wholeSeconds = Int(at.rounded())
+                } else {
+                    let frames = Int((at * Double(rate)).rounded())
+                    whole = frames % rate == 0
+                    wholeSeconds = frames / rate
+                }
                 if whole {
-                    context.draw(Text(rulerLabel(frames / rate)).font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary), at: CGPoint(x: x + 3, y: 9), anchor: .topLeading)
+                    context.draw(Text(rulerLabel(wholeSeconds)).font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary), at: CGPoint(x: x + 3, y: 9), anchor: .topLeading)
                 }
                 var path = Path(); path.move(to: CGPoint(x: x, y: size.height - (whole ? 7 : 4))); path.addLine(to: CGPoint(x: x, y: size.height))
                 context.stroke(path, with: .color(.secondary.opacity(0.4)))
