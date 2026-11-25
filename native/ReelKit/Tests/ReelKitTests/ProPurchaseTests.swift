@@ -123,10 +123,12 @@ final class ProPurchaseTests: XCTestCase {
     private final class SlowCatalogStore: ProStoreClient {
         var canMakePayments = true
         var catalogWaiters: [CheckedContinuation<[ProProduct], Error>] = []
+        var closed = false
         var requests = 0
         var maxAllowedRequests = 1
         var access: ProAccess = .free
         func products(for ids: [String]) async throws -> [ProProduct] {
+            guard !closed else { throw Unexpected() }
             requests += 1
             guard requests <= maxAllowedRequests else { throw Unexpected() }
             return try await withCheckedThrowingContinuation { catalogWaiters.append($0) }
@@ -151,6 +153,7 @@ final class ProPurchaseTests: XCTestCase {
         }
         var resumed = 0
         defer {
+            store.closed = true
             while resumed < store.catalogWaiters.count {
                 store.catalogWaiters[resumed].resume(throwing: Unexpected())
                 resumed += 1
