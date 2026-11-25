@@ -159,6 +159,7 @@ def typecheck_view(repo, temp, viewer, projection, model, controls, kit):
     source += WINDOW_CONTROLLER_FIXTURE
     source += r'''
 final class ReelRenderedFrame { let texture:MTLTexture; var width:Int {texture.width}; var height:Int {texture.height}; var drawGeometry:JSON = .array([]); init(texture:MTLTexture) {self.texture=texture} }
+enum NativeMediaPickerSource:String,CaseIterable {case chooser,photos,files}
 enum NativeDrawingMode:String,CaseIterable,Identifiable {case shapePath,trackingBox; var id:String {rawValue};var name:String {rawValue}}
 struct NativeDrawingOverlay:View {let model:NativeEditorModel;let mode:NativeDrawingMode;var body:some View {EmptyView()}}
 struct NativeMetalViewer:View {let texture:MTLTexture;var body:some View {EmptyView()}}
@@ -177,6 +178,7 @@ struct NativeMetalViewer:View {let texture:MTLTexture;var body:some View {EmptyV
  var busy=false,showFiles=false,status="",renderError:String?,folder:URL?,width=1920.0,height=1080.0,fps=30.0,duration=4.0
  var sourceAsset:NativeAsset?,sourceRange:NativeSourceRange?,sourceImage:CGImage?,sourceLoading=false,sourceError:String?,sourcePlaying=false,sourcePlayer=AVPlayer()
  var tracks:[NativeTrack] {project?.tracks(in:composition) ?? []};var selected:NativeClip? {tracks.flatMap(\.clips).first {$0.id==selectedID}}
+ func beginMediaImport(preferredSource:NativeMediaPickerSource) {}
  func select(id:String?,extending:Bool=false) {}
  func viewerGeometryIsCurrent(capture:NativeRenderPreviewCapture?=nil)->Bool {false}
  func viewerComparisonMatches(_ comparison:NativeViewerComparison)->Bool {false}
