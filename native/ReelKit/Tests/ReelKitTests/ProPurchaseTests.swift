@@ -143,21 +143,35 @@ final class ProPurchaseTests: XCTestCase {
         let store = SlowCatalogStore()
         store.maxAllowedRequests = 2
         let controller = ProPurchaseController(client: store)
+        var publishedReadyCounts: [Int] = []
+        controller.onChange = {
+            if case .ready(let products) = controller.catalog {
+                publishedReadyCounts.append(products.count)
+            }
+        }
         let first = Task { await controller.loadProducts() }
-        while store.catalogWaiters.isEmpty { await Task.yield() }
+        for _ in 0..<100 where store.catalogWaiters.isEmpty { await Task.yield() }
+        XCTAssertEqual(store.catalogWaiters.count, 1)
         var secondStarted = false
         var secondFinished = false
         let second = Task { secondStarted = true; await controller.loadProducts(); secondFinished = true }
-        while !secondStarted { await Task.yield() }
+        for _ in 0..<100 where !secondStarted { await Task.yield() }
         await Task.yield()
+        XCTAssertTrue(secondStarted)
         XCTAssertFalse(secondFinished, "Second caller must wait while first load is in flight")
         // Trigger two overlapping reloads while the first fetch is still pending; they must coalesce into one follow-up fetch.
-        let reloadA = Task { await controller.reloadProducts() }
-        let reloadB = Task { await controller.reloadProducts() }
+        var reloadAEntered = false
+        var reloadBEntered = false
+        let reloadA = Task { reloadAEntered = true; await controller.reloadProducts() }
+        let reloadB = Task { reloadBEntered = true; await controller.reloadProducts() }
+        for _ in 0..<100 where !(reloadAEntered && reloadBEntered) { await Task.yield() }
         await Task.yield()
-        // Stale first response must be ignored because a reload was requested.
+        XCTAssertTrue(reloadAEntered && reloadBEntered)
+        // Stale first response must never be published because reloads invalidated it.
         store.catalogWaiters[0].resume(returning: [Self.catalog[2]])
-        while store.catalogWaiters.count < 2 { await Task.yield() }
+        for _ in 0..<100 where store.catalogWaiters.count < 2 { await Task.yield() }
+        XCTAssertEqual(store.catalogWaiters.count, 2, "Coalesced reload must start one follow-up fetch")
+        XCTAssertEqual(publishedReadyCounts, [], "Stale first catalog must never be published")
         store.catalogWaiters[1].resume(returning: Self.catalog)
         await first.value
         await second.value
@@ -165,6 +179,7 @@ final class ProPurchaseTests: XCTestCase {
         await reloadB.value
         XCTAssertTrue(secondFinished)
         XCTAssertEqual(store.requests, 2, "Concurrent loads and overlapping reloads coalesce into at most one follow-up fetch")
+        XCTAssertEqual(publishedReadyCounts, [3], "Only the latest reload catalog is published")
         if case .ready(let products) = controller.catalog {
             XCTAssertEqual(products.count, 3)
         } else {

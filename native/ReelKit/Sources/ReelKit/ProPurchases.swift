@@ -222,6 +222,7 @@ public final class ProPurchaseController {
     private var activeLoad: Task<Void, Never>?
     private var loadGeneration = 0
     private var reloadRequested = false
+    private var operationInFlight = false
     private var pendingApprovalPlan: ProPlan?
     private var refreshGeneration = 0
     private var appliedGeneration = 0
@@ -230,6 +231,7 @@ public final class ProPurchaseController {
     public init(client: ProStoreClient) { self.client = client }
 
     public var isBusy: Bool {
+        if operationInFlight { return true }
         switch status {
         case .purchasing, .restoring: return true
         default: return false
@@ -283,10 +285,12 @@ public final class ProPurchaseController {
                     self.catalog = .unavailable(ProMessage.loadFailed)
                 }
             } while self.reloadRequested
+            // Clear activeLoad in the same MainActor turn as the final reloadRequested check so
+            // no reloadProducts() call can await a finished task without triggering a fetch.
+            self.activeLoad = nil
         }
         activeLoad = task
         await task.value
-        if activeLoad == task { activeLoad = nil }
     }
 
     /// Reads entitlements again. Call at launch and whenever the app returns to the foreground.
@@ -322,6 +326,8 @@ public final class ProPurchaseController {
                 status = .failed(ProMessage.productUnavailable); return false
             }
         }
+        operationInFlight = true
+        defer { operationInFlight = false }
         status = .purchasing(plan)
         do {
             switch try await perform(plan.productID) {
@@ -350,6 +356,8 @@ public final class ProPurchaseController {
     /// Restore Purchases. Apple requires this button for anything that can be restored.
     public func restore() async {
         guard !isBusy else { return }
+        operationInFlight = true
+        defer { operationInFlight = false }
         status = .restoring
         do {
             try await client.restore()
@@ -405,7 +413,7 @@ public final class ProPurchaseController {
                   !transaction.revoked, access.isPro,
                   ProPlan(productID: transaction.productID) == pendingPlan {
             pendingApprovalPlan = nil
-            status = .unlocked
+            if !operationInFlight { status = .unlocked }
         }
     }
 

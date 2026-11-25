@@ -261,7 +261,7 @@ final class NativeProStore: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 await self.controller.refreshAccess()
-                if case .ready = self.catalog { await self.reload() }
+                if self.catalog != .notLoaded { await self.reload() }
             }
         }
         // A subscription can lapse while Arya stays open, and StoreKit sends no transaction
