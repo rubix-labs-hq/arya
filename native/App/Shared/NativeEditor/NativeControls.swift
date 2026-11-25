@@ -429,7 +429,7 @@ struct NativeTextRow: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            #if os(iOS)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             Text(label).font(.subheadline).foregroundStyle(NativeEditorStyle.muted)
             TextField(label, text: $draft, axis: .vertical).textFieldStyle(.plain).lineLimit(1...4)
                 .font(.body).padding(.horizontal, 10).padding(.vertical, 8)
@@ -471,7 +471,7 @@ struct NativeTimecodeField: View {
     let commit: (Double) -> Void
     @State private var draft = ""
     @State private var editing = false
-    #if os(iOS)
+    #if os(iOS) && !targetEnvironment(macCatalyst)
     @ScaledMetric(relativeTo: .body) private var entryWidth = 112.0
     @ScaledMetric(relativeTo: .caption) private var playheadEntryWidth = 84.0
     #endif
@@ -515,7 +515,7 @@ struct NativeTimecodeField: View {
         HStack(spacing: 2) {
             if stepper { stepButton(-1) }
             entry
-                #if os(iOS)
+                #if os(iOS) && !targetEnvironment(macCatalyst)
                 // Scales with Dynamic Type; very large sizes shrink the digits rather than clip them.
                 .font(playhead ? .caption.monospacedDigit().weight(.semibold) : .body.monospacedDigit())
                 .lineLimit(1).minimumScaleFactor(0.5)
@@ -545,12 +545,17 @@ struct NativeTimecodeField: View {
                 .focused($focused)
                 .onAppear { focused = true }
                 .onSubmit { finish() }
-                #if os(macOS)
+                #if os(macOS) || targetEnvironment(macCatalyst)
                 .onKeyPress(.upArrow) { step(1); return .handled }
                 .onKeyPress(.downArrow) { step(-1); return .handled }
+                #endif
+                #if os(macOS)
                 .onExitCommand { draft = ""; editing = false }
+                #elseif targetEnvironment(macCatalyst)
+                .onKeyPress(.escape) { draft = ""; editing = false; return .handled }
                 #else
                 .keyboardType(.numbersAndPunctuation)
+                .frame(minHeight: 44)
                 #endif
                 .accessibilityLabel(label)
         } else {
@@ -559,7 +564,7 @@ struct NativeTimecodeField: View {
                     .foregroundStyle(NativeEditorStyle.text)
             }
             .buttonStyle(.plain)
-            #if os(iOS)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             .frame(minHeight: 44)
             #endif
             .accessibilityLabel(label).accessibilityValue(formatted)
@@ -591,7 +596,7 @@ struct NativeTimecodeField: View {
         Button { step(frames) } label: {
             Image(systemName: frames < 0 ? "minus" : "plus").font(.system(size: 10, weight: .semibold))
                 .frame(width: 22, height: 22)
-                #if os(iOS)
+                #if os(iOS) && !targetEnvironment(macCatalyst)
                 .frame(minWidth: 44, minHeight: 44)
                 #endif
                 .contentShape(Rectangle())
@@ -605,7 +610,11 @@ struct NativeTimecodeField: View {
 struct NativeEmptySelection: View {
     let text: String
     var body: some View {
+        #if os(iOS) && !targetEnvironment(macCatalyst)
+        ContentUnavailableView("Select a clip", systemImage: "hand.tap", description: Text(text))
+        #else
         ContentUnavailableView("Select a clip", systemImage: "cursorarrow.click", description: Text(text))
+        #endif
     }
 }
 

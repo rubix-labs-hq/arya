@@ -3,6 +3,9 @@ import SwiftUI
 import CryptoKit
 import Darwin
 import UniformTypeIdentifiers
+#if os(iOS) && !targetEnvironment(macCatalyst)
+import Photos
+#endif
 
 enum NativeExportDimensions {
     static func size(width: Double, canvasWidth: Double, canvasHeight: Double) -> (width: Int, height: Int)? {
@@ -193,6 +196,12 @@ struct NativeDeliverPanel: View {
     @State private var interchange = "otio"
     @State private var edlTrack = ""
     @State private var lastFile: URL?
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    @State private var savingToPhotos = false
+    @State private var photosSaveOutput = ""
+    @State private var photosSaveMessage: String?
+    @State private var photosSaveIsError = false
+    #endif
     @State private var outputOverrides = false
     @State private var outputWidth = 1920.0
     @State private var outputFPS = 30.0
@@ -377,6 +386,24 @@ struct NativeDeliverPanel: View {
                         }
                         .buttonStyle(NativePrimaryButtonStyle(fill: true))
                         .accessibilityIdentifier("deliver.shareCompleted")
+                        #if os(iOS) && !targetEnvironment(macCatalyst)
+                        if ["mp4", "mov"].contains(completed.url.pathExtension.lowercased()) {
+                            Button { saveToPhotos(completed.url, output: completed.output) } label: {
+                                Label(savingToPhotos ? "Saving to Photos…" : "Save to Photos", systemImage: "photo.on.rectangle.angled")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(NativeSecondaryButtonStyle(fill: true))
+                            .disabled(savingToPhotos)
+                            .accessibilityIdentifier("deliver.saveToPhotos")
+                            if photosSaveOutput == completed.output, let photosSaveMessage {
+                                Text(photosSaveMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(photosSaveIsError ? NativeEditorStyle.warning : NativeEditorStyle.success)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("deliver.photosStatus")
+                            }
+                        }
+                        #endif
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -527,6 +554,35 @@ struct NativeDeliverPanel: View {
             model.status = "Export started."
         }
     }
+    #if os(iOS) && !targetEnvironment(macCatalyst)
+    private func saveToPhotos(_ url: URL, output: String) {
+        guard !savingToPhotos else { return }
+        savingToPhotos = true
+        photosSaveOutput = output
+        photosSaveMessage = nil
+        photosSaveIsError = false
+        Task { @MainActor in
+            defer { savingToPhotos = false }
+            let authorization = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard authorization == .authorized || authorization == .limited else {
+                photosSaveIsError = true
+                photosSaveMessage = "Allow Photos access in Settings to save videos to your library."
+                return
+            }
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+                }
+                photosSaveIsError = false
+                photosSaveMessage = "Saved to Photos."
+            } catch {
+                photosSaveIsError = true
+                photosSaveMessage = "Couldn't save to Photos. Try Share video instead."
+            }
+        }
+    }
+    #endif
+
     private func still() {
         model.perform {
             // Free App Store users save at most a 1080p still; Pro and the direct Mac app keep the canvas width.

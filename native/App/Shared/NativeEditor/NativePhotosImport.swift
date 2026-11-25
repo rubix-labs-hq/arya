@@ -850,22 +850,41 @@ struct NativeMediaImportSheet: View {
         }
     }
     @ViewBuilder private var importNavigationActions: some View {
+        let disabled = !current || model.busy || model.missingMediaRestoreRequest != nil || model.restoringMediaSource != nil
+        if !verifiedAssets.isEmpty {
+            Button { addImportedToTimeline() } label: {
+                Label(verifiedAssets.count == 1 ? "Add to timeline" : "Add \(verifiedAssets.count) clips to timeline", systemImage: "plus.rectangle.on.rectangle")
+            }
+            .frame(minHeight: 44).buttonStyle(NativePrimaryButtonStyle())
+            .disabled(disabled).accessibilityIdentifier("editor.import.addToTimeline")
+        }
         Button { finishImport(.media) } label: { Label("View in Media", systemImage: "photo.on.rectangle") }
-            .frame(minHeight: 44).buttonStyle(NativeToolbarButtonStyle(selected: true))
-            .disabled(!current || model.busy || model.missingMediaRestoreRequest != nil || model.restoringMediaSource != nil).accessibilityIdentifier("editor.import.viewMedia")
+            .frame(minHeight: 44).buttonStyle(NativeToolbarButtonStyle(selected: verifiedAssets.isEmpty))
+            .disabled(disabled).accessibilityIdentifier("editor.import.viewMedia")
         if let asset = verifiedAssets.first {
             if verifiedAssets.count == 1 {
                 Button { finishImport(.source(asset.id)) } label: { Label("Open in Source", systemImage: "play.rectangle") }
                     .frame(minHeight: 44).buttonStyle(NativeToolbarButtonStyle())
-                    .disabled(!current || model.busy || model.missingMediaRestoreRequest != nil || model.restoringMediaSource != nil).accessibilityIdentifier("editor.import.openSource")
+                    .disabled(disabled).accessibilityIdentifier("editor.import.openSource")
             } else {
                 Menu {
                     ForEach(verifiedAssets) { source in Button(source.name) { finishImport(.source(source.id)) } }
                 } label: { Label("Open in Source", systemImage: "play.rectangle").frame(minHeight: 44) }
-                    .buttonStyle(NativeToolbarButtonStyle()).disabled(!current || model.busy || model.missingMediaRestoreRequest != nil || model.restoringMediaSource != nil)
+                    .buttonStyle(NativeToolbarButtonStyle()).disabled(disabled)
                     .accessibilityIdentifier("editor.import.openSource")
             }
         }
+    }
+    private func addImportedToTimeline() {
+        guard current, !importing, !model.busy, !verifiedAssets.isEmpty,
+              NativeMediaImportNavigation.restorationAllowsNavigation(requestPending: model.missingMediaRestoreRequest != nil,
+                  activeSource: model.restoringMediaSource != nil),
+              navigationContext.panelID == request.panelID,
+              model.renderPreviewBackendID == ObjectIdentifier(request.backend) else { return }
+        model.showingSource = false
+        model.place(verifiedAssets.map { .media($0.id) }, hover: nil, at: nil, expectedVersion: model.version)
+        model.mediaImportRequest = nil
+        dismiss()
     }
     private func finishImport(_ destination: NativeMediaImportNavigation.Destination) {
         guard current, !importing, !model.busy,

@@ -40,8 +40,16 @@ struct ContentView: View {
                         // Files dragged from Finder or Files import like Import Media.
                         .dropDestination(for: URL.self) { urls, _ in
                             let files = urls.filter(\.isFileURL)
-                            guard !files.isEmpty, session.projectReadOnlyReason == nil else { return false }
-                            session.importFiles(files)
+                            guard !files.isEmpty else { return false }
+                            if let reason = session.projectReadOnlyReason {
+                                session.toast(reason)
+                                return false
+                            }
+                            if session.nativeEditor.tracks.allSatisfy({ $0.clips.isEmpty }) {
+                                session.nativeEditor.importAndPlace(files, hover: nil, at: nil)
+                            } else {
+                                session.importFiles(files)
+                            }
                             return true
                         }
                 }
@@ -303,10 +311,20 @@ struct StartView: View {
                     Text("Free 1080p export. No watermark, no ads, no account.")
                         .font(.subheadline).foregroundStyle(NativeEditorStyle.muted).multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
-                        quickStartPreset(format: .portrait, title: "9:16", detail: "Reels · Shorts", symbol: "rectangle.portrait")
-                        quickStartPreset(format: .landscape, title: "16:9", detail: "YouTube · Film", symbol: "rectangle")
-                        quickStartPreset(format: .square, title: "1:1", detail: "Square", symbol: "square")
+                    Group {
+                        if dynamicTypeSize.isAccessibilitySize {
+                            VStack(spacing: 10) {
+                                quickStartPreset(format: .portrait, title: "9:16", detail: "Reels · Shorts", symbol: "rectangle.portrait")
+                                quickStartPreset(format: .landscape, title: "16:9", detail: "YouTube · Film", symbol: "rectangle")
+                                quickStartPreset(format: .square, title: "1:1", detail: "Square", symbol: "square")
+                            }
+                        } else {
+                            HStack(spacing: 10) {
+                                quickStartPreset(format: .portrait, title: "9:16", detail: "Reels · Shorts", symbol: "rectangle.portrait")
+                                quickStartPreset(format: .landscape, title: "16:9", detail: "YouTube · Film", symbol: "rectangle")
+                                quickStartPreset(format: .square, title: "1:1", detail: "Square", symbol: "square")
+                            }
+                        }
                     }
                     .frame(maxWidth: 560)
                     .accessibilityElement(children: .contain)
@@ -360,7 +378,7 @@ struct StartView: View {
                         }
                         if let openSupport {
                             Button(action: openSupport) {
-                                Label("Arya Pro", systemImage: "sparkles")
+                                Label("Arya Pro", systemImage: "film.stack")
                                     .frame(minHeight: 44)
                                     .contentShape(Rectangle())
                             }
@@ -375,35 +393,48 @@ struct StartView: View {
                             VStack(spacing: 0) {
                                 ForEach(visibleRecents) { recent in
                                     let location = recentLocation(recent)
-                                    Button { session.open(recent: recent) } label: {
-                                        HStack(spacing: 12) {
-                                            Image(systemName: "folder")
-                                                .foregroundStyle(.secondary)
-                                                .frame(width: 24)
-                                                .accessibilityHidden(true)
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                Text(recent.name).font(.body)
-                                                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                                                    .fixedSize(horizontal: false, vertical: true)
-                                                Text(location).font(.footnote).foregroundStyle(.secondary)
-                                                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                                                    .truncationMode(.middle)
-                                                    .fixedSize(horizontal: false, vertical: true)
+                                    HStack(spacing: 4) {
+                                        Button { session.open(recent: recent) } label: {
+                                            HStack(spacing: 12) {
+                                                Image(systemName: "folder")
+                                                    .foregroundStyle(.secondary)
+                                                    .frame(width: 24)
+                                                    .accessibilityHidden(true)
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text(recent.name).font(.body)
+                                                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                                                        .fixedSize(horizontal: false, vertical: true)
+                                                    Text(location).font(.footnote).foregroundStyle(.secondary)
+                                                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                                                        .truncationMode(.middle)
+                                                        .fixedSize(horizontal: false, vertical: true)
+                                                }
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                Image(systemName: "chevron.forward")
+                                                    .font(.caption).foregroundStyle(.tertiary)
+                                                    .accessibilityHidden(true)
                                             }
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            Image(systemName: "chevron.forward")
-                                                .font(.caption).foregroundStyle(.tertiary)
-                                                .accessibilityHidden(true)
+                                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                            .padding(.vertical, 8)
+                                            .contentShape(Rectangle())
                                         }
-                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                                        .padding(.vertical, 8)
-                                        .contentShape(Rectangle())
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Open \(recent.name). Last location: \(location)")
+                                        Menu {
+                                            Button("Open") { session.open(recent: recent) }
+                                            Button("Remove from Recents", role: .destructive) { session.forgetRecent(recent) }
+                                        } label: {
+                                            Image(systemName: "ellipsis")
+                                                .foregroundStyle(.secondary)
+                                                .frame(minWidth: 44, minHeight: 44)
+                                                .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("More actions for \(recent.name)")
                                     }
-                                    .buttonStyle(.plain)
                                     .contextMenu {
                                         Button("Remove from Recents", role: .destructive) { session.forgetRecent(recent) }
                                     }
-                                    .accessibilityLabel("Open \(recent.name). Last location: \(location)")
                                     if recent.id != visibleRecents.last?.id { Divider() }
                                 }
                             }

@@ -219,6 +219,8 @@ final class NativeProStore: ObservableObject {
     @Published private(set) var hasActiveSubscription = false
     /// True only when StoreKit verified a production App Store install (never TestFlight/sandbox).
     @Published private(set) var isProductionAppStore = false
+    /// True once the first StoreKit entitlement read has completed.
+    @Published private(set) var entitlementsLoaded = false
     /// Product chosen from an App Store Promoted In-App Purchase intent.
     @Published private(set) var pendingIntent: PendingProPurchaseIntent?
     private let client = StoreKitProClient()
@@ -256,7 +258,7 @@ final class NativeProStore: ObservableObject {
         ProExportGate.shared.enforce(true)
         ProExportGate.shared.setUnlocked(UserDefaults.standard.bool(forKey: Self.activeKey))
         controller.startListening()
-        Task { await controller.refreshAccess() }
+        Task { await refreshAccess() }
         foreground = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
@@ -309,7 +311,10 @@ final class NativeProStore: ObservableObject {
     }
 
     func clearStatus() { controller.clearStatus() }
-    func refreshAccess() async { await controller.refreshAccess() }
+    func refreshAccess() async {
+        await controller.refreshAccess()
+        entitlementsLoaded = true
+    }
     func claimPendingIntent(id: UUID) -> PendingProPurchaseIntent? {
         guard let intent = pendingIntent, intent.id == id else { return nil }
         pendingIntent = nil
@@ -366,7 +371,13 @@ struct NativeProView: View {
                     .foregroundStyle(NativeEditorStyle.accentInk)
                     .accessibilityIdentifier("pro.exportNow")
                 }
-                if store.access != .lifetime { plans }
+                if store.access != .lifetime {
+                    if store.entitlementsLoaded {
+                        plans
+                    } else {
+                        ProgressView("Checking purchases…").frame(maxWidth: .infinity)
+                    }
+                }
                 if let message = store.status.message {
                     Text(message)
                         .font(.callout)
@@ -384,7 +395,11 @@ struct NativeProView: View {
         .tint(NativeEditorStyle.accent)
         .navigationTitle("Arya Pro")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.reload(); preferAvailablePlan() }
+        .task {
+            if !store.entitlementsLoaded { await store.refreshAccess() }
+            await store.reload()
+            preferAvailablePlan()
+        }
         .task(id: pendingIntentTrigger) { await handlePendingIntent() }
         .onChange(of: store.catalog) { _, _ in preferAvailablePlan() }
         .onChange(of: store.access) { _, _ in
@@ -543,7 +558,13 @@ struct NativeProView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("pro.lifetimeUpgradeNote")
                     }
-                    Button { Task { await store.buy(product.plan, with: purchase) } } label: {
+                    Button {
+                        Task {
+                            await store.refreshAccess()
+                            guard shouldOffer(product.plan) else { return }
+                            await store.buy(product.plan, with: purchase)
+                        }
+                    } label: {
                         Group {
                             if store.status == .purchasing(product.plan) { ProgressView().tint(NativeEditorStyle.accentInk) }
                             else { Text(Self.ctaTitle(for: product)).font(.headline) }

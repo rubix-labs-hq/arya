@@ -122,20 +122,18 @@ struct NativeSupportPromptCard: View {
 
     @ViewBuilder private var buttons: some View {
         Button { choose(.support) } label: {
-            Text(Self.action).frame(minHeight: NativeEditorStyle.minimumControlHeight - 12)
+            Text(Self.action)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(NativeEditorStyle.accent)
-        .foregroundStyle(NativeEditorStyle.accentInk)
+        .buttonStyle(NativePrimaryButtonStyle(height: NativeEditorStyle.touchControls ? NativeEditorStyle.minimumControlHeight : NativeEditorStyle.compactControlHeight))
         .accessibilityHint(Self.hint)
         .accessibilityIdentifier("supportPrompt.tip")
         Button { choose(.notNow) } label: {
-            Text("Not now").frame(minHeight: NativeEditorStyle.compactControlHeight - 12)
+            Text("Not now")
         }
-            .buttonStyle(.bordered)
-            .accessibilityIdentifier("supportPrompt.later")
+        .buttonStyle(NativeSecondaryButtonStyle(height: NativeEditorStyle.touchControls ? NativeEditorStyle.minimumControlHeight : NativeEditorStyle.compactControlHeight))
+        .accessibilityIdentifier("supportPrompt.later")
         Button { choose(.never) } label: {
-            Text("Don't ask again").frame(minHeight: NativeEditorStyle.compactControlHeight)
+            Text("Don't ask again").frame(minHeight: NativeEditorStyle.touchControls ? NativeEditorStyle.minimumControlHeight : NativeEditorStyle.compactControlHeight)
         }
             .buttonStyle(.borderless)
             .font(.footnote)
@@ -144,7 +142,7 @@ struct NativeSupportPromptCard: View {
     }
 
     #if os(iOS)
-    private static let icon = "sparkles"
+    private static let icon = "film.stack"
     private static let label = "Arya Pro"
     private static let message = "Editing and 1080p export stay free. Arya Pro adds 4K and higher, Apple ProRes and HDR export, and funds an independent editor."
     private static let action = "See Arya Pro"

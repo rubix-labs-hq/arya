@@ -100,7 +100,7 @@ struct NativeAssistantEntry: View {
                 }
             }
             .padding(.horizontal, phone ? 12 : 10)
-            .frame(minHeight: phone ? 44 : 30)
+            .frame(minHeight: (phone || NativeEditorStyle.touchControls) ? 44 : 30)
             .background(Capsule().fill(open ? NativeEditorStyle.selectionFill : NativeEditorStyle.background))
             .overlay { Capsule().stroke(open ? Color.clear : NativeEditorStyle.line) }
             .foregroundStyle(open ? NativeEditorStyle.accent : NativeEditorStyle.text)
@@ -514,11 +514,18 @@ struct NativeAssistantPanel: View {
 
     /// The next step after a failed request. It puts the request back in the draft to send again.
     private func retryButton(_ request: [String: Any]) -> some View {
-        Button { editRequest(request) } label: { Label("Try again", systemImage: "arrow.clockwise") }
-            .buttonStyle(NativeSecondaryButtonStyle(height: Self.touch ? 44 : 30))
-            .disabled(!model.assistantDraft.isEmpty)
-            .help("Put the failed request back in the draft to send again. Clear the current draft first.")
-            .accessibilityHint("Puts the failed request back in the draft.")
+        VStack(alignment: .leading, spacing: 4) {
+            Button { editRequest(request) } label: { Label("Try again", systemImage: "arrow.clockwise") }
+                .buttonStyle(NativeSecondaryButtonStyle(height: Self.touch ? 44 : 30))
+                .disabled(!model.assistantDraft.isEmpty)
+                .help("Put the failed request back in the draft to send again. Clear the current draft first.")
+                .accessibilityHint("Puts the failed request back in the draft.")
+            if !model.assistantDraft.isEmpty {
+                Text("Clear the draft to put the failed request back.")
+                    .font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private var emptyState: some View {

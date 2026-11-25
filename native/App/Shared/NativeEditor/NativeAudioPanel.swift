@@ -100,9 +100,13 @@ private extension NativeAudioRequestCapture {
         return result
     }
     func cancel(_ model: NativeEditorModel, clear: Bool = false) {
+        let wasRunning = running
         if running, let capture { cancelJob(model, capture: capture, token: token, id: jobID) }
         token = UUID(); task?.cancel(); task = nil; jobID = nil; running = false
-        if clear { result = [:]; warnings = []; capture = nil }
+        if clear {
+            result = [:]; warnings = []; capture = nil
+            if wasRunning { model.status = "Audio processing stopped because the selection or panel changed." }
+        }
         else { warnings = ["Audio processing canceled."] }
     }
     func clearStaleResult(_ model: NativeEditorModel) {
@@ -198,7 +202,12 @@ struct NativeAudioPanel: View {
                     } else {
                         Text("Select a clip to adjust its fades, EQ and loudness.").font(.system(size: 12)).foregroundStyle(NativeEditorStyle.muted)
                     }
-                    if work.running { HStack { ProgressView("Processing audio"); Spacer(); Button("Cancel") { work.cancel(model) } } }
+                    if work.running {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack { ProgressView("Processing audio"); Spacer(); Button("Cancel") { work.cancel(model) } }
+                            Text("Keep Audio open until this finishes.").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                        }
+                    }
                     let analysis = work.visibleResult(model)
                     if !analysis.isEmpty {
                         NativeAudioResultCard(fields: analysis)
@@ -227,10 +236,13 @@ struct NativeAudioPanel: View {
         if let clip = model.selected { clipControls(clip, width: width).aryaContextAIMenu(model, .panel(.audio, clip: clip)) }
         else { Text("Select a clip to adjust its fades, EQ and loudness.").font(.subheadline).foregroundStyle(NativeEditorStyle.muted) }
         if work.running {
-            HStack {
-                ProgressView("Processing audio")
-                Spacer(minLength: 0)
-                Button("Cancel") { work.cancel(model) }.buttonStyle(NativeToolbarButtonStyle())
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    ProgressView("Processing audio")
+                    Spacer(minLength: 0)
+                    Button("Cancel") { work.cancel(model) }.buttonStyle(NativeToolbarButtonStyle())
+                }
+                Text("Keep Audio open until this finishes.").font(.caption).foregroundStyle(NativeEditorStyle.muted)
             }
         }
         let analysis = work.visibleResult(model)
@@ -428,6 +440,12 @@ struct NativeAudioPanel: View {
                 clipNumber("Pan", clip, property: "pan", value: clip.fields.number("pan"), range: -1...1)
                 clipNumber("Fade in, seconds", clip, property: "fadeIn", value: clip.fields.number("fadeIn"), range: 0...clip.duration)
                 clipNumber("Fade out, seconds", clip, property: "fadeOut", value: clip.fields.number("fadeOut"), range: 0...clip.duration)
+            }
+            HStack(spacing: 8) {
+                Button("Reset level & pan") { model.update(clip, ["volume": 0, "pan": 0]) }
+                    .buttonStyle(NativeToolbarButtonStyle())
+                Button("Flat EQ") { model.update(clip, ["eq": ["low": 0, "mid": 0, "high": 0]]) }
+                    .buttonStyle(NativeToolbarButtonStyle())
             }
             #if os(iOS)
             if clip.kind == "audio", model.hasCapability("processing", "audioClean") {

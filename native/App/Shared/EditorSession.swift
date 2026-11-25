@@ -609,8 +609,7 @@ final class EditorSession: ObservableObject {
 
     func open(recent: ProjectBookmarks.Recent) {
         guard let url = ProjectBookmarks.resolve(recent) else {
-            error = "\(recent.name) is no longer where it was."
-            recents = ProjectBookmarks.forget(recent)
+            error = "\(recent.name) is currently unavailable. Reconnect its drive or remove it from Recents."
             return
         }
         open(url)

@@ -388,27 +388,40 @@ struct NativeEditorView: View {
                         .hidden().accessibilityHidden(true)
                     }
                     if !status.isEmpty {
+                    let isReadOnly = session.projectReadOnlyReason != nil
+                    VStack(alignment: .leading, spacing: 6) {
                     DisclosureGroup {
                         Text(status).font(compact ? .caption : .system(size: 11)).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: "info.circle")
+                            Image(systemName: isReadOnly ? "exclamationmark.triangle.fill" : "info.circle")
+                                .foregroundStyle(isReadOnly ? NativeEditorStyle.warning : NativeEditorStyle.muted)
                             Text(status).lineLimit(1).truncationMode(.tail)
+                                .foregroundStyle(isReadOnly ? NativeEditorStyle.text : NativeEditorStyle.muted)
                             Spacer(minLength: 0)
-                            if session.projectReadOnlyReason == nil {
+                            if !isReadOnly {
                                 Button { model.status = "" } label: {
                                     Image(systemName: "xmark").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
-                                        .padding(4).contentShape(Rectangle())
+                                        .frame(minWidth: NativeEditorStyle.touchControls ? 44 : 28,
+                                               minHeight: NativeEditorStyle.touchControls ? 44 : 24)
+                                        .contentShape(Rectangle())
                                 }.buttonStyle(.plain).accessibilityLabel("Dismiss status")
                             }
                         }
                     }
                     .font(compact ? .caption : .system(size: 11)).foregroundStyle(NativeEditorStyle.muted)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .accessibilityElement(children: .combine)
+                    .padding(.horizontal, 12).padding(.vertical, 4)
+                    .accessibilityElement(children: .contain)
                     .accessibilityLabel("Editor status. \(status)")
+                    if isReadOnly {
+                        Button("Retry project access") { session.retryProjectAccess() }
+                            .buttonStyle(NativeSecondaryButtonStyle(height: NativeEditorStyle.compactControlHeight))
+                            .padding(.horizontal, 12).padding(.bottom, 6)
+                            .accessibilityIdentifier("editor.status.retryAccess")
+                    }
+                    }
                     .transition(.opacity)
                     }
                     }
@@ -1346,6 +1359,8 @@ struct NativeEditorView: View {
                 if compact {
                     Button { model.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                         .help("Undo latest edit").accessibilityLabel("Undo")
+                    Button { model.undo(redo: true) } label: { Image(systemName: "arrow.uturn.forward") }
+                        .help("Redo latest edit").accessibilityLabel("Redo")
                     // On a phone the assistant is one tap away, not inside Tools. Its sheet stops
                     // at a medium detent so the viewer stays visible.
                     NativeAssistantEntry(assistant: session.assistant, open: model.mobilePanel == .assistant, phone: true) {
@@ -1426,6 +1441,7 @@ struct NativeEditorView: View {
                 if session.projectReadOnlyReason != nil {
                     Button { session.retryProjectAccess() } label: { Label("Retry project access", systemImage: "arrow.clockwise") }
                 }
+                Button { session.close() } label: { Label("Close project", systemImage: "xmark.circle") }
                 Divider()
                 Menu { allCommands() } label: { Label("More", systemImage: "ellipsis.circle") }
             } else {
@@ -1454,7 +1470,16 @@ struct NativeEditorView: View {
         let selected = model.mobilePanel.flatMap { NativePanel.workflow.contains($0) ? $0 : nil } ?? compactEditingPanel
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: 44), spacing: 2), count: columns), spacing: 2) {
             ForEach(NativePanel.workflow) { panel in
-                Button { select(panel, compact: true) } label: {
+                Button {
+                    if NativeCompactWorkspaceRouting.inlineWorkspaces.contains(panel),
+                       model.mobilePanel == nil,
+                       model.panel == panel,
+                       compactToolsExpanded {
+                        setCompactToolsExpanded(false)
+                    } else {
+                        select(panel, compact: true)
+                    }
+                } label: {
                     VStack(spacing: 2) {
                         Image(systemName: panel.icon).font(.body).accessibilityHidden(true)
                         Text(panel.name).font(.caption2.weight(.semibold)).lineLimit(1)
@@ -1827,7 +1852,7 @@ private struct NativeEditorPreferences: View {
             #if os(iOS)
             Button { supportVisible = true } label: {
                 HStack {
-                    Label("Arya Pro", systemImage: "sparkles")
+                    Label("Arya Pro", systemImage: "film.stack")
                     Spacer()
                     Text(proStore.access.isPro ? proStore.access.summary : "4K · ProRes · HDR").font(.footnote).foregroundStyle(NativeEditorStyle.muted)
                     Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(NativeEditorStyle.muted)
@@ -1896,6 +1921,31 @@ struct NativePanelView: View {
     var inSheet = false
 
     var body: some View {
+        panelContent
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if inSheet, !model.status.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: session.projectReadOnlyReason != nil ? "exclamationmark.triangle.fill" : "info.circle")
+                            .foregroundStyle(session.projectReadOnlyReason != nil ? NativeEditorStyle.warning : NativeEditorStyle.muted)
+                        Text(model.status).font(.caption).foregroundStyle(NativeEditorStyle.text)
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        if session.projectReadOnlyReason == nil {
+                            Button { model.status = "" } label: {
+                                Image(systemName: "xmark").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                                    .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityLabel("Dismiss status")
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(NativeEditorStyle.panelRaised)
+                    .overlay(alignment: .top) { Rectangle().fill(NativeEditorStyle.line).frame(height: 1) }
+                    .accessibilityElement(children: .contain)
+                }
+            }
+    }
+
+    @ViewBuilder private var panelContent: some View {
         switch panel {
         case .media: NativeMediaPanel(model: model, session: session)
         case .edit: NativeInspector(model: model)
