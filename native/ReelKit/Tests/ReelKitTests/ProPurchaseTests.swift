@@ -120,6 +120,57 @@ final class ProPurchaseTests: XCTestCase {
         XCTAssertNil(ProPricing.savingsPercent(monthly: monthly, yearly: oddPeriod))
     }
 
+    private final class SlowCatalogStore: ProStoreClient {
+        var canMakePayments = true
+        var catalogWaiters: [CheckedContinuation<[ProProduct], Error>] = []
+        var requests = 0
+        var access: ProAccess = .free
+        func products(for ids: [String]) async throws -> [ProProduct] {
+            requests += 1
+            return try await withCheckedThrowingContinuation { catalogWaiters.append($0) }
+        }
+        func currentAccess() async -> ProAccess { access }
+        func transactionUpdates() -> AsyncStream<ProTransactionUpdate> { AsyncStream { _ in } }
+        func restore() async throws {}
+    }
+
+    /// Cold-launch promoted purchase intents can call `loadProducts()` concurrently while the
+    /// paywall's own load is already in flight. Both callers must wait until the load settles.
+    func testConcurrentLoadWaitsForInFlightCatalogAndDirectPurchaseBypassesCatalog() async {
+        let store = SlowCatalogStore()
+        let controller = ProPurchaseController(client: store)
+        let first = Task { await controller.loadProducts() }
+        while store.catalogWaiters.isEmpty { await Task.yield() }
+        var secondFinished = false
+        let second = Task { await controller.loadProducts(); secondFinished = true }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(secondFinished, "Second caller must wait while first load is in flight")
+        store.catalogWaiters[0].resume(returning: Self.catalog)
+        await first.value
+        await second.value
+        XCTAssertTrue(secondFinished)
+        XCTAssertEqual(store.requests, 1)
+        if case .ready(let products) = controller.catalog {
+            XCTAssertEqual(products.count, 3)
+        } else {
+            XCTFail("Catalog should be ready after concurrent load settles")
+        }
+
+        // Promoted purchase with StoreKit's Product can purchase through the verified flow even
+        // before catalog loads, and an Ask-to-Buy pending approval resolves to unlocked on update.
+        let freshStore = FakeStore([.success([])])
+        let directController = ProPurchaseController(client: freshStore)
+        let log = FinishLog()
+        let started = await directController.purchase(.yearly, requireCatalog: false) { _ in .pending }
+        XCTAssertTrue(started)
+        XCTAssertEqual(directController.status, .pending(.yearly))
+        freshStore.access = .subscribed(.yearly)
+        await directController.handle(.verified(transaction(99, .yearly, log: log)))
+        XCTAssertEqual(directController.status, .unlocked)
+        let finished = await log.ids
+        XCTAssertEqual(finished, [99])
+    }
+
     func testTermsStateTheFullRenewalPriceAndTrialOnlyWhenEligible() {
         XCTAssertEqual(Self.catalog[2].terms, "3,49 € per month. Renews automatically unless you cancel at least 24 hours before the period ends.")
         XCTAssertEqual(Self.catalog[1].terms, "Free for 1 week, then 21,99 € per year. Renews automatically unless you cancel at least 24 hours before the period ends.")

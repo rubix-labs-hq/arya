@@ -6,41 +6,38 @@ final class ReviewPromptTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_770_000_000)
     private let day: TimeInterval = 24 * 60 * 60
 
-    func testFirstSuccessfulExportAsksOncePerVersion() {
+    func testCanRequestIsReadOnlyUntilRecordRequestIsCalled() {
         var state = ReviewPromptState()
-        XCTAssertTrue(ReviewPromptPolicy.successfulExport(&state, now: start, version: "1.4.1", channelAvailable: true, supportPromptShown: false))
-        XCTAssertEqual(state.successfulExports, 1)
+        XCTAssertTrue(ReviewPromptPolicy.canRequest(state: state, now: start, version: "1.4.1", channelAvailable: true, supportPromptActive: false))
+        XCTAssertNil(state.lastRequested)
+        XCTAssertNil(state.lastVersion)
+        ReviewPromptPolicy.recordRequest(&state, now: start, version: "1.4.1")
         XCTAssertEqual(state.lastVersion, "1.4.1")
         XCTAssertEqual(state.lastRequested, start)
-        XCTAssertFalse(ReviewPromptPolicy.successfulExport(&state, now: start + 200 * day, version: "1.4.1", channelAvailable: true, supportPromptShown: false))
+        XCTAssertFalse(ReviewPromptPolicy.canRequest(state: state, now: start + 200 * day, version: "1.4.1", channelAvailable: true, supportPromptActive: false))
     }
 
-    func testDoesNotFireAlongsideSupportPrompt() {
-        var state = ReviewPromptState()
-        XCTAssertFalse(ReviewPromptPolicy.successfulExport(&state, now: start, version: "1.4.1", channelAvailable: true, supportPromptShown: true))
-        XCTAssertEqual(state.successfulExports, 1)
-        XCTAssertNil(state.lastRequested)
-        XCTAssertTrue(ReviewPromptPolicy.successfulExport(&state, now: start, version: "1.4.1", channelAvailable: true, supportPromptShown: false))
+    func testDoesNotFireWhenSupportPromptIsVisibleOrPending() {
+        let state = ReviewPromptState()
+        XCTAssertFalse(ReviewPromptPolicy.canRequest(state: state, now: start, version: "1.4.1", channelAvailable: true, supportPromptActive: true))
+        XCTAssertTrue(ReviewPromptPolicy.canRequest(state: state, now: start, version: "1.4.1", channelAvailable: true, supportPromptActive: false))
     }
 
     func testWaits120DaysEvenAcrossVersions() {
         var state = ReviewPromptState()
-        XCTAssertTrue(ReviewPromptPolicy.successfulExport(&state, now: start, version: "1.4.1", channelAvailable: true, supportPromptShown: false))
-        XCTAssertFalse(ReviewPromptPolicy.successfulExport(&state, now: start + 119 * day, version: "1.4.2", channelAvailable: true, supportPromptShown: false))
-        XCTAssertTrue(ReviewPromptPolicy.successfulExport(&state, now: start + 120 * day, version: "1.4.2", channelAvailable: true, supportPromptShown: false))
-        XCTAssertEqual(state.lastVersion, "1.4.2")
+        ReviewPromptPolicy.recordRequest(&state, now: start, version: "1.4.1")
+        XCTAssertFalse(ReviewPromptPolicy.canRequest(state: state, now: start + 119 * day, version: "1.4.2", channelAvailable: true, supportPromptActive: false))
+        XCTAssertTrue(ReviewPromptPolicy.canRequest(state: state, now: start + 120 * day, version: "1.4.2", channelAvailable: true, supportPromptActive: false))
     }
 
     func testUnavailableChannelOrEmptyVersionNeverAsks() {
-        var state = ReviewPromptState()
-        XCTAssertFalse(ReviewPromptPolicy.successfulExport(&state, now: start, version: "1.4.1", channelAvailable: false, supportPromptShown: false))
-        XCTAssertFalse(ReviewPromptPolicy.successfulExport(&state, now: start, version: "   ", channelAvailable: true, supportPromptShown: false))
-        XCTAssertEqual(state.successfulExports, 2)
-        XCTAssertNil(state.lastRequested)
+        let state = ReviewPromptState()
+        XCTAssertFalse(ReviewPromptPolicy.canRequest(state: state, now: start, version: "1.4.1", channelAvailable: false, supportPromptActive: false))
+        XCTAssertFalse(ReviewPromptPolicy.canRequest(state: state, now: start, version: "   ", channelAvailable: true, supportPromptActive: false))
     }
 
     func testSavedStateRoundTripsAndDamagedDataStartsFresh() {
-        let state = ReviewPromptState(successfulExports: 3, lastRequested: start, lastVersion: "1.4.1")
+        let state = ReviewPromptState(lastRequested: start, lastVersion: "1.4.1")
         XCTAssertEqual(ReviewPromptPolicy.decode(ReviewPromptPolicy.encode(state)), state)
         XCTAssertEqual(ReviewPromptPolicy.decode(Data("{".utf8)), ReviewPromptState())
         XCTAssertEqual(ReviewPromptPolicy.decode(nil), ReviewPromptState())

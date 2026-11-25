@@ -106,7 +106,7 @@ check('height: max(height, renderedHeight)' in backend, 'GIF and PNG exports are
 check('access = fresh\n        appliedGeneration = generation\n        onAccessChange?(fresh)' in core, 'Every applied entitlement read updates the export gate')
 check('guard generation == refreshGeneration else {' in core and 'refreshWaiters.append' in core, 'An older entitlement read that finishes late cannot relock Pro, and waits for the newest')
 check('preset: "png", hdr: nil) else { throw APIError(ProExportRule.lockedMessage) }' in backend, 'Saved frames above 1080p need Pro too')
-check('guard let result = try? await AppTransaction.shared else { return defaults.bool(forKey: key) }' in support, 'The signed AppTransaction decides early-supporter access')
+check('guard let result = try? await AppTransaction.shared else { return (defaults.bool(forKey: key), false) }' in support, 'The signed AppTransaction decides early-supporter access')
 
 # The direct-download Mac app never enforces the rule.
 check('ProExportGate' not in mac_app and 'NativeProStore' not in mac_app, 'Direct Mac app has no Pro gate')

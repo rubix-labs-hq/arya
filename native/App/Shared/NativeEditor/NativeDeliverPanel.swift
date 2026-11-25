@@ -201,6 +201,7 @@ struct NativeDeliverPanel: View {
     @ObservedObject private var mobileExport = NativeMobileExport.shared
     @ObservedObject private var proStore = NativeProStore.shared
     @State private var proVisible = false
+    @State private var proSessionID: String?
     #endif
 
     private var presets: [String] { model.capabilities.dictionary("export")["presets"] as? [String] ?? model.capabilities["presets"] as? [String] ?? [] }
@@ -243,11 +244,21 @@ struct NativeDeliverPanel: View {
     private var needsProOnlyForSize: Bool {
         needsPro && proHighlight == .resolution
     }
-    private var latestCompletedExportURL: URL? {
+    private var latestCompletedExport: (url: URL, label: String)? {
         guard let job = model.jobs.last(where: { $0.string("kind") == "export" && $0.string("state") == "done" }) else { return nil }
         let output = job.string("output")
-        guard !output.isEmpty else { return nil }
-        return try? model.mediaURL(output)
+        guard !output.isEmpty, let url = try? model.mediaURL(output) else { return nil }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else { return nil }
+        let ext = url.pathExtension.lowercased()
+        let label: String
+        switch ext {
+        case "m4a", "wav": label = "Share audio"
+        case "gif": label = "Share GIF"
+        case "mp4", "mov": label = "Share video"
+        default: label = "Share export"
+        }
+        return (url, label)
     }
     private var proBadge: String {
         #if os(iOS)
@@ -353,16 +364,16 @@ struct NativeDeliverPanel: View {
                 }
                 Button("Save current frame") { still() }.disabled(model.metalFrame == nil)
                     .buttonStyle(NativeSecondaryButtonStyle(fill: true))
-                if let completedURL = latestCompletedExportURL {
+                if let completed = latestCompletedExport {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Export saved", systemImage: "checkmark.circle.fill")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(NativeEditorStyle.success)
-                        Text(completedURL.lastPathComponent)
+                        Text(completed.url.lastPathComponent)
                             .font(.caption).foregroundStyle(NativeEditorStyle.muted)
                             .lineLimit(2)
-                        ShareLink(item: completedURL) {
-                            Label("Share video", systemImage: "square.and.arrow.up")
+                        ShareLink(item: completed.url) {
+                            Label(completed.label, systemImage: "square.and.arrow.up")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(NativePrimaryButtonStyle(fill: true))
@@ -373,7 +384,8 @@ struct NativeDeliverPanel: View {
                     .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 8))
                     .overlay { RoundedRectangle(cornerRadius: 8).stroke(NativeEditorStyle.success.opacity(0.4), lineWidth: 1) }
                     .accessibilityIdentifier("deliver.completedCard")
-                } else if let lastFile {
+                }
+                if let lastFile {
                     ShareLink(item: lastFile) {
                         Label("Share saved file", systemImage: "square.and.arrow.up")
                     }
@@ -383,7 +395,8 @@ struct NativeDeliverPanel: View {
                 if model.supportPromptVisible && model.mobilePanel == .deliver {
                     NativeSupportPromptCard(model: model, compact: true)
                 }
-                if !mobileExport.message.isEmpty && latestCompletedExportURL == nil {
+                let hideDuplicateSavedMessage = latestCompletedExport != nil && mobileExport.message.hasPrefix("Export saved to ")
+                if !mobileExport.message.isEmpty && !hideDuplicateSavedMessage {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "info.circle")
                             .foregroundStyle(NativeEditorStyle.accent)
@@ -444,10 +457,10 @@ struct NativeDeliverPanel: View {
                     store: proStore,
                     reason: "Arya Pro exports this video at full quality. Editing and 1080p export stay free.",
                     highlight: proHighlight,
-                    onUnlocked: {
+                    onUnlocked: proSessionID == session.sessionID ? {
                         proVisible = false
-                        export()
-                    }
+                        if proSessionID == session.sessionID { export() }
+                    } : nil
                 )
                     .toolbar { Button("Done") { proVisible = false } }
             }
@@ -473,6 +486,7 @@ struct NativeDeliverPanel: View {
 
     private func showPro() {
         #if os(iOS)
+        proSessionID = session.sessionID
         proVisible = true
         #endif
     }

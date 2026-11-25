@@ -193,6 +193,7 @@ public final class ProPurchaseController {
     private let client: ProStoreClient
     private var handled: Set<UInt64> = []
     private var listener: Task<Void, Never>?
+    private var activeLoad: Task<Void, Never>?
     private var refreshGeneration = 0
     private var appliedGeneration = 0
     private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
@@ -214,30 +215,37 @@ public final class ProPurchaseController {
     }
 
     public func loadProducts() async {
-        switch catalog {
-        case .loading, .ready: return
-        case .notLoaded, .unavailable: break
+        if let activeLoad {
+            await activeLoad.value
+            if case .ready = catalog { return }
         }
-        await fetchProducts()
+        if case .ready = catalog { return }
+        await startLoad()
     }
 
     /// Refreshes the StoreKit catalog even when already loaded, so introductory-offer
-    /// eligibility reflects recent purchases or account changes within the same launch.
+    /// eligibility and localized prices reflect recent purchases or storefront changes.
     public func reloadProducts() async {
-        if case .loading = catalog { return }
-        await fetchProducts()
+        if let activeLoad { await activeLoad.value }
+        await startLoad()
     }
 
-    private func fetchProducts() async {
-        catalog = .loading
-        do {
-            let products = try await client.products(for: ProPlan.allCases.map(\.productID))
-            let byPlan = Dictionary(products.map { ($0.plan, $0) }, uniquingKeysWith: { first, _ in first })
-            let ordered = ProPlan.allCases.compactMap { byPlan[$0] }
-            catalog = ordered.isEmpty ? .unavailable(ProMessage.noProducts) : .ready(ordered)
-        } catch {
-            catalog = .unavailable(ProMessage.loadFailed)
+    private func startLoad() async {
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.catalog = .loading
+            do {
+                let products = try await self.client.products(for: ProPlan.allCases.map(\.productID))
+                let byPlan = Dictionary(products.map { ($0.plan, $0) }, uniquingKeysWith: { first, _ in first })
+                let ordered = ProPlan.allCases.compactMap { byPlan[$0] }
+                self.catalog = ordered.isEmpty ? .unavailable(ProMessage.noProducts) : .ready(ordered)
+            } catch {
+                self.catalog = .unavailable(ProMessage.loadFailed)
+            }
         }
+        activeLoad = task
+        await task.value
+        if activeLoad == task { activeLoad = nil }
     }
 
     /// Reads entitlements again. Call at launch and whenever the app returns to the foreground.
@@ -262,11 +270,13 @@ public final class ProPurchaseController {
 
     /// Returns false when the request was refused before any purchase sheet could appear.
     @discardableResult
-    public func purchase(_ plan: ProPlan, using perform: Purchase) async -> Bool {
+    public func purchase(_ plan: ProPlan, requireCatalog: Bool = true, using perform: Purchase) async -> Bool {
         guard !isBusy else { return false }
         guard client.canMakePayments else { status = .failed(ProMessage.notAllowed); return false }
-        guard case .ready(let products) = catalog, products.contains(where: { $0.plan == plan }) else {
-            status = .failed(ProMessage.productUnavailable); return false
+        if requireCatalog {
+            guard case .ready(let products) = catalog, products.contains(where: { $0.plan == plan }) else {
+                status = .failed(ProMessage.productUnavailable); return false
+            }
         }
         status = .purchasing(plan)
         do {
@@ -343,8 +353,13 @@ public final class ProPurchaseController {
         // a lapsed renewal or another plan is read the same way.
         await refreshAccess()
         if first { await transaction.finish() }
-        guard fromPurchase else { return }
-        status = !transaction.revoked && access.isPro ? .unlocked : .idle
+        if fromPurchase {
+            status = !transaction.revoked && access.isPro ? .unlocked : .idle
+        } else if case .pending(let pendingPlan) = status,
+                  !transaction.revoked, access.isPro,
+                  ProPlan(productID: transaction.productID) == pendingPlan {
+            status = .unlocked
+        }
     }
 
     private static func status(for error: ProStoreError) -> Status {

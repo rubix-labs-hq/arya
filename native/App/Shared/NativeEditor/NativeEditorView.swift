@@ -418,9 +418,9 @@ struct NativeEditorView: View {
                 }
             }
             // Before the inset so the card sits above the compact workflow bar.
-            // On iPhone, when Deliver is presented as a sheet, Deliver renders the card inline so it is not covered.
+            // Whenever the Deliver sheet is open, Deliver owns the card so it is never covered or duplicated.
             .overlay(alignment: compact ? .bottom : .bottomTrailing) {
-                if model.supportPromptVisible, !(compact && model.mobilePanel == .deliver) {
+                if model.supportPromptVisible, model.mobilePanel != .deliver {
                     NativeSupportPromptCard(model: model, compact: compact)
                         .padding(compact ? 12 : 18)
                         .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
@@ -429,7 +429,11 @@ struct NativeEditorView: View {
             .animation(reduceMotion ? nil : .spring(duration: 0.35), value: model.supportPromptVisible)
             #if os(iOS)
             .onChange(of: model.reviewRequestToken) { _, _ in
-                guard scenePhase == .active else { return }
+                guard scenePhase == .active,
+                      !model.supportPromptVisible,
+                      !model.hasPendingSupportPrompt,
+                      NativeReviewPromptLedger.canRequest(supportPromptActive: false) else { return }
+                NativeReviewPromptLedger.recordRequest()
                 requestReview()
             }
             #endif

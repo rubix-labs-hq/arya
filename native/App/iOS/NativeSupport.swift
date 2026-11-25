@@ -9,6 +9,8 @@ import UIKit
 @MainActor
 final class StoreKitProClient: ProStoreClient {
     private var loaded: [String: Product] = [:]
+    private(set) var hasActiveSubscription = false
+    private(set) var isProductionAppStore = false
 
     var canMakePayments: Bool { AppStore.canMakePayments }
 
@@ -63,6 +65,10 @@ final class StoreKitProClient: ProStoreClient {
     /// that shows the button, including on iPad with several windows.
     func purchase(_ id: String, using action: PurchaseAction) async throws -> ProPurchaseOutcome {
         guard let product = loaded[id] else { throw ProStoreError.productUnavailable }
+        return try await purchase(product, using: action)
+    }
+
+    func purchase(_ product: Product, using action: PurchaseAction) async throws -> ProPurchaseOutcome {
         let result: Product.PurchaseResult
         do { result = try await action(product, options: []) } catch { throw Self.storeError(error) }
         switch result {
@@ -74,17 +80,25 @@ final class StoreKitProClient: ProStoreClient {
     }
 
     func currentAccess() async -> ProAccess {
-        var best: ProAccess = .free
+        var hasLifetime = false
+        var bestSubscription: ProPlan?
         for await result in StoreKit.Transaction.currentEntitlements {
             guard case .verified(let transaction) = result, transaction.revocationDate == nil, !transaction.isUpgraded,
                   let plan = ProPlan(productID: transaction.productID) else { continue }
-            if plan == .lifetime { return .lifetime }
-            // currentEntitlements already drops lapsed subscriptions and keeps those in a
-            // billing grace period, so no expiration check here.
-            if best == .free || plan == .yearly { best = .subscribed(plan) }
+            if plan == .lifetime {
+                hasLifetime = true
+            } else if bestSubscription == nil || plan == .yearly {
+                // currentEntitlements already drops lapsed subscriptions and keeps those in a
+                // billing grace period, so no expiration check here.
+                bestSubscription = plan
+            }
         }
-        if best != .free { return best }
-        return await NativeProEarlySupport.qualifies() ? .earlySupporter : .free
+        hasActiveSubscription = bestSubscription != nil
+        let appStatus = await NativeProEarlySupport.check()
+        isProductionAppStore = appStatus.isProduction
+        if hasLifetime { return .lifetime }
+        if let bestSubscription { return .subscribed(bestSubscription) }
+        return appStatus.earlySupporter ? .earlySupporter : .free
     }
 
     /// Unfinished transactions and later updates. Both sources can repeat a transaction;
@@ -133,16 +147,28 @@ enum NativeProEarlySupport {
 
     /// The signed AppTransaction decides. The stored answer is used only when StoreKit cannot
     /// answer at all, for example offline, so an early supporter keeps Pro without a network.
-    static func qualifies(defaults: UserDefaults = .standard) async -> Bool {
-        guard let result = try? await AppTransaction.shared else { return defaults.bool(forKey: key) }
+    static func check(defaults: UserDefaults = .standard) async -> (earlySupporter: Bool, isProduction: Bool) {
+        guard let result = try? await AppTransaction.shared else { return (defaults.bool(forKey: key), false) }
         guard case .verified(let app) = result, app.environment == .production else {
             defaults.removeObject(forKey: key)
-            return false
+            return (false, false)
         }
         let early = ProEarlySupporter.qualifies(originalAppVersion: app.originalAppVersion)
         defaults.set(early, forKey: key)
-        return early
+        return (early, true)
     }
+
+    static func qualifies(defaults: UserDefaults = .standard) async -> Bool {
+        await check(defaults: defaults).earlySupporter
+    }
+}
+
+struct PendingProPurchaseIntent: Equatable, Identifiable {
+    let id = UUID()
+    let plan: ProPlan
+    let product: Product
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
 
 extension ProTransaction {
@@ -183,13 +209,18 @@ final class NativeProStore: ObservableObject {
     @Published private(set) var catalog: ProPurchaseController.Catalog = .notLoaded
     @Published private(set) var status: ProPurchaseController.Status = .idle
     @Published private(set) var access: ProAccess = .free
-    /// Plan chosen from an App Store Promoted In-App Purchase intent.
-    @Published private(set) var pendingIntent: ProPlan?
+    /// True whenever an unrevoked subscription entitlement is active, even alongside Lifetime.
+    @Published private(set) var hasActiveSubscription = false
+    /// True only when StoreKit verified a production App Store install (never TestFlight/sandbox).
+    @Published private(set) var isProductionAppStore = false
+    /// Product chosen from an App Store Promoted In-App Purchase intent.
+    @Published private(set) var pendingIntent: PendingProPurchaseIntent?
     private let client = StoreKitProClient()
     private let controller: ProPurchaseController
     private var foreground: NSObjectProtocol?
     private var periodic: Task<Void, Never>?
     private var intentListener: Task<Void, Never>?
+    private var storefrontListener: Task<Void, Never>?
     private var catalogAccess: ProAccess?
 
     private init() {
@@ -200,9 +231,13 @@ final class NativeProStore: ObservableObject {
             self.status = self.controller.status
             self.access = self.controller.access
         }
-        controller.onAccessChange = { access in
+        controller.onAccessChange = { [weak self] access in
             ProExportGate.shared.setUnlocked(access.isPro)
             UserDefaults.standard.set(access.isPro, forKey: Self.activeKey)
+            if let self {
+                self.hasActiveSubscription = self.client.hasActiveSubscription
+                self.isProductionAppStore = self.client.isProductionAppStore
+            }
         }
     }
 
@@ -233,8 +268,15 @@ final class NativeProStore: ObservableObject {
             for await intent in PurchaseIntent.intents {
                 guard !Task.isCancelled else { return }
                 if let plan = ProPlan(productID: intent.product.id) {
-                    self?.pendingIntent = plan
+                    self?.pendingIntent = PendingProPurchaseIntent(plan: plan, product: intent.product)
                 }
+            }
+        }
+        // Refresh prices and trial eligibility if the user switches App Store storefront.
+        storefrontListener = Task { [weak self] in
+            for await _ in Storefront.updates {
+                guard !Task.isCancelled else { return }
+                await self?.reload()
             }
         }
     }
@@ -248,13 +290,32 @@ final class NativeProStore: ObservableObject {
         }
         if case .ready = catalog { catalogAccess = current }
     }
+
+    func reload() async {
+        let current = access
+        await controller.reloadProducts()
+        if case .ready = catalog { catalogAccess = current }
+    }
+
     func clearStatus() { controller.clearStatus() }
-    func clearPendingIntent() { pendingIntent = nil }
+    func refreshAccess() async { await controller.refreshAccess() }
+    func claimPendingIntent(id: UUID) -> PendingProPurchaseIntent? {
+        guard let intent = pendingIntent, intent.id == id else { return nil }
+        pendingIntent = nil
+        return intent
+    }
     func restore() async { await controller.restore() }
 
     func buy(_ plan: ProPlan, with action: PurchaseAction) async {
         let client = self.client
         await controller.purchase(plan) { id in try await client.purchase(id, using: action) }
+    }
+
+    func buyIntent(_ intent: PendingProPurchaseIntent, with action: PurchaseAction) async {
+        let client = self.client
+        await controller.purchase(intent.plan, requireCatalog: false) { _ in
+            try await client.purchase(intent.product, using: action)
+        }
     }
 }
 // END PRO STOREKIT
@@ -279,7 +340,7 @@ struct NativeProView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 14) {
                 header
                 comparisonTable
                 if store.access.isPro { activeCard }
@@ -304,7 +365,7 @@ struct NativeProView: View {
                 }
                 footer
             }
-            .padding(20)
+            .padding(16)
             .frame(maxWidth: 560, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
@@ -313,13 +374,19 @@ struct NativeProView: View {
         .navigationTitle("Arya Pro")
         .navigationBarTitleDisplayMode(.inline)
         .task { await store.load(); preferAvailablePlan() }
-        .task(id: store.pendingIntent) { await handlePendingIntent() }
+        .task(id: store.pendingIntent?.id) { await handlePendingIntent() }
         .onChange(of: store.catalog) { _, _ in preferAvailablePlan() }
-        .onChange(of: store.access) { _, _ in preferAvailablePlan() }
+        .onChange(of: store.access) { _, _ in
+            preferAvailablePlan()
+            Task { await store.reload() }
+        }
         .onDisappear { store.clearStatus() }
     }
 
-    private var isSubscribed: Bool { if case .subscribed = store.access { return true }; return false }
+    private var isSubscribed: Bool {
+        if case .subscribed = store.access { return true }
+        return store.hasActiveSubscription
+    }
 
     private func shouldOffer(_ plan: ProPlan) -> Bool {
         switch store.access {
@@ -361,10 +428,10 @@ struct NativeProView: View {
             Rectangle().fill(NativeEditorStyle.line).frame(height: 1)
             comparisonRow("All editing, color, motion & audio", free: true, highlighted: false)
             comparisonRow("1080p export · no watermark or ads", free: true, highlighted: false)
-            comparisonRow("4K & up to 8K video export", free: false, highlighted: highlight == .resolution)
-            comparisonRow("Apple ProRes 422, 422 HQ & 4444", free: false, highlighted: highlight == .prores)
-            comparisonRow("HDR10 (PQ) & HLG 10-bit delivery", free: false, highlighted: highlight == .hdr)
-            comparisonRow("One purchase: iPhone, iPad & Mac", free: false, highlighted: false)
+            comparisonRow("4K to 8K video export", free: false, highlighted: highlight == .resolution)
+            comparisonRow("Apple ProRes 422 / HQ / 4444", free: false, highlighted: highlight == .prores)
+            comparisonRow("HDR10 (PQ) & HLG 10-bit", free: false, highlighted: highlight == .hdr)
+            comparisonRow("iPhone, iPad & Mac included", free: false, highlighted: false)
         }
         .background(NativeEditorStyle.panel, in: RoundedRectangle(cornerRadius: 12))
         .overlay { RoundedRectangle(cornerRadius: 12).stroke(NativeEditorStyle.line, lineWidth: 1) }
@@ -375,7 +442,7 @@ struct NativeProView: View {
     private func comparisonRow(_ title: String, free: Bool, highlighted: Bool) -> some View {
         HStack(spacing: 8) {
             Text(title)
-                .font(.subheadline.weight(highlighted ? .semibold : .regular))
+                .font(.footnote.weight(highlighted ? .semibold : .regular))
                 .foregroundStyle(highlighted ? NativeEditorStyle.accent : NativeEditorStyle.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -391,7 +458,7 @@ struct NativeProView: View {
                 .accessibilityLabel("Included in Pro")
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.vertical, 7)
         .background(highlighted ? NativeEditorStyle.selectionFill : Color.clear)
         .accessibilityElement(children: .combine)
     }
@@ -528,7 +595,7 @@ struct NativeProView: View {
     }
 
     static func ctaTitle(for product: ProProduct) -> String {
-        if let trial = product.freeTrial { return "Start \(trial) free trial" }
+        if let trial = product.freeTrial { return "Start \(trial) free" }
         switch product.plan {
         case .yearly: return "Subscribe yearly"
         case .monthly: return "Subscribe monthly"
@@ -585,17 +652,16 @@ struct NativeProView: View {
     }
 
     private func handlePendingIntent() async {
-        guard let plan = store.pendingIntent else { return }
+        guard let pending = store.pendingIntent else { return }
+        await store.refreshAccess()
         await store.load()
-        store.clearPendingIntent()
-        guard shouldOffer(plan),
-              case .ready(let products) = store.catalog,
-              products.contains(where: { $0.plan == plan }) else { return }
-        selected = plan
+        guard !Task.isCancelled, let intent = store.claimPendingIntent(id: pending.id) else { return }
+        guard shouldOffer(intent.plan) else { return }
+        selected = intent.plan
         // If already subscribed and tapping Lifetime from the App Store, let the user read the
         // subscription-cancellation disclosure and tap Buy Lifetime explicitly instead of auto-charging.
-        guard !(isSubscribed && plan == .lifetime) else { return }
-        await store.buy(plan, with: purchase)
+        guard !(isSubscribed && intent.plan == .lifetime) else { return }
+        await store.buyIntent(intent, with: purchase)
     }
 }
 // END PRO VIEW

@@ -781,6 +781,7 @@ final class NativeEditorModel: ObservableObject {
     /// The optional tip card. Set only by `confirmExportFeedback` after a successful export.
     @Published var supportPromptVisible = false
     private var supportPromptTask: Task<Void, Never>?
+    var hasPendingSupportPrompt: Bool { supportPromptTask != nil }
     /// Incremented by `confirmExportFeedback` when App Store builds may request a system rating.
     @Published var reviewRequestToken = 0
     private var reviewPromptTask: Task<Void, Never>?
@@ -1007,19 +1008,26 @@ final class NativeEditorModel: ObservableObject {
         // The tip card waits a moment so the export message is read first.
         let showSupport = NativeSupportPromptLedger.successfulExport()
         if showSupport {
+            reviewPromptTask?.cancel()
+            reviewPromptTask = nil
             supportPromptTask?.cancel()
             supportPromptTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(1.2))
-                guard !Task.isCancelled else { return }
-                self?.supportPromptVisible = true
+                guard !Task.isCancelled, let self else { return }
+                self.supportPromptTask = nil
+                self.supportPromptVisible = true
             }
+            return
         }
-        if NativeReviewPromptLedger.successfulExport(supportPromptShown: showSupport) {
+        let supportActive = supportPromptVisible || supportPromptTask != nil
+        if NativeReviewPromptLedger.canRequest(supportPromptActive: supportActive) {
             reviewPromptTask?.cancel()
             reviewPromptTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(2))
-                guard !Task.isCancelled else { return }
-                self?.reviewRequestToken &+= 1
+                guard !Task.isCancelled, let self else { return }
+                self.reviewPromptTask = nil
+                guard !self.supportPromptVisible, self.supportPromptTask == nil else { return }
+                self.reviewRequestToken &+= 1
             }
         }
     }

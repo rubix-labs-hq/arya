@@ -378,7 +378,10 @@ console.log('Passed post-import production editBatch request through shared appl
         mobile_fixture = '''
 // The tip and review prompt ledgers are covered by SupportPromptTests and ReviewPromptTests; this check only type-checks their callers.
 @MainActor enum NativeSupportPromptLedger { static func successfulExport() -> Bool { false } }
-@MainActor enum NativeReviewPromptLedger { static func successfulExport(supportPromptShown: Bool) -> Bool { false } }
+@MainActor enum NativeReviewPromptLedger {
+    static func canRequest(supportPromptActive: Bool) -> Bool { false }
+    static func recordRequest() { }
+}
 struct NativeSupportPromptCard: View {
     @ObservedObject var model: NativeEditorModel
     var compact: Bool
