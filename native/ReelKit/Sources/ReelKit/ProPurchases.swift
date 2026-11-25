@@ -220,6 +220,7 @@ public final class ProPurchaseController {
     private var handled: Set<UInt64> = []
     private var listener: Task<Void, Never>?
     private var activeLoad: Task<Void, Never>?
+    private var activeLoadID: UUID?
     private var loadGeneration = 0
     private var reloadRequested = false
     private var operationInFlight = false
@@ -245,8 +246,16 @@ public final class ProPurchaseController {
         return !products.isEmpty
     }
 
+    /// Synchronously invalidates any in-flight catalog fetch before an async entitlement read
+    /// so stale prices or trial eligibility cannot publish in the meantime.
+    public func invalidateCatalog() {
+        loadGeneration += 1
+        reloadRequested = true
+        if catalog != .notLoaded { catalog = .loading }
+    }
+
     public func loadProducts() async {
-        if let activeLoad {
+        while let activeLoad {
             await activeLoad.value
             if case .ready = catalog { return }
         }
@@ -268,6 +277,7 @@ public final class ProPurchaseController {
 
     private func runLoadLoop(forceReload: Bool) async {
         if forceReload { reloadRequested = true }
+        let workerID = UUID()
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             repeat {
@@ -285,10 +295,14 @@ public final class ProPurchaseController {
                     self.catalog = .unavailable(ProMessage.loadFailed)
                 }
             } while self.reloadRequested
-            // Clear activeLoad in the same MainActor turn as the final reloadRequested check so
-            // no reloadProducts() call can await a finished task without triggering a fetch.
-            self.activeLoad = nil
+            // Clear activeLoad in the same MainActor turn as the final reloadRequested check,
+            // and only if this worker still owns activeLoad.
+            if self.activeLoadID == workerID {
+                self.activeLoad = nil
+                self.activeLoadID = nil
+            }
         }
+        activeLoadID = workerID
         activeLoad = task
         await task.value
     }

@@ -260,8 +260,10 @@ final class NativeProStore: ObservableObject {
         foreground = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                let hadCatalog = self.catalog != .notLoaded
+                if hadCatalog { self.controller.invalidateCatalog() }
                 await self.controller.refreshAccess()
-                if self.catalog != .notLoaded { await self.reload() }
+                if hadCatalog { await self.reload() }
             }
         }
         // A subscription can lapse while Arya stays open, and StoreKit sends no transaction

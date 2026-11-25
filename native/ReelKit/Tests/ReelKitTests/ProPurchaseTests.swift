@@ -149,9 +149,16 @@ final class ProPurchaseTests: XCTestCase {
                 publishedReadyCounts.append(products.count)
             }
         }
+        var resumed = 0
+        defer {
+            while resumed < store.catalogWaiters.count {
+                store.catalogWaiters[resumed].resume(throwing: Unexpected())
+                resumed += 1
+            }
+        }
         let first = Task { await controller.loadProducts() }
         for _ in 0..<100 where store.catalogWaiters.isEmpty { await Task.yield() }
-        XCTAssertEqual(store.catalogWaiters.count, 1)
+        guard store.catalogWaiters.count == 1 else { return XCTFail("Expected initial catalog fetch to start") }
         var secondStarted = false
         var secondFinished = false
         let second = Task { secondStarted = true; await controller.loadProducts(); secondFinished = true }
@@ -169,10 +176,12 @@ final class ProPurchaseTests: XCTestCase {
         XCTAssertTrue(reloadAEntered && reloadBEntered)
         // Stale first response must never be published because reloads invalidated it.
         store.catalogWaiters[0].resume(returning: [Self.catalog[2]])
+        resumed = 1
         for _ in 0..<100 where store.catalogWaiters.count < 2 { await Task.yield() }
-        XCTAssertEqual(store.catalogWaiters.count, 2, "Coalesced reload must start one follow-up fetch")
+        guard store.catalogWaiters.count == 2 else { return XCTFail("Coalesced reload must start one follow-up fetch") }
         XCTAssertEqual(publishedReadyCounts, [], "Stale first catalog must never be published")
         store.catalogWaiters[1].resume(returning: Self.catalog)
+        resumed = 2
         await first.value
         await second.value
         await reloadA.value
