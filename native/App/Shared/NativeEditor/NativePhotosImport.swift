@@ -634,7 +634,8 @@ struct NativeMediaImportSheet: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(importing ? (filesCancelling || photosCancelling || retryCancelling || recoveryCancelling ? "Cancelling import" : "Cancel import") : "Done") {
+                    Button(placingImported ? "Adding…" : importing ? (filesCancelling || photosCancelling || retryCancelling || recoveryCancelling ? "Cancelling import" : "Cancel import") : "Done") {
+                        if placingImported { return }
                         if checkingCopies { recoveryCancelling = true; recoveryTask?.cancel(); return }
                         if retryingCopies { retryCancelling = true; retryTask?.cancel(); return }
                         if filesImporting { cancelFiles(); return }
@@ -643,9 +644,9 @@ struct NativeMediaImportSheet: View {
                         dismiss()
                     }
                     .frame(minHeight: NativeEditorStyle.minimumControlHeight)
-                    .disabled(filesCancelling || photosCancelling || retryCancelling || recoveryCancelling)
+                    .disabled(placingImported || filesCancelling || photosCancelling || retryCancelling || recoveryCancelling)
                     .keyboardShortcut(.cancelAction)
-                    .accessibilityHint(importing ? "Requests cancellation and keeps the result here. Items already imported stay in Media; completed copies may need review in the project folder." : "Returns to the editor.")
+                    .accessibilityHint(placingImported ? "Adding clips to the timeline." : importing ? "Requests cancellation and keeps the result here. Items already imported stay in Media; completed copies may need review in the project folder." : "Returns to the editor.")
                 }
             }
         }
