@@ -244,12 +244,11 @@ struct NativeDeliverPanel: View {
     private var needsProOnlyForSize: Bool {
         needsPro && proHighlight == .resolution
     }
-    private var latestCompletedExport: (url: URL, label: String)? {
+    private var latestCompletedExport: (output: String, url: URL, label: String)? {
         guard let job = model.jobs.last(where: { $0.string("kind") == "export" && $0.string("state") == "done" }) else { return nil }
         let output = job.string("output")
-        guard !output.isEmpty, let url = try? model.mediaURL(output) else { return nil }
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else { return nil }
+        guard !output.isEmpty, let url = try? model.mediaURL(output),
+              (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return nil }
         let ext = url.pathExtension.lowercased()
         let label: String
         switch ext {
@@ -258,7 +257,7 @@ struct NativeDeliverPanel: View {
         case "mp4", "mov": label = "Share video"
         default: label = "Share export"
         }
-        return (url, label)
+        return (output, url, label)
     }
     private var proBadge: String {
         #if os(iOS)
@@ -395,7 +394,7 @@ struct NativeDeliverPanel: View {
                 if model.supportPromptVisible && model.mobilePanel == .deliver {
                     NativeSupportPromptCard(model: model, compact: true)
                 }
-                let hideDuplicateSavedMessage = latestCompletedExport != nil && mobileExport.message.hasPrefix("Export saved to ")
+                let hideDuplicateSavedMessage = latestCompletedExport.map { mobileExport.message == "Export saved to \($0.output)" } ?? false
                 if !mobileExport.message.isEmpty && !hideDuplicateSavedMessage {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "info.circle")

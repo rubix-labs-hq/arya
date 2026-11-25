@@ -137,6 +137,20 @@ public enum ProStoreError: Error, Equatable, Sendable {
     case cancelled, notAllowed, network, productUnavailable, failed
 }
 
+/// Atomic result of one StoreKit entitlement scan so access, active subscription status and
+/// production-environment detection always come from the same generation-checked read.
+public struct ProEntitlementSnapshot: Equatable, Sendable {
+    public let access: ProAccess
+    public let hasActiveSubscription: Bool
+    public let isProductionAppStore: Bool
+
+    public init(access: ProAccess, hasActiveSubscription: Bool = false, isProductionAppStore: Bool = false) {
+        self.access = access
+        self.hasActiveSubscription = hasActiveSubscription
+        self.isProductionAppStore = isProductionAppStore
+    }
+}
+
 /// The App Store as the controller sees it. The iOS app provides a StoreKit 2 version;
 /// tests provide a fake.
 @MainActor
@@ -145,9 +159,19 @@ public protocol ProStoreClient: AnyObject {
     func products(for ids: [String]) async throws -> [ProProduct]
     /// Reads the verified, unrevoked entitlements on this device.
     func currentAccess() async -> ProAccess
+    func currentEntitlementSnapshot() async -> ProEntitlementSnapshot
     func transactionUpdates() -> AsyncStream<ProTransactionUpdate>
     /// Asks the App Store to bring this device's purchases up to date. Shows a sign-in sheet when needed.
     func restore() async throws
+}
+
+public extension ProStoreClient {
+    func currentEntitlementSnapshot() async -> ProEntitlementSnapshot {
+        let access = await currentAccess()
+        let subscribed: Bool
+        if case .subscribed = access { subscribed = true } else { subscribed = false }
+        return ProEntitlementSnapshot(access: access, hasActiveSubscription: subscribed, isProductionAppStore: false)
+    }
 }
 
 @MainActor
@@ -185,6 +209,8 @@ public final class ProPurchaseController {
     public private(set) var catalog: Catalog = .notLoaded { didSet { onChange?() } }
     public private(set) var status: Status = .idle { didSet { onChange?() } }
     public private(set) var access: ProAccess = .free { didSet { if access != oldValue { onChange?() } } }
+    public private(set) var hasActiveSubscription = false { didSet { if hasActiveSubscription != oldValue { onChange?() } } }
+    public private(set) var isProductionAppStore = false { didSet { if isProductionAppStore != oldValue { onChange?() } } }
     public var onChange: (() -> Void)?
     /// Called after every entitlement read, changed or not, so the export gate always matches
     /// the App Store answer, including when a cached unlock from an earlier launch has lapsed.
@@ -194,6 +220,9 @@ public final class ProPurchaseController {
     private var handled: Set<UInt64> = []
     private var listener: Task<Void, Never>?
     private var activeLoad: Task<Void, Never>?
+    private var loadGeneration = 0
+    private var reloadRequested = false
+    private var pendingApprovalPlan: ProPlan?
     private var refreshGeneration = 0
     private var appliedGeneration = 0
     private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
@@ -220,28 +249,40 @@ public final class ProPurchaseController {
             if case .ready = catalog { return }
         }
         if case .ready = catalog { return }
-        await startLoad()
+        await runLoadLoop(forceReload: false)
     }
 
-    /// Refreshes the StoreKit catalog even when already loaded, so introductory-offer
-    /// eligibility and localized prices reflect recent purchases or storefront changes.
+    /// Coalesces concurrent invalidations into a single follow-up fetch and publishes only
+    /// the latest generation so out-of-order reloads cannot overwrite fresh eligibility or prices.
     public func reloadProducts() async {
-        if let activeLoad { await activeLoad.value }
-        await startLoad()
+        loadGeneration += 1
+        reloadRequested = true
+        if let activeLoad {
+            await activeLoad.value
+            return
+        }
+        await runLoadLoop(forceReload: true)
     }
 
-    private func startLoad() async {
+    private func runLoadLoop(forceReload: Bool) async {
+        if forceReload { reloadRequested = true }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            self.catalog = .loading
-            do {
-                let products = try await self.client.products(for: ProPlan.allCases.map(\.productID))
-                let byPlan = Dictionary(products.map { ($0.plan, $0) }, uniquingKeysWith: { first, _ in first })
-                let ordered = ProPlan.allCases.compactMap { byPlan[$0] }
-                self.catalog = ordered.isEmpty ? .unavailable(ProMessage.noProducts) : .ready(ordered)
-            } catch {
-                self.catalog = .unavailable(ProMessage.loadFailed)
-            }
+            repeat {
+                self.reloadRequested = false
+                let generation = self.loadGeneration
+                self.catalog = .loading
+                do {
+                    let products = try await self.client.products(for: ProPlan.allCases.map(\.productID))
+                    guard generation == self.loadGeneration, !self.reloadRequested else { continue }
+                    let byPlan = Dictionary(products.map { ($0.plan, $0) }, uniquingKeysWith: { first, _ in first })
+                    let ordered = ProPlan.allCases.compactMap { byPlan[$0] }
+                    self.catalog = ordered.isEmpty ? .unavailable(ProMessage.noProducts) : .ready(ordered)
+                } catch {
+                    guard generation == self.loadGeneration, !self.reloadRequested else { continue }
+                    self.catalog = .unavailable(ProMessage.loadFailed)
+                }
+            } while self.reloadRequested
         }
         activeLoad = task
         await task.value
@@ -252,7 +293,8 @@ public final class ProPurchaseController {
     public func refreshAccess() async {
         refreshGeneration += 1
         let generation = refreshGeneration
-        let fresh = await client.currentAccess()
+        let snapshot = await client.currentEntitlementSnapshot()
+        let fresh = snapshot.access
         // A read that started earlier, such as the foreground refresh that fires as the purchase
         // sheet closes, can finish after the purchase's own refresh. Keep only the newest read,
         // and let a superseded caller wait for it so restore and purchase see current access.
@@ -260,6 +302,8 @@ public final class ProPurchaseController {
             if appliedGeneration < refreshGeneration { await withCheckedContinuation { refreshWaiters.append($0) } }
             return
         }
+        hasActiveSubscription = snapshot.hasActiveSubscription
+        isProductionAppStore = snapshot.isProductionAppStore
         access = fresh
         appliedGeneration = generation
         onAccessChange?(fresh)
@@ -288,6 +332,7 @@ public final class ProPurchaseController {
                 // delivered again at the next launch, and a valid one is then finished.
                 status = .failed(ProMessage.unverified)
             case .pending:
+                pendingApprovalPlan = plan
                 status = .pending(plan)
             case .userCancelled:
                 status = .cancelled
@@ -354,10 +399,12 @@ public final class ProPurchaseController {
         await refreshAccess()
         if first { await transaction.finish() }
         if fromPurchase {
+            pendingApprovalPlan = nil
             status = !transaction.revoked && access.isPro ? .unlocked : .idle
-        } else if case .pending(let pendingPlan) = status,
+        } else if let pendingPlan = pendingApprovalPlan,
                   !transaction.revoked, access.isPro,
                   ProPlan(productID: transaction.productID) == pendingPlan {
+            pendingApprovalPlan = nil
             status = .unlocked
         }
     }

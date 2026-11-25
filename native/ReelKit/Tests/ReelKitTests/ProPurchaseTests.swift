@@ -124,9 +124,11 @@ final class ProPurchaseTests: XCTestCase {
         var canMakePayments = true
         var catalogWaiters: [CheckedContinuation<[ProProduct], Error>] = []
         var requests = 0
+        var maxAllowedRequests = 1
         var access: ProAccess = .free
         func products(for ids: [String]) async throws -> [ProProduct] {
             requests += 1
+            guard requests <= maxAllowedRequests else { throw Unexpected() }
             return try await withCheckedThrowingContinuation { catalogWaiters.append($0) }
         }
         func currentAccess() async -> ProAccess { access }
@@ -135,35 +137,51 @@ final class ProPurchaseTests: XCTestCase {
     }
 
     /// Cold-launch promoted purchase intents can call `loadProducts()` concurrently while the
-    /// paywall's own load is already in flight. Both callers must wait until the load settles.
+    /// paywall's own load is already in flight, and overlapping `reloadProducts()` invalidations
+    /// must coalesce into a single follow-up fetch publishing only the latest generation.
     func testConcurrentLoadWaitsForInFlightCatalogAndDirectPurchaseBypassesCatalog() async {
         let store = SlowCatalogStore()
+        store.maxAllowedRequests = 2
         let controller = ProPurchaseController(client: store)
         let first = Task { await controller.loadProducts() }
         while store.catalogWaiters.isEmpty { await Task.yield() }
+        var secondStarted = false
         var secondFinished = false
-        let second = Task { await controller.loadProducts(); secondFinished = true }
-        for _ in 0..<20 { await Task.yield() }
+        let second = Task { secondStarted = true; await controller.loadProducts(); secondFinished = true }
+        while !secondStarted { await Task.yield() }
+        await Task.yield()
         XCTAssertFalse(secondFinished, "Second caller must wait while first load is in flight")
-        store.catalogWaiters[0].resume(returning: Self.catalog)
+        // Trigger two overlapping reloads while the first fetch is still pending; they must coalesce into one follow-up fetch.
+        let reloadA = Task { await controller.reloadProducts() }
+        let reloadB = Task { await controller.reloadProducts() }
+        await Task.yield()
+        // Stale first response must be ignored because a reload was requested.
+        store.catalogWaiters[0].resume(returning: [Self.catalog[2]])
+        while store.catalogWaiters.count < 2 { await Task.yield() }
+        store.catalogWaiters[1].resume(returning: Self.catalog)
         await first.value
         await second.value
+        await reloadA.value
+        await reloadB.value
         XCTAssertTrue(secondFinished)
-        XCTAssertEqual(store.requests, 1)
+        XCTAssertEqual(store.requests, 2, "Concurrent loads and overlapping reloads coalesce into at most one follow-up fetch")
         if case .ready(let products) = controller.catalog {
             XCTAssertEqual(products.count, 3)
         } else {
-            XCTFail("Catalog should be ready after concurrent load settles")
+            XCTFail("Catalog should hold the latest reload result")
         }
 
         // Promoted purchase with StoreKit's Product can purchase through the verified flow even
-        // before catalog loads, and an Ask-to-Buy pending approval resolves to unlocked on update.
+        // before catalog loads, and an Ask-to-Buy pending approval resolves to unlocked even after
+        // another paywall calls clearStatus().
         let freshStore = FakeStore([.success([])])
         let directController = ProPurchaseController(client: freshStore)
         let log = FinishLog()
         let started = await directController.purchase(.yearly, requireCatalog: false) { _ in .pending }
         XCTAssertTrue(started)
         XCTAssertEqual(directController.status, .pending(.yearly))
+        directController.clearStatus()
+        XCTAssertEqual(directController.status, .idle)
         freshStore.access = .subscribed(.yearly)
         await directController.handle(.verified(transaction(99, .yearly, log: log)))
         XCTAssertEqual(directController.status, .unlocked)

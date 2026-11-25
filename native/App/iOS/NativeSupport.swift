@@ -9,8 +9,6 @@ import UIKit
 @MainActor
 final class StoreKitProClient: ProStoreClient {
     private var loaded: [String: Product] = [:]
-    private(set) var hasActiveSubscription = false
-    private(set) var isProductionAppStore = false
 
     var canMakePayments: Bool { AppStore.canMakePayments }
 
@@ -80,6 +78,10 @@ final class StoreKitProClient: ProStoreClient {
     }
 
     func currentAccess() async -> ProAccess {
+        await currentEntitlementSnapshot().access
+    }
+
+    func currentEntitlementSnapshot() async -> ProEntitlementSnapshot {
         var hasLifetime = false
         var bestSubscription: ProPlan?
         for await result in StoreKit.Transaction.currentEntitlements {
@@ -93,12 +95,16 @@ final class StoreKitProClient: ProStoreClient {
                 bestSubscription = plan
             }
         }
-        hasActiveSubscription = bestSubscription != nil
         let appStatus = await NativeProEarlySupport.check()
-        isProductionAppStore = appStatus.isProduction
-        if hasLifetime { return .lifetime }
-        if let bestSubscription { return .subscribed(bestSubscription) }
-        return appStatus.earlySupporter ? .earlySupporter : .free
+        let access: ProAccess
+        if hasLifetime { access = .lifetime }
+        else if let bestSubscription { access = .subscribed(bestSubscription) }
+        else { access = appStatus.earlySupporter ? .earlySupporter : .free }
+        return ProEntitlementSnapshot(
+            access: access,
+            hasActiveSubscription: bestSubscription != nil,
+            isProductionAppStore: appStatus.isProduction
+        )
     }
 
     /// Unfinished transactions and later updates. Both sources can repeat a transaction;
@@ -230,17 +236,16 @@ final class NativeProStore: ObservableObject {
             self.catalog = self.controller.catalog
             self.status = self.controller.status
             self.access = self.controller.access
+            self.hasActiveSubscription = self.controller.hasActiveSubscription
+            self.isProductionAppStore = self.controller.isProductionAppStore
         }
-        controller.onAccessChange = { [weak self] access in
+        controller.onAccessChange = { access in
             ProExportGate.shared.setUnlocked(access.isPro)
             UserDefaults.standard.set(access.isPro, forKey: Self.activeKey)
-            if let self {
-                self.hasActiveSubscription = self.client.hasActiveSubscription
-                self.isProductionAppStore = self.client.isProductionAppStore
-            }
         }
     }
 
+    var isBusy: Bool { controller.isBusy }
     var canPurchase: Bool { controller.canPurchase }
     var canMakePayments: Bool { controller.canMakePayments }
     var isPro: Bool { access.isPro }
@@ -253,7 +258,11 @@ final class NativeProStore: ObservableObject {
         controller.startListening()
         Task { await controller.refreshAccess() }
         foreground = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.controller.refreshAccess() }
+            Task { @MainActor in
+                guard let self else { return }
+                await self.controller.refreshAccess()
+                if case .ready = self.catalog { await self.reload() }
+            }
         }
         // A subscription can lapse while Arya stays open, and StoreKit sends no transaction
         // for that, so read entitlements again every 15 minutes.
@@ -373,14 +382,18 @@ struct NativeProView: View {
         .tint(NativeEditorStyle.accent)
         .navigationTitle("Arya Pro")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await store.load(); preferAvailablePlan() }
-        .task(id: store.pendingIntent?.id) { await handlePendingIntent() }
+        .task { await store.reload(); preferAvailablePlan() }
+        .task(id: pendingIntentTrigger) { await handlePendingIntent() }
         .onChange(of: store.catalog) { _, _ in preferAvailablePlan() }
         .onChange(of: store.access) { _, _ in
             preferAvailablePlan()
             Task { await store.reload() }
         }
         .onDisappear { store.clearStatus() }
+    }
+
+    private var pendingIntentTrigger: String {
+        "\(store.pendingIntent?.id.uuidString ?? "none")|\(store.isBusy)"
     }
 
     private var isSubscribed: Bool {
@@ -652,10 +665,11 @@ struct NativeProView: View {
     }
 
     private func handlePendingIntent() async {
-        guard let pending = store.pendingIntent else { return }
+        guard let pending = store.pendingIntent, !store.isBusy else { return }
         await store.refreshAccess()
         await store.load()
-        guard !Task.isCancelled, let intent = store.claimPendingIntent(id: pending.id) else { return }
+        guard !Task.isCancelled, !store.isBusy,
+              let intent = store.claimPendingIntent(id: pending.id) else { return }
         guard shouldOffer(intent.plan) else { return }
         selected = intent.plan
         // If already subscribed and tapping Lifetime from the App Store, let the user read the
