@@ -66,12 +66,13 @@ struct NativeLibraryPanel: View {
                 ForEach(NativeLibraryCategory.allCases) { category in Label(category.name, systemImage: category.icon).tag(category) }
             }.labelsHidden().frame(maxWidth: .infinity, alignment: .leading)
             TextField("Search \(category.name.lowercased())", text: $query).textFieldStyle(.roundedBorder)
+            let canSaveSelected = NativeLibrarySelection.source(category: category, project: sourceProject, selected: sourceSelected, composition: sourceComposition) != nil
             let saveSelected = Button("Save selected", systemImage: "plus") {
                 let source = NativeLibraryCapture(project: sourceProject, selected: sourceSelected, composition: sourceComposition, folder: folder?.standardizedFileURL.path, version: version)
                 guard formHostActive, sourceContextID == model.processingContextID,
                       source.matches(project: model.project?.fields ?? [:], folder: model.folder?.standardizedFileURL.path, version: model.version) else { return }
                 formRequest = NativeLibraryFormRequest(contextID: sourceContextID, capture: source, kind: .save(category))
-            }.disabled(model.project == nil || model.busy)
+            }.disabled(model.project == nil || model.busy || !canSaveSelected)
             let sectionTitle = Label(category.name, systemImage: category.icon).font(.headline).lineLimit(1)
             // A narrow column stacks the heading over the button, so neither is cut short.
             ViewThatFits(in: .horizontal) {
@@ -88,8 +89,11 @@ struct NativeLibraryPanel: View {
             }
             Text("Export editable components and their referenced LUTs from their menu. Import adds an entry here; then choose Place or Apply.")
                 .font(.caption2).foregroundStyle(.secondary)
-            Text("Use UTF-8 JSON. Strings or field names beginning with U+FEFF are not supported for transfer.")
-                .font(.caption2).foregroundStyle(.secondary)
+            if !canSaveSelected {
+                Text(NativeLibrarySelection.saveReason(category))
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let selected = model.selected {
                 Text("Selected: \(selected.name)").font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }

@@ -413,7 +413,14 @@ final class NativeTranscriptState: ObservableObject {
     }
 
     /// Presentation can go away without becoming the owner of unsaved corrections.
-    func suspend() { retainDraft(); cancel() }
+    func suspend() {
+        let wasBusy = busy
+        retainDraft()
+        cancel()
+        if wasBusy {
+            message = "The active transcript action stopped when this panel closed."
+        }
+    }
 
     /// A different project/backend invalidates operations, but retains drafts for explicit recovery.
     func projectDidChange() {
@@ -975,6 +982,14 @@ struct NativeTranscriptPanel: View {
                     Text("Choose media").tag("")
                     ForEach(sources) { Text($0.name).tag($0.id) }
                 }.disabled(transcript.busy || transcript.dirty)
+                if sources.isEmpty {
+                    Button {
+                        model.requestedWorkspace = .media
+                    } label: {
+                        Label("Import media with audio", systemImage: "square.and.arrow.down")
+                    }
+                    .buttonStyle(NativeSecondaryButtonStyle())
+                }
                 TextField("Language locale, such as en-US", text: $transcript.locale).textFieldStyle(.roundedBorder)
                     .focused($editingLocale).disabled(transcript.busy || transcript.dirty)
                     .onSubmit { if !transcript.busy, !transcript.hasCurrentTranscript { transcript.load(model: model, session: session) } }
@@ -997,6 +1012,15 @@ struct NativeTranscriptPanel: View {
                     if transcript.busy { ProgressView().controlSize(.small); Button("Cancel") { transcript.cancel() } }
                     else { Button("Save corrections") { transcript.perform(model: model, session: session) { token, backend in try await transcript.save(model: model, session: session, token: token, backend: backend) } }.disabled(!transcript.dirty || !transcript.hasCurrentTranscript) }
                 }
+                if transcript.busy {
+                    Text("Keep this panel open until transcription finishes.").font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                }
+                #if os(macOS)
+                if !model.capabilities.flag("whisper") {
+                    Text("Speech recognition isn't available on this Mac. Import timed SRT, WebVTT or JSON below instead.")
+                        .font(.caption).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                #endif
                 NativeTimedTranscriptImportControls(transcript: transcript, model: model, session: session)
                 Text(transcript.message).font(.caption).foregroundStyle(.secondary)
                 if !transcript.recoveryMessage.isEmpty { Text(transcript.recoveryMessage).font(.caption).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) }

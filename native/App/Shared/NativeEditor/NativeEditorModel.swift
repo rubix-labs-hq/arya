@@ -1440,6 +1440,46 @@ final class NativeEditorModel: ObservableObject {
         } catch { status = error.localizedDescription }
     }
 
+    /// Places browser items and waits for the backend to confirm the edit. Returns nil on success or an error message.
+    func placeAndConfirm(_ items: [NativeTimelineDrop.Item], assets: [String: Any]? = nil, hover: String?, at: Double?, expectedVersion: Int?, expectedComposition: String?? = nil) async -> String? {
+        if let reason = projectReadOnlyReason { status = reason; return reason }
+        if let expectedComposition, expectedComposition != composition {
+            let message = "The active timeline changed before the clips were added. Try again."
+            status = message
+            return message
+        }
+        do {
+            guard let planned = try placement(items, assets: assets, hover: hover, at: at), !planned.operations.isEmpty else {
+                let message = "No clips could be added to this timeline."
+                status = message
+                return message
+            }
+            let sourceFolder = folder, sourceComposition = composition
+            guard expectedVersion == nil || expectedVersion == version else {
+                let message = "The project changed before the edit started. Try again."
+                status = message
+                return message
+            }
+            let scoped = planned.operations.map { operation -> [String: Any] in
+                var result = operation
+                result["comp"] = sourceComposition as Any? ?? NSNull()
+                return result
+            }
+            var request: [String: Any] = ["ops": scoped, "who": "you", "summary": planned.summary, "returnProject": true]
+            if let expectedVersion { request["expectedVersion"] = expectedVersion }
+            let context = generation, before = project?.fields, previousVersion = version
+            let reply = try await call("/api/ops", request)
+            guard folder == sourceFolder, composition == sourceComposition, generation == context else {
+                return "The project changed before the edit finished."
+            }
+            emitHaptic(NativeHapticPolicy.committedEdit(before: before, previousVersion: previousVersion, reply: reply))
+            return nil
+        } catch {
+            status = error.localizedDescription
+            return error.localizedDescription
+        }
+    }
+
     /// The operations that place `items`, and the words for them. Nil when there is nothing to place.
     private func placement(_ items: [NativeTimelineDrop.Item], assets: [String: Any]?, hover: String?, at: Double?) throws -> (operations: [[String: Any]], summary: String)? {
         guard !items.isEmpty, fps.isFinite, fps > 0 else { return nil }

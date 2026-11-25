@@ -860,11 +860,16 @@ struct NativeViewer: View {
         return model.tracks.allSatisfy { $0.clips.isEmpty }
     }
 
+    private var readyTimelineAssets: [NativeAsset] {
+        (model.project?.assets ?? []).filter { !model.isMissingMedia($0) }
+    }
+
     private var emptyTimelineCard: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "film").font(.system(size: 30)).foregroundStyle(NativeEditorStyle.muted).accessibilityHidden(true)
-            Text("Your timeline is ready").font(.subheadline.weight(.semibold))
-            Text("Import footage or add an editable title to begin.").font(.caption).foregroundStyle(NativeEditorStyle.muted)
+        let readyAssets = readyTimelineAssets
+        return VStack(spacing: 12) {
+            Image(systemName: readyAssets.isEmpty ? "film" : "plus.rectangle.on.rectangle").font(.system(size: 30)).foregroundStyle(NativeEditorStyle.muted).accessibilityHidden(true)
+            Text(readyAssets.isEmpty ? "Your timeline is ready" : "Media ready").font(.subheadline.weight(.semibold))
+            Text(readyAssets.isEmpty ? "Import footage or add an editable title to begin." : "Add your imported clips to the timeline to start editing.").font(.caption).foregroundStyle(NativeEditorStyle.muted)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) { emptyTimelineActions }.fixedSize(horizontal: true, vertical: false)
@@ -892,6 +897,16 @@ struct NativeViewer: View {
     }
 
     @ViewBuilder private var emptyTimelineActions: some View {
+        let readyAssets = readyTimelineAssets
+        if !readyAssets.isEmpty {
+            Button {
+                model.place(readyAssets.map { .media($0.id) }, hover: nil, at: nil, expectedVersion: model.version)
+            } label: {
+                Label(readyAssets.count == 1 ? "Add clip to timeline" : "Add \(readyAssets.count) clips to timeline", systemImage: "plus.rectangle.on.rectangle")
+            }.buttonStyle(NativePrimaryButtonStyle())
+                .disabled(model.busy || model.projectReadOnlyReason != nil)
+                .accessibilityIdentifier("editor.viewer.addReadyMedia")
+        }
         #if os(iOS)
         Button { model.beginMediaImport(preferredSource: .photos) } label: {
             Label("Add from Photos", systemImage: "photo.on.rectangle")

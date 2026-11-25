@@ -35,6 +35,19 @@ struct NativeMotionPanel: View {
     @State private var masksExpanded = false
     private let properties = ["x", "y", "scale", "scaleX", "scaleY", "rotation", "opacity", "anchorX", "anchorY", "volume", "pan", "blur"]
 
+    private func properties(for clip: NativeClip) -> [String] {
+        let base: [String]
+        switch clip.kind {
+        case "audio":
+            base = ["volume", "pan"]
+        case "title", "shape", "image", "color", "null", "adjustment", "caption":
+            base = properties.filter { $0 != "volume" && $0 != "pan" }
+        default:
+            base = properties
+        }
+        return Array(Set(base + Array(clip.fields.dictionary("anim").keys))).sorted()
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -59,14 +72,14 @@ struct NativeMotionPanel: View {
                         Label("Property key lanes", systemImage: "diamond").font(.subheadline.weight(.semibold)).frame(minHeight: 44)
                     }.accessibilityIdentifier("editor.motion.lanes")
                     expressionControls(clip)
-                    maskControls(clip)
+                    if !["audio", "caption"].contains(clip.kind) { maskControls(clip) }
                     #else
                     selectedLayer(clip)
                     keyframeTimeline(clip)
                     motionGraph(clip)
                     keyframeControls(clip)
                     expressionControls(clip)
-                    maskControls(clip)
+                    if !["audio", "caption"].contains(clip.kind) { maskControls(clip) }
                     #endif
                 } else {
                     #if os(iOS) && !targetEnvironment(macCatalyst)
@@ -263,7 +276,7 @@ struct NativeMotionPanel: View {
         return VStack(alignment: .leading, spacing: 10) {
             LabeledContent {
                 Picker("Property", selection: Binding(get: { property }, set: chooseProperty)) {
-                    ForEach(Array(Set(properties + Array(clip.fields.dictionary("anim").keys))).sorted(), id: \.self) { Text(propertyLabel($0)).tag($0) }
+                    ForEach(properties(for: clip), id: \.self) { Text(propertyLabel($0)).tag($0) }
                 }
                 .labelsHidden()
                 #if os(iOS) && !targetEnvironment(macCatalyst)
@@ -499,7 +512,8 @@ struct NativeMotionPanel: View {
     private func loadExpression() { expressionCapture = nil; expression = model.selected?.fields.dictionary("expr").string(property) ?? "" }
     private func resetSelection() {
         // The property is kept across pages and clips, so check it against the clip now selected.
-        let valid = NativeMotionPropertyChoice.resolved(property, standard: properties, animated: model.selected.map { Array($0.fields.dictionary("anim").keys) } ?? [])
+        let standard = model.selected.map { properties(for: $0) } ?? properties
+        let valid = NativeMotionPropertyChoice.resolved(property, standard: standard, animated: model.selected.map { Array($0.fields.dictionary("anim").keys) } ?? [])
         if valid != property { property = valid }
         invalidateMotionDraft(); selectedKeyTime = nil; keySelection = []; expressionCapture = nil; loadExpression(); newValue = model.selected.map(baseValue) ?? 0
     }

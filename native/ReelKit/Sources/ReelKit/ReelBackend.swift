@@ -1304,7 +1304,7 @@ public actor ReelBackend {
         case ("GET", "/api/jobs"): return .object([("jobs", .array(jobs.map(\.json)))])
         case ("GET", "/api/jobs/wait"), ("GET", "/api/analysis/jobs/wait"): return try await waitJob(query["id"] ?? "", timeout: Double(query["timeout"] ?? "") ?? 25000)
         case ("POST", "/api/jobs/cancel"), ("POST", "/api/analysis/jobs/cancel"):
-            if let id = b["id"] as? String, let job = jobs.first(where: { $0.id == id }), job.state != "done" { nativeTasks[id]?.cancel(); fail(job, "cancelled") }
+            if let id = b["id"] as? String, let job = jobs.first(where: { $0.id == id }), ["queued", "running"].contains(job.state) { nativeTasks[id]?.cancel(); fail(job, "cancelled") }
             return .object([("ok", true)])
         case ("GET", "/api/deliveries"):
             var result = (try JSON.parse(deliveryHistory().list().text) as? [String: Any]) ?? [:]

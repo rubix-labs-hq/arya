@@ -647,6 +647,11 @@ struct NativeInspector: View {
                         }
                         Text(NativeClipCaption.text(clip, track: model.tracks.first { $0.clips.contains { $0.id == clip.id } })).font(.caption2).foregroundStyle(NativeEditorStyle.muted)
                         #endif
+                        if model.chosenClipCount > 1 {
+                            Text("\(model.chosenClipCount) clips selected. Controls below edit \(clip.name) only.")
+                                .font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         NativeTextRow("Label", value: clip.fields.string("label")) { model.update(clip, ["label": $0]) }.macInspectorAnchor("inspector.label")
                         GroupBox("Timing") {
                             VStack(spacing: 8) {
@@ -853,12 +858,15 @@ struct NativeInspector: View {
                     }
                 }
                 LabeledContent {
-                    Picker("Transition", selection: Binding(get: { clip.fields.dictionary("transitionIn").string("type", "none") }, set: { model.edit(["op": "transition", "id": clip.id, "type": $0, "dur": 0.5]) })) {
+                    Picker("Transition", selection: Binding(get: { clip.fields.dictionary("transitionIn").string("type", "none") }, set: {
+                        let currentDur = clip.fields.dictionary("transitionIn").number("dur", 0.5)
+                        model.edit(["op": "transition", "id": clip.id, "type": $0, "dur": currentDur > 0 ? currentDur : 0.5])
+                    })) {
                         ForEach(["none", "crossDissolve", "dipBlack", "dipWhite", "wipeLeft", "wipeRight", "wipeUp", "wipeDown", "slideLeft", "slideRight", "pushLeft", "pushRight", "zoomIn", "iris", "blurDissolve"], id: \.self) { Text(NativeOptionName.words($0)).tag($0) }
                     }
                     .labelsHidden()
                 } label: { Text("Transition").font(NativeType.control).foregroundStyle(NativeEditorStyle.muted) }
-                if !clip.fields.dictionary("transitionIn").isEmpty {
+                if !clip.fields.dictionary("transitionIn").isEmpty && clip.fields.dictionary("transitionIn").string("type", "none") != "none" {
                     NativeNumberRow("Transition duration", value: clip.fields.dictionary("transitionIn").number("dur", 0.5), range: (2 / model.fps)...max(clip.duration, clip.fields.dictionary("transitionIn").number("dur", 0.5)), showsSlider: false) {
                         model.edit(["op": "transition", "id": clip.id, "type": clip.fields.dictionary("transitionIn").string("type"), "dur": $0])
                     }

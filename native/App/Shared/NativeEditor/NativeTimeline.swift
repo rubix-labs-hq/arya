@@ -255,6 +255,16 @@ struct NativeTrackDeletion {
 // BEGIN TIMELINE PLANNING
 enum NativeTimelineMode: String, CaseIterable {
     case move = "Move", trim = "Trim", ripple = "Ripple trim", roll = "Roll", slip = "Slip", slide = "Slide"
+    var symbol: String {
+        switch self {
+        case .move: return "arrow.up.and.down.and.arrow.left.and.right"
+        case .trim: return "arrow.left.and.right"
+        case .ripple: return "arrow.right.to.line"
+        case .roll: return "arrow.left.arrow.right"
+        case .slip: return "film.stack"
+        case .slide: return "rectangle.leftthird.inset.filled"
+        }
+    }
     var hint: String {
         switch self {
         case .move: return "Drag selected clips. Drag vertically to another track of the same kind."
@@ -1066,6 +1076,7 @@ struct NativeTimeline: View {
     @GestureState private var magnifyActive = false
     #endif
     @State private var initialZoom: Double?
+    @State private var trackViewportWidth: CGFloat = 0
     @State private var mode: NativeTimelineMode = .move
     @State private var snapping = true
     @State private var extendingSelection = false
@@ -1164,12 +1175,27 @@ struct NativeTimeline: View {
         lifecycleResets(armedFeedbackResets(interactionGestureResets(interactionFrameTracking(timelineSurface))))
     }
 
+    private var fitZoomScale: Double {
+        let viewport = trackViewportWidth > 0 ? Double(trackViewportWidth) : 320
+        let available = max(80, viewport - 24)
+        return max(0.001, available / max(model.duration, 1))
+    }
+
+    private var minimumZoom: Double {
+        min(10, fitZoomScale)
+    }
+
+    private func zoomToFit() {
+        model.zoom = min(800, fitZoomScale)
+    }
+
     private var timelineSurface: some View {
         VStack(spacing: 0) {
             NativeTimelineToolbar(model: model, mode: $mode, snapping: $snapping, extending: $extendingSelection,
                                   detail: feedback.isEmpty ? preview?.detail ?? "\(model.selectedIDs.count) selected" : feedback,
-                                  selectAll: selectAll, split: splitSelection, delete: deleteSelection, nudge: nudge)
-            #if os(iOS)
+                                  selectAll: selectAll, split: splitSelection, delete: deleteSelection, nudge: nudge,
+                                  minZoom: minimumZoom, fitZoom: zoomToFit)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             precisionControls
             #endif
             #if os(iOS)
@@ -1296,7 +1322,9 @@ struct NativeTimeline: View {
                         }
                         #endif
                         if initialZoom == nil { initialZoom = model.zoom }
-                        model.zoom = min(800, max(10, (initialZoom ?? 80) * value.magnification))
+                        let base = initialZoom ?? 80
+                        let floor = min(minimumZoom, base)
+                        model.zoom = min(800, max(floor, base * value.magnification))
                     }.onEnded { _ in
                         #if os(iOS)
                         defer { initialZoom = nil; magnifyLayout = nil; magnifyCanceled = false }
@@ -1307,6 +1335,11 @@ struct NativeTimeline: View {
                         initialZoom = nil
                         #endif
                     })
+                    .background(GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { trackViewportWidth = proxy.size.width }
+                            .onChange(of: proxy.size.width) { _, width in trackViewportWidth = width }
+                    })
                 }
             }
             #if os(iOS)
@@ -1315,6 +1348,13 @@ struct NativeTimeline: View {
             .focusable()
             #endif
             .focused($keyboardFocus).focusEffectDisabled()
+            .overlay {
+                if keyboardFocus {
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(NativeEditorStyle.accent.opacity(0.65), lineWidth: 1.5)
+                        .allowsHitTesting(false)
+                }
+            }
             .onKeyPress(phases: .down, action: keyPress)
             #if os(macOS)
             .background(NativeTimelineCanvasFocusAnchor(owner: canvasFocusOwner).allowsHitTesting(false))
@@ -1467,13 +1507,31 @@ struct NativeTimeline: View {
                 : String(format: "%d:%02d", seconds / 60, seconds % 60)
         }
         return Canvas { context, size in
-            let step = model.zoom > 160 ? 0.5 : model.zoom > 40 ? 1.0 : 5.0
+            guard model.zoom.isFinite, model.zoom > 0 else { return }
+            let step: Double
+            if model.zoom > 160 {
+                step = 0.5
+            } else if model.zoom > 40 {
+                step = 1.0
+            } else {
+                let candidates: [Double] = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200]
+                let minSeconds = 64.0 / max(model.zoom, 0.0001)
+                step = candidates.first { $0 >= minSeconds } ?? (ceil(minSeconds / 3600) * 3600)
+            }
             for at in stride(from: 0.0, through: contentWidth / model.zoom, by: step) {
                 let x = at * model.zoom
-                let frames = Int((at * Double(rate)).rounded())
-                let whole = frames % rate == 0
+                let whole: Bool
+                let wholeSeconds: Int
+                if step >= 1 {
+                    whole = true
+                    wholeSeconds = Int(at.rounded())
+                } else {
+                    let frames = Int((at * Double(rate)).rounded())
+                    whole = frames % rate == 0
+                    wholeSeconds = frames / rate
+                }
                 if whole {
-                    context.draw(Text(rulerLabel(frames / rate)).font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary), at: CGPoint(x: x + 3, y: 9), anchor: .topLeading)
+                    context.draw(Text(rulerLabel(wholeSeconds)).font(.system(size: 10, design: .monospaced)).foregroundColor(.secondary), at: CGPoint(x: x + 3, y: 9), anchor: .topLeading)
                 }
                 var path = Path(); path.move(to: CGPoint(x: x, y: size.height - (whole ? 7 : 4))); path.addLine(to: CGPoint(x: x, y: size.height))
                 context.stroke(path, with: .color(.secondary.opacity(0.4)))
@@ -1637,6 +1695,7 @@ struct NativeTimeline: View {
                 .accessibilityLabel(precisionStepLabel(1))
         }
         .buttonStyle(NativeToolbarButtonStyle())
+        .buttonRepeatBehavior(.enabled)
         .disabled(precisionStepsDisabled)
     }
     /// Off only when nothing is selected, or when every selected clip and linked partner is on a
@@ -1851,7 +1910,7 @@ struct NativeTimeline: View {
     }
     /// The lane and time under a drop. Over the empty canvas there is neither, and the model chooses.
     private func dropLanding(_ info: DropInfo, canvas: Bool) -> (hover: String?, time: Double?)? {
-        guard model.project != nil, model.projectReadOnlyReason == nil, !model.showingSource else { return nil }
+        guard model.project != nil, model.projectReadOnlyReason == nil else { return nil }
         #if os(iOS)
         guard currentInteractionLayout.permitsInteraction else { return nil }
         #endif
@@ -1913,6 +1972,7 @@ struct NativeTimeline: View {
             model.status = model.projectReadOnlyReason ?? "Open an editable timeline before dropping media on it."
             return false
         }
+        model.showingSource = false
         keyboardFocus = true
         let model = model, version = model.version, context = model.processingContextID, composition = model.composition
         let fileProviders = info.itemProviders(for: [.fileURL])
@@ -2087,21 +2147,27 @@ struct NativeTimeline: View {
             }
         }.padding(.horizontal, 6).frame(maxWidth: .infinity, alignment: .leading)
         .contextMenu {
+            let deletion = NativeTrackDeletion(track: track, model: model)
             NativeContextAIMenuContent(model, .track(track))
             Divider()
             Button(track.fields.flag("hidden") ? "Show track" : "Hide track") { model.edit(["op": "update_track", "id": track.id, "set": ["hidden": !track.fields.flag("hidden")]]) }
             Button("Close gaps") { model.edit(["op": "close_gaps", "track": track.id]) }.disabled(track.locked)
-            Button("Delete track", role: .destructive) { model.edit(["op": "delete_track", "id": track.id]) }
+            Button("Delete track", role: .destructive) { deletion?.delete(model: model) }
+                .disabled(deletion == nil)
         }
         #endif
     }
     private func trackToggle(_ track: NativeTrack, _ key: String, _ icon: String) -> some View {
-        Button { model.edit(["op": "update_track", "id": track.id, "set": [key: !track.fields.flag(key)]]) } label: {
-            Image(systemName: icon).font(.system(size: 10)).foregroundStyle(track.fields.flag(key) ? NativeEditorStyle.accent : Color.secondary)
+        let isOn = track.fields.flag(key)
+        let actionName = key == "muted" ? "Mute" : key == "locked" ? "Lock" : "Solo"
+        return Button { model.edit(["op": "update_track", "id": track.id, "set": [key: !isOn]]) } label: {
+            Image(systemName: icon).font(.system(size: 10)).foregroundStyle(isOn ? NativeEditorStyle.accent : Color.secondary)
         }.buttonStyle(.plain).frame(width: 25, height: 25)
-            .background(track.fields.flag(key) ? NativeEditorStyle.accent.opacity(0.15) : NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 4))
-            .help(key == "muted" ? (track.fields.flag(key) ? "Unmute track" : "Mute track") : key == "locked" ? (track.locked ? "Unlock track" : "Lock track") : (track.fields.flag(key) ? "Disable solo" : "Solo track"))
-            .accessibilityLabel("\(track.name) \(key)")
+            .background(isOn ? NativeEditorStyle.accent.opacity(0.15) : NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 4))
+            .help(key == "muted" ? (isOn ? "Unmute track" : "Mute track") : key == "locked" ? (track.locked ? "Unlock track" : "Lock track") : (isOn ? "Disable solo" : "Solo track"))
+            .accessibilityLabel("\(actionName) \(track.name)")
+            .accessibilityValue(isOn ? "On" : "Off")
+            .accessibilityAddTraits(isOn ? [.isSelected] : [])
     }
 }
 
@@ -2231,6 +2297,8 @@ private struct NativeTimelineToolbar: View {
     let split: () -> Void
     let delete: (Bool) -> Void
     let nudge: (Double) -> Void
+    let minZoom: Double
+    let fitZoom: () -> Void
     @State private var multicamVisible = false
     @State private var markerRequest: NativeTimelineMarkerRequest?
     #if os(iOS)
@@ -2251,6 +2319,14 @@ private struct NativeTimelineToolbar: View {
         model.edit(operation)
     }
 
+    private var canSplitAtPlayhead: Bool {
+        !model.selectedIDs.isEmpty || model.tracks.contains { !$0.locked && $0.clips.contains { $0.start < model.time && model.time < $0.end } }
+    }
+
+    private func addTitleAtPlayhead() {
+        model.edit(["op": "add_title", "text": "Your title", "start": model.time, "dur": 5, "title": ["size": min(model.width, model.height) * 0.09]])
+    }
+
     var body: some View {
         let clipboardCapture = model.clipboardActionCapture()
         let matchFrame = Result { try model.captureMatchFrame() }
@@ -2260,7 +2336,7 @@ private struct NativeTimelineToolbar: View {
             Menu {
                 ForEach(NativeTimelineMode.allCases, id: \.self) { item in
                     Button { mode = item } label: {
-                        Label(item.rawValue, systemImage: item == mode ? "checkmark" : "cursorarrow.motionlines")
+                        Label(item.rawValue, systemImage: item == mode ? "checkmark" : item.symbol)
                     }
                 }
                 Section(NativeTimelineWords.helpTitle) {
@@ -2282,7 +2358,7 @@ private struct NativeTimelineToolbar: View {
                 .accessibilityHint("Automatically closes gaps on the main track")
                 .accessibilityIdentifier("timeline.magnetic")
             Button(action: split) { Image(systemName: "scissors") }
-                .disabled(model.selectedIDs.isEmpty).accessibilityLabel("Split selected clips at playhead")
+                .disabled(!canSplitAtPlayhead).accessibilityLabel("Split at playhead")
                 .accessibilityIdentifier("timeline.split")
             Button { delete(false) } label: { Image(systemName: "trash") }
                 .disabled(model.selectedIDs.isEmpty).accessibilityLabel("Delete selected clips")
@@ -2320,6 +2396,8 @@ private struct NativeTimelineToolbar: View {
                     Button("Clear range") { markRange("clear") }
                 }
                 Section("Tracks") {
+                    Button { addTitleAtPlayhead() } label: { Label("Add title at playhead", systemImage: "textformat") }
+                        .disabled(model.project == nil || model.projectReadOnlyReason != nil || model.busy)
                     Button { multicamVisible = true } label: { Label("Multicam", systemImage: "square.grid.2x2") }.disabled(model.project == nil)
                     Button("Add video track") { model.edit(["op": "add_track", "kind": "video"]) }
                     Button("Add audio track") { model.edit(["op": "add_track", "kind": "audio"]) }
@@ -2327,7 +2405,8 @@ private struct NativeTimelineToolbar: View {
                 Section("Timeline view") {
                     Text("Playhead \(nativeTimecode(model.time, fps: model.fps))")
                     Text(detail)
-                    Button { model.zoom = max(10, model.zoom / 1.4) } label: { Label("Zoom out", systemImage: "minus.magnifyingglass") }
+                    Button { fitZoom() } label: { Label("Zoom to fit", systemImage: "arrow.up.left.and.arrow.down.right") }
+                    Button { model.zoom = min(model.zoom, max(minZoom, model.zoom / 1.4)) } label: { Label("Zoom out", systemImage: "minus.magnifyingglass") }
                     Button { model.zoom = min(800, model.zoom * 1.4) } label: { Label("Zoom in", systemImage: "plus.magnifyingglass") }
                 }
             } label: { Image(systemName: "ellipsis") }
@@ -2344,9 +2423,15 @@ private struct NativeTimelineToolbar: View {
                     .disabled(!model.canRequestMatchFrame).help("Pause and place the playhead inside the primary selected source clip, then open that frame in the source viewer.")
                     .accessibilityIdentifier("editor.matchFrame.toolbar")
                 Menu {
-                    ForEach(NativeTimelineMode.allCases, id: \.self) { item in Button(item.rawValue) { mode = item } }
-                } label: { Label(mode.rawValue, systemImage: "cursorarrow.motionlines") }.help(mode.hint)
-                Button { snapping.toggle() } label: { Label("Snap", systemImage: "dot.scope") }.buttonStyle(NativeToolbarButtonStyle(selected: snapping)).help("Snap to clip edges, markers and playhead. N toggles snapping. Edits always align to frames.")
+                    ForEach(NativeTimelineMode.allCases, id: \.self) { item in
+                        Button { mode = item } label: { Label(item.rawValue, systemImage: item.symbol) }
+                    }
+                } label: { Label(mode.rawValue, systemImage: mode.symbol) }.help(mode.hint)
+                Button { snapping.toggle() } label: { Label("Snap", systemImage: "dot.scope") }
+                    .buttonStyle(NativeToolbarButtonStyle(selected: snapping))
+                    .help("Snap to clip edges, markers and playhead. N toggles snapping. Edits always align to frames.")
+                    .accessibilityLabel("Snap").accessibilityValue(snapping ? "On" : "Off")
+                    .accessibilityAddTraits(snapping ? [.isSelected] : [])
                 Button { model.magneticTimeline.toggle() } label: { Label("Magnetic", systemImage: NativeTimelineWords.magneticSymbol) }
                     .buttonStyle(NativeToolbarButtonStyle(selected: model.magneticTimeline))
                     .help("Magnetic timeline — automatically close gaps on primary storyline")
@@ -2357,7 +2442,11 @@ private struct NativeTimelineToolbar: View {
                     .help("Skimming: move the pointer over the timeline to preview frames without moving the playhead. Click to move the playhead there. S toggles skimming.")
                     .accessibilityLabel("Skimming").accessibilityValue(model.skimmingEnabled ? "On" : "Off")
                     .accessibilityIdentifier("timeline.skim")
-                Button { extending.toggle() } label: { Label("Multi", systemImage: "checkmark.circle") }.buttonStyle(NativeToolbarButtonStyle(selected: extending)).help("Click clips to add or remove them from the selection. Shift or Command click also selects multiple clips.")
+                Button { extending.toggle() } label: { Label("Multi", systemImage: "checkmark.circle") }
+                    .buttonStyle(NativeToolbarButtonStyle(selected: extending))
+                    .help("Click clips to add or remove them from the selection. Shift or Command click also selects multiple clips.")
+                    .accessibilityLabel("Multi-select").accessibilityValue(extending ? "On" : "Off")
+                    .accessibilityAddTraits(extending ? [.isSelected] : [])
                 Menu {
                     Button("Copy selection") { if let clipboardCapture { model.copyTimelineSelection(expected: clipboardCapture) } }.disabled(clipboardCapture == nil || !model.canCopyTimelineSelection)
                     Button("Cut selection") { if let clipboardCapture { model.copyTimelineSelection(cut: true, expected: clipboardCapture) } }.disabled(clipboardCapture == nil || !model.canCopyTimelineSelection)
@@ -2368,10 +2457,17 @@ private struct NativeTimelineToolbar: View {
                     .help("Add, rename, move or delete markers in the active timeline")
                     .accessibilityIdentifier("editor.marker.toolbar")
                 Button { multicamVisible = true } label: { Label("Multicam", systemImage: "square.grid.2x2") }.disabled(model.project == nil).help("Create multicam from imported camera sources")
-                Button(action: split) { Image(systemName: "scissors") }.disabled(model.selectedIDs.isEmpty).help("Split selected clips at the playhead")
-                Button { delete(false) } label: { Image(systemName: "trash") }.disabled(model.selectedIDs.isEmpty)
-                    .help(model.magneticTimeline ? "Delete selected clips. Magnetic closes the gap on the main track." : "Delete selected clips and leave a gap")
+                Button(action: split) { Image(systemName: "scissors") }
+                    .disabled(!canSplitAtPlayhead)
+                    .help("Split at the playhead (⌘B)")
+                    .accessibilityLabel("Split at playhead")
+                Button { delete(false) } label: { Image(systemName: "trash") }
+                    .disabled(model.selectedIDs.isEmpty)
+                    .help(model.magneticTimeline ? "Delete selected clips (⌫). Magnetic closes the gap on the main track." : "Delete selected clips and leave a gap (⌫)")
+                    .accessibilityLabel("Delete selected clips")
                 Menu {
+                    Button("Add title at playhead") { addTitleAtPlayhead() }
+                        .disabled(model.project == nil || model.projectReadOnlyReason != nil || model.busy)
                     Button("Select all clips", action: selectAll)
                     Button("Clear selection") { model.select(id: nil) }
                     Button("Ripple delete selected clips") { delete(true) }.disabled(model.selectedIDs.isEmpty)
@@ -2383,10 +2479,16 @@ private struct NativeTimelineToolbar: View {
                     Button("Set range start") { markRange("start") }
                     Button("Set range end") { markRange("end") }
                     Button("Clear range") { markRange("clear") }
+                    Divider()
+                    Button("Zoom to fit", action: fitZoom)
                 } label: { Image(systemName: "ellipsis") }
+                    .help("More timeline actions")
+                    .accessibilityLabel("More timeline actions")
                 Text(detail).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: true, vertical: false)
-                Button { model.zoom = max(10, model.zoom / 1.4) } label: { Image(systemName: "minus.magnifyingglass") }.help("Zoom out")
-                Button { model.zoom = min(800, model.zoom * 1.4) } label: { Image(systemName: "plus.magnifyingglass") }.help("Zoom in")
+                Button { model.zoom = min(model.zoom, max(minZoom, model.zoom / 1.4)) } label: { Image(systemName: "minus.magnifyingglass") }
+                    .help("Zoom out").accessibilityLabel("Zoom out")
+                Button { model.zoom = min(800, model.zoom * 1.4) } label: { Image(systemName: "plus.magnifyingglass") }
+                    .help("Zoom in").accessibilityLabel("Zoom in")
             }.fixedSize(horizontal: true, vertical: false).font(.caption).buttonStyle(NativeToolbarButtonStyle()).padding(.horizontal, 8)
         }
         #endif
@@ -2683,7 +2785,7 @@ private struct NativeTimelineClip: View {
     #endif
     private var selected: Bool { model.selectedIDs.contains(clip.id) }
     private var inlineEdges: Bool {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         return NativeTimelineTouchGeometry.inlineEdges(clipWidth: clip.duration * model.zoom)
         #else
         return true
@@ -2842,7 +2944,7 @@ private struct NativeTimelineClip: View {
     }
     private func edge(_ edge: String, renderedVersion: Int) -> some View {
         Capsule().fill(.white.opacity(0.85)).frame(width: 3, height: 22)
-            #if os(iOS)
+            #if os(iOS) && !targetEnvironment(macCatalyst)
             .frame(width: 44, height: 44).contentShape(Rectangle())
             #else
             .frame(width: min(44, max(4, clip.duration * model.zoom / 2)), height: 44).contentShape(Rectangle())
@@ -2851,7 +2953,7 @@ private struct NativeTimelineClip: View {
             .accessibilityLabel("\(mode == .roll ? "Roll" : mode == .ripple ? "Ripple trim" : "Trim") \(edge) edge")
     }
     private func clipDrag(renderedVersion: Int) -> some Gesture {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         return touchDrag(edge: nil, renderedVersion: renderedVersion)
         #else
         return DragGesture(minimumDistance: 5, coordinateSpace: .named("nativeTimelineRows")).onChanged { value in
@@ -2861,7 +2963,7 @@ private struct NativeTimelineClip: View {
         #endif
     }
     private func edgeDrag(_ edge: String, renderedVersion: Int) -> some Gesture {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         return touchDrag(edge: edge, renderedVersion: renderedVersion)
         #else
         return DragGesture(minimumDistance: 1, coordinateSpace: .named("nativeTimelineRows")).onChanged { value in

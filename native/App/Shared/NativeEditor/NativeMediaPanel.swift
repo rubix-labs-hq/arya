@@ -406,6 +406,19 @@ struct NativeMediaPanel: View {
                             .buttonStyle(NativeToolbarButtonStyle())
                             .disabled(model.restoringMediaSource != nil || session.projectReadOnlyReason != nil)
                             .accessibilityLabel("Restore missing original \(asset.name)")
+                    } else {
+                        Button {
+                            model.showingSource = false
+                            model.place([.media(asset.id)], hover: nil, at: nil, expectedVersion: model.version)
+                        } label: {
+                            Label("Add to timeline", systemImage: "plus")
+                                .font(.caption2.weight(.medium))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(NativeToolbarButtonStyle())
+                        .disabled(model.busy || session.projectReadOnlyReason != nil)
+                        .help("Add \(asset.name) to the timeline")
+                        .accessibilityLabel("Add \(asset.name) to timeline")
                     }
                 }.contextMenu {
                     NativeContextAIMenuContent(model, .media(asset))
@@ -526,8 +539,13 @@ struct NativeMediaPanel: View {
                         showSaved = true
                     }.buttonStyle(NativeToolbarButtonStyle())
                 }
+                #if os(iOS) && !targetEnvironment(macCatalyst)
+                Text(section == "Titles" ? "Tap to place at the playhead, or drag onto a timeline track. Refine it in the inspector or with AI." : model.selected.map { "Selected: \($0.name)" } ?? "Select a visual clip in the timeline to apply \(section.lowercased()).")
+                    .font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                #else
                 Text(section == "Titles" ? "Click to place at the playhead, or drag onto a timeline track. Refine it in the inspector or with AI." : model.selected.map { "Selected: \($0.name)" } ?? "Select a visual clip in the timeline to apply \(section.lowercased()).")
                     .font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                #endif
                 if section == "Titles" { titleAndGeneratorRows }
                 ForEach(section == "Titles" ? [] : presetNames, id: \.self) { name in
                     Button { applyPreset(name) } label: {
