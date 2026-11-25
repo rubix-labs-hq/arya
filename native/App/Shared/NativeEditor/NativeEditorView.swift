@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 import ReelKit
 #if os(iOS)
 import CoreHaptics
+import StoreKit
 import UIKit
 import AVFoundation
 #elseif os(macOS)
@@ -308,7 +309,9 @@ struct NativeEditorView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    #if os(macOS)
+    #if os(iOS)
+    @Environment(\.requestReview) private var requestReview
+    #elseif os(macOS)
     @Environment(\.openSettings) private var openSettings
     #endif
     @ScaledMetric(relativeTo: .body) private var contextHeaderHeight = 44.0
@@ -415,14 +418,25 @@ struct NativeEditorView: View {
                 }
             }
             // Before the inset so the card sits above the compact workflow bar.
+            // Whenever the Deliver sheet is open, Deliver owns the card so it is never covered or duplicated.
             .overlay(alignment: compact ? .bottom : .bottomTrailing) {
-                if model.supportPromptVisible {
+                if model.supportPromptVisible, model.mobilePanel != .deliver {
                     NativeSupportPromptCard(model: model, compact: compact)
                         .padding(compact ? 12 : 18)
                         .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .animation(reduceMotion ? nil : .spring(duration: 0.35), value: model.supportPromptVisible)
+            #if os(iOS)
+            .onChange(of: model.reviewRequestToken) { _, _ in
+                guard scenePhase == .active,
+                      !model.supportPromptVisible,
+                      !model.hasPendingSupportPrompt,
+                      NativeReviewPromptLedger.canRequest(supportPromptActive: false) else { return }
+                NativeReviewPromptLedger.recordRequest()
+                requestReview()
+            }
+            #endif
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if compact {
                     VStack(spacing: 0) {
@@ -1815,7 +1829,7 @@ private struct NativeEditorPreferences: View {
                 HStack {
                     Label("Arya Pro", systemImage: "sparkles")
                     Spacer()
-                    Text(proStore.access.summary).font(.footnote).foregroundStyle(NativeEditorStyle.muted)
+                    Text(proStore.access.isPro ? proStore.access.summary : "4K · ProRes · HDR").font(.footnote).foregroundStyle(NativeEditorStyle.muted)
                     Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(NativeEditorStyle.muted)
                 }
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)

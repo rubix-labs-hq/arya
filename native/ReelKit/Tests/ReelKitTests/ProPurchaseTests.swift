@@ -75,6 +75,147 @@ final class ProPurchaseTests: XCTestCase {
         XCTAssertEqual(store.requests.count, 1, "A loaded catalog is not fetched again")
     }
 
+    func testReloadProductsRefreshesEligibilityEvenWhenReady() async {
+        let updated = [
+            ProProduct(plan: .yearly, displayName: "Arya Pro Yearly", displayPrice: "21,99 €", period: "year", freeTrial: nil),
+            ProProduct(plan: .monthly, displayName: "Arya Pro Monthly", displayPrice: "3,49 €", period: "month"),
+            ProProduct(plan: .lifetime, displayName: "Arya Pro Lifetime", displayPrice: "54,99 €"),
+        ]
+        let store = FakeStore([.success(Self.catalog), .success(updated)])
+        let (controller, _) = await loaded(store)
+        guard case .ready(let first) = controller.catalog else { return XCTFail("catalog not ready") }
+        XCTAssertEqual(first.first(where: { $0.plan == .yearly })?.freeTrial, "1 week")
+        await controller.reloadProducts()
+        XCTAssertEqual(store.requests.count, 2)
+        guard case .ready(let refreshed) = controller.catalog else { return XCTFail("reloaded catalog not ready") }
+        XCTAssertNil(refreshed.first(where: { $0.plan == .yearly })?.freeTrial)
+    }
+
+    func testSavingsPercentAndMonthlyEquivalentFromStorePrices() {
+        let usdFormat = Decimal.FormatStyle.Currency(code: "USD", locale: Locale(identifier: "en_US"))
+        let monthly = ProProduct(plan: .monthly, displayName: "Monthly", displayPrice: "$2.99", period: "month",
+                                 price: Decimal(string: "2.99"), priceFormat: usdFormat, renewalMonths: 1)
+        let yearly = ProProduct(plan: .yearly, displayName: "Yearly", displayPrice: "$19.99", period: "year", freeTrial: "1 week",
+                                price: Decimal(string: "19.99"), priceFormat: usdFormat, renewalMonths: 12)
+        XCTAssertEqual(ProPricing.savingsPercent(monthly: monthly, yearly: yearly), 44)
+        XCTAssertEqual(ProPricing.monthlyEquivalent(for: yearly), "$1.67")
+        XCTAssertNil(ProPricing.monthlyEquivalent(for: monthly))
+
+        // Zero-decimal currency (JPY) rounds up cleanly without hardcoding decimals.
+        let jpyFormat = Decimal.FormatStyle.Currency(code: "JPY", locale: Locale(identifier: "ja_JP"))
+        let jpyMonthly = ProProduct(plan: .monthly, displayName: "Monthly", displayPrice: "¥450", period: "month",
+                                    price: Decimal(450), priceFormat: jpyFormat, renewalMonths: 1)
+        let jpyYearly = ProProduct(plan: .yearly, displayName: "Yearly", displayPrice: "¥3,000", period: "year",
+                                   price: Decimal(3000), priceFormat: jpyFormat, renewalMonths: 12)
+        XCTAssertEqual(ProPricing.savingsPercent(monthly: jpyMonthly, yearly: jpyYearly), 44)
+        XCTAssertEqual(ProPricing.monthlyEquivalent(for: jpyYearly), "¥250")
+
+        // Below 10% threshold, missing plan, or unexpected renewal months return nil.
+        let smallSavings = ProProduct(plan: .yearly, displayName: "Yearly", displayPrice: "$34.99", period: "year",
+                                      price: Decimal(string: "34.99"), priceFormat: usdFormat, renewalMonths: 12)
+        XCTAssertNil(ProPricing.savingsPercent(monthly: monthly, yearly: smallSavings))
+        XCTAssertNil(ProPricing.savingsPercent(monthly: nil, yearly: yearly))
+        let oddPeriod = ProProduct(plan: .yearly, displayName: "Yearly", displayPrice: "$19.99", period: "year",
+                                   price: Decimal(string: "19.99"), priceFormat: usdFormat, renewalMonths: 6)
+        XCTAssertNil(ProPricing.savingsPercent(monthly: monthly, yearly: oddPeriod))
+    }
+
+    private final class SlowCatalogStore: ProStoreClient {
+        var canMakePayments = true
+        var catalogWaiters: [CheckedContinuation<[ProProduct], Error>] = []
+        var closed = false
+        var requests = 0
+        var maxAllowedRequests = 1
+        var access: ProAccess = .free
+        func products(for ids: [String]) async throws -> [ProProduct] {
+            guard !closed else { throw Unexpected() }
+            requests += 1
+            guard requests <= maxAllowedRequests else { throw Unexpected() }
+            return try await withCheckedThrowingContinuation { catalogWaiters.append($0) }
+        }
+        func currentAccess() async -> ProAccess { access }
+        func transactionUpdates() -> AsyncStream<ProTransactionUpdate> { AsyncStream { _ in } }
+        func restore() async throws {}
+    }
+
+    /// Cold-launch promoted purchase intents can call `loadProducts()` concurrently while the
+    /// paywall's own load is already in flight, and overlapping `reloadProducts()` invalidations
+    /// must coalesce into a single follow-up fetch publishing only the latest generation.
+    func testConcurrentLoadWaitsForInFlightCatalogAndDirectPurchaseBypassesCatalog() async {
+        let store = SlowCatalogStore()
+        store.maxAllowedRequests = 2
+        let controller = ProPurchaseController(client: store)
+        var publishedReadyCounts: [Int] = []
+        controller.onChange = {
+            if case .ready(let products) = controller.catalog {
+                publishedReadyCounts.append(products.count)
+            }
+        }
+        var resumed = 0
+        defer {
+            store.closed = true
+            while resumed < store.catalogWaiters.count {
+                store.catalogWaiters[resumed].resume(throwing: Unexpected())
+                resumed += 1
+            }
+        }
+        let first = Task { await controller.loadProducts() }
+        for _ in 0..<100 where store.catalogWaiters.isEmpty { await Task.yield() }
+        guard store.catalogWaiters.count == 1 else { return XCTFail("Expected initial catalog fetch to start") }
+        var secondStarted = false
+        var secondFinished = false
+        let second = Task { secondStarted = true; await controller.loadProducts(); secondFinished = true }
+        for _ in 0..<100 where !secondStarted { await Task.yield() }
+        await Task.yield()
+        XCTAssertTrue(secondStarted)
+        XCTAssertFalse(secondFinished, "Second caller must wait while first load is in flight")
+        // Trigger two overlapping reloads while the first fetch is still pending; they must coalesce into one follow-up fetch.
+        var reloadAEntered = false
+        var reloadBEntered = false
+        let reloadA = Task { reloadAEntered = true; await controller.reloadProducts() }
+        let reloadB = Task { reloadBEntered = true; await controller.reloadProducts() }
+        for _ in 0..<100 where !(reloadAEntered && reloadBEntered) { await Task.yield() }
+        await Task.yield()
+        XCTAssertTrue(reloadAEntered && reloadBEntered)
+        // Stale first response must never be published because reloads invalidated it.
+        store.catalogWaiters[0].resume(returning: [Self.catalog[2]])
+        resumed = 1
+        for _ in 0..<100 where store.catalogWaiters.count < 2 { await Task.yield() }
+        guard store.catalogWaiters.count == 2 else { return XCTFail("Coalesced reload must start one follow-up fetch") }
+        XCTAssertEqual(publishedReadyCounts, [], "Stale first catalog must never be published")
+        store.catalogWaiters[1].resume(returning: Self.catalog)
+        resumed = 2
+        await first.value
+        await second.value
+        await reloadA.value
+        await reloadB.value
+        XCTAssertTrue(secondFinished)
+        XCTAssertEqual(store.requests, 2, "Concurrent loads and overlapping reloads coalesce into at most one follow-up fetch")
+        XCTAssertEqual(publishedReadyCounts, [3], "Only the latest reload catalog is published")
+        if case .ready(let products) = controller.catalog {
+            XCTAssertEqual(products.count, 3)
+        } else {
+            XCTFail("Catalog should hold the latest reload result")
+        }
+
+        // Promoted purchase with StoreKit's Product can purchase through the verified flow even
+        // before catalog loads, and an Ask-to-Buy pending approval resolves to unlocked even after
+        // another paywall calls clearStatus().
+        let freshStore = FakeStore([.success([])])
+        let directController = ProPurchaseController(client: freshStore)
+        let log = FinishLog()
+        let started = await directController.purchase(.yearly, requireCatalog: false) { _ in .pending }
+        XCTAssertTrue(started)
+        XCTAssertEqual(directController.status, .pending(.yearly))
+        directController.clearStatus()
+        XCTAssertEqual(directController.status, .idle)
+        freshStore.access = .subscribed(.yearly)
+        await directController.handle(.verified(transaction(99, .yearly, log: log)))
+        XCTAssertEqual(directController.status, .unlocked)
+        let finished = await log.ids
+        XCTAssertEqual(finished, [99])
+    }
+
     func testTermsStateTheFullRenewalPriceAndTrialOnlyWhenEligible() {
         XCTAssertEqual(Self.catalog[2].terms, "3,49 € per month. Renews automatically unless you cancel at least 24 hours before the period ends.")
         XCTAssertEqual(Self.catalog[1].terms, "Free for 1 week, then 21,99 € per year. Renews automatically unless you cancel at least 24 hours before the period ends.")

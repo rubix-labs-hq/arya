@@ -201,6 +201,7 @@ struct NativeDeliverPanel: View {
     @ObservedObject private var mobileExport = NativeMobileExport.shared
     @ObservedObject private var proStore = NativeProStore.shared
     @State private var proVisible = false
+    @State private var proSessionID: String?
     #endif
 
     private var presets: [String] { model.capabilities.dictionary("export")["presets"] as? [String] ?? model.capabilities["presets"] as? [String] ?? [] }
@@ -233,6 +234,30 @@ struct NativeDeliverPanel: View {
         #else
         return false
         #endif
+    }
+    private var proHighlight: ProFeature? {
+        guard needsPro else { return nil }
+        if preset.hasPrefix("prores-") { return .prores }
+        if hdrAvailable, hdrTransfers.contains(transfer), transfer != "sdr" { return .hdr }
+        return .resolution
+    }
+    private var needsProOnlyForSize: Bool {
+        needsPro && proHighlight == .resolution
+    }
+    private var latestCompletedExport: (output: String, url: URL, label: String)? {
+        guard let job = model.jobs.last(where: { $0.string("kind") == "export" && $0.string("state") == "done" }) else { return nil }
+        let output = job.string("output")
+        guard !output.isEmpty, let url = try? model.mediaURL(output),
+              (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return nil }
+        let ext = url.pathExtension.lowercased()
+        let label: String
+        switch ext {
+        case "m4a", "wav": label = "Share audio"
+        case "gif": label = "Share GIF"
+        case "mp4", "mov": label = "Share video"
+        default: label = "Share export"
+        }
+        return (output, url, label)
     }
     private var proBadge: String {
         #if os(iOS)
@@ -327,8 +352,38 @@ struct NativeDeliverPanel: View {
                     .buttonStyle(NativePrimaryButtonStyle(fill: true))
                     .disabled(starting || model.duration <= 0 || presets.isEmpty || outputError != nil)
                     .accessibilityIdentifier("deliver.export")
+                if needsProOnlyForSize {
+                    Button("Export 1080p free") {
+                        chooseSize(long: 1920, short: 1080)
+                        export()
+                    }
+                    .buttonStyle(NativeSecondaryButtonStyle(fill: true))
+                    .disabled(starting || model.duration <= 0 || presets.isEmpty)
+                    .accessibilityIdentifier("deliver.export1080Free")
+                }
                 Button("Save current frame") { still() }.disabled(model.metalFrame == nil)
                     .buttonStyle(NativeSecondaryButtonStyle(fill: true))
+                if let completed = latestCompletedExport {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Export saved", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(NativeEditorStyle.success)
+                        Text(completed.url.lastPathComponent)
+                            .font(.caption).foregroundStyle(NativeEditorStyle.muted)
+                            .lineLimit(2)
+                        ShareLink(item: completed.url) {
+                            Label(completed.label, systemImage: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(NativePrimaryButtonStyle(fill: true))
+                        .accessibilityIdentifier("deliver.shareCompleted")
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(NativeEditorStyle.panelRaised, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay { RoundedRectangle(cornerRadius: 8).stroke(NativeEditorStyle.success.opacity(0.4), lineWidth: 1) }
+                    .accessibilityIdentifier("deliver.completedCard")
+                }
                 if let lastFile {
                     ShareLink(item: lastFile) {
                         Label("Share saved file", systemImage: "square.and.arrow.up")
@@ -336,10 +391,14 @@ struct NativeDeliverPanel: View {
                     .buttonStyle(NativeSecondaryButtonStyle(fill: true))
                 }
                 #if os(iOS)
-                if !mobileExport.message.isEmpty {
+                if model.supportPromptVisible && model.mobilePanel == .deliver {
+                    NativeSupportPromptCard(model: model, compact: true)
+                }
+                let hideDuplicateSavedMessage = latestCompletedExport.map { mobileExport.message == "Export saved to \($0.output)" } ?? false
+                if !mobileExport.message.isEmpty && !hideDuplicateSavedMessage {
                     HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: mobileExport.message.lowercased().contains("saved") || mobileExport.message.lowercased().contains("finished") ? "checkmark.circle.fill" : "info.circle")
-                            .foregroundStyle(mobileExport.message.lowercased().contains("saved") || mobileExport.message.lowercased().contains("finished") ? NativeEditorStyle.success : NativeEditorStyle.accent)
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(NativeEditorStyle.accent)
                             .accessibilityHidden(true)
                         Text(mobileExport.message).font(.caption).foregroundStyle(NativeEditorStyle.text)
                             .fixedSize(horizontal: false, vertical: true)
@@ -393,7 +452,15 @@ struct NativeDeliverPanel: View {
         #if os(iOS)
         .sheet(isPresented: $proVisible) {
             NavigationStack {
-                NativeProView(store: proStore, reason: "Arya Pro exports this video at full quality. Editing and 1080p export stay free.")
+                NativeProView(
+                    store: proStore,
+                    reason: "Arya Pro exports this video at full quality. Editing and 1080p export stay free.",
+                    highlight: proHighlight,
+                    onUnlocked: proSessionID == session.sessionID ? {
+                        proVisible = false
+                        if proSessionID == session.sessionID { export() }
+                    } : nil
+                )
                     .toolbar { Button("Done") { proVisible = false } }
             }
             .preferredColorScheme(.dark).tint(NativeEditorStyle.accent)
@@ -418,6 +485,7 @@ struct NativeDeliverPanel: View {
 
     private func showPro() {
         #if os(iOS)
+        proSessionID = session.sessionID
         proVisible = true
         #endif
     }
