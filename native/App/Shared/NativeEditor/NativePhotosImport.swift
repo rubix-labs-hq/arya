@@ -619,7 +619,7 @@ struct NativeMediaImportSheet: View {
     private var importedRoots: [NativeMediaImportRoot] {
         NativeMediaImportLocation.roots(assets: model.project?.fields.dictionary("assets") ?? [:])
     }
-    private var importing: Bool { photosImporting || filesImporting || retryingCopies || checkingCopies }
+    private var importing: Bool { photosImporting || filesImporting || retryingCopies || checkingCopies || placingImported }
 
     private var current: Bool {
         request.isCurrent(requestID: model.mediaImportRequest?.id, backend: session.backend, folder: session.folder)
@@ -891,15 +891,25 @@ struct NativeMediaImportSheet: View {
               model.renderPreviewBackendID == ObjectIdentifier(request.backend) else { return }
         let items = verifiedAssets.map { NativeTimelineDrop.Item.media($0.id) }
         let expectedVersion = model.version
+        let expectedComposition = model.composition
+        let expectedContext = navigationContext
         placingImported = true
         placementError = nil
         Task { @MainActor in
             defer { placingImported = false }
-            if let error = await model.placeAndConfirm(items, hover: nil, at: nil, expectedVersion: expectedVersion) {
+            guard current,
+                  navigationContext == expectedContext,
+                  model.composition == expectedComposition,
+                  model.renderPreviewBackendID == ObjectIdentifier(request.backend) else {
+                placementError = "The active timeline changed before the clips were added. Try again."
+                return
+            }
+            if let error = await model.placeAndConfirm(items, hover: nil, at: nil, expectedVersion: expectedVersion, expectedComposition: expectedComposition) {
                 placementError = error
                 return
             }
             guard current, navigationContext.panelID == request.panelID,
+                  model.composition == expectedComposition,
                   model.renderPreviewBackendID == ObjectIdentifier(request.backend) else { return }
             model.showingSource = false
             model.mediaImportRequest = nil

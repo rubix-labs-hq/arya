@@ -1175,17 +1175,25 @@ struct NativeTimeline: View {
         lifecycleResets(armedFeedbackResets(interactionGestureResets(interactionFrameTracking(timelineSurface))))
     }
 
+    private var minimumZoom: Double {
+        let viewport = trackViewportWidth > 0 ? Double(trackViewportWidth) : 320
+        let available = max(80, viewport - 24)
+        let fit = available / max(model.duration, 1)
+        return min(10, max(0.05, fit))
+    }
+
     private func zoomToFit() {
         let viewport = trackViewportWidth > 0 ? Double(trackViewportWidth) : 320
         let available = max(80, viewport - 24)
-        model.zoom = min(800, max(0.5, available / max(model.duration, 1)))
+        model.zoom = min(800, max(minimumZoom, available / max(model.duration, 1)))
     }
 
     private var timelineSurface: some View {
         VStack(spacing: 0) {
             NativeTimelineToolbar(model: model, mode: $mode, snapping: $snapping, extending: $extendingSelection,
                                   detail: feedback.isEmpty ? preview?.detail ?? "\(model.selectedIDs.count) selected" : feedback,
-                                  selectAll: selectAll, split: splitSelection, delete: deleteSelection, nudge: nudge, fitZoom: zoomToFit)
+                                  selectAll: selectAll, split: splitSelection, delete: deleteSelection, nudge: nudge,
+                                  minZoom: minimumZoom, fitZoom: zoomToFit)
             #if os(iOS) && !targetEnvironment(macCatalyst)
             precisionControls
             #endif
@@ -1313,7 +1321,7 @@ struct NativeTimeline: View {
                         }
                         #endif
                         if initialZoom == nil { initialZoom = model.zoom }
-                        model.zoom = min(800, max(10, (initialZoom ?? 80) * value.magnification))
+                        model.zoom = min(800, max(minimumZoom, (initialZoom ?? 80) * value.magnification))
                     }.onEnded { _ in
                         #if os(iOS)
                         defer { initialZoom = nil; magnifyLayout = nil; magnifyCanceled = false }
@@ -2268,6 +2276,7 @@ private struct NativeTimelineToolbar: View {
     let split: () -> Void
     let delete: (Bool) -> Void
     let nudge: (Double) -> Void
+    let minZoom: Double
     let fitZoom: () -> Void
     @State private var multicamVisible = false
     @State private var markerRequest: NativeTimelineMarkerRequest?
@@ -2376,7 +2385,7 @@ private struct NativeTimelineToolbar: View {
                     Text("Playhead \(nativeTimecode(model.time, fps: model.fps))")
                     Text(detail)
                     Button { fitZoom() } label: { Label("Zoom to fit", systemImage: "arrow.up.left.and.arrow.down.right") }
-                    Button { model.zoom = max(10, model.zoom / 1.4) } label: { Label("Zoom out", systemImage: "minus.magnifyingglass") }
+                    Button { model.zoom = max(minZoom, model.zoom / 1.4) } label: { Label("Zoom out", systemImage: "minus.magnifyingglass") }
                     Button { model.zoom = min(800, model.zoom * 1.4) } label: { Label("Zoom in", systemImage: "plus.magnifyingglass") }
                 }
             } label: { Image(systemName: "ellipsis") }
@@ -2455,7 +2464,7 @@ private struct NativeTimelineToolbar: View {
                     .help("More timeline actions")
                     .accessibilityLabel("More timeline actions")
                 Text(detail).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: true, vertical: false)
-                Button { model.zoom = max(10, model.zoom / 1.4) } label: { Image(systemName: "minus.magnifyingglass") }
+                Button { model.zoom = max(minZoom, model.zoom / 1.4) } label: { Image(systemName: "minus.magnifyingglass") }
                     .help("Zoom out").accessibilityLabel("Zoom out")
                 Button { model.zoom = min(800, model.zoom * 1.4) } label: { Image(systemName: "plus.magnifyingglass") }
                     .help("Zoom in").accessibilityLabel("Zoom in")

@@ -860,8 +860,12 @@ struct NativeViewer: View {
         return model.tracks.allSatisfy { $0.clips.isEmpty }
     }
 
+    private var readyTimelineAssets: [NativeAsset] {
+        (model.project?.assets ?? []).filter { !model.isMissingMedia($0) }
+    }
+
     private var emptyTimelineCard: some View {
-        let readyAssets = model.project?.assets ?? []
+        let readyAssets = readyTimelineAssets
         return VStack(spacing: 12) {
             Image(systemName: readyAssets.isEmpty ? "film" : "plus.rectangle.on.rectangle").font(.system(size: 30)).foregroundStyle(NativeEditorStyle.muted).accessibilityHidden(true)
             Text(readyAssets.isEmpty ? "Your timeline is ready" : "Media ready").font(.subheadline.weight(.semibold))
@@ -893,7 +897,7 @@ struct NativeViewer: View {
     }
 
     @ViewBuilder private var emptyTimelineActions: some View {
-        let readyAssets = model.project?.assets ?? []
+        let readyAssets = readyTimelineAssets
         if !readyAssets.isEmpty {
             Button {
                 model.place(readyAssets.map { .media($0.id) }, hover: nil, at: nil, expectedVersion: model.version)

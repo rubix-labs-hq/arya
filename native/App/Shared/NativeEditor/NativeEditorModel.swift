@@ -1441,8 +1441,13 @@ final class NativeEditorModel: ObservableObject {
     }
 
     /// Places browser items and waits for the backend to confirm the edit. Returns nil on success or an error message.
-    func placeAndConfirm(_ items: [NativeTimelineDrop.Item], assets: [String: Any]? = nil, hover: String?, at: Double?, expectedVersion: Int?) async -> String? {
+    func placeAndConfirm(_ items: [NativeTimelineDrop.Item], assets: [String: Any]? = nil, hover: String?, at: Double?, expectedVersion: Int?, expectedComposition: String?? = nil) async -> String? {
         if let reason = projectReadOnlyReason { status = reason; return reason }
+        if let expectedComposition, expectedComposition != composition {
+            let message = "The active timeline changed before the clips were added. Try again."
+            status = message
+            return message
+        }
         do {
             guard let planned = try placement(items, assets: assets, hover: hover, at: at), !planned.operations.isEmpty else {
                 let message = "No clips could be added to this timeline."

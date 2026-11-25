@@ -418,7 +418,7 @@ final class NativeTranscriptState: ObservableObject {
         retainDraft()
         cancel()
         if wasBusy {
-            message = "Transcription stopped when this panel closed. Choose Transcribe to start again."
+            message = "The active transcript action stopped when this panel closed."
         }
     }
 
