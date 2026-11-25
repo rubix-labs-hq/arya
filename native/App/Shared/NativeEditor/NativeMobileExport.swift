@@ -39,7 +39,7 @@ final class NativeMobileExport: ObservableObject {
         pending = request != nil
         if pending { message = "An interrupted export can be resumed from Deliver." }
         #if !targetEnvironment(macCatalyst)
-        backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+        backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.suspendForegroundGPU() }
         }
         #endif
@@ -59,7 +59,7 @@ final class NativeMobileExport: ObservableObject {
         // Mac exports continue while another window or application has focus.
         return true
         #else
-        return UIApplication.shared.applicationState != .background
+        return UIApplication.shared.applicationState == .active
         #endif
     }
     var canResume: Bool { pending && !starting && !running && worker == nil && fallbackJobs.isEmpty }

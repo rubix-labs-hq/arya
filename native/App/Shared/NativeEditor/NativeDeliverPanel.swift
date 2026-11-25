@@ -571,7 +571,8 @@ struct NativeDeliverPanel: View {
             }
             do {
                 try await PHPhotoLibrary.shared().performChanges {
-                    PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+                    let creation = PHAssetCreationRequest.forAsset()
+                    creation.addResource(with: .video, fileURL: url, options: nil)
                 }
                 photosSaveIsError = false
                 photosSaveMessage = "Saved to Photos."

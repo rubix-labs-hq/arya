@@ -984,10 +984,7 @@ struct NativeTranscriptPanel: View {
                 }.disabled(transcript.busy || transcript.dirty)
                 if sources.isEmpty {
                     Button {
-                        model.panel = .media
-                        #if os(iOS)
-                        model.mobilePanel = .media
-                        #endif
+                        model.requestedWorkspace = .media
                     } label: {
                         Label("Import media with audio", systemImage: "square.and.arrow.down")
                     }

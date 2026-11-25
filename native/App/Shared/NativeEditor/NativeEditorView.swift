@@ -1921,20 +1921,29 @@ struct NativePanelView: View {
     var inSheet = false
 
     var body: some View {
+        let readOnlyReason = session.projectReadOnlyReason
+        let sheetStatus = readOnlyReason ?? model.status
         panelContent
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if inSheet, !model.status.isEmpty {
-                    HStack(spacing: 8) {
-                        Image(systemName: session.projectReadOnlyReason != nil ? "exclamationmark.triangle.fill" : "info.circle")
-                            .foregroundStyle(session.projectReadOnlyReason != nil ? NativeEditorStyle.warning : NativeEditorStyle.muted)
-                        Text(model.status).font(.caption).foregroundStyle(NativeEditorStyle.text)
-                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
-                        if session.projectReadOnlyReason == nil {
-                            Button { model.status = "" } label: {
-                                Image(systemName: "xmark").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
-                                    .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
-                            }.buttonStyle(.plain).accessibilityLabel("Dismiss status")
+                if inSheet, !sheetStatus.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Image(systemName: readOnlyReason != nil ? "exclamationmark.triangle.fill" : "info.circle")
+                                .foregroundStyle(readOnlyReason != nil ? NativeEditorStyle.warning : NativeEditorStyle.muted)
+                            Text(sheetStatus).font(.caption).foregroundStyle(NativeEditorStyle.text)
+                                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                            if readOnlyReason == nil {
+                                Button { model.status = "" } label: {
+                                    Image(systemName: "xmark").font(.caption2).foregroundStyle(NativeEditorStyle.muted)
+                                        .frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+                                }.buttonStyle(.plain).accessibilityLabel("Dismiss status")
+                            }
+                        }
+                        if readOnlyReason != nil {
+                            Button("Retry project access") { session.retryProjectAccess() }
+                                .buttonStyle(NativeSecondaryButtonStyle(height: NativeEditorStyle.compactControlHeight))
+                                .accessibilityIdentifier("editor.sheet.retryAccess")
                         }
                     }
                     .padding(.horizontal, 12).padding(.vertical, 6)

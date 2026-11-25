@@ -1076,6 +1076,7 @@ struct NativeTimeline: View {
     @GestureState private var magnifyActive = false
     #endif
     @State private var initialZoom: Double?
+    @State private var trackViewportWidth: CGFloat = 0
     @State private var mode: NativeTimelineMode = .move
     @State private var snapping = true
     @State private var extendingSelection = false
@@ -1174,11 +1175,17 @@ struct NativeTimeline: View {
         lifecycleResets(armedFeedbackResets(interactionGestureResets(interactionFrameTracking(timelineSurface))))
     }
 
+    private func zoomToFit() {
+        let viewport = trackViewportWidth > 0 ? Double(trackViewportWidth) : 320
+        let available = max(80, viewport - 24)
+        model.zoom = min(800, max(0.5, available / max(model.duration, 1)))
+    }
+
     private var timelineSurface: some View {
         VStack(spacing: 0) {
             NativeTimelineToolbar(model: model, mode: $mode, snapping: $snapping, extending: $extendingSelection,
                                   detail: feedback.isEmpty ? preview?.detail ?? "\(model.selectedIDs.count) selected" : feedback,
-                                  selectAll: selectAll, split: splitSelection, delete: deleteSelection, nudge: nudge)
+                                  selectAll: selectAll, split: splitSelection, delete: deleteSelection, nudge: nudge, fitZoom: zoomToFit)
             #if os(iOS) && !targetEnvironment(macCatalyst)
             precisionControls
             #endif
@@ -1316,6 +1323,11 @@ struct NativeTimeline: View {
                         #else
                         initialZoom = nil
                         #endif
+                    })
+                    .background(GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { trackViewportWidth = proxy.size.width }
+                            .onChange(of: proxy.size.width) { _, width in trackViewportWidth = width }
                     })
                 }
             }
@@ -2256,6 +2268,7 @@ private struct NativeTimelineToolbar: View {
     let split: () -> Void
     let delete: (Bool) -> Void
     let nudge: (Double) -> Void
+    let fitZoom: () -> Void
     @State private var multicamVisible = false
     @State private var markerRequest: NativeTimelineMarkerRequest?
     #if os(iOS)
@@ -2282,12 +2295,6 @@ private struct NativeTimelineToolbar: View {
 
     private func addTitleAtPlayhead() {
         model.edit(["op": "add_title", "text": "Your title", "start": model.time, "dur": 5, "title": ["size": min(model.width, model.height) * 0.09]])
-    }
-
-    private func zoomToFit() {
-        let dur = max(model.duration, 1)
-        let targetWidth: Double = 360
-        model.zoom = min(800, max(10, targetWidth / dur))
     }
 
     var body: some View {
@@ -2368,7 +2375,7 @@ private struct NativeTimelineToolbar: View {
                 Section("Timeline view") {
                     Text("Playhead \(nativeTimecode(model.time, fps: model.fps))")
                     Text(detail)
-                    Button { zoomToFit() } label: { Label("Zoom to fit", systemImage: "arrow.up.left.and.arrow.down.right") }
+                    Button { fitZoom() } label: { Label("Zoom to fit", systemImage: "arrow.up.left.and.arrow.down.right") }
                     Button { model.zoom = max(10, model.zoom / 1.4) } label: { Label("Zoom out", systemImage: "minus.magnifyingglass") }
                     Button { model.zoom = min(800, model.zoom * 1.4) } label: { Label("Zoom in", systemImage: "plus.magnifyingglass") }
                 }
@@ -2443,7 +2450,7 @@ private struct NativeTimelineToolbar: View {
                     Button("Set range end") { markRange("end") }
                     Button("Clear range") { markRange("clear") }
                     Divider()
-                    Button("Zoom to fit") { zoomToFit() }
+                    Button("Zoom to fit", action: fitZoom)
                 } label: { Image(systemName: "ellipsis") }
                     .help("More timeline actions")
                     .accessibilityLabel("More timeline actions")
@@ -2748,7 +2755,7 @@ private struct NativeTimelineClip: View {
     #endif
     private var selected: Bool { model.selectedIDs.contains(clip.id) }
     private var inlineEdges: Bool {
-        #if os(iOS)
+        #if os(iOS) && !targetEnvironment(macCatalyst)
         return NativeTimelineTouchGeometry.inlineEdges(clipWidth: clip.duration * model.zoom)
         #else
         return true

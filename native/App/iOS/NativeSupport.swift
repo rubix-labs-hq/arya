@@ -349,6 +349,8 @@ struct NativeProView: View {
     var onUnlocked: (() -> Void)? = nil
     @Environment(\.purchase) private var purchase
     @State private var selected: ProPlan = .yearly
+    @State private var checkingBeforePurchase = false
+    @State private var viewActive = false
 
     static let termsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
     static let privacyURL = URL(string: "https://editwitharya.app/privacy/")!
@@ -406,7 +408,11 @@ struct NativeProView: View {
             preferAvailablePlan()
             Task { await store.reload() }
         }
-        .onDisappear { store.clearStatus() }
+        .onAppear { viewActive = true }
+        .onDisappear {
+            viewActive = false
+            store.clearStatus()
+        }
     }
 
     private var pendingIntentTrigger: String {
@@ -559,14 +565,18 @@ struct NativeProView: View {
                             .accessibilityIdentifier("pro.lifetimeUpgradeNote")
                     }
                     Button {
+                        guard !checkingBeforePurchase else { return }
+                        let chosenPlan = product.plan
+                        checkingBeforePurchase = true
                         Task {
+                            defer { checkingBeforePurchase = false }
                             await store.refreshAccess()
-                            guard shouldOffer(product.plan) else { return }
-                            await store.buy(product.plan, with: purchase)
+                            guard viewActive, selected == chosenPlan, shouldOffer(chosenPlan) else { return }
+                            await store.buy(chosenPlan, with: purchase)
                         }
                     } label: {
                         Group {
-                            if store.status == .purchasing(product.plan) { ProgressView().tint(NativeEditorStyle.accentInk) }
+                            if checkingBeforePurchase || store.status == .purchasing(product.plan) { ProgressView().tint(NativeEditorStyle.accentInk) }
                             else { Text(Self.ctaTitle(for: product)).font(.headline) }
                         }
                         .frame(maxWidth: .infinity, minHeight: 50)
@@ -574,7 +584,7 @@ struct NativeProView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(NativeEditorStyle.accent)
                     .foregroundStyle(NativeEditorStyle.accentInk)
-                    .disabled(!store.canPurchase)
+                    .disabled(!store.canPurchase || checkingBeforePurchase)
                     .accessibilityIdentifier("pro.purchase")
                     Text(product.terms)
                         .font(.footnote).foregroundStyle(NativeEditorStyle.muted)
@@ -625,6 +635,7 @@ struct NativeProView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(checkingBeforePurchase || store.isBusy)
         .accessibilityLabel("\(Self.title(product.plan)), \(product.period.map { "\(product.displayPrice) per \($0)" } ?? "\(product.displayPrice), one payment")\(product.freeTrial.map { ", \($0) free" } ?? "")")
         .accessibilityAddTraits(chosen ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("pro.plan.\(product.plan.rawValue)")

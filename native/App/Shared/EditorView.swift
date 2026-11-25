@@ -45,7 +45,7 @@ struct ContentView: View {
                                 session.toast(reason)
                                 return false
                             }
-                            if session.nativeEditor.tracks.allSatisfy({ $0.clips.isEmpty }) {
+                            if session.nativeEditor.project != nil && session.nativeEditor.tracks.allSatisfy({ $0.clips.isEmpty }) {
                                 session.nativeEditor.importAndPlace(files, hover: nil, at: nil)
                             } else {
                                 session.importFiles(files)

@@ -614,6 +614,8 @@ struct NativeMediaImportSheet: View {
     @State private var recoveredCopies: NativeRetainedMediaCopies?
     @State private var recoveryAdmissionID: String?
     @State private var recoveryNotice: String?
+    @State private var placingImported = false
+    @State private var placementError: String?
     private var importedRoots: [NativeMediaImportRoot] {
         NativeMediaImportLocation.roots(assets: model.project?.fields.dictionary("assets") ?? [:])
     }
@@ -841,6 +843,11 @@ struct NativeMediaImportSheet: View {
                         HStack(spacing: 10) { importNavigationActions }
                         VStack(alignment: .leading, spacing: 8) { importNavigationActions }
                     }
+                    if let placementError {
+                        Text(placementError)
+                            .font(.footnote).foregroundStyle(NativeEditorStyle.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Text(verifiedAssets.isEmpty ? "A completed copy is not a Media entry. Check the result below before selecting the same originals again." : "Open a source to review it, mark a range and add it to your timeline.")
                         .font(.footnote).foregroundStyle(NativeEditorStyle.muted).fixedSize(horizontal: false, vertical: true)
                 }
@@ -850,13 +857,13 @@ struct NativeMediaImportSheet: View {
         }
     }
     @ViewBuilder private var importNavigationActions: some View {
-        let disabled = !current || model.busy || model.missingMediaRestoreRequest != nil || model.restoringMediaSource != nil
+        let disabled = !current || model.busy || placingImported || model.missingMediaRestoreRequest != nil || model.restoringMediaSource != nil
         if !verifiedAssets.isEmpty {
             Button { addImportedToTimeline() } label: {
-                Label(verifiedAssets.count == 1 ? "Add to timeline" : "Add \(verifiedAssets.count) clips to timeline", systemImage: "plus.rectangle.on.rectangle")
+                Label(placingImported ? "Adding to timeline…" : (verifiedAssets.count == 1 ? "Add to timeline" : "Add \(verifiedAssets.count) clips to timeline"), systemImage: "plus.rectangle.on.rectangle")
             }
             .frame(minHeight: 44).buttonStyle(NativePrimaryButtonStyle())
-            .disabled(disabled).accessibilityIdentifier("editor.import.addToTimeline")
+            .disabled(disabled || session.projectReadOnlyReason != nil).accessibilityIdentifier("editor.import.addToTimeline")
         }
         Button { finishImport(.media) } label: { Label("View in Media", systemImage: "photo.on.rectangle") }
             .frame(minHeight: 44).buttonStyle(NativeToolbarButtonStyle(selected: verifiedAssets.isEmpty))
@@ -876,15 +883,28 @@ struct NativeMediaImportSheet: View {
         }
     }
     private func addImportedToTimeline() {
-        guard current, !importing, !model.busy, !verifiedAssets.isEmpty,
+        guard current, !importing, !placingImported, !model.busy, !verifiedAssets.isEmpty,
+              session.projectReadOnlyReason == nil,
               NativeMediaImportNavigation.restorationAllowsNavigation(requestPending: model.missingMediaRestoreRequest != nil,
                   activeSource: model.restoringMediaSource != nil),
               navigationContext.panelID == request.panelID,
               model.renderPreviewBackendID == ObjectIdentifier(request.backend) else { return }
-        model.showingSource = false
-        model.place(verifiedAssets.map { .media($0.id) }, hover: nil, at: nil, expectedVersion: model.version)
-        model.mediaImportRequest = nil
-        dismiss()
+        let items = verifiedAssets.map { NativeTimelineDrop.Item.media($0.id) }
+        let expectedVersion = model.version
+        placingImported = true
+        placementError = nil
+        Task { @MainActor in
+            defer { placingImported = false }
+            if let error = await model.placeAndConfirm(items, hover: nil, at: nil, expectedVersion: expectedVersion) {
+                placementError = error
+                return
+            }
+            guard current, navigationContext.panelID == request.panelID,
+                  model.renderPreviewBackendID == ObjectIdentifier(request.backend) else { return }
+            model.showingSource = false
+            model.mediaImportRequest = nil
+            dismiss()
+        }
     }
     private func finishImport(_ destination: NativeMediaImportNavigation.Destination) {
         guard current, !importing, !model.busy,
