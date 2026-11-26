@@ -9,7 +9,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const runtime = [
   { name: 'preact', label: 'Preact', version: '10.29.8', license: 'MIT' },
   { name: 'htm', label: 'htm', version: '3.1.1', license: 'Apache-2.0' },
-  { name: 'mediabunny', label: 'Mediabunny', version: '1.66.0', license: 'MPL-2.0' },
+  { name: 'mediabunny', label: 'Mediabunny', version: '1.66.2', license: 'MPL-2.0' },
 ];
 const tipsStripe = { name: 'stripe', version: '23.2.0', license: 'MIT' };
 const fonts = [
@@ -18,7 +18,7 @@ const fonts = [
   ['Manrope', 'editor/web/fonts/manrope-OFL.txt', 'web/fonts/manrope-OFL.txt'],
   ['Newsreader', 'site/assets/fonts/newsreader-OFL.txt', null],
 ];
-const sourceURL = 'https://registry.npmjs.org/mediabunny/-/mediabunny-1.66.0.tgz';
+const sourceURL = 'https://registry.npmjs.org/mediabunny/-/mediabunny-1.66.2.tgz';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 function bytes(scope, path) {
   const result = boundedWorkingFile(resolve(scope, path), scope);
