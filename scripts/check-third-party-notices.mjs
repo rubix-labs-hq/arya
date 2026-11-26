@@ -11,7 +11,7 @@ const runtime = [
   { name: 'htm', label: 'htm', version: '3.1.1', license: 'Apache-2.0' },
   { name: 'mediabunny', label: 'Mediabunny', version: '1.66.0', license: 'MPL-2.0' },
 ];
-const tipsStripe = { name: 'stripe', version: '23.1.0', license: 'MIT' };
+const tipsStripe = { name: 'stripe', version: '23.2.0', license: 'MIT' };
 const fonts = [
   ['Inter', 'editor/web/fonts/LICENSE-Inter.txt', 'web/fonts/LICENSE-Inter.txt'],
   ['Mrs Saint Delafield', 'editor/web/fonts/MrsSaintDelafield-OFL.txt', 'web/fonts/MrsSaintDelafield-OFL.txt'],

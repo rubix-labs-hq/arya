@@ -1043,4 +1043,4 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ## Stripe Node SDK (tip event receiver only)
 
-The optional-tip server function uses Stripe Node SDK 23.1.0 under the MIT license. Source: https://github.com/stripe/stripe-node. The full license is included as `STRIPE_LICENSE.txt` in the server function. Stripe is not added to the Mac or iOS application bundles.
+The optional-tip server function uses Stripe Node SDK 23.2.0 under the MIT license. Source: https://github.com/stripe/stripe-node. The full license is included as `STRIPE_LICENSE.txt` in the server function. Stripe is not added to the Mac or iOS application bundles.
